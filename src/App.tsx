@@ -199,7 +199,7 @@ function CustomerBooking() {
       
       await addDoc(collection(db, 'bookings'), dataToSave);
       
-      setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ ငွေလွှဲမှတ်တမ်းကို စစ်ဆေးပြီး Admin မှ မကြာမီ အတည်ပြုပေးပါမည်။');
+      setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ NgweLwairHmatTan ကို စစ်ဆေးပြီး Admin မှ မကြာမီ အတည်ပြုပေးပါမည်။');
       setStep(1); 
       setFormData({ name: '', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: '', date: '', time: '', paymentMethod: '', txId: '' });
       setActiveCategory('massage');
@@ -243,15 +243,12 @@ function CustomerBooking() {
           let textClass = "";
           
           if (step > s.num) {
-            // Completed Steps: Yellow with Check
             circleClass = "bg-[#D4AF37] text-white shadow-md border-2 border-[#D4AF37]";
             textClass = "text-[#D4AF37]";
           } else if (step === s.num) {
-            // Active Step: Dark Green
             circleClass = "bg-[#123524] text-white shadow-md border-2 border-[#123524]";
             textClass = "text-[#123524]";
           } else {
-            // Future Steps: White with Gray Border
             circleClass = "bg-white border-2 border-gray-200 text-gray-400";
             textClass = "text-gray-400";
           }
@@ -356,7 +353,6 @@ function CustomerBooking() {
               </div>
             </div>
             
-            {/* If VVIP is already included, show INCLUDED badge instead of toggle switch */}
             {isVvipIncluded ? (
               <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">
                 INCLUDED
@@ -519,7 +515,8 @@ function CustomerBooking() {
         
         {/* Summary Card */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-          <h3 className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: THEME.primary }}>Booking Summary</h3>
+          {/* Booking Summary စာသားကို အဝါရောင် (ရွှေရောင်) သို့ ပြောင်းလဲထားပါသည် */}
+          <h3 className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3>
           <div className="space-y-4">
             
             <div className="flex justify-between items-start">
@@ -573,7 +570,8 @@ function CustomerBooking() {
 
         {/* User Info */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-          <h3 className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: THEME.primary }}>Your Information</h3>
+          {/* Your Information စာသားကို အဝါရောင် (ရွှေရောင်) သို့ ပြောင်းလဲထားပါသည် */}
+          <h3 className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Your Information</h3>
           <div className="space-y-4">
             <div>
               <label className="block mb-1 text-sm font-semibold text-gray-700">Full Name</label>
