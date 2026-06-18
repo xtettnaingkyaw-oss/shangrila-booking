@@ -9,6 +9,7 @@ interface Booking {
   name: string;
   phone: string;
   service: string;
+  therapist: string; // <-- အသစ်ထပ်ထည့်ထားသော ဝန်ထမ်း Type
   date: string;
   time: string;
   txId: string;
@@ -56,6 +57,7 @@ function CustomerBooking() {
     name: '',
     phone: '',
     service: '',
+    therapist: '', // <-- State တွင် ဝန်ထမ်းအသစ်ထပ်ထည့်ထားသည်
     date: '',
     time: '',
     txId: ''
@@ -89,7 +91,7 @@ function CustomerBooking() {
         createdAt: Date.now()
       });
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ Admin မှ မကြာမီ အတည်ပြုပေးပါမည်။');
-      setFormData({ name: '', phone: '', service: '', date: '', time: '', txId: '' });
+      setFormData({ name: '', phone: '', service: '', therapist: '', date: '', time: '', txId: '' });
     } catch (error) {
       console.error("Error adding document: ", error);
       alert("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။");
@@ -132,16 +134,30 @@ function CustomerBooking() {
           </div>
         </div>
 
-        {/* Services */}
-        <div>
-          <label className="block mb-2 text-sm flex items-center"><Activity className="w-4 h-4 mr-2"/> ဝန်ဆောင်မှု ရွေးချယ်ရန်</label>
-          <select required name="service" value={formData.service} onChange={handleChange}
-            className="w-full p-3 bg-[#064E3B] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white">
-            <option value="">-- ဝန်ဆောင်မှု ရွေးပါ --</option>
-            {SERVICES.map(s => (
-              <option key={s.id} value={s.name}>{s.name} ({s.duration}) - {s.price}</option>
-            ))}
-          </select>
+        {/* Services & Therapist (Added Section) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block mb-2 text-sm flex items-center"><Activity className="w-4 h-4 mr-2"/> ဝန်ဆောင်မှု ရွေးချယ်ရန်</label>
+            <select required name="service" value={formData.service} onChange={handleChange}
+              className="w-full p-3 bg-[#064E3B] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white">
+              <option value="">-- ဝန်ဆောင်မှု ရွေးပါ --</option>
+              {SERVICES.map(s => (
+                <option key={s.id} value={s.name}>{s.name} ({s.duration}) - {s.price}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block mb-2 text-sm flex items-center"><User className="w-4 h-4 mr-2"/> ဝန်ထမ်း ရွေးချယ်ရန်</label>
+            <select required name="therapist" value={formData.therapist} onChange={handleChange}
+              className="w-full p-3 bg-[#064E3B] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white">
+              <option value="">-- ဝန်ထမ်း ရွေးပါ --</option>
+              {Array.from({ length: 15 }, (_, i) => (
+                <option key={i} value={`Therapist No-${i + 1}`}>
+                  Therapist No-{i + 1}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Date & Time */}
@@ -236,7 +252,7 @@ function AdminDashboard() {
           <thead>
             <tr className="border-b border-[#D4AF37]/50 text-sm">
               <th className="p-3">Customer</th>
-              <th className="p-3">Service</th>
+              <th className="p-3">Service & Therapist</th>
               <th className="p-3">Date & Time</th>
               <th className="p-3">TxID (Last 6)</th>
               <th className="p-3">Status</th>
@@ -253,7 +269,10 @@ function AdminDashboard() {
                   <div className="font-bold">{b.name}</div>
                   <div className="text-xs text-gray-400">{b.phone}</div>
                 </td>
-                <td className="p-3 text-sm">{b.service}</td>
+                <td className="p-3">
+                  <div className="font-bold text-sm">{b.service}</div>
+                  <div className="text-xs text-yellow-400">{b.therapist}</div>
+                </td>
                 <td className="p-3 text-sm">
                   <div>{b.date}</div>
                   <div className="text-gray-400">{b.time}</div>
