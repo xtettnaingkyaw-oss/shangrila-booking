@@ -4,6 +4,15 @@ import { db } from './firebase';
 import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown } from 'lucide-react';
 
 // --- Types ---
+interface MenuItem {
+  id: string;
+  name: string;
+  price: number;
+  duration: string;
+  vvipPrice?: number;
+  vvipIncluded?: boolean;
+}
+
 interface Booking {
   id?: string;
   name: string;
@@ -19,27 +28,27 @@ interface Booking {
   createdAt: number;
 }
 
-// --- Menu Data from Provided Image ---
+// --- Menu Data (Updated with dynamic VVIP Prices) ---
 const MENU_CATEGORIES = [
   {
     id: 'massage',
     title: 'Massage',
     icon: Sparkles,
     items: [
-      { id: 'm1', name: 'Traditional Massage', price: 25000, duration: '60 Mins' },
-      { id: 'm2', name: 'Traditional Massage', price: 37000, duration: '90 Mins' },
-      { id: 'm3', name: 'Oil Massage', price: 25000, duration: '60 Mins' },
-      { id: 'm4', name: 'Oil Massage', price: 37000, duration: '90 Mins' },
-      { id: 'm5', name: 'Aromatherapy Massage', price: 30000, duration: '60 Mins' },
-      { id: 'm6', name: 'Aromatherapy Massage', price: 45000, duration: '90 Mins' },
-      { id: 'm7', name: 'Body Butter Lotion Massage', price: 35000, duration: '60 Mins' },
-      { id: 'm8', name: 'Body Butter Lotion Massage', price: 50000, duration: '90 Mins' },
-      { id: 'm9', name: 'Body to Body Massage', price: 55000, duration: '60 Mins' },
-      { id: 'm10', name: 'Body to Body Massage', price: 82000, duration: '90 Mins' },
-      { id: 'm11', name: 'Four Hands Massage', price: 70000, duration: '60 Mins' },
-      { id: 'm12', name: 'Four Hands Massage', price: 104000, duration: '90 Mins' },
-      { id: 'm13', name: 'Lotion Candle Massage (VVIP Included)', price: 55000, duration: '60 Mins' },
-      { id: 'm14', name: 'Lotion Candle Massage (VVIP Included)', price: 82000, duration: '90 Mins' },
+      { id: 'm1', name: 'Traditional Massage', price: 25000, vvipPrice: 35000, duration: '60 Mins' },
+      { id: 'm2', name: 'Traditional Massage', price: 37000, vvipPrice: 52500, duration: '90 Mins' },
+      { id: 'm3', name: 'Oil Massage', price: 25000, vvipPrice: 35000, duration: '60 Mins' },
+      { id: 'm4', name: 'Oil Massage', price: 37000, vvipPrice: 52500, duration: '90 Mins' },
+      { id: 'm5', name: 'Aromatherapy Massage', price: 30000, vvipPrice: 40000, duration: '60 Mins' },
+      { id: 'm6', name: 'Aromatherapy Massage', price: 45000, vvipPrice: 60000, duration: '90 Mins' },
+      { id: 'm7', name: 'Body Butter Lotion Massage', price: 35000, vvipPrice: 45000, duration: '60 Mins' },
+      { id: 'm8', name: 'Body Butter Lotion Massage', price: 50000, vvipPrice: 67500, duration: '90 Mins' },
+      { id: 'm9', name: 'Body to Body Massage', price: 55000, duration: '60 Mins', vvipIncluded: true },
+      { id: 'm10', name: 'Body to Body Massage', price: 82000, duration: '90 Mins', vvipIncluded: true },
+      { id: 'm11', name: 'Four Hands Massage', price: 70000, duration: '60 Mins', vvipIncluded: true },
+      { id: 'm12', name: 'Four Hands Massage', price: 104000, duration: '90 Mins', vvipIncluded: true },
+      { id: 'm13', name: 'Lotion Candle Massage', price: 55000, duration: '60 Mins', vvipIncluded: true },
+      { id: 'm14', name: 'Lotion Candle Massage', price: 82000, duration: '90 Mins', vvipIncluded: true },
     ]
   },
   {
@@ -47,8 +56,8 @@ const MENU_CATEGORIES = [
     title: 'Body Scrub',
     icon: Droplets,
     items: [
-      { id: 's1', name: 'Body Scrub & Bath Only', price: 70000, duration: '60 Mins' },
-      { id: 's2', name: 'Body Scrub & Lotion Massage (VVIP Included)', price: 80000, duration: '120 Mins' },
+      { id: 's1', name: 'Body Scrub & Bath Only', price: 70000, vvipPrice: 80000, duration: '60 Mins' },
+      { id: 's2', name: 'Body Scrub & Lotion Massage', price: 80000, duration: '120 Mins', vvipIncluded: true },
     ]
   },
   {
@@ -125,9 +134,7 @@ function CustomerBooking() {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    serviceName: '', 
-    serviceDuration: '', 
-    servicePrice: 0,
+    selectedItem: null as MenuItem | null, // <-- Saved full item object
     isVvipUpgrade: false,
     therapist: '',
     date: '',
@@ -156,9 +163,11 @@ function CustomerBooking() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Calculate dynamic total price
   const calculateTotal = () => {
-    return formData.servicePrice + (formData.isVvipUpgrade ? 10000 : 0);
+    if (!formData.selectedItem) return 0;
+    return formData.isVvipUpgrade && formData.selectedItem.vvipPrice 
+      ? formData.selectedItem.vvipPrice 
+      : formData.selectedItem.price;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -170,7 +179,7 @@ function CustomerBooking() {
     setLoading(true);
     try {
       const finalTotal = calculateTotal();
-      const finalServiceString = `${formData.serviceName} ${formData.serviceDuration ? `(${formData.serviceDuration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''}`;
+      const finalServiceString = `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`;
 
       const dataToSave = {
         name: formData.name,
@@ -190,7 +199,7 @@ function CustomerBooking() {
       
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ ငွေလွှဲမှတ်တမ်းကို စစ်ဆေးပြီး Admin မှ မကြာမီ အတည်ပြုပေးပါမည်။');
       setStep(1); 
-      setFormData({ name: '', phone: '', serviceName: '', serviceDuration: '', servicePrice: 0, isVvipUpgrade: false, therapist: '', date: '', time: '', paymentMethod: '', txId: '' });
+      setFormData({ name: '', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: '', date: '', time: '', paymentMethod: '', txId: '' });
       setActiveCategory('massage');
     } catch (error) {
       console.error("Error adding document: ", error);
@@ -248,107 +257,116 @@ function CustomerBooking() {
     );
   };
 
-  const renderStep1 = () => (
-    <div className="animate-fade-in">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
-        <p className="text-sm text-gray-500 mt-2">Select the treatment that suits you best</p>
-      </div>
-      
-      <div className="space-y-4">
-        {MENU_CATEGORIES.map(category => {
-          const isActive = activeCategory === category.id;
-          const CategoryIcon = category.icon;
-          return (
-            <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              {/* Category Header */}
-              <div 
-                onClick={() => setActiveCategory(isActive ? null : category.id)}
-                className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition"
-              >
-                <div className="flex items-center text-sm font-bold text-gray-700">
-                  <CategoryIcon className="w-5 h-5 mr-3 text-yellow-600" /> {category.title}
-                </div>
-                {isActive ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-              </div>
-              
-              {/* Category Items */}
-              {isActive && (
-                <div className="p-2 border-t border-gray-100 bg-gray-50/50">
-                  {category.items.map(s => {
-                    const isSelected = formData.serviceName === s.name && formData.serviceDuration === s.duration;
-                    return (
-                      <div 
-                        key={s.id}
-                        onClick={() => {
-                          setFormData({ 
-                            ...formData, 
-                            serviceName: s.name,
-                            serviceDuration: s.duration,
-                            servicePrice: s.price,
-                            // Turn off VVIP toggle if selecting a package that already includes it
-                            isVvipUpgrade: s.name.includes('VVIP') ? false : formData.isVvipUpgrade 
-                          });
-                        }}
-                        className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${
-                          isSelected ? 'border-yellow-500 bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-yellow-400'
-                        }`}
-                      >
-                        <div>
-                          <div className="font-bold text-gray-800 text-sm">{s.name}</div>
-                          {s.duration && <div className="text-xs text-gray-500 mt-1">{s.duration}</div>}
-                        </div>
-                        <div className="font-bold whitespace-nowrap ml-4 text-sm" style={{ color: THEME.primary }}>
-                          {formatPrice(s.price)}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
+  const renderStep1 = () => {
+    const canUpgradeVvip = !!formData.selectedItem?.vvipPrice;
+    const isVvipIncluded = !!formData.selectedItem?.vvipIncluded;
 
-        {/* VVIP Upgrade Toggle */}
-        <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
-          <div className="flex items-center">
-            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
-              <Crown className="w-5 h-5 text-yellow-600" />
+    return (
+      <div className="animate-fade-in">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
+          <p className="text-sm text-gray-500 mt-2">Select the treatment that suits you best</p>
+        </div>
+        
+        <div className="space-y-4">
+          {MENU_CATEGORIES.map(category => {
+            const isActive = activeCategory === category.id;
+            const CategoryIcon = category.icon;
+            return (
+              <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                {/* Category Header */}
+                <div 
+                  onClick={() => setActiveCategory(isActive ? null : category.id)}
+                  className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition"
+                >
+                  <div className="flex items-center text-sm font-bold text-gray-700">
+                    <CategoryIcon className="w-5 h-5 mr-3 text-yellow-600" /> {category.title}
+                  </div>
+                  {isActive ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                </div>
+                
+                {/* Category Items */}
+                {isActive && (
+                  <div className="p-2 border-t border-gray-100 bg-gray-50/50">
+                    {category.items.map(s => {
+                      const isSelected = formData.selectedItem?.id === s.id;
+                      return (
+                        <div 
+                          key={s.id}
+                          onClick={() => {
+                            setFormData({ 
+                              ...formData, 
+                              selectedItem: s,
+                              isVvipUpgrade: false // Reset toggle on new selection
+                            });
+                          }}
+                          className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${
+                            isSelected ? 'border-yellow-500 bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-yellow-400'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-bold text-gray-800 text-sm">{s.name}</div>
+                            {s.duration && <div className="text-xs text-gray-500 mt-1">{s.duration}</div>}
+                          </div>
+                          <div className="font-bold whitespace-nowrap ml-4 text-sm" style={{ color: THEME.primary }}>
+                            {formatPrice(s.price)}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {/* VVIP Upgrade Toggle */}
+          <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
+            <div className="flex items-center">
+              <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
+                <Crown className="w-5 h-5 text-yellow-600" />
+              </div>
+              <div>
+                <div className="font-bold text-yellow-800 text-sm">VVIP Master Room Upgrade</div>
+                <div className="text-xs text-yellow-600 font-semibold mt-1">
+                  {isVvipIncluded 
+                    ? 'Already Included in Package' 
+                    : (!formData.selectedItem 
+                        ? 'Select a service first' 
+                        : (canUpgradeVvip ? 'Turn on for extra comfort' : 'Not available for this service')
+                      )}
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="font-bold text-yellow-800 text-sm">VVIP Master Room Extra Service</div>
-              <div className="text-xs text-yellow-600 font-semibold mt-1">+10,000 Ks upgrade</div>
-            </div>
+            
+            <button
+              type="button"
+              disabled={!canUpgradeVvip} 
+              onClick={() => setFormData({ ...formData, isVvipUpgrade: !formData.isVvipUpgrade })}
+              className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out cursor-pointer ${
+                formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'
+              } ${!canUpgradeVvip ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${
+                formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'
+              }`} />
+            </button>
           </div>
-          
-          <button
-            type="button"
-            disabled={formData.serviceName.includes('VVIP')} // Disable if package already has VVIP
-            onClick={() => setFormData({ ...formData, isVvipUpgrade: !formData.isVvipUpgrade })}
-            className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out cursor-pointer ${
-              formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'
-            } ${formData.serviceName.includes('VVIP') ? 'opacity-50 cursor-not-allowed' : ''}`}
+        </div>
+
+        <div className="mt-8 flex justify-end">
+          <button 
+            disabled={!formData.selectedItem}
+            onClick={() => setStep(2)}
+            className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-md hover:opacity-90"
+            style={{ backgroundColor: THEME.primary }}
           >
-            <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${
-              formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'
-            }`} />
+            CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" />
           </button>
         </div>
       </div>
-
-      <div className="mt-8 flex justify-end">
-        <button 
-          disabled={!formData.serviceName}
-          onClick={() => setStep(2)}
-          className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-md hover:opacity-90"
-          style={{ backgroundColor: THEME.primary }}
-        >
-          CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" />
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderStep2 = () => (
     <div className="animate-fade-in">
@@ -479,21 +497,23 @@ function CustomerBooking() {
             <div className="flex justify-between items-start">
               <div>
                 <div className="font-bold text-gray-800 flex items-center">
-                  <Sparkles className="w-4 h-4 mr-2 text-yellow-600"/>
-                  {formData.serviceName}
+                  <Activity className="w-4 h-4 mr-2 text-yellow-600"/>
+                  {formData.selectedItem?.name}
                 </div>
-                {formData.serviceDuration && <div className="text-sm text-gray-500 ml-6">{formData.serviceDuration}</div>}
+                {formData.selectedItem?.duration && <div className="text-sm text-gray-500 ml-6">{formData.selectedItem.duration}</div>}
               </div>
-              <div className="font-bold text-gray-800 text-sm">{formatPrice(formData.servicePrice)}</div>
+              <div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price || 0)}</div>
             </div>
 
-            {formData.isVvipUpgrade && (
+            {formData.isVvipUpgrade && formData.selectedItem?.vvipPrice && (
               <div className="flex justify-between items-start pt-2 border-t border-gray-50">
                 <div className="font-bold text-yellow-700 flex items-center text-sm">
                   <Crown className="w-4 h-4 mr-2 text-yellow-600"/>
-                  VVIP Master Room Upgrade
+                  VVIP Upgrade Extra Fee
                 </div>
-                <div className="font-bold text-yellow-700 text-sm">{formatPrice(10000)}</div>
+                <div className="font-bold text-yellow-700 text-sm">
+                  +{formatPrice(formData.selectedItem.vvipPrice - formData.selectedItem.price)}
+                </div>
               </div>
             )}
 
