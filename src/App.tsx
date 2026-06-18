@@ -75,8 +75,8 @@ function CustomerBooking() {
     name: '',
     phone: '',
     service: '', 
-    serviceName: '', // <-- Added for safe UI render
-    serviceDuration: '', // <-- Added for safe UI render
+    serviceName: '', 
+    serviceDuration: '', 
     servicePrice: '',
     therapist: '',
     date: '',
@@ -100,6 +100,10 @@ function CustomerBooking() {
     setTimeout(() => setCopiedText(''), 2000);
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.txId.length !== 6) {
@@ -108,11 +112,10 @@ function CustomerBooking() {
     }
     setLoading(true);
     try {
-      // Create a clean object to save to database
       const dataToSave = {
         name: formData.name,
         phone: formData.phone,
-        service: formData.service, // Saved as single string for admin
+        service: formData.service,
         therapist: formData.therapist,
         date: formData.date,
         time: formData.time,
@@ -136,7 +139,7 @@ function CustomerBooking() {
 
   if (successMsg) {
     return (
-      <div className="bg-white p-10 rounded-2xl shadow-lg text-center border border-gray-100 max-w-lg mx-auto mt-10">
+      <div className="bg-white p-10 rounded-2xl shadow-lg text-center border border-gray-100 max-w-lg mx-auto mt-10 animate-fade-in">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
           <CheckCircle className="w-10 h-10 text-green-600" />
         </div>
@@ -144,7 +147,7 @@ function CustomerBooking() {
         <p className="text-gray-600 mb-8 leading-relaxed">{successMsg}</p>
         <button 
           onClick={() => setSuccessMsg('')} 
-          className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md"
+          className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90"
           style={{ backgroundColor: THEME.primary }}
         >
           နောက်ထပ် Booking တင်ရန်
@@ -184,7 +187,7 @@ function CustomerBooking() {
   };
 
   const renderStep1 = () => (
-    <div>
+    <div className="animate-fade-in">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
         <p className="text-sm text-gray-500 mt-2">Select the treatment that suits you best</p>
@@ -221,7 +224,7 @@ function CustomerBooking() {
         <button 
           disabled={!formData.service}
           onClick={() => setStep(2)}
-          className="px-8 py-3 rounded-lg font-bold text-white transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-md"
+          className="px-8 py-3 rounded-lg font-bold text-white transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center shadow-md hover:opacity-90"
           style={{ backgroundColor: THEME.primary }}
         >
           CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" />
@@ -231,7 +234,7 @@ function CustomerBooking() {
   );
 
   const renderStep2 = () => (
-    <div>
+    <div className="animate-fade-in">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2>
         <p className="text-sm text-gray-500 mt-2">Choose your preferred therapist or let us assign one</p>
@@ -279,7 +282,7 @@ function CustomerBooking() {
         <button 
           disabled={!formData.therapist}
           onClick={() => setStep(3)}
-          className="px-8 py-3 rounded-lg font-bold text-white transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+          className="px-8 py-3 rounded-lg font-bold text-white transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:opacity-90"
           style={{ backgroundColor: THEME.primary }}
         >
           CONTINUE
@@ -289,7 +292,7 @@ function CustomerBooking() {
   );
 
   const renderStep3 = () => (
-    <div>
+    <div className="animate-fade-in">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
         <p className="text-sm text-gray-500 mt-2">Select your preferred appointment date and time</p>
@@ -331,7 +334,7 @@ function CustomerBooking() {
         <button 
           disabled={!formData.date || !formData.time}
           onClick={() => setStep(4)}
-          className="px-8 py-3 rounded-lg font-bold text-white transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+          className="px-8 py-3 rounded-lg font-bold text-white transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:opacity-90"
           style={{ backgroundColor: THEME.primary }}
         >
           CONTINUE
@@ -341,7 +344,7 @@ function CustomerBooking() {
   );
 
   const renderStep4 = () => (
-    <form onSubmit={handleSubmit} className="pb-10">
+    <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2>
         <p className="text-sm text-gray-500 mt-2">Review your booking and complete payment</p>
@@ -353,7 +356,6 @@ function CustomerBooking() {
         <div className="space-y-4">
           <div className="flex justify-between items-start">
             <div>
-              {/* Safe display using separate variables */}
               <div className="font-bold text-gray-800 flex items-center">
                 <Activity className="w-4 h-4 mr-2 text-yellow-600"/>
                 {formData.serviceName}
@@ -409,7 +411,7 @@ function CustomerBooking() {
         </div>
 
         {formData.paymentMethod && (
-          <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200">
+          <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in">
             <p className="text-sm text-gray-700 mb-4 leading-relaxed">
               Booking အတည်ပြုနိုင်ရန် အတွက် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက်တိတိကို</strong> စရံငွေ အဖြစ် အောက်ပါ {formData.paymentMethod} အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။
             </p>
@@ -452,7 +454,7 @@ function CustomerBooking() {
         <button type="button" onClick={() => setStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
         <button 
           disabled={loading || !formData.paymentMethod} type="submit" 
-          className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center"
+          className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90"
           style={{ backgroundColor: THEME.primary }}
         >
           {loading ? 'PROCESSING...' : 'CONFIRM BOOKING'}
@@ -515,7 +517,7 @@ function AdminDashboard() {
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Dashboard...</div>;
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
       <div className="flex justify-between items-center mb-8 border-b border-gray-100 pb-4">
         <h2 className="text-2xl font-bold flex items-center" style={{ color: THEME.primary }}>
           <ShieldCheck className="mr-2 text-yellow-500"/> Admin Dashboard
