@@ -98,15 +98,25 @@ export default function App() {
   // --- Dynamic Tab Title & Favicon Setup ---
   useEffect(() => {
     document.title = "The Shangri-La | Men's Retreat";
-    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      document.head.appendChild(link);
-    }
-    // Shangri-La Logo အား Tab ပေါ်တွင် ပြသရန်
-    link.href = "https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg";
-  }, []);
+    
+    const updateFavicon = (url: string) => {
+      // 1. Remove any existing default vite icons
+      const existingIcons = document.querySelectorAll("link[rel*='icon']");
+      existingIcons.forEach(icon => document.head.removeChild(icon));
+      
+      // 2. Add the new icon
+      const newIcon = document.createElement('link');
+      newIcon.rel = 'shortcut icon';
+      newIcon.type = 'image/png'; // or image/svg+xml
+      newIcon.href = url;
+      document.head.appendChild(newIcon);
+    };
+
+    // Use admin uploaded logo or default logo
+    const iconUrl = appData?.branding?.logoUrl || "https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg";
+    updateFavicon(iconUrl);
+
+  }, [appData?.branding?.logoUrl]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -250,7 +260,6 @@ function CustomerBooking({ appData }: { appData: AppData }) {
     <div className="max-w-2xl mx-auto">
       {renderStepper()}
       
-      {/* STEP 1: SERVICE */}
       {step === 1 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
@@ -283,7 +292,6 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
-      {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
           {viewGallery && (
@@ -343,7 +351,6 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
-      {/* STEP 3 & 4 */}
       {step === 3 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
