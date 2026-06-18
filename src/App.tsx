@@ -284,7 +284,7 @@ function CustomerBooking() {
       <div className="animate-fade-in">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
-          <p className="text-sm text-gray-500 mt-2">Select the treatment that suits you best</p>
+          <p className="text-sm text-gray-500 mt-2">(သင်ရယူလိုသော ဝန်ဆောင်မှုအမျိုးအစားကို အရင်ရွေးချယ်ပါ)</p>
         </div>
         
         <div className="space-y-4">
@@ -396,7 +396,7 @@ function CustomerBooking() {
     <div className="animate-fade-in">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2>
-        <p className="text-sm text-gray-500 mt-2">Choose your preferred therapist or let us assign one</p>
+        <p className="text-sm text-gray-500 mt-2">(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p>
       </div>
       
       <div 
@@ -454,7 +454,7 @@ function CustomerBooking() {
     <div className="animate-fade-in">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
-        <p className="text-sm text-gray-500 mt-2">Select your preferred appointment date and time</p>
+        <p className="text-sm text-gray-500 mt-2">(ဘိုကင်ရယူလိုသော နေ့ရက်​ နှင့်​ အချိန်​ ကို​ ရွေးချယ်​ပါ)</p>
       </div>
       
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
@@ -510,7 +510,7 @@ function CustomerBooking() {
       <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2>
-          <p className="text-sm text-gray-500 mt-2">Review your booking and complete payment</p>
+          <p className="text-sm text-gray-500 mt-2">(သင်​ရွေးချယ်​ခဲ့သော​ ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး စရံငွေကြိုတင်ပေးချေကာ ဘိုကင်ကို အတည်ပြုပေးပါ)</p>
         </div>
         
         {/* Summary Card */}
