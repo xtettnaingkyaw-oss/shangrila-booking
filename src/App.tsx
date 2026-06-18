@@ -239,7 +239,7 @@ function CustomerBooking() {
 
           <div>
             {/* Transaction ID စာသားကို အဝါရောင်နှင့် Bold ပြောင်းထားပါသည် */}
-            <label className="block mb-2 text-sm font-bold text-yellow-400">ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး)</label>
+            <label className="block mb-2 text-sm font-bold text-yellow-400">စရံငွေပေးချေမှု ပြုလုပ်ပြီးပါက ငွေလွှဲပြေစာတွင်ပါဝင်သော ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ကို​ အောက်မှာရိုက်ထည့်ပေးပါ</label>
             <input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" 
               value={formData.txId} onChange={handleChange} 
               className="w-full p-3 bg-[#022c22] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-center text-xl tracking-widest text-white" />
