@@ -50,7 +50,13 @@ const DEFAULT_CATEGORIES: MenuCategory[] = [
 ];
 
 const TIME_SLOTS = ["9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM"];
-const formatPrice = (price: number) => price.toLocaleString() + ' Ks';
+
+// ဒေတာအဟောင်းများပါဝင်လာပါက Crash မဖြစ်စေရန် ထိန်းကျောင်းပေးသော Safe Price Formatter
+const formatPrice = (price: any) => {
+  if (price === undefined || price === null) return '0 Ks';
+  if (typeof price === 'number') return price.toLocaleString() + ' Ks';
+  return String(price); 
+};
 
 export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -60,7 +66,6 @@ export default function App() {
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('mode') === 'admin') setIsAdminMode(true);
 
-    // Load dynamic settings from Firestore
     const fetchSettings = async () => {
       try {
         const docRef = doc(db, 'settings', 'appData');
@@ -68,14 +73,12 @@ export default function App() {
         if (snap.exists()) {
           setAppSettings(snap.data() as AppSettings);
         } else {
-          // Initialize first time
           const initData = { therapists: DEFAULT_THERAPISTS, categories: DEFAULT_CATEGORIES };
           await setDoc(docRef, initData);
           setAppSettings(initData);
         }
       } catch (err) {
         console.error("Error loading settings:", err);
-        alert("Database ချိတ်ဆက်မှု အခက်အခဲရှိနေပါသည်။ Firebase ကို စစ်ဆေးပါ။");
       }
     };
     fetchSettings();
@@ -227,14 +230,13 @@ function CustomerBooking({ appSettings }: { appSettings: AppSettings }) {
 }
 
 // ==========================================
-// 2. ADMIN DASHBOARD (With Settings Editor)
+// 2. ADMIN DASHBOARD
 // ==========================================
 function AdminDashboard({ appSettings, onSettingsUpdated }: { appSettings: AppSettings, onSettingsUpdated: (data: AppSettings) => void }) {
   const [tab, setTab] = useState<'bookings' | 'settings'>('bookings');
   
   return (
     <div className="animate-fade-in">
-      {/* Admin Tabs */}
       <div className="flex space-x-2 mb-6">
         <button onClick={() => setTab('bookings')} className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
           <Calendar className="w-4 h-4 mr-2" /> Bookings List
@@ -258,7 +260,11 @@ function AdminBookingsList() {
       const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
       const data: Booking[] = [];
-      querySnapshot.forEach((doc) => { data.push({ id: doc.id, ...doc.data() } as Booking); });
+      querySnapshot.forEach((doc) => { 
+        // Crash မဖြစ်အောင် Fallback အကုန်ထည့်ထားသည်
+        const docData = doc.data();
+        data.push({ id: doc.id, ...docData } as Booking); 
+      });
       setBookings(data);
     } catch (error) { console.error(error); }
     setLoading(false);
@@ -273,7 +279,7 @@ function AdminBookingsList() {
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-yellow-500"/> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status</th><th className="p-3 pb-4 text-right">Actions</th></tr></thead><tbody>{bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">Booking မရှိသေးပါ။</td></tr>)}{bookings.map((b) => (<tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800">{b.name}</div><div className="text-xs text-gray-500">{b.phone}</div></td><td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1"/>{b.therapist}</div></td><td className="p-3 text-sm text-gray-700"><div className="font-semibold">{b.date}</div><div className="text-gray-500 text-xs mt-1">{b.time}</div></td><td className="p-3"><div className="font-mono font-bold text-gray-800">{b.txId}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod} • {formatPrice(b.totalPrice)}</div></td><td className="p-3">{b.status === 'pending' ? <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-200">Pending</span> : <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Approved</span>}</td><td className="p-3 text-right"><div className="flex justify-end space-x-2">{b.status === 'pending' && (<button onClick={() => handleApprove(b.id!)} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition" title="Approve"><CheckCircle className="w-5 h-5" /></button>)}<button onClick={() => handleDelete(b.id!)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition" title="Delete"><Trash2 className="w-5 h-5" /></button></div></td></tr>))}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status</th><th className="p-3 pb-4 text-right">Actions</th></tr></thead><tbody>{bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">Booking မရှိသေးပါ။</td></tr>)}{bookings.map((b) => (<tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div></td><td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1"/>{b.therapist || '-'}</div></td><td className="p-3 text-sm text-gray-700"><div className="font-semibold">{b.date || '-'}</div><div className="text-gray-500 text-xs mt-1">{b.time || '-'}</div></td><td className="p-3"><div className="font-mono font-bold text-gray-800">{b.txId || '-'}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div></td><td className="p-3">{b.status === 'pending' ? <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-200">Pending</span> : <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Approved</span>}</td><td className="p-3 text-right"><div className="flex justify-end space-x-2">{b.status === 'pending' && (<button onClick={() => handleApprove(b.id!)} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition" title="Approve"><CheckCircle className="w-5 h-5" /></button>)}<button onClick={() => handleDelete(b.id!)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition" title="Delete"><Trash2 className="w-5 h-5" /></button></div></td></tr>))}</tbody></table></div>
     </div>
   );
 }
@@ -299,7 +305,7 @@ function AdminSettings({ appSettings, onSettingsUpdated }: { appSettings: AppSet
 
   const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => {
     const updated = [...localCategories];
-    (updated[cIdx].items[iIdx] as any)[field] = val;
+    (updated[cIdx].items[itemIdx as any] as any)[field] = val;
     setLocalCategories(updated);
   };
 
@@ -325,7 +331,6 @@ function AdminSettings({ appSettings, onSettingsUpdated }: { appSettings: AppSet
         </button>
       </div>
 
-      {/* Therapists Editor */}
       <div className="mb-10">
         <h3 className="font-bold text-gray-800 mb-2 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Therapists</h3>
         <p className="text-xs text-gray-500 mb-4">စာကြောင်းတစ်ကြောင်းလျှင် ဝန်ထမ်းနာမည် (၁) ခုစီ ရိုက်ထည့်ပါ။</p>
@@ -336,7 +341,6 @@ function AdminSettings({ appSettings, onSettingsUpdated }: { appSettings: AppSet
         />
       </div>
 
-      {/* Services Editor */}
       <div>
         <h3 className="font-bold text-gray-800 mb-4 flex items-center"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Services & Prices</h3>
         {localCategories.map((cat, cIdx) => (
