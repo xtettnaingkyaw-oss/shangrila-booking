@@ -9,7 +9,8 @@ interface MenuCategory { id: string; title: string; items: MenuItem[]; }
 interface TherapistProfile { id: string; name: string; images: string[]; order: number; }
 interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'approved'; createdAt: number; }
 interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; }
-interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; }
+interface PaymentMethod { id: string; name: string; accountNumber: string; accountName: string; logoUrl: string; }
+interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; }
 
 // --- Theme & Icons Map ---
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
@@ -23,6 +24,12 @@ const DEFAULT_BRANDING: AppBranding = {
   phone2: "09-770072190",
   copyright: "© 2026 The Shangri-La Men's Retreat. All rights reserved."
 };
+const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
+  { id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' },
+  { id: 'p2', name: 'Wave PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' },
+  { id: 'p3', name: 'AYA PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' },
+  { id: 'p4', name: 'UAB PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' },
+];
 const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i }));
 const DEFAULT_CATEGORIES: MenuCategory[] = [
   { id: 'massage', title: 'Massage', items: [
@@ -98,24 +105,17 @@ export default function App() {
   // --- Dynamic Tab Title & Favicon Setup ---
   useEffect(() => {
     document.title = "The Shangri-La | Men's Retreat";
-    
     const updateFavicon = (url: string) => {
-      // 1. Remove any existing default vite icons
       const existingIcons = document.querySelectorAll("link[rel*='icon']");
       existingIcons.forEach(icon => document.head.removeChild(icon));
-      
-      // 2. Add the new icon
       const newIcon = document.createElement('link');
       newIcon.rel = 'shortcut icon';
-      newIcon.type = 'image/png'; // or image/svg+xml
+      newIcon.type = 'image/png';
       newIcon.href = url;
       document.head.appendChild(newIcon);
     };
-
-    // Use admin uploaded logo or default logo
     const iconUrl = appData?.branding?.logoUrl || "https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg";
     updateFavicon(iconUrl);
-
   }, [appData?.branding?.logoUrl]);
 
   useEffect(() => {
@@ -128,13 +128,15 @@ export default function App() {
         const snap = await getDoc(docRef);
         let loadedCategories = DEFAULT_CATEGORIES;
         let loadedBranding = DEFAULT_BRANDING;
+        let loadedPaymentMethods = DEFAULT_PAYMENT_METHODS;
 
         if (snap.exists()) {
           const data = snap.data();
           if (data.categories) loadedCategories = data.categories;
           if (data.branding) loadedBranding = { ...DEFAULT_BRANDING, ...data.branding };
+          if (data.paymentMethods) loadedPaymentMethods = data.paymentMethods;
         } else {
-          await setDoc(docRef, { categories: DEFAULT_CATEGORIES, branding: DEFAULT_BRANDING }, { merge: true });
+          await setDoc(docRef, { categories: DEFAULT_CATEGORIES, branding: DEFAULT_BRANDING, paymentMethods: DEFAULT_PAYMENT_METHODS }, { merge: true });
         }
 
         const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc'));
@@ -149,7 +151,7 @@ export default function App() {
           loadedTherapists = DEFAULT_THERAPISTS;
         }
 
-        setAppData({ categories: loadedCategories, therapists: loadedTherapists, branding: loadedBranding });
+        setAppData({ categories: loadedCategories, therapists: loadedTherapists, branding: loadedBranding, paymentMethods: loadedPaymentMethods });
       } catch (err) {
         console.error("Error loading settings:", err);
       }
@@ -202,6 +204,10 @@ function CustomerBooking({ appData }: { appData: AppData }) {
   const [successMsg, setSuccessMsg] = useState('');
   const [copiedText, setCopiedText] = useState('');
   
+  // Custom Payment Dropdown State
+  const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
+  const selectedPaymentConfig = appData.paymentMethods.find(p => p.name === formData.paymentMethod);
+
   // Gallery Modal State
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
 
@@ -260,6 +266,7 @@ function CustomerBooking({ appData }: { appData: AppData }) {
     <div className="max-w-2xl mx-auto">
       {renderStepper()}
       
+      {/* STEP 1: SERVICE */}
       {step === 1 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
@@ -292,6 +299,7 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
+      {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
           {viewGallery && (
@@ -351,6 +359,7 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
+      {/* STEP 3 & 4 */}
       {step === 3 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
@@ -363,8 +372,72 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရွေးချယ်ခဲ့သော ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး စရံငွေကြိုတင်ပေးချေကာ ဘိုကင်ကို အတည်ပြုပေးပါ)</p></div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3><div className="space-y-4"><div className="flex justify-between items-start"><div><div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/>{formData.selectedItem?.name}</div><div className="text-sm text-gray-500 ml-6">{formData.selectedItem?.duration}</div></div><div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price || 0)}</div></div>{formData.isVvipUpgrade && formData.selectedItem?.vvipPrice && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div><div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice(formData.selectedItem.vvipPrice - formData.selectedItem.price)}</div></div>)}{formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}<div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div><div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.date} at {formData.time}</div></div><div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div></div>
+          
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Your Information</h3><div className="space-y-4"><div><label className="block mb-1 text-sm font-semibold text-gray-700">Full Name</label><input required type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g. Aung Aung" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800" /></div><div><label className="block mb-1 text-sm font-semibold text-gray-700">Phone Number</label><input required type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="e.g. 09-xxxxxxxxx" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800" /></div></div></div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Deposit Payment</h3><div className="mb-4"><label className="block mb-2 text-sm font-semibold text-gray-700">ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label><select required name="paymentMethod" value={formData.paymentMethod} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800 font-bold"><option value="">-- ရွေးချယ်ပါ --</option><option value="KBZ PAY">KBZ PAY</option><option value="Wave PAY">Wave PAY</option><option value="AYA PAY">AYA PAY</option><option value="UAB PAY">UAB PAY</option></select></div>{formData.paymentMethod && (<div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in"><p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် အတွက် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက်တိတိကို ({formatPrice(calculateTotal()/2)})</strong> စရံငွေ အဖြစ် အောက်ပါ {formData.paymentMethod} အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။</p><div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100"><div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">09458888510</strong><button type="button" onClick={() => handleCopy('09458888510')} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> {copiedText === '09458888510' ? 'Copied!' : 'Copy'}</button></div><div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">Htet Naing Kyaw</strong><button type="button" onClick={() => handleCopy('Htet Naing Kyaw')} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> {copiedText === 'Htet Naing Kyaw' ? 'Copied!' : 'Copy'}</button></div></div></div>)}<div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>စရံငွေပေးချေမှု ပြုလုပ်ပြီးပါက ငွေလွှဲပြေစာတွင်ပါဝင်သော ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ကို အောက်မှာရိုက်ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div></div>
+          
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Deposit Payment</h3>
+            
+            {/* Custom Payment Dropdown */}
+            <div className="relative mb-4">
+              <label className="block mb-2 text-sm font-semibold text-gray-700">ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
+              <div 
+                className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm"
+                onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)}
+              >
+                {selectedPaymentConfig ? (
+                  <div className="flex items-center font-bold text-[#D4AF37]">
+                    {selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}
+                    {selectedPaymentConfig.name}
+                  </div>
+                ) : (
+                  <span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>
+                )}
+                <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
+              </div>
+
+              {paymentDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setPaymentDropdownOpen(false)}></div>
+                  <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-lg shadow-xl overflow-hidden border border-[#1a4a32]">
+                    {appData.paymentMethods.map(pm => (
+                      <div 
+                        key={pm.id} 
+                        className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] last:border-b-0 transition-colors"
+                        onClick={() => {
+                          setFormData({ ...formData, paymentMethod: pm.name });
+                          setPaymentDropdownOpen(false);
+                        }}
+                      >
+                        {pm.logoUrl && <img src={pm.logoUrl} alt="" className="w-7 h-7 mr-3 object-contain bg-white rounded-sm p-1" />}
+                        <span className="font-bold text-[#D4AF37] text-base">{pm.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {selectedPaymentConfig && (
+              <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in">
+                <p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် အတွက် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက်တိတိကို ({formatPrice(calculateTotal()/2)})</strong> စရံငွေ အဖြစ် အောက်ပါ {selectedPaymentConfig.name} အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။</p>
+                <div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100">
+                  <div className="flex items-center justify-between sm:justify-start">
+                    <span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> 
+                    <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountNumber}</strong>
+                    <button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountNumber)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> {copiedText === selectedPaymentConfig.accountNumber ? 'Copied!' : 'Copy'}</button>
+                  </div>
+                  <div className="flex items-center justify-between sm:justify-start">
+                    <span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> 
+                    <strong className="text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountName}</strong>
+                    <button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountName)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> {copiedText === selectedPaymentConfig.accountName ? 'Copied!' : 'Copy'}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>စရံငွေပေးချေမှု ပြုလုပ်ပြီးပါက ငွေလွှဲပြေစာတွင်ပါဝင်သော ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ကို အောက်မှာရိုက်ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div>
+          </div>
+          
           <div className="mt-8 flex justify-between"><button type="button" onClick={() => setStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={loading || !formData.paymentMethod} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : 'CONFIRM BOOKING'}</button></div>
         </form>
       )}
@@ -421,6 +494,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(JSON.parse(JSON.stringify(appData.therapists)));
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories)));
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || DEFAULT_BRANDING)));
+  const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || DEFAULT_PAYMENT_METHODS)));
   
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
@@ -463,6 +537,17 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setSavingCategory(null);
   };
 
+  const handleSavePayments = async () => {
+    if(!window.confirm(`Payment အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    setSavingCategory('payments');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true });
+      onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods });
+      alert('Payment အချက်အလက်များကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
+    setSavingCategory(null);
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -470,6 +555,19 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     try {
       const base64 = await compressImage(file, 400, 400); 
       setLocalBranding({ ...localBranding, logoUrl: base64 });
+    } catch (err) { alert("Logo တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
+    setUploadingImage(null);
+  };
+
+  const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(`pay_${idx}`);
+    try {
+      const base64 = await compressImage(file, 200, 200); 
+      const updated = [...localPaymentMethods];
+      updated[idx].logoUrl = base64;
+      setLocalPaymentMethods(updated);
     } catch (err) { alert("Logo တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
     setUploadingImage(null);
   };
@@ -503,9 +601,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const removeImage = (tIdx: number, imgIdx: number) => { const updated = [...localTherapists]; updated[tIdx].images.splice(imgIdx, 1); setLocalTherapists(updated); };
+  
   const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const updated = [...localCategories]; (updated[cIdx].items[iIdx] as any)[field] = val; setLocalCategories(updated); };
   const addItem = (cIdx: number) => { const updated = [...localCategories]; updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false }); setLocalCategories(updated); };
   const deleteItem = (cIdx: number, iIdx: number) => { if(!window.confirm("ဤ Service အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
+
+  const updatePaymentMethod = (pIdx: number, field: string, val: string) => { const updated = [...localPaymentMethods]; (updated[pIdx] as any)[field] = val; setLocalPaymentMethods(updated); };
+  const addPaymentMethod = () => { setLocalPaymentMethods([...localPaymentMethods, { id: `p_${Date.now()}`, name: 'New Payment', accountNumber: '', accountName: '', logoUrl: '' }]); };
+  const removePaymentMethod = (pIdx: number) => { if(!window.confirm("ဤ Payment အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localPaymentMethods]; updated.splice(pIdx, 1); setLocalPaymentMethods(updated); };
 
   return (
     <div className="space-y-6">
@@ -543,25 +646,53 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           </div>
 
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Address</label>
-              <textarea value={localBranding.address} onChange={e => setLocalBranding({...localBranding, address: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} />
-            </div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({...localBranding, address: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div>
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label>
-                <input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({...localBranding, phone1: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label>
-                <input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({...localBranding, phone2: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-              </div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({...localBranding, phone1: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({...localBranding, phone2: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label>
-              <input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({...localBranding, copyright: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-            </div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({...localBranding, copyright: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
           </div>
+        </div>
+      </div>
+
+      {/* Payment Methods Editor */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+          <div><h3 className="text-xl font-bold text-gray-800 flex items-center"><CreditCard className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Payment Methods</h3><p className="text-xs text-gray-500 mt-1">ငွေလွှဲစနစ်များနှင့် အကောင့်အချက်အလက်များ</p></div>
+          <div className="flex space-x-2">
+            <button onClick={addPaymentMethod} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1"/> Add Payment</button>
+            <button disabled={savingCategory === 'payments'} onClick={handleSavePayments} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === 'payments' ? 'Saving...' : 'Save Payments'}</button>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {localPaymentMethods.map((pm, pIdx) => (
+            <div key={pm.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition">
+              
+              <div className="lg:col-span-2 flex flex-col items-center justify-center border-r border-gray-200 pr-2">
+                <div className="w-12 h-12 bg-white border border-gray-200 rounded mb-1 flex items-center justify-center overflow-hidden relative group">
+                  {pm.logoUrl ? (
+                    <>
+                      <img src={pm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+                      <button onClick={() => updatePaymentMethod(pIdx, 'logoUrl', '')} className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100"><X className="w-4 h-4"/></button>
+                    </>
+                  ) : (
+                    <div className="text-[8px] text-gray-400 text-center">{uploadingImage === `pay_${pIdx}` ? '...' : 'No Logo'}</div>
+                  )}
+                </div>
+                <label className="text-[10px] text-[#D4AF37] font-bold cursor-pointer hover:underline">
+                  Upload Logo
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePaymentLogoUpload(pIdx, e)} disabled={uploadingImage === `pay_${pIdx}`} />
+                </label>
+              </div>
+
+              <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Bank/App Name</label><input type="text" value={pm.name} onChange={(e)=>updatePaymentMethod(pIdx, 'name', e.target.value)} placeholder="e.g. KBZ PAY" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700"/></div>
+              <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account Number</label><input type="text" value={pm.accountNumber} onChange={(e)=>updatePaymentMethod(pIdx, 'accountNumber', e.target.value)} placeholder="09xxxxxxxxx" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524] tracking-wider"/></div>
+              <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account Name</label><input type="text" value={pm.accountName} onChange={(e)=>updatePaymentMethod(pIdx, 'accountName', e.target.value)} placeholder="Name" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none"/></div>
+              <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={()=>removePaymentMethod(pIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5"/></button></div>
+            </div>
+          ))}
         </div>
       </div>
 
