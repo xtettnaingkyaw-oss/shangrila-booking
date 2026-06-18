@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase'; 
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon } from 'lucide-react';
 
 // --- Types ---
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
@@ -68,7 +68,6 @@ export default function App() {
 
     const fetchSettings = async () => {
       try {
-        // 1. Fetch Categories
         const docRef = doc(db, 'settings', 'appData');
         const snap = await getDoc(docRef);
         let loadedCategories = DEFAULT_CATEGORIES;
@@ -78,7 +77,6 @@ export default function App() {
           await setDoc(docRef, { categories: DEFAULT_CATEGORIES }, { merge: true });
         }
 
-        // 2. Fetch Therapists from separate collection to bypass 1MB limit
         const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc'));
         const tSnap = await getDocs(tQuery);
         let loadedTherapists: TherapistProfile[] = [];
@@ -86,13 +84,11 @@ export default function App() {
         if (!tSnap.empty) {
           tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile));
         } else {
-          // Migration check for old string arrays
           if (snap.exists() && snap.data().therapists && typeof snap.data().therapists[0] === 'string') {
             loadedTherapists = snap.data().therapists.map((t: string, idx: number) => ({ id: `t_${idx}_${Date.now()}`, name: t, images: [], order: idx }));
             const batchPromises = loadedTherapists.map(t => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
             await Promise.all(batchPromises);
           } else {
-            // Fresh start
             const batchPromises = DEFAULT_THERAPISTS.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
             await Promise.all(batchPromises);
             loadedTherapists = DEFAULT_THERAPISTS;
@@ -134,6 +130,9 @@ function CustomerBooking({ appData }: { appData: AppData }) {
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [copiedText, setCopiedText] = useState('');
+  
+  // Gallery Modal State
+  const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
 
   const today = new Date(); const maxD = new Date(); maxD.setDate(maxD.getDate() + 3);
   const minDateStr = today.toISOString().split('T')[0];
@@ -225,23 +224,71 @@ function CustomerBooking({ appData }: { appData: AppData }) {
 
       {/* STEP 2: THERAPIST */}
       {step === 2 && (
-        <div className="animate-fade-in">
+        <div className="animate-fade-in relative">
+          
+          {/* Full Screen Photo Gallery Modal */}
+          {viewGallery && (
+            <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+              <button onClick={() => setViewGallery(null)} className="absolute top-6 right-6 text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full">
+                <X className="w-8 h-8" />
+              </button>
+              
+              <div className="relative w-full max-w-md aspect-[3/4] flex items-center justify-center">
+                <img src={viewGallery.images[viewGallery.index]} alt="Therapist Detail" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
+                
+                {viewGallery.images.length > 1 && (
+                  <>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} 
+                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white p-3 rounded-full transition backdrop-blur-md"
+                    >
+                      <ChevronLeft className="w-6 h-6" />
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} 
+                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white p-3 rounded-full transition backdrop-blur-md"
+                    >
+                      <ChevronRight className="w-6 h-6" />
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="text-white mt-6 font-bold tracking-widest text-sm bg-black/50 px-4 py-1 rounded-full">
+                {viewGallery.index + 1} / {viewGallery.images.length}
+              </div>
+            </div>
+          )}
+
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2>
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p>
           </div>
-          <div onClick={() => setFormData({...formData, therapist: null})} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-yellow-500 bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-yellow-400'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
+          <div onClick={() => setFormData({...formData, therapist: null})} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
           
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {appData.therapists.map((therapist) => { 
               const isSelected = formData.therapist?.id === therapist.id;
               const hasImage = therapist.images && therapist.images.length > 0;
               return (
-                <div key={therapist.id} onClick={() => setFormData({...formData, therapist: therapist})} className={`flex flex-col items-center p-3 rounded-xl cursor-pointer border transition-all ${isSelected ? 'border-yellow-500 bg-yellow-50 shadow-lg transform scale-105' : 'border-gray-200 bg-white hover:border-yellow-400 hover:shadow-md'}`}>
-                  {/* 4:3 Aspect Ratio Image Box */}
-                  <div className="w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative">
+                <div 
+                  key={therapist.id} 
+                  onClick={() => setFormData({...formData, therapist: therapist})} 
+                  className={`flex flex-col items-center p-3 rounded-xl cursor-pointer transition-all border-2 ${isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md'}`}
+                >
+                  {/* Photo Frame matching theme color */}
+                  <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'}`}>
                     {hasImage ? (
-                      <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
+                      <>
+                        <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
+                        {therapist.images.length > 1 && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} 
+                            className="absolute bottom-2 inset-x-2 bg-[#123524]/80 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1.5 rounded flex items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition"
+                          >
+                            <ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos
+                          </button>
+                        )}
+                      </>
                     ) : (
                       <div className="flex flex-col items-center opacity-40">
                         <User className="w-12 h-12 text-[#123524]" />
@@ -376,13 +423,17 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const handleImageUpload = async (tIdx: number, files: FileList | null) => {
     if (!files || files.length === 0) return;
     const therapist = localTherapists[tIdx];
-    if (therapist.images.length + files.length > 3) { alert('အများဆုံး ၃ ပုံသာ ထည့်ခွင့်ရှိပါတယ်။'); return; }
+    
+    // အများဆုံး ၅ ပုံအထိ တင်ခွင့်ပေးထားသည်
+    if (therapist.images.length + files.length > 5) { alert('အများဆုံး ၅ ပုံသာ ထည့်ခွင့်ရှိပါတယ်။'); return; }
 
     setUploadingImage(therapist.id);
     const newUrls: string[] = [];
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        
+        // Base64 Compression to bypass Firebase Storage costs
         const compressedBase64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.readAsDataURL(file);
@@ -395,7 +446,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               const targetRatio = 3 / 4; const imageRatio = sW / sH;
               if (imageRatio > targetRatio) { const nW = sH * targetRatio; sX = (sW - nW) / 2; sW = nW; } 
               else { const nH = sW / targetRatio; sY = (sH - nH) / 2; sH = nH; }
-              canvas.width = 300; canvas.height = 400; // Optimal small size
+              canvas.width = 300; canvas.height = 400; // 4:3 Ratio
               const ctx = canvas.getContext('2d');
               ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, 300, 400);
               resolve(canvas.toDataURL('image/jpeg', 0.6));
@@ -422,7 +473,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
-          <div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Therapists</h3><p className="text-xs text-gray-500 mt-1">ဝန်ထမ်းအမည်များနှင့် အလှပုံ (အများဆုံး ၃ ပုံ) ထည့်သွင်းပါ။</p></div>
+          <div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Therapists</h3><p className="text-xs text-gray-500 mt-1">ဝန်ထမ်းအမည်များနှင့် အလှပုံများ ထည့်သွင်းပါ။</p></div>
           <div className="flex space-x-2">
             <button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1"/> Add Therapist</button>
             <button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === 'therapists' ? 'Saving...' : 'Save Therapists'}</button>
@@ -435,17 +486,17 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4"/></button>
               <label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label>
               <input type="text" value={therapist.name} onChange={(e) => updateTherapistName(tIdx, e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded mb-4 focus:outline-none focus:border-[#D4AF37]"/>
-              <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 3, 4:3 Portrait Recommended)</label>
-              <div className="flex space-x-2 mb-2">
+              <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5, 4:3 Portrait Recommended)</label>
+              <div className="flex flex-wrap gap-2 mb-2">
                 {therapist.images.map((imgUrl, imgIdx) => (
-                  <div key={imgIdx} className="w-20 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200">
+                  <div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200">
                     <img src={imgUrl} alt="upload" className="w-full h-full object-cover" />
                     <button onClick={() => removeImage(tIdx, imgIdx)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><X className="w-3 h-3"/></button>
                   </div>
                 ))}
-                {therapist.images.length < 3 && (
-                  <label className="w-20 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400">
-                    {uploadingImage === therapist.id ? <div className="text-xs font-bold animate-pulse">Wait...</div> : (<><UploadCloud className="w-5 h-5 mb-1" /><span className="text-[10px] font-bold">Upload</span></>)}
+                {therapist.images.length < 5 && (
+                  <label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400">
+                    {uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<><UploadCloud className="w-4 h-4 mb-1" /><span className="text-[10px] font-bold">Upload</span></>)}
                     <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} />
                   </label>
                 )}
