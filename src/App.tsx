@@ -1,20 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase'; 
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X } from 'lucide-react';
 
 // --- Types ---
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
 interface MenuCategory { id: string; title: string; items: MenuItem[]; }
+interface TherapistProfile { id: string; name: string; images: string[]; order: number; }
 interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'approved'; createdAt: number; }
-interface AppSettings { therapists: string[]; categories: MenuCategory[]; }
+interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; }
 
 // --- Theme & Icons Map ---
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 const ICON_MAP: Record<string, any> = { massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home };
 
 // --- Default Initial Data ---
-const DEFAULT_THERAPISTS = Array.from({ length: 15 }, (_, i) => `Therapist No-${i + 1}`);
+const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i }));
 const DEFAULT_CATEGORIES: MenuCategory[] = [
   { id: 'massage', title: 'Massage', items: [
     { id: 'm1', name: 'Traditional Massage', price: 25000, vvipPrice: 35000, duration: '60 Mins' },
@@ -51,7 +52,6 @@ const DEFAULT_CATEGORIES: MenuCategory[] = [
 
 const TIME_SLOTS = ["9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM"];
 
-// ဒေတာအဟောင်းများပါဝင်လာပါက Crash မဖြစ်စေရန် ထိန်းကျောင်းပေးသော Safe Price Formatter
 const formatPrice = (price: any) => {
   if (price === undefined || price === null) return '0 Ks';
   if (typeof price === 'number') return price.toLocaleString() + ' Ks';
@@ -60,7 +60,7 @@ const formatPrice = (price: any) => {
 
 export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [appData, setAppData] = useState<AppData | null>(null);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -68,15 +68,38 @@ export default function App() {
 
     const fetchSettings = async () => {
       try {
+        // 1. Fetch Categories
         const docRef = doc(db, 'settings', 'appData');
         const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          setAppSettings(snap.data() as AppSettings);
+        let loadedCategories = DEFAULT_CATEGORIES;
+        if (snap.exists() && snap.data().categories) {
+          loadedCategories = snap.data().categories;
         } else {
-          const initData = { therapists: DEFAULT_THERAPISTS, categories: DEFAULT_CATEGORIES };
-          await setDoc(docRef, initData);
-          setAppSettings(initData);
+          await setDoc(docRef, { categories: DEFAULT_CATEGORIES }, { merge: true });
         }
+
+        // 2. Fetch Therapists from separate collection to bypass 1MB limit
+        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc'));
+        const tSnap = await getDocs(tQuery);
+        let loadedTherapists: TherapistProfile[] = [];
+        
+        if (!tSnap.empty) {
+          tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile));
+        } else {
+          // Migration check for old string arrays
+          if (snap.exists() && snap.data().therapists && typeof snap.data().therapists[0] === 'string') {
+            loadedTherapists = snap.data().therapists.map((t: string, idx: number) => ({ id: `t_${idx}_${Date.now()}`, name: t, images: [], order: idx }));
+            const batchPromises = loadedTherapists.map(t => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
+            await Promise.all(batchPromises);
+          } else {
+            // Fresh start
+            const batchPromises = DEFAULT_THERAPISTS.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
+            await Promise.all(batchPromises);
+            loadedTherapists = DEFAULT_THERAPISTS;
+          }
+        }
+
+        setAppData({ categories: loadedCategories, therapists: loadedTherapists });
       } catch (err) {
         console.error("Error loading settings:", err);
       }
@@ -84,7 +107,7 @@ export default function App() {
     fetchSettings();
   }, []);
 
-  if (!appSettings) {
+  if (!appData) {
     return <div className="min-h-screen bg-gray-50 flex items-center justify-center font-bold" style={{ color: THEME.primary }}>Loading System Data...</div>;
   }
 
@@ -95,7 +118,7 @@ export default function App() {
         <p className="text-xs mt-1 font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation) </p>
       </header>
       <main className="max-w-4xl mx-auto p-4 py-8">
-        {isAdminMode ? <AdminDashboard appSettings={appSettings} onSettingsUpdated={setAppSettings} /> : <CustomerBooking appSettings={appSettings} />}
+        {isAdminMode ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> : <CustomerBooking appData={appData} />}
       </main>
     </div>
   );
@@ -104,10 +127,10 @@ export default function App() {
 // ==========================================
 // 1. CUSTOMER BOOKING SYSTEM
 // ==========================================
-function CustomerBooking({ appSettings }: { appSettings: AppSettings }) {
+function CustomerBooking({ appData }: { appData: AppData }) {
   const [step, setStep] = useState(1);
   const [activeCategory, setActiveCategory] = useState<string | null>(null); 
-  const [formData, setFormData] = useState({ name: '', phone: '', selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: '', date: '', time: '', paymentMethod: '', txId: '' });
+  const [formData, setFormData] = useState({ name: '', phone: '', selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '' });
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [copiedText, setCopiedText] = useState('');
@@ -125,10 +148,15 @@ function CustomerBooking({ appSettings }: { appSettings: AppSettings }) {
     if (formData.txId.length !== 6) { alert("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
     setLoading(true);
     try {
-      const dataToSave = { name: formData.name, phone: formData.phone, service: `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`, therapist: formData.therapist, date: formData.date, time: formData.time, paymentMethod: formData.paymentMethod, txId: formData.txId, totalPrice: calculateTotal(), status: 'pending', createdAt: Date.now() };
+      const dataToSave = { 
+        name: formData.name, phone: formData.phone, 
+        service: `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`, 
+        therapist: formData.therapist?.name || 'Any Available Therapist', 
+        date: formData.date, time: formData.time, paymentMethod: formData.paymentMethod, txId: formData.txId, totalPrice: calculateTotal(), status: 'pending', createdAt: Date.now() 
+      };
       await addDoc(collection(db, 'bookings'), dataToSave);
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ ငွေလွှဲမှတ်တမ်းကို စစ်ဆေးပြီး Admin မှ မကြာမီ အတည်ပြုပေးပါမည်။');
-      setStep(1); setFormData({ name: '', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: '', date: '', time: '', paymentMethod: '', txId: '' }); setActiveCategory(null);
+      setStep(1); setFormData({ name: '', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '' }); setActiveCategory(null);
     } catch (error) { console.error("Error adding document: ", error); alert("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
     setLoading(false);
   };
@@ -161,13 +189,15 @@ function CustomerBooking({ appSettings }: { appSettings: AppSettings }) {
   return (
     <div className="max-w-2xl mx-auto">
       {renderStepper()}
+      
+      {/* STEP 1: SERVICE */}
       {step === 1 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုအမျိုးအစားကို အရင်ရွေးချယ်ပါ)</p>
           </div>
-          <div className="space-y-4">{appSettings.categories.map(category => {
+          <div className="space-y-4">{appData.categories.map(category => {
             const CategoryIcon = ICON_MAP[category.id] || Activity;
             return (
             <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -192,17 +222,43 @@ function CustomerBooking({ appSettings }: { appSettings: AppSettings }) {
           <div className="mt-8 flex justify-end"><button disabled={!formData.selectedItem} onClick={() => setStep(2)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" /></button></div>
         </div>
       )}
+
+      {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2>
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p>
           </div>
-          <div onClick={() => setFormData({...formData, therapist: 'Any Available Therapist'})} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${formData.therapist === 'Any Available Therapist' ? 'border-yellow-500 bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-yellow-400'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">{appSettings.therapists.map((name, i) => { return (<div key={i} onClick={() => setFormData({...formData, therapist: name})} className={`flex flex-col items-center p-4 rounded-xl cursor-pointer border transition-all ${formData.therapist === name ? 'border-yellow-500 bg-yellow-50 shadow-md transform scale-105' : 'border-gray-200 bg-white hover:border-yellow-400'}`}><div className="w-16 h-16 rounded-full mb-3 flex items-center justify-center text-white overflow-hidden" style={{ backgroundColor: THEME.primary }}><User className="w-8 h-8 opacity-80" /></div><div className="font-bold text-sm text-gray-800 text-center">{name}</div></div>) })}</div>
-          <div className="mt-8 flex justify-between"><button onClick={() => setStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.therapist} onClick={() => setStep(3)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
+          <div onClick={() => setFormData({...formData, therapist: null})} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-yellow-500 bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-yellow-400'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {appData.therapists.map((therapist) => { 
+              const isSelected = formData.therapist?.id === therapist.id;
+              const hasImage = therapist.images && therapist.images.length > 0;
+              return (
+                <div key={therapist.id} onClick={() => setFormData({...formData, therapist: therapist})} className={`flex flex-col items-center p-3 rounded-xl cursor-pointer border transition-all ${isSelected ? 'border-yellow-500 bg-yellow-50 shadow-lg transform scale-105' : 'border-gray-200 bg-white hover:border-yellow-400 hover:shadow-md'}`}>
+                  {/* 4:3 Aspect Ratio Image Box */}
+                  <div className="w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative">
+                    {hasImage ? (
+                      <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="flex flex-col items-center opacity-40">
+                        <User className="w-12 h-12 text-[#123524]" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="font-bold text-sm text-gray-800 text-center w-full truncate px-1">{therapist.name}</div>
+                  <div className="text-[10px] text-gray-400 mt-1 text-center">Professional Therapist</div>
+                </div>
+              ) 
+            })}
+          </div>
+          <div className="mt-8 flex justify-between"><button onClick={() => setStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={formData.therapist === undefined} onClick={() => setStep(3)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
+
+      {/* STEP 3 & 4 */}
       {step === 3 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
@@ -213,13 +269,14 @@ function CustomerBooking({ appSettings }: { appSettings: AppSettings }) {
           <div className="mt-8 flex justify-between"><button onClick={() => setStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || !formData.time} onClick={() => setStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
+
       {step === 4 && (
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2>
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရွေးချယ်ခဲ့သော ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး စရံငွေကြိုတင်ပေးချေကာ ဘိုကင်ကို အတည်ပြုပေးပါ)</p>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3><div className="space-y-4"><div className="flex justify-between items-start"><div><div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/>{formData.selectedItem?.name}</div><div className="text-sm text-gray-500 ml-6">{formData.selectedItem?.duration}</div></div><div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price || 0)}</div></div>{formData.isVvipUpgrade && formData.selectedItem?.vvipPrice && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div><div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice(formData.selectedItem.vvipPrice - formData.selectedItem.price)}</div></div>)}{formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}<div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.therapist}</div><div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.date} at {formData.time}</div></div><div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div></div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3><div className="space-y-4"><div className="flex justify-between items-start"><div><div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/>{formData.selectedItem?.name}</div><div className="text-sm text-gray-500 ml-6">{formData.selectedItem?.duration}</div></div><div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price || 0)}</div></div>{formData.isVvipUpgrade && formData.selectedItem?.vvipPrice && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div><div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice(formData.selectedItem.vvipPrice - formData.selectedItem.price)}</div></div>)}{formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}<div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div><div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.date} at {formData.time}</div></div><div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div></div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Your Information</h3><div className="space-y-4"><div><label className="block mb-1 text-sm font-semibold text-gray-700">Full Name</label><input required type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g. Aung Aung" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800" /></div><div><label className="block mb-1 text-sm font-semibold text-gray-700">Phone Number</label><input required type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="e.g. 09-xxxxxxxxx" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800" /></div></div></div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Deposit Payment</h3><div className="mb-4"><label className="block mb-2 text-sm font-semibold text-gray-700">ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label><select required name="paymentMethod" value={formData.paymentMethod} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800 font-bold"><option value="">-- ရွေးချယ်ပါ --</option><option value="KBZ PAY">KBZ PAY</option><option value="Wave PAY">Wave PAY</option><option value="AYA PAY">AYA PAY</option><option value="UAB PAY">UAB PAY</option></select></div>{formData.paymentMethod && (<div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in"><p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် အတွက် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက်တိတိကို ({formatPrice(calculateTotal()/2)})</strong> စရံငွေ အဖြစ် အောက်ပါ {formData.paymentMethod} အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။</p><div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100"><div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">09458888510</strong><button type="button" onClick={() => handleCopy('09458888510')} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> {copiedText === '09458888510' ? 'Copied!' : 'Copy'}</button></div><div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">Htet Naing Kyaw</strong><button type="button" onClick={() => handleCopy('Htet Naing Kyaw')} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> {copiedText === 'Htet Naing Kyaw' ? 'Copied!' : 'Copy'}</button></div></div></div>)}<div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>စရံငွေပေးချေမှု ပြုလုပ်ပြီးပါက ငွေလွှဲပြေစာတွင်ပါဝင်သော ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ကို အောက်မှာရိုက်ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div></div>
           <div className="mt-8 flex justify-between"><button type="button" onClick={() => setStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={loading || !formData.paymentMethod} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : 'CONFIRM BOOKING'}</button></div>
@@ -232,21 +289,15 @@ function CustomerBooking({ appSettings }: { appSettings: AppSettings }) {
 // ==========================================
 // 2. ADMIN DASHBOARD
 // ==========================================
-function AdminDashboard({ appSettings, onSettingsUpdated }: { appSettings: AppSettings, onSettingsUpdated: (data: AppSettings) => void }) {
+function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [tab, setTab] = useState<'bookings' | 'settings'>('bookings');
-  
   return (
     <div className="animate-fade-in">
       <div className="flex space-x-2 mb-6">
-        <button onClick={() => setTab('bookings')} className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-          <Calendar className="w-4 h-4 mr-2" /> Bookings List
-        </button>
-        <button onClick={() => setTab('settings')} className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-          <Settings className="w-4 h-4 mr-2" /> System Settings
-        </button>
+        <button onClick={() => setTab('bookings')} className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Calendar className="w-4 h-4 mr-2" /> Bookings List</button>
+        <button onClick={() => setTab('settings')} className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> System Settings</button>
       </div>
-
-      {tab === 'bookings' ? <AdminBookingsList /> : <AdminSettings appSettings={appSettings} onSettingsUpdated={onSettingsUpdated} />}
+      {tab === 'bookings' ? <AdminBookingsList /> : <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
     </div>
   );
 }
@@ -260,11 +311,7 @@ function AdminBookingsList() {
       const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
       const data: Booking[] = [];
-      querySnapshot.forEach((doc) => { 
-        // Crash မဖြစ်အောင် Fallback အကုန်ထည့်ထားသည်
-        const docData = doc.data();
-        data.push({ id: doc.id, ...docData } as Booking); 
-      });
+      querySnapshot.forEach((doc) => { data.push({ id: doc.id, ...doc.data() } as Booking); });
       setBookings(data);
     } catch (error) { console.error(error); }
     setLoading(false);
@@ -284,87 +331,154 @@ function AdminBookingsList() {
   );
 }
 
-function AdminSettings({ appSettings, onSettingsUpdated }: { appSettings: AppSettings, onSettingsUpdated: (data: AppSettings) => void }) {
-  const [localTherapists, setLocalTherapists] = useState(appSettings.therapists.join('\n'));
-  const [localCategories, setLocalCategories] = useState(JSON.parse(JSON.stringify(appSettings.categories)) as MenuCategory[]);
-  const [saving, setSaving] = useState(false);
+function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
+  const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(JSON.parse(JSON.stringify(appData.therapists)));
+  const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories)));
+  const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
+  const [savingCategory, setSavingCategory] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState<string | null>(null);
 
-  const handleSave = async () => {
-    setSaving(true);
+  const handleSaveCategory = async (cIdx: number) => {
+    const cat = localCategories[cIdx];
+    if(!window.confirm(`ဤပြောင်းလဲမှုများကို (${cat.title}) သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    setSavingCategory(cat.id);
     try {
-      const dataToSave: AppSettings = {
-        therapists: localTherapists.split('\n').map(t => t.trim()).filter(t => t !== ''),
-        categories: localCategories
-      };
-      await setDoc(doc(db, 'settings', 'appData'), dataToSave);
-      onSettingsUpdated(dataToSave);
-      alert('စနစ်အား အောင်မြင်စွာ Update ပြုလုပ်ပြီးပါပြီ။');
-    } catch (e) { console.error(e); alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
-    setSaving(false);
+      await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true });
+      onSettingsUpdated({ ...appData, categories: localCategories });
+      alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
+    setSavingCategory(null);
   };
 
-  const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => {
-    const updated = [...localCategories];
-    (updated[cIdx].items[itemIdx as any] as any)[field] = val;
-    setLocalCategories(updated);
+  const handleSaveTherapists = async () => {
+    if(!window.confirm(`ဝန်ထမ်းစာရင်းကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    setSavingCategory('therapists');
+    try {
+      const tPromises = localTherapists.map((t, idx) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: idx }));
+      const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id)));
+      await Promise.all([...tPromises, ...delPromises]);
+      setDeletedTherapistIds([]);
+      onSettingsUpdated({ ...appData, therapists: localTherapists });
+      alert('ဝန်ထမ်းစာရင်းကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
+    setSavingCategory(null);
   };
 
-  const addItem = (cIdx: number) => {
-    const updated = [...localCategories];
-    updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false });
-    setLocalCategories(updated);
+  const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length }]);
+  const updateTherapistName = (tIdx: number, name: string) => { const updated = [...localTherapists]; updated[tIdx].name = name; setLocalTherapists(updated); };
+  const removeTherapist = (tIdx: number) => {
+    if(!window.confirm("ဤဝန်ထမ်းအား ဖျက်မည် သေချာပါသလား?")) return;
+    const t = localTherapists[tIdx];
+    if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]);
+    const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated);
   };
 
-  const deleteItem = (cIdx: number, iIdx: number) => {
-    if(!window.confirm("ဤ Service အား ဖျက်မည် သေချာပါသလား?")) return;
-    const updated = [...localCategories];
-    updated[cIdx].items.splice(iIdx, 1);
-    setLocalCategories(updated);
+  const handleImageUpload = async (tIdx: number, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const therapist = localTherapists[tIdx];
+    if (therapist.images.length + files.length > 3) { alert('အများဆုံး ၃ ပုံသာ ထည့်ခွင့်ရှိပါတယ်။'); return; }
+
+    setUploadingImage(therapist.id);
+    const newUrls: string[] = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const compressedBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let sW = img.width; let sH = img.height; let sX = 0; let sY = 0;
+              const targetRatio = 3 / 4; const imageRatio = sW / sH;
+              if (imageRatio > targetRatio) { const nW = sH * targetRatio; sX = (sW - nW) / 2; sW = nW; } 
+              else { const nH = sW / targetRatio; sY = (sH - nH) / 2; sH = nH; }
+              canvas.width = 300; canvas.height = 400; // Optimal small size
+              const ctx = canvas.getContext('2d');
+              ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, 300, 400);
+              resolve(canvas.toDataURL('image/jpeg', 0.6));
+            };
+            img.onerror = (e) => reject(e);
+          };
+          reader.onerror = (e) => reject(e);
+        });
+        newUrls.push(compressedBase64);
+      }
+      const updated = [...localTherapists];
+      updated[tIdx].images = [...updated[tIdx].images, ...newUrls];
+      setLocalTherapists(updated);
+    } catch (err) { alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
+    setUploadingImage(null);
   };
+
+  const removeImage = (tIdx: number, imgIdx: number) => { const updated = [...localTherapists]; updated[tIdx].images.splice(imgIdx, 1); setLocalTherapists(updated); };
+  const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const updated = [...localCategories]; (updated[cIdx].items[iIdx] as any)[field] = val; setLocalCategories(updated); };
+  const addItem = (cIdx: number) => { const updated = [...localCategories]; updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false }); setLocalCategories(updated); };
+  const deleteItem = (cIdx: number, iIdx: number) => { if(!window.confirm("ဤ Service အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-100">
-        <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><Settings className="mr-2 text-yellow-500"/> System Settings</h2>
-        <button disabled={saving} onClick={handleSave} className="flex items-center bg-[#123524] text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-green-900 transition">
-          <Save className="w-4 h-4 mr-2"/> {saving ? 'Saving...' : 'Save All Changes'}
-        </button>
-      </div>
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+          <div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Therapists</h3><p className="text-xs text-gray-500 mt-1">ဝန်ထမ်းအမည်များနှင့် အလှပုံ (အများဆုံး ၃ ပုံ) ထည့်သွင်းပါ။</p></div>
+          <div className="flex space-x-2">
+            <button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1"/> Add Therapist</button>
+            <button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === 'therapists' ? 'Saving...' : 'Save Therapists'}</button>
+          </div>
+        </div>
 
-      <div className="mb-10">
-        <h3 className="font-bold text-gray-800 mb-2 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Therapists</h3>
-        <p className="text-xs text-gray-500 mb-4">စာကြောင်းတစ်ကြောင်းလျှင် ဝန်ထမ်းနာမည် (၁) ခုစီ ရိုက်ထည့်ပါ။</p>
-        <textarea 
-          value={localTherapists} onChange={(e) => setLocalTherapists(e.target.value)}
-          className="w-full h-40 p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 font-mono text-sm"
-          placeholder="Therapist No-1&#10;Therapist No-2..."
-        />
-      </div>
-
-      <div>
-        <h3 className="font-bold text-gray-800 mb-4 flex items-center"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Services & Prices</h3>
-        {localCategories.map((cat, cIdx) => (
-          <div key={cat.id} className="mb-6 border border-gray-200 rounded-xl overflow-hidden">
-            <div className="bg-gray-100 p-3 font-bold text-gray-700 flex justify-between items-center">
-              {cat.title} Category
-              <button onClick={() => addItem(cIdx)} className="flex items-center text-xs bg-white border border-gray-300 px-3 py-1 rounded hover:bg-gray-50"><PlusCircle className="w-3 h-3 mr-1"/> Add Item</button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {localTherapists.map((therapist, tIdx) => (
+            <div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
+              <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4"/></button>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label>
+              <input type="text" value={therapist.name} onChange={(e) => updateTherapistName(tIdx, e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded mb-4 focus:outline-none focus:border-[#D4AF37]"/>
+              <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 3, 4:3 Portrait Recommended)</label>
+              <div className="flex space-x-2 mb-2">
+                {therapist.images.map((imgUrl, imgIdx) => (
+                  <div key={imgIdx} className="w-20 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200">
+                    <img src={imgUrl} alt="upload" className="w-full h-full object-cover" />
+                    <button onClick={() => removeImage(tIdx, imgIdx)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><X className="w-3 h-3"/></button>
+                  </div>
+                ))}
+                {therapist.images.length < 3 && (
+                  <label className="w-20 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400">
+                    {uploadingImage === therapist.id ? <div className="text-xs font-bold animate-pulse">Wait...</div> : (<><UploadCloud className="w-5 h-5 mb-1" /><span className="text-[10px] font-bold">Upload</span></>)}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} />
+                  </label>
+                )}
+              </div>
             </div>
-            <div className="p-4 space-y-3 bg-gray-50">
-              {cat.items.length === 0 && <p className="text-xs text-gray-400">No items in this category.</p>}
-              {cat.items.map((item, iIdx) => (
-                <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-white p-2 border border-gray-200 rounded">
-                  <div className="md:col-span-3"><input type="text" value={item.name} onChange={(e)=>updateItem(cIdx,iIdx,'name',e.target.value)} placeholder="Service Name" className="w-full p-2 text-sm border border-gray-200 rounded"/></div>
-                  <div className="md:col-span-2"><input type="text" value={item.duration} onChange={(e)=>updateItem(cIdx,iIdx,'duration',e.target.value)} placeholder="e.g. 60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded"/></div>
-                  <div className="md:col-span-2"><input type="number" value={item.price || ''} onChange={(e)=>updateItem(cIdx,iIdx,'price',Number(e.target.value))} placeholder="Price (Ks)" className="w-full p-2 text-sm border border-gray-200 rounded"/></div>
-                  <div className="md:col-span-2"><input type="number" value={item.vvipPrice || ''} onChange={(e)=>updateItem(cIdx,iIdx,'vvipPrice',e.target.value === '' ? undefined : Number(e.target.value))} placeholder="VVIP Price" className="w-full p-2 text-sm border border-gray-200 rounded"/></div>
-                  <div className="md:col-span-2 flex items-center px-2"><label className="text-xs flex items-center cursor-pointer"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e)=>updateItem(cIdx,iIdx,'vvipIncluded',e.target.checked)} className="mr-2"/> VVIP Included</label></div>
-                  <div className="md:col-span-1 flex justify-end"><button onClick={()=>deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></div>
-                </div>
-              ))}
+          ))}
+        </div>
+      </div>
+
+      {localCategories.map((cat, cIdx) => (
+        <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="font-bold text-gray-800 flex items-center text-lg"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]"/> {cat.title} Category</h3>
+            <div className="flex space-x-2">
+              <button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold"><PlusCircle className="w-4 h-4 mr-1"/> Add Item</button>
+              <button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === cat.id ? 'Saving...' : `Save ${cat.title}`}</button>
             </div>
           </div>
-        ))}
-      </div>
+          <div className="p-4 space-y-3">
+            {cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
+            {cat.items.map((item, iIdx) => (
+              <div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition">
+                <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e)=>updateItem(cIdx,iIdx,'name',e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700"/></div>
+                <div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e)=>updateItem(cIdx,iIdx,'duration',e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none"/></div>
+                <div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e)=>updateItem(cIdx,iIdx,'price',Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]"/></div>
+                <div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e)=>updateItem(cIdx,iIdx,'vvipPrice',e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600"/></div>
+                <div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e)=>updateItem(cIdx,iIdx,'vvipIncluded',e.target.checked)} className="mr-2"/> VVIP Free</label></div>
+                <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={()=>deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5"/></button></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
