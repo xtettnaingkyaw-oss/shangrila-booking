@@ -28,7 +28,7 @@ interface Booking {
   createdAt: number;
 }
 
-// --- Menu Data (Updated with dynamic VVIP Prices) ---
+// --- Menu Data (Updated with dynamic VVIP Prices & Included Status) ---
 const MENU_CATEGORIES = [
   {
     id: 'massage',
@@ -43,6 +43,7 @@ const MENU_CATEGORIES = [
       { id: 'm6', name: 'Aromatherapy Massage', price: 45000, vvipPrice: 60000, duration: '90 Mins' },
       { id: 'm7', name: 'Body Butter Lotion Massage', price: 35000, vvipPrice: 45000, duration: '60 Mins' },
       { id: 'm8', name: 'Body Butter Lotion Massage', price: 50000, vvipPrice: 67500, duration: '90 Mins' },
+      // VVIP ပါပြီးသား Service များ
       { id: 'm9', name: 'Body to Body Massage', price: 55000, duration: '60 Mins', vvipIncluded: true },
       { id: 'm10', name: 'Body to Body Massage', price: 82000, duration: '90 Mins', vvipIncluded: true },
       { id: 'm11', name: 'Four Hands Massage', price: 70000, duration: '60 Mins', vvipIncluded: true },
@@ -56,7 +57,8 @@ const MENU_CATEGORIES = [
     title: 'Body Scrub',
     icon: Droplets,
     items: [
-      { id: 's1', name: 'Body Scrub & Bath Only', price: 70000, vvipPrice: 80000, duration: '60 Mins' },
+      // VVIP ပါပြီးသား Service များ
+      { id: 's1', name: 'Body Scrub & Bath Only', price: 70000, duration: '60 Mins', vvipIncluded: true },
       { id: 's2', name: 'Body Scrub & Lotion Massage', price: 80000, duration: '120 Mins', vvipIncluded: true },
     ]
   },
@@ -134,7 +136,7 @@ function CustomerBooking() {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    selectedItem: null as MenuItem | null, // <-- Saved full item object
+    selectedItem: null as MenuItem | null, 
     isVvipUpgrade: false,
     therapist: '',
     date: '',
@@ -274,7 +276,6 @@ function CustomerBooking() {
             const CategoryIcon = category.icon;
             return (
               <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                {/* Category Header */}
                 <div 
                   onClick={() => setActiveCategory(isActive ? null : category.id)}
                   className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition"
@@ -285,7 +286,6 @@ function CustomerBooking() {
                   {isActive ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                 </div>
                 
-                {/* Category Items */}
                 {isActive && (
                   <div className="p-2 border-t border-gray-100 bg-gray-50/50">
                     {category.items.map(s => {
@@ -320,37 +320,44 @@ function CustomerBooking() {
             )
           })}
 
-          {/* VVIP Upgrade Toggle */}
+          {/* VVIP Section */}
           <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
             <div className="flex items-center">
               <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
                 <Crown className="w-5 h-5 text-yellow-600" />
               </div>
               <div>
-                <div className="font-bold text-yellow-800 text-sm">VVIP Master Room Upgrade</div>
+                <div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div>
                 <div className="text-xs text-yellow-600 font-semibold mt-1">
                   {isVvipIncluded 
-                    ? 'Already Included in Package' 
+                    ? '✅ Free / Included in this package' 
                     : (!formData.selectedItem 
                         ? 'Select a service first' 
-                        : (canUpgradeVvip ? 'Turn on for extra comfort' : 'Not available for this service')
+                        : (canUpgradeVvip ? 'Upgrade for extra comfort' : 'Not available for this service')
                       )}
                 </div>
               </div>
             </div>
             
-            <button
-              type="button"
-              disabled={!canUpgradeVvip} 
-              onClick={() => setFormData({ ...formData, isVvipUpgrade: !formData.isVvipUpgrade })}
-              className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out cursor-pointer ${
-                formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'
-              } ${!canUpgradeVvip ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${
-                formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'
-              }`} />
-            </button>
+            {/* If VVIP is already included, show INCLUDED badge instead of toggle switch */}
+            {isVvipIncluded ? (
+              <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">
+                INCLUDED
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={!canUpgradeVvip} 
+                onClick={() => setFormData({ ...formData, isVvipUpgrade: !formData.isVvipUpgrade })}
+                className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ease-in-out cursor-pointer ${
+                  formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'
+                } ${!canUpgradeVvip ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${
+                  formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'
+                }`} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -505,15 +512,27 @@ function CustomerBooking() {
               <div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price || 0)}</div>
             </div>
 
+            {/* If user toggled VVIP UPGRADE (not free) */}
             {formData.isVvipUpgrade && formData.selectedItem?.vvipPrice && (
               <div className="flex justify-between items-start pt-2 border-t border-gray-50">
                 <div className="font-bold text-yellow-700 flex items-center text-sm">
                   <Crown className="w-4 h-4 mr-2 text-yellow-600"/>
-                  VVIP Upgrade Extra Fee
+                  VVIP Room Extra Fee
                 </div>
                 <div className="font-bold text-yellow-700 text-sm">
                   +{formatPrice(formData.selectedItem.vvipPrice - formData.selectedItem.price)}
                 </div>
+              </div>
+            )}
+
+            {/* If VVIP is FREE / Included */}
+            {formData.selectedItem?.vvipIncluded && (
+              <div className="flex justify-between items-start pt-2 border-t border-gray-50">
+                <div className="font-bold text-green-600 flex items-center text-sm">
+                  <Crown className="w-4 h-4 mr-2 text-green-500"/>
+                  VVIP Master Room
+                </div>
+                <div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div>
               </div>
             )}
 
