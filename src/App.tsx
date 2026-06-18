@@ -1,20 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase'; 
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings } from 'lucide-react';
 
-// --- Types & Constants ---
+// --- Types ---
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
+interface MenuCategory { id: string; title: string; items: MenuItem[]; }
 interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'approved'; createdAt: number; }
+interface AppSettings { therapists: string[]; categories: MenuCategory[]; }
 
-const THEME = {
-  primary: '#123524',
-  gold: '#D4AF37',
-  textGray: '#4a5568'
-};
+// --- Theme & Icons Map ---
+const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
+const ICON_MAP: Record<string, any> = { massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home };
 
-const MENU_CATEGORIES = [
-  { id: 'massage', title: 'Massage', icon: Sparkles, items: [
+// --- Default Initial Data ---
+const DEFAULT_THERAPISTS = Array.from({ length: 15 }, (_, i) => `Therapist No-${i + 1}`);
+const DEFAULT_CATEGORIES: MenuCategory[] = [
+  { id: 'massage', title: 'Massage', items: [
     { id: 'm1', name: 'Traditional Massage', price: 25000, vvipPrice: 35000, duration: '60 Mins' },
     { id: 'm2', name: 'Traditional Massage', price: 37000, vvipPrice: 52500, duration: '90 Mins' },
     { id: 'm3', name: 'Oil Massage', price: 25000, vvipPrice: 35000, duration: '60 Mins' },
@@ -30,18 +32,18 @@ const MENU_CATEGORIES = [
     { id: 'm13', name: 'Lotion Candle Massage', price: 55000, duration: '60 Mins', vvipIncluded: true },
     { id: 'm14', name: 'Lotion Candle Massage', price: 82000, duration: '90 Mins', vvipIncluded: true },
   ]},
-  { id: 'scrub', title: 'Body Scrub', icon: Droplets, items: [
+  { id: 'scrub', title: 'Body Scrub', items: [
     { id: 's1', name: 'Body Scrub & Bath Only', price: 70000, duration: '60 Mins', vvipIncluded: true },
     { id: 's2', name: 'Body Scrub & Lotion Massage', price: 80000, duration: '120 Mins', vvipIncluded: true },
   ]},
-  { id: 'waxing', title: 'Waxing', icon: Scissors, items: [
+  { id: 'waxing', title: 'Waxing', items: [
     { id: 'w1', name: 'Arm Wax', price: 20000, duration: '' }, { id: 'w2', name: 'Underarm Wax', price: 25000, duration: '' },
     { id: 'w3', name: 'Half Leg Wax', price: 30000, duration: '' }, { id: 'w4', name: 'Full Leg Wax', price: 45000, duration: '' },
     { id: 'w5', name: 'Bikini Wax', price: 35000, duration: '' }, { id: 'w6', name: 'Brazilian Wax', price: 50000, duration: '' },
   ]},
-  { id: 'hotel', title: 'Hotel & Home Services', icon: Home, items: [
+  { id: 'hotel', title: 'Hotel & Home Services', items: [
     { id: 'h1', name: 'Part Time Outcall Service', price: 70000, duration: '100 Mins' },
-    { id: 'h2', name: 'Half Day Service', price: 100000, duration: '6:00 AM - 12:00 PM / 12:00 PM - 6:00 PM' },
+    { id: 'h2', name: 'Half Day Service', price: 100000, duration: '6:00 AM - 12:00 PM' },
     { id: 'h3', name: 'The Whole Night Service', price: 120000, duration: '8:00 PM - 8:00 AM' },
     { id: 'h4', name: 'The Whole Day Service', price: 180000, duration: '7:00 AM - 7:00 PM' },
   ]}
@@ -52,7 +54,36 @@ const formatPrice = (price: number) => price.toLocaleString() + ' Ks';
 
 export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
-  useEffect(() => { const searchParams = new URLSearchParams(window.location.search); if (searchParams.get('mode') === 'admin') setIsAdminMode(true); }, []);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get('mode') === 'admin') setIsAdminMode(true);
+
+    // Load dynamic settings from Firestore
+    const fetchSettings = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'appData');
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          setAppSettings(snap.data() as AppSettings);
+        } else {
+          // Initialize first time
+          const initData = { therapists: DEFAULT_THERAPISTS, categories: DEFAULT_CATEGORIES };
+          await setDoc(docRef, initData);
+          setAppSettings(initData);
+        }
+      } catch (err) {
+        console.error("Error loading settings:", err);
+        alert("Database ချိတ်ဆက်မှု အခက်အခဲရှိနေပါသည်။ Firebase ကို စစ်ဆေးပါ။");
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  if (!appSettings) {
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center font-bold" style={{ color: THEME.primary }}>Loading System Data...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-10">
@@ -60,14 +91,18 @@ export default function App() {
         <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>The Shangri-La</h1>
         <p className="text-xs mt-1 font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation) </p>
       </header>
-      <main className="max-w-3xl mx-auto p-4 py-8">{isAdminMode ? <AdminDashboard /> : <CustomerBooking />}</main>
+      <main className="max-w-4xl mx-auto p-4 py-8">
+        {isAdminMode ? <AdminDashboard appSettings={appSettings} onSettingsUpdated={setAppSettings} /> : <CustomerBooking appSettings={appSettings} />}
+      </main>
     </div>
   );
 }
 
-function CustomerBooking() {
+// ==========================================
+// 1. CUSTOMER BOOKING SYSTEM
+// ==========================================
+function CustomerBooking({ appSettings }: { appSettings: AppSettings }) {
   const [step, setStep] = useState(1);
-  // ဝင်ဝင်ချင်း ဘယ် Category မှ ဖြဲမထားအောင် null လို့ သတ်မှတ်လိုက်သည်
   const [activeCategory, setActiveCategory] = useState<string | null>(null); 
   const [formData, setFormData] = useState({ name: '', phone: '', selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: '', date: '', time: '', paymentMethod: '', txId: '' });
   const [loading, setLoading] = useState(false);
@@ -127,14 +162,14 @@ function CustomerBooking() {
         <div className="animate-fade-in">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
-            {/* မြန်မာစာကို အဝါရောင် အထူ (Bold) ဖြင့် ပြောင်းထားပါသည် */}
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုအမျိုးအစားကို အရင်ရွေးချယ်ပါ)</p>
           </div>
-          <div className="space-y-4">{MENU_CATEGORIES.map(category => (
+          <div className="space-y-4">{appSettings.categories.map(category => {
+            const CategoryIcon = ICON_MAP[category.id] || Activity;
+            return (
             <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
-                <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><category.icon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>
-                {/* မြှားလေးများကို အစိမ်းရင့်ရောင်ဖြင့် ပိုမိုထင်ရှားအောင် ပြင်ထားပါသည် */}
+                <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>
                 {activeCategory === category.id ? <ChevronUp className="w-6 h-6" style={{ color: THEME.primary }} /> : <ChevronDown className="w-6 h-6" style={{ color: THEME.primary }} />}
               </div>
               {activeCategory === category.id && (
@@ -146,23 +181,22 @@ function CustomerBooking() {
                 ))}</div>
               )}
             </div>
-          ))}</div>
+          )})}</div>
           <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
             <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available'))}</div></div></div>
             {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <button type="button" disabled={!formData.selectedItem?.vvipPrice} onClick={() => setFormData({...formData, isVvipUpgrade: !formData.isVvipUpgrade})} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'} ${!formData.selectedItem?.vvipPrice ? 'opacity-50' : ''}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'}`} /></button>}
           </div>
-          <div className="mt-8 flex justify-end"><button disabled={!formData.selectedItem} onClick={() => setStep(2)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>CONTINUE <ChevronRight className="w-5 h-5 ml-2" /></button></div>
+          <div className="mt-8 flex justify-end"><button disabled={!formData.selectedItem} onClick={() => setStep(2)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" /></button></div>
         </div>
       )}
       {step === 2 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2>
-            {/* မြန်မာစာကို အဝါရောင် အထူ (Bold) ဖြင့် ပြောင်းထားပါသည် */}
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p>
           </div>
           <div onClick={() => setFormData({...formData, therapist: 'Any Available Therapist'})} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${formData.therapist === 'Any Available Therapist' ? 'border-yellow-500 bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-yellow-400'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">{Array.from({ length: 15 }, (_, i) => { const name = `Therapist No-${i+1}`; return (<div key={i} onClick={() => setFormData({...formData, therapist: name})} className={`flex flex-col items-center p-4 rounded-xl cursor-pointer border transition-all ${formData.therapist === name ? 'border-yellow-500 bg-yellow-50 shadow-md transform scale-105' : 'border-gray-200 bg-white hover:border-yellow-400'}`}><div className="w-16 h-16 rounded-full mb-3 flex items-center justify-center text-white overflow-hidden" style={{ backgroundColor: THEME.primary }}><User className="w-8 h-8 opacity-80" /></div><div className="font-bold text-sm text-gray-800 text-center">{name}</div></div>) })}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">{appSettings.therapists.map((name, i) => { return (<div key={i} onClick={() => setFormData({...formData, therapist: name})} className={`flex flex-col items-center p-4 rounded-xl cursor-pointer border transition-all ${formData.therapist === name ? 'border-yellow-500 bg-yellow-50 shadow-md transform scale-105' : 'border-gray-200 bg-white hover:border-yellow-400'}`}><div className="w-16 h-16 rounded-full mb-3 flex items-center justify-center text-white overflow-hidden" style={{ backgroundColor: THEME.primary }}><User className="w-8 h-8 opacity-80" /></div><div className="font-bold text-sm text-gray-800 text-center">{name}</div></div>) })}</div>
           <div className="mt-8 flex justify-between"><button onClick={() => setStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.therapist} onClick={() => setStep(3)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
@@ -170,7 +204,6 @@ function CustomerBooking() {
         <div className="animate-fade-in">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
-            {/* မြန်မာစာကို အဝါရောင် အထူ (Bold) ဖြင့် ပြောင်းထားပါသည် */}
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p>
           </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Select Date</label><input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value, time: ''})} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800 bg-gray-50 mb-6" /><label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Available Times</label><div className="grid grid-cols-3 sm:grid-cols-4 gap-3">{TIME_SLOTS.map(t => (<button key={t} type="button" disabled={!formData.date} onClick={() => setFormData({...formData, time: t})} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-yellow-500 bg-yellow-50 text-yellow-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-yellow-400 disabled:opacity-40 disabled:hover:border-gray-200 disabled:cursor-not-allowed'}`}>{t}</button>))}</div></div>
@@ -181,7 +214,6 @@ function CustomerBooking() {
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2>
-            {/* မြန်မာစာကို အဝါရောင် အထူ (Bold) ဖြင့် ပြောင်းထားပါသည် */}
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရွေးချယ်ခဲ့သော ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး စရံငွေကြိုတင်ပေးချေကာ ဘိုကင်ကို အတည်ပြုပေးပါ)</p>
           </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3><div className="space-y-4"><div className="flex justify-between items-start"><div><div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/>{formData.selectedItem?.name}</div><div className="text-sm text-gray-500 ml-6">{formData.selectedItem?.duration}</div></div><div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price || 0)}</div></div>{formData.isVvipUpgrade && formData.selectedItem?.vvipPrice && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div><div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice(formData.selectedItem.vvipPrice - formData.selectedItem.price)}</div></div>)}{formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}<div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.therapist}</div><div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.date} at {formData.time}</div></div><div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div></div>
@@ -195,20 +227,140 @@ function CustomerBooking() {
 }
 
 // ==========================================
-// 2. ADMIN DASHBOARD
+// 2. ADMIN DASHBOARD (With Settings Editor)
 // ==========================================
-function AdminDashboard() {
+function AdminDashboard({ appSettings, onSettingsUpdated }: { appSettings: AppSettings, onSettingsUpdated: (data: AppSettings) => void }) {
+  const [tab, setTab] = useState<'bookings' | 'settings'>('bookings');
+  
+  return (
+    <div className="animate-fade-in">
+      {/* Admin Tabs */}
+      <div className="flex space-x-2 mb-6">
+        <button onClick={() => setTab('bookings')} className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+          <Calendar className="w-4 h-4 mr-2" /> Bookings List
+        </button>
+        <button onClick={() => setTab('settings')} className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+          <Settings className="w-4 h-4 mr-2" /> System Settings
+        </button>
+      </div>
+
+      {tab === 'bookings' ? <AdminBookingsList /> : <AdminSettings appSettings={appSettings} onSettingsUpdated={onSettingsUpdated} />}
+    </div>
+  );
+}
+
+function AdminBookingsList() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
-  const fetchBookings = async () => { try { const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc')); const querySnapshot = await getDocs(q); const data: Booking[] = []; querySnapshot.forEach((doc) => { data.push({ id: doc.id, ...doc.data() } as Booking); }); setBookings(data); } catch (error) { console.error("Error fetching bookings: ", error); } setLoading(false); };
+
+  const fetchBookings = async () => {
+    try {
+      const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const data: Booking[] = [];
+      querySnapshot.forEach((doc) => { data.push({ id: doc.id, ...doc.data() } as Booking); });
+      setBookings(data);
+    } catch (error) { console.error(error); }
+    setLoading(false);
+  };
   useEffect(() => { fetchBookings(); }, []);
+
   const handleApprove = async (id: string) => { if(window.confirm('ဤ Booking ကို အတည်ပြုမည် သေချာပါသလား?')) { await updateDoc(doc(db, 'bookings', id), { status: 'approved' }); fetchBookings(); } };
   const handleDelete = async (id: string) => { if(window.confirm('ဤ Booking ကို ဖျက်မည် သေချာပါသလား?')) { await deleteDoc(doc(db, 'bookings', id)); fetchBookings(); } };
-  if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Dashboard...</div>;
+
+  if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Bookings...</div>;
+
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
-      <div className="flex justify-between items-center mb-8 border-b border-gray-100 pb-4"><h2 className="text-2xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-yellow-500"/> Admin Dashboard</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-yellow-500"/> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
       <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status</th><th className="p-3 pb-4 text-right">Actions</th></tr></thead><tbody>{bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">Booking မရှိသေးပါ။</td></tr>)}{bookings.map((b) => (<tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800">{b.name}</div><div className="text-xs text-gray-500">{b.phone}</div></td><td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1"/>{b.therapist}</div></td><td className="p-3 text-sm text-gray-700"><div className="font-semibold">{b.date}</div><div className="text-gray-500 text-xs mt-1">{b.time}</div></td><td className="p-3"><div className="font-mono font-bold text-gray-800">{b.txId}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod} • {formatPrice(b.totalPrice)}</div></td><td className="p-3">{b.status === 'pending' ? <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-200">Pending</span> : <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">Approved</span>}</td><td className="p-3 text-right"><div className="flex justify-end space-x-2">{b.status === 'pending' && (<button onClick={() => handleApprove(b.id!)} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition" title="Approve"><CheckCircle className="w-5 h-5" /></button>)}<button onClick={() => handleDelete(b.id!)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition" title="Delete"><Trash2 className="w-5 h-5" /></button></div></td></tr>))}</tbody></table></div>
+    </div>
+  );
+}
+
+function AdminSettings({ appSettings, onSettingsUpdated }: { appSettings: AppSettings, onSettingsUpdated: (data: AppSettings) => void }) {
+  const [localTherapists, setLocalTherapists] = useState(appSettings.therapists.join('\n'));
+  const [localCategories, setLocalCategories] = useState(JSON.parse(JSON.stringify(appSettings.categories)) as MenuCategory[]);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const dataToSave: AppSettings = {
+        therapists: localTherapists.split('\n').map(t => t.trim()).filter(t => t !== ''),
+        categories: localCategories
+      };
+      await setDoc(doc(db, 'settings', 'appData'), dataToSave);
+      onSettingsUpdated(dataToSave);
+      alert('စနစ်အား အောင်မြင်စွာ Update ပြုလုပ်ပြီးပါပြီ။');
+    } catch (e) { console.error(e); alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
+    setSaving(false);
+  };
+
+  const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => {
+    const updated = [...localCategories];
+    (updated[cIdx].items[iIdx] as any)[field] = val;
+    setLocalCategories(updated);
+  };
+
+  const addItem = (cIdx: number) => {
+    const updated = [...localCategories];
+    updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false });
+    setLocalCategories(updated);
+  };
+
+  const deleteItem = (cIdx: number, iIdx: number) => {
+    if(!window.confirm("ဤ Service အား ဖျက်မည် သေချာပါသလား?")) return;
+    const updated = [...localCategories];
+    updated[cIdx].items.splice(iIdx, 1);
+    setLocalCategories(updated);
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+      <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-100">
+        <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><Settings className="mr-2 text-yellow-500"/> System Settings</h2>
+        <button disabled={saving} onClick={handleSave} className="flex items-center bg-[#123524] text-white px-6 py-2 rounded-lg font-bold shadow-md hover:bg-green-900 transition">
+          <Save className="w-4 h-4 mr-2"/> {saving ? 'Saving...' : 'Save All Changes'}
+        </button>
+      </div>
+
+      {/* Therapists Editor */}
+      <div className="mb-10">
+        <h3 className="font-bold text-gray-800 mb-2 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Therapists</h3>
+        <p className="text-xs text-gray-500 mb-4">စာကြောင်းတစ်ကြောင်းလျှင် ဝန်ထမ်းနာမည် (၁) ခုစီ ရိုက်ထည့်ပါ။</p>
+        <textarea 
+          value={localTherapists} onChange={(e) => setLocalTherapists(e.target.value)}
+          className="w-full h-40 p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 font-mono text-sm"
+          placeholder="Therapist No-1&#10;Therapist No-2..."
+        />
+      </div>
+
+      {/* Services Editor */}
+      <div>
+        <h3 className="font-bold text-gray-800 mb-4 flex items-center"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Services & Prices</h3>
+        {localCategories.map((cat, cIdx) => (
+          <div key={cat.id} className="mb-6 border border-gray-200 rounded-xl overflow-hidden">
+            <div className="bg-gray-100 p-3 font-bold text-gray-700 flex justify-between items-center">
+              {cat.title} Category
+              <button onClick={() => addItem(cIdx)} className="flex items-center text-xs bg-white border border-gray-300 px-3 py-1 rounded hover:bg-gray-50"><PlusCircle className="w-3 h-3 mr-1"/> Add Item</button>
+            </div>
+            <div className="p-4 space-y-3 bg-gray-50">
+              {cat.items.length === 0 && <p className="text-xs text-gray-400">No items in this category.</p>}
+              {cat.items.map((item, iIdx) => (
+                <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-white p-2 border border-gray-200 rounded">
+                  <div className="md:col-span-3"><input type="text" value={item.name} onChange={(e)=>updateItem(cIdx,iIdx,'name',e.target.value)} placeholder="Service Name" className="w-full p-2 text-sm border border-gray-200 rounded"/></div>
+                  <div className="md:col-span-2"><input type="text" value={item.duration} onChange={(e)=>updateItem(cIdx,iIdx,'duration',e.target.value)} placeholder="e.g. 60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded"/></div>
+                  <div className="md:col-span-2"><input type="number" value={item.price || ''} onChange={(e)=>updateItem(cIdx,iIdx,'price',Number(e.target.value))} placeholder="Price (Ks)" className="w-full p-2 text-sm border border-gray-200 rounded"/></div>
+                  <div className="md:col-span-2"><input type="number" value={item.vvipPrice || ''} onChange={(e)=>updateItem(cIdx,iIdx,'vvipPrice',e.target.value === '' ? undefined : Number(e.target.value))} placeholder="VVIP Price" className="w-full p-2 text-sm border border-gray-200 rounded"/></div>
+                  <div className="md:col-span-2 flex items-center px-2"><label className="text-xs flex items-center cursor-pointer"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e)=>updateItem(cIdx,iIdx,'vvipIncluded',e.target.checked)} className="mr-2"/> VVIP Included</label></div>
+                  <div className="md:col-span-1 flex justify-end"><button onClick={()=>deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
