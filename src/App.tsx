@@ -238,23 +238,40 @@ function CustomerBooking() {
     ];
     return (
       <div className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto">
-        {steps.map((s, idx) => (
-          <React.Fragment key={s.num}>
-            <div className="flex flex-col items-center relative z-10">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors duration-300 ${
-                step >= s.num ? 'bg-yellow-500 text-white shadow-md' : 'bg-gray-200 text-gray-400'
-              }`}>
-                {step > s.num ? <Check className="w-6 h-6" /> : <s.icon className="w-5 h-5" />}
+        {steps.map((s, idx) => {
+          let circleClass = "";
+          let textClass = "";
+          
+          if (step > s.num) {
+            // Completed Steps: Yellow with Check
+            circleClass = "bg-[#D4AF37] text-white shadow-md border-2 border-[#D4AF37]";
+            textClass = "text-[#D4AF37]";
+          } else if (step === s.num) {
+            // Active Step: Dark Green
+            circleClass = "bg-[#123524] text-white shadow-md border-2 border-[#123524]";
+            textClass = "text-[#123524]";
+          } else {
+            // Future Steps: White with Gray Border
+            circleClass = "bg-white border-2 border-gray-200 text-gray-400";
+            textClass = "text-gray-400";
+          }
+
+          return (
+            <React.Fragment key={s.num}>
+              <div className="flex flex-col items-center relative z-10">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 ${circleClass}`}>
+                  {step > s.num ? <Check className="w-6 h-6" /> : <s.icon className="w-5 h-5" />}
+                </div>
+                <span className={`text-[10px] uppercase tracking-wider font-bold mt-2 absolute -bottom-5 w-24 text-center ${textClass}`}>
+                  {s.label}
+                </span>
               </div>
-              <span className={`text-[10px] uppercase tracking-wider font-bold mt-2 absolute -bottom-5 w-24 text-center ${
-                step >= s.num ? 'text-yellow-600' : 'text-gray-400'
-              }`}>{s.label}</span>
-            </div>
-            {idx < steps.length - 1 && (
-              <div className={`flex-1 h-[2px] mx-1 transition-colors duration-300 ${step > s.num ? 'bg-yellow-500' : 'bg-gray-200'}`} />
-            )}
-          </React.Fragment>
-        ))}
+              {idx < steps.length - 1 && (
+                <div className={`flex-1 h-[2px] mx-1 transition-colors duration-300 ${step > s.num ? 'bg-[#D4AF37]' : 'bg-gray-200'}`} />
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
     );
   };
@@ -297,7 +314,7 @@ function CustomerBooking() {
                             setFormData({ 
                               ...formData, 
                               selectedItem: s,
-                              isVvipUpgrade: false // Reset toggle on new selection
+                              isVvipUpgrade: false 
                             });
                           }}
                           className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${
