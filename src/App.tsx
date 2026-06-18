@@ -228,32 +228,36 @@ function CustomerBooking({ appData }: { appData: AppData }) {
           
           {/* Full Screen Photo Gallery Modal */}
           {viewGallery && (
-            <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-              <button onClick={() => setViewGallery(null)} className="absolute top-6 right-6 text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full">
+            <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-fade-in">
+              <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-50 text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full">
                 <X className="w-8 h-8" />
               </button>
               
-              <div className="relative w-full max-w-md aspect-[3/4] flex items-center justify-center">
-                <img src={viewGallery.images[viewGallery.index]} alt="Therapist Detail" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
+              <div className="relative w-full h-[85vh] flex items-center justify-center">
+                <img 
+                  src={viewGallery.images[viewGallery.index]} 
+                  alt="Therapist Detail" 
+                  className="w-full h-full object-contain rounded-md drop-shadow-2xl" 
+                />
                 
                 {viewGallery.images.length > 1 && (
                   <>
                     <button 
                       onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} 
-                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white p-3 rounded-full transition backdrop-blur-md"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition backdrop-blur-md"
                     >
-                      <ChevronLeft className="w-6 h-6" />
+                      <ChevronLeft className="w-8 h-8" />
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} 
-                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white p-3 rounded-full transition backdrop-blur-md"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition backdrop-blur-md"
                     >
-                      <ChevronRight className="w-6 h-6" />
+                      <ChevronRight className="w-8 h-8" />
                     </button>
                   </>
                 )}
               </div>
-              <div className="text-white mt-6 font-bold tracking-widest text-sm bg-black/50 px-4 py-1 rounded-full">
+              <div className="text-white mt-4 font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full">
                 {viewGallery.index + 1} / {viewGallery.images.length}
               </div>
             </div>
@@ -275,7 +279,6 @@ function CustomerBooking({ appData }: { appData: AppData }) {
                   onClick={() => setFormData({...formData, therapist: therapist})} 
                   className={`flex flex-col items-center p-3 rounded-xl cursor-pointer transition-all border-2 ${isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md'}`}
                 >
-                  {/* Photo Frame matching theme color */}
                   <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'}`}>
                     {hasImage ? (
                       <>
@@ -424,7 +427,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     if (!files || files.length === 0) return;
     const therapist = localTherapists[tIdx];
     
-    // အများဆုံး ၅ ပုံအထိ တင်ခွင့်ပေးထားသည်
     if (therapist.images.length + files.length > 5) { alert('အများဆုံး ၅ ပုံသာ ထည့်ခွင့်ရှိပါတယ်။'); return; }
 
     setUploadingImage(therapist.id);
@@ -433,7 +435,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         
-        // Base64 Compression to bypass Firebase Storage costs
         const compressedBase64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.readAsDataURL(file);
@@ -446,10 +447,10 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               const targetRatio = 3 / 4; const imageRatio = sW / sH;
               if (imageRatio > targetRatio) { const nW = sH * targetRatio; sX = (sW - nW) / 2; sW = nW; } 
               else { const nH = sW / targetRatio; sY = (sH - nH) / 2; sH = nH; }
-              canvas.width = 300; canvas.height = 400; // 4:3 Ratio
+              canvas.width = 450; canvas.height = 600; 
               const ctx = canvas.getContext('2d');
-              ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, 300, 400);
-              resolve(canvas.toDataURL('image/jpeg', 0.6));
+              ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, 450, 600);
+              resolve(canvas.toDataURL('image/jpeg', 0.7));
             };
             img.onerror = (e) => reject(e);
           };
