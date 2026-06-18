@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock } from 'lucide-react';
 
@@ -737,7 +737,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
             <div className={`text-xs rounded-full px-3 py-1 inline-block font-bold mb-6 ${profile.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
               {profile.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
             </div>
-            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center"><Edit className="w-4 h-4 mr-2" /> Edit Profile</button>
+            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center">Edit Profile / Set Password</button>
           </>
         ) : (
           <form onSubmit={handleSave} className="text-left space-y-4">
@@ -839,7 +839,6 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         if (snap.data().password === password) onLogin(username);
         else setError('Invalid password');
       } else {
-        // Fallback for very first time setup
         const allAdmins = await getDocs(collection(db, 'admins'));
         if (allAdmins.empty && username === 'admin' && password === 'admin123') {
           await setDoc(doc(db, 'admins', 'admin'), { username: 'admin', password: 'admin123' });
@@ -869,19 +868,66 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
 // ==========================================
-// 3. ADMIN DASHBOARD
+// 3. ADMIN DASHBOARD (With Notification & Badge)
 // ==========================================
 function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [tab, setTab] = useState<'bookings' | 'users' | 'admins' | 'settings'>('bookings');
+  
+  // Real-time Notification States
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const isFirstLoad = useRef(true);
+
+  // 🔔 1. Firebase Real-time Listener & Audio Notification
+  useEffect(() => {
+    // 🔔 Use a reliable, pleasant notification sound URL
+    const notificationAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
+    const q = query(collection(db, 'bookings'));
+    
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const data: Booking[] = [];
+      let currentPendingCount = 0;
+      
+      snap.forEach((doc) => { 
+          const b = { id: doc.id, ...doc.data() } as Booking;
+          data.push(b);
+          if (b.status === 'pending') currentPendingCount++;
+      });
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      
+      setBookings(data);
+      setPendingCount(currentPendingCount);
+
+      // Play sound only if a completely NEW booking is added (not just updated)
+      if (!isFirstLoad.current) {
+        const hasNewBooking = snap.docChanges().some(change => change.type === 'added' && change.doc.data().status === 'pending');
+        if (hasNewBooking) {
+          notificationAudio.play().catch(e => console.log("Audio play blocked by browser (user needs to interact with page first):", e));
+        }
+      }
+      isFirstLoad.current = false;
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   return (
     <div className="animate-fade-in">
       <div className="flex flex-wrap justify-center gap-2 mb-6">
-        <button onClick={() => setTab('bookings')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Calendar className="w-4 h-4 mr-2" /> Bookings</button>
-        <button onClick={() => setTab('users')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>
-        <button onClick={() => setTab('admins')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>
-        <button onClick={() => setTab('settings')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>
+        <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+          <Calendar className="w-4 h-4 mr-2" /> Bookings
+          {/* 🔔 2. Notification Badge Icon */}
+          {pendingCount > 0 && (
+             <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
+               {pendingCount}
+             </span>
+          )}
+        </button>
+        <button onClick={() => setTab('users')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>
+        <button onClick={() => setTab('admins')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>
+        <button onClick={() => setTab('settings')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>
       </div>
-      {tab === 'bookings' && <AdminBookingsList />}
+      {tab === 'bookings' && <AdminBookingsList bookings={bookings} />}
       {tab === 'users' && <AdminUsersList />}
       {tab === 'admins' && <AdminManagementList />}
       {tab === 'settings' && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
@@ -889,24 +935,9 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
   );
 }
 
-// Admin Bookings List
-function AdminBookingsList() {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchBookings = async () => {
-    try {
-      const q = query(collection(db, 'bookings'));
-      const snap = await getDocs(q);
-      const data: Booking[] = [];
-      snap.forEach((doc) => { data.push({ id: doc.id, ...doc.data() } as Booking); });
-      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setBookings(data);
-    } catch (error) { console.error(error); }
-    setLoading(false);
-  };
-  useEffect(() => { fetchBookings(); }, []);
-
+// Admin Bookings (Now receives real-time data from Dashboard)
+function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
+  
   const handleStatusChange = async (id: string, newStatus: string) => {
     let reason = '';
     if (newStatus === 'cancelled') {
@@ -918,17 +949,14 @@ function AdminBookingsList() {
     }
     try {
       await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason });
-      fetchBookings();
     } catch (e) { alert("Error Update"); }
   };
 
-  const handleDelete = async (id: string) => { if (window.confirm('ဤ Booking ကို အပြီးအပိုင်ဖျက်မည် သေချာပါသလား?')) { await deleteDoc(doc(db, 'bookings', id)); fetchBookings(); } };
-
-  if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Bookings...</div>;
+  const handleDelete = async (id: string) => { if (window.confirm('ဤ Booking ကို အပြီးအပိုင်ဖျက်မည် သေချာပါသလား?')) { await deleteDoc(doc(db, 'bookings', id)); } };
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="mr-2 text-yellow-500" /> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-yellow-500" /> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status & Action</th><th className="p-3 pb-4 text-right">Delete</th></tr></thead>
