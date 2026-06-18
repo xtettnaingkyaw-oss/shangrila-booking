@@ -26,6 +26,14 @@ const SERVICES = [
   { id: 'home', name: 'Hotel & Home Services', price: '50,000 Ks', duration: '90 mins' },
 ];
 
+// --- 12-hour Format Time Slots ---
+const TIME_SLOTS = [
+  "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", 
+  "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", 
+  "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", 
+  "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM"
+];
+
 export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
 
@@ -178,9 +186,14 @@ function CustomerBooking() {
               className="w-full p-3 bg-[#064E3B] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white" />
           </div>
           <div>
-            <label className="block mb-2 text-sm flex items-center"><Clock className="w-4 h-4 mr-2"/> အချိန်</label>
-            <input required type="time" name="time" value={formData.time} onChange={handleChange} 
-              className="w-full p-3 bg-[#064E3B] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white" />
+            <label className="block mb-2 text-sm flex items-center"><Clock className="w-4 h-4 mr-2"/> အချိန် (12-hr Format)</label>
+            <select required name="time" value={formData.time} onChange={handleChange}
+              className="w-full p-3 bg-[#064E3B] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white">
+              <option value="">-- အချိန် ရွေးပါ --</option>
+              {TIME_SLOTS.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -239,7 +252,7 @@ function CustomerBooking() {
 
           <div>
             {/* Transaction ID စာသားကို အဝါရောင်နှင့် Bold ပြောင်းထားပါသည် */}
-            <label className="block mb-2 text-sm font-bold text-yellow-400">စရံငွေပေးချေမှု ပြုလုပ်ပြီးပါက ငွေလွှဲပြေစာတွင်ပါဝင်သော ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ကို​ အောက်မှာရိုက်ထည့်ပေးပါ</label>
+            <label className="block mb-2 text-sm font-bold text-yellow-400">စရံငွေပေးချေမှု ပြုလုပ်ပြီးပါက ငွေလွှဲပြေစာတွင်ပါဝင်သော ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ကို အောက်မှာရိုက်ထည့်ပေးပါ</label>
             <input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" 
               value={formData.txId} onChange={handleChange} 
               className="w-full p-3 bg-[#022c22] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-center text-xl tracking-widest text-white" />
