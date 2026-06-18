@@ -74,7 +74,7 @@ function CustomerBooking() {
   });
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
-  const [copiedText, setCopiedText] = useState(''); // <-- Copy သိမ်းထားရန် State အသစ်
+  const [copiedText, setCopiedText] = useState('');
 
   // Calculate Max 3 Days Date Range
   const today = new Date();
@@ -88,11 +88,10 @@ function CustomerBooking() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Copy ကူးမည့် Function
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedText(text);
-    setTimeout(() => setCopiedText(''), 2000); // 2 စက္ကန့်အကြာတွင် 'Copied!' ပျောက်သွားမည်
+    setTimeout(() => setCopiedText(''), 2000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -101,6 +100,12 @@ function CustomerBooking() {
       alert("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။");
       return;
     }
+    // အချိန် (Time Slot) မရွေးထားလျှင် သတိပေးရန်
+    if (!formData.time) {
+      alert("ကျေးဇူးပြု၍ Appointment ရယူမည့် အချိန်ကို ရွေးချယ်ပါ။");
+      return;
+    }
+
     setLoading(true);
     try {
       await addDoc(collection(db, 'bookings'), {
@@ -178,26 +183,37 @@ function CustomerBooking() {
           </div>
         </div>
 
-        {/* Date & Time */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block mb-2 text-sm flex items-center"><Calendar className="w-4 h-4 mr-2"/> ရက်စွဲ (အများဆုံး ၃ ရက် ကြိုတင်နိုင်သည်)</label>
-            <input required type="date" name="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={handleChange} 
-              className="w-full p-3 bg-[#064E3B] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white" />
-          </div>
-          <div>
-            <label className="block mb-2 text-sm flex items-center"><Clock className="w-4 h-4 mr-2"/> အချိန် (12-hr Format)</label>
-            <select required name="time" value={formData.time} onChange={handleChange}
-              className="w-full p-3 bg-[#064E3B] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white">
-              <option value="">-- အချိန် ရွေးပါ --</option>
-              {TIME_SLOTS.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
+        {/* Date Section (သီးသန့်ခွဲထုတ်ထားသည်) */}
+        <div>
+          <label className="block mb-2 text-sm flex items-center"><Calendar className="w-4 h-4 mr-2"/> ရက်စွဲ (အများဆုံး ၃ ရက် ကြိုတင်နိုင်သည်)</label>
+          <input required type="date" name="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={handleChange} 
+            className="w-full p-3 bg-[#064E3B] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white" />
         </div>
 
-        {/* Payment Section (Dynamic) */}
+        {/* Time Slots Section (ခလုတ်အကွက်လေးများဖြင့်) */}
+        <div className="bg-[#064E3B]/30 p-4 rounded border border-[#D4AF37]/30">
+          <label className="block mb-3 text-sm flex items-center"><Clock className="w-4 h-4 mr-2"/> အချိန် ရွေးချယ်ရန်</label>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+            {TIME_SLOTS.map(t => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setFormData({ ...formData, time: t })}
+                className={`py-2 px-1 text-sm rounded transition-all duration-200 border ${
+                  formData.time === t 
+                    ? 'bg-[#D4AF37] text-[#022c22] border-[#D4AF37] font-bold shadow-md transform scale-105' 
+                    : 'bg-[#022c22] text-gray-300 border-[#D4AF37]/30 hover:border-[#D4AF37] hover:text-white'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          {/* HTML Validation အတွက် ဖျောက်ထားသော Input */}
+          <input type="text" name="time" value={formData.time} required className="absolute opacity-0 w-0 h-0 pointer-events-none" tabIndex={-1} />
+        </div>
+
+        {/* Payment Section */}
         <div className="bg-[#064E3B]/50 p-5 rounded border border-yellow-600/50 mt-6">
           <h3 className="font-bold flex items-center mb-4 text-yellow-500"><CreditCard className="w-5 h-5 mr-2"/> စရန်ငွေ လွှဲရန်</h3>
           
@@ -251,7 +267,6 @@ function CustomerBooking() {
           )}
 
           <div>
-            {/* Transaction ID စာသားကို အဝါရောင်နှင့် Bold ပြောင်းထားပါသည် */}
             <label className="block mb-2 text-sm font-bold text-yellow-400">စရံငွေပေးချေမှု ပြုလုပ်ပြီးပါက ငွေလွှဲပြေစာတွင်ပါဝင်သော ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ကို အောက်မှာရိုက်ထည့်ပေးပါ</label>
             <input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" 
               value={formData.txId} onChange={handleChange} 
