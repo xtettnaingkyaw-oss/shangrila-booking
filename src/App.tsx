@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase'; // Make sure to configure this file
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy } from 'lucide-react';
 
 // --- Types ---
 interface Booking {
@@ -66,6 +66,7 @@ function CustomerBooking() {
   });
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [copiedText, setCopiedText] = useState(''); // <-- Copy သိမ်းထားရန် State အသစ်
 
   // Calculate Max 3 Days Date Range
   const today = new Date();
@@ -77,6 +78,13 @@ function CustomerBooking() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  // Copy ကူးမည့် Function
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(text);
+    setTimeout(() => setCopiedText(''), 2000); // 2 စက္ကန့်အကြာတွင် 'Copied!' ပျောက်သွားမည်
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -178,7 +186,7 @@ function CustomerBooking() {
 
         {/* Payment Section (Dynamic) */}
         <div className="bg-[#064E3B]/50 p-5 rounded border border-yellow-600/50 mt-6">
-          <h3 className="font-bold flex items-center mb-4 text-yellow-500"><CreditCard className="w-5 h-5 mr-2"/> စရံငွေ လွှဲရန်</h3>
+          <h3 className="font-bold flex items-center mb-4 text-yellow-500"><CreditCard className="w-5 h-5 mr-2"/> စရန်ငွေ လွှဲရန်</h3>
           
           <div className="mb-4">
             <label className="block mb-2 text-sm">ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန် (Payment Method)</label>
@@ -194,25 +202,44 @@ function CustomerBooking() {
 
           {/* ရွေးချယ်လိုက်မှ ပေါ်လာမည့် အကောင့်အချက်အလက် */}
           {formData.paymentMethod && (
-            <div className="bg-[#022c22] p-4 rounded mb-4 border border-green-700/50">
-              <p className="text-sm text-gray-300 mb-3 leading-relaxed">
+            <div className="bg-[#022c22] p-4 rounded mb-5 border border-green-700/50">
+              <p className="text-sm text-gray-300 mb-4 leading-relaxed">
                 Booking အတည်ပြုနိုင်ရန် အတွက် <strong className="text-yellow-400 font-bold">ကျသင့်ငွေ၏ တစ်ဝက်တိတိကို</strong> စရံငွေ အဖြစ် အောက်ပါ {formData.paymentMethod} အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။
               </p>
-              <div className="flex flex-col space-y-1">
-                <div className="text-lg">
-                  <span className="text-gray-400 text-sm w-20 inline-block">အကောင့်:</span> 
-                  <strong className="tracking-widest text-yellow-400">09458888510</strong>
+              
+              <div className="flex flex-col space-y-3">
+                <div className="flex items-center">
+                  <span className="text-gray-400 text-sm w-16 inline-block">အကောင့်:</span> 
+                  <strong className="tracking-widest text-yellow-400 text-lg mr-3">09458888510</strong>
+                  <button 
+                    type="button" 
+                    onClick={() => handleCopy('09458888510')} 
+                    className="flex items-center px-2 py-1 bg-green-800 hover:bg-green-700 text-xs rounded transition text-gray-200"
+                    title="အကောင့်နံပါတ် Copy ကူးရန်"
+                  >
+                    <Copy className="w-3 h-3 mr-1" /> {copiedText === '09458888510' ? 'Copied!' : 'Copy'}
+                  </button>
                 </div>
-                <div className="text-lg">
-                  <span className="text-gray-400 text-sm w-20 inline-block">အမည်:</span> 
-                  <strong className="text-white">Htet Naing Kyaw</strong>
+                
+                <div className="flex items-center">
+                  <span className="text-gray-400 text-sm w-16 inline-block">အမည်:</span> 
+                  <strong className="text-white text-lg mr-3">Htet Naing Kyaw</strong>
+                  <button 
+                    type="button" 
+                    onClick={() => handleCopy('Htet Naing Kyaw')} 
+                    className="flex items-center px-2 py-1 bg-green-800 hover:bg-green-700 text-xs rounded transition text-gray-200"
+                    title="အမည် Copy ကူးရန်"
+                  >
+                    <Copy className="w-3 h-3 mr-1" /> {copiedText === 'Htet Naing Kyaw' ? 'Copied!' : 'Copy'}
+                  </button>
                 </div>
               </div>
             </div>
           )}
 
           <div>
-            <label className="block mb-2 text-sm">စရံငွေပေးချေမှုပြုလုပ်ပြီးပါက ပြေစာတွင်ပါသော ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ကို​ အောက်မှာရိုက်ထည့်ပေးပါ</label>
+            {/* Transaction ID စာသားကို အဝါရောင်နှင့် Bold ပြောင်းထားပါသည် */}
+            <label className="block mb-2 text-sm font-bold text-yellow-400">ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး)</label>
             <input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" 
               value={formData.txId} onChange={handleChange} 
               className="w-full p-3 bg-[#022c22] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-center text-xl tracking-widest text-white" />
