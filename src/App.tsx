@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock } from 'lucide-react';
 
@@ -72,6 +72,11 @@ function useCountdown(initialMinutes: number, onExpire: () => void) {
   const minutes = Math.floor(timeLeft / 60); const seconds = timeLeft % 60;
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
+
+const getLocalTodayStr = () => {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
 
 class ErrorBoundary extends React.Component<{ children: any }, { hasError: boolean, error: any }> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -264,9 +269,9 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   
-  // Real-time bookings to check availability & blocks
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const stepContainerRef = useRef<HTMLDivElement>(null);
+  const todayStr = getLocalTodayStr();
 
   useEffect(() => {
     const q = query(collection(db, 'bookings'));
@@ -281,12 +286,10 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // Time & Blocking Logic
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem || !formData.date) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
     const serviceName = formData.selectedItem.name.toLowerCase();
-
     let allowedSlots = ALL_TIME_SLOTS;
 
     if (isHotelService) {
@@ -299,19 +302,16 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
     }
     return allowedSlots;
   };
-
   const availableTimeSlots = getAvailableTimeSlots();
 
-  // Date Logic
   const getMinMaxDates = () => {
-    const today = new Date(); 
-    const minDateStr = today.toISOString().split('T')[0];
-    const maxD = new Date(today); maxD.setDate(maxD.getDate() + 3); 
-    const maxDateStr = maxD.toISOString().split('T')[0];
+    const d = new Date(); 
+    const minDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    d.setDate(d.getDate() + 3); 
+    const maxDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     return { minDateStr, maxDateStr };
   }
   const { minDateStr, maxDateStr } = getMinMaxDates();
-  const todayStr = new Date().toISOString().split('T')[0];
 
   const calculateTotal = () => {
     if (!formData.selectedItem) return 0;
@@ -341,20 +341,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   };
   const formattedCountdown = useCountdown(15, handleCountdownExpire);
 
-  // Advanced Checking Functions
-  const isTherapistFullForToday = (tName: string) => {
-      const todaysBookings = allBookings.filter(b => b.status !== 'cancelled' && b.date === todayStr && b.therapist === tName);
-      let isFull = false;
-      let halfDayCount = 0;
-      todaysBookings.forEach(b => {
-          const srv = b.service.toLowerCase();
-          if (srv.includes('whole day') || srv.includes('whole night') || srv.includes('night')) isFull = true;
-          if (srv.includes('half day')) halfDayCount++;
-      });
-      if (halfDayCount >= 2) isFull = true;
-      return isFull;
-  };
-
+  // --- Dynamic Checking for Overlaps and Blocked Slots ---
   const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
       let blocked = new Set<string>();
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
@@ -388,21 +375,64 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
       return blocked;
   };
 
+  const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
+      if (!formData.selectedItem) return false;
+      const allowedSlots = getAvailableTimeSlots();
+      const blockedNow = getBlockedSlots(allBookings, tName, dateToCheck);
+
+      let hasAvailableSlot = false;
+      for (const t of allowedSlots) {
+          if (t.includes("to")) {
+              const [start, end] = t.split(" to ");
+              const sIdx = ALL_TIME_SLOTS.indexOf(start);
+              const eIdx = ALL_TIME_SLOTS.indexOf(end);
+              let overlap = false;
+              if (sIdx !== -1 && eIdx !== -1) {
+                  for (let i = sIdx; i < eIdx; i++) {
+                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; }
+                  }
+              }
+              if (blockedNow.has(t)) overlap = true;
+              if (!overlap) { hasAvailableSlot = true; break; }
+          } else {
+              const sIdx = ALL_TIME_SLOTS.indexOf(t);
+              if (sIdx === -1) continue;
+              let neededSlots = 2;
+              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+              if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+
+              let overlap = false;
+              for (let i = 0; i < neededSlots; i++) {
+                  if (blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { overlap = true; break; }
+              }
+              if (!overlap) { hasAvailableSlot = true; break; }
+          }
+      }
+      return !hasAvailableSlot;
+  };
+
   const blockedSlots = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
 
   const isSlotAvailable = (t: string) => {
       if (blockedSlots.has(t)) return false;
-      if (t.includes("to")) return !blockedSlots.has(t); 
-      
+      if (t.includes("to")) {
+          const [start, end] = t.split(" to ");
+          const sIdx = ALL_TIME_SLOTS.indexOf(start);
+          const eIdx = ALL_TIME_SLOTS.indexOf(end);
+          if (sIdx !== -1 && eIdx !== -1) {
+              for (let i = sIdx; i < eIdx; i++) {
+                  if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false;
+              }
+          }
+          return true;
+      }
       const sIdx = ALL_TIME_SLOTS.indexOf(t);
       if (sIdx === -1) return true;
-
       let neededSlots = 2;
       if (formData.selectedItem) {
           const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
-      
       for (let i = 0; i < neededSlots; i++) {
           if (blockedSlots.has(ALL_TIME_SLOTS[sIdx + i])) return false;
       }
@@ -415,29 +445,37 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
     setLoading(true);
     
     try {
-      // System Concurrency Final Check
+      // Concurrency Overlap Check before inserting
       const freshSnap = await getDocs(query(collection(db, 'bookings')));
       const freshBookings: Booking[] = [];
       freshSnap.forEach(d => freshBookings.push({id: d.id, ...d.data()} as Booking));
       
       const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
+      let isOverlap = false;
+
       if (formData.time.includes("to")) {
-          if (blockedNow.has(formData.time)) {
-             alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်သွားပါပြီ။ ကျေးဇူးပြု၍ အခြားအချိန် ရွေးပေးပါ။");
-             setLoading(false); return;
+          const [start, end] = formData.time.split(" to ");
+          const sIdx = ALL_TIME_SLOTS.indexOf(start);
+          const eIdx = ALL_TIME_SLOTS.indexOf(end);
+          if (sIdx !== -1 && eIdx !== -1) {
+              for (let i = sIdx; i < eIdx; i++) {
+                  if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; }
+              }
           }
+          if (blockedNow.has(formData.time)) isOverlap = true;
       } else {
           const sIdx = ALL_TIME_SLOTS.indexOf(formData.time);
           let neededSlots = 2; 
           const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-          
-          let overlap = false;
-          for (let i = 0; i < neededSlots; i++) { if (blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) overlap = true; }
-          if (overlap) {
-             alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်သွားပါပြီ။ ကျေးဇူးပြု၍ အခြားအချိန် ရွေးပေးပါ။");
-             setLoading(false); return;
+          for (let i = 0; i < neededSlots; i++) { 
+              if (blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { isOverlap = true; break; }
           }
+      }
+
+      if (isOverlap) {
+         alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်သွားပါပြီ။ ကျေးဇူးပြု၍ အခြားအချိန် ရွေးပေးပါ။");
+         setLoading(false); return;
       }
 
       // Auto Create/Update Profile
@@ -501,6 +539,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
     <div>
       {renderStepper()}
 
+      {/* STEP 1: SERVICE */}
       {step === 1 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
@@ -531,6 +570,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         </div>
       )}
 
+      {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
           {viewGallery && (
@@ -555,13 +595,17 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {appData.therapists.map((therapist) => {
               const isSelected = formData.therapist?.id === therapist.id; const hasImage = therapist.images && therapist.images.length > 0;
-              const isFull = isTherapistFullForToday(therapist.name);
               
+              // Dynamic Overlap/Full check for Therapist Selection Step
+              const checkDate = formData.date || todayStr;
+              const isFull = isTherapistFullForDate(therapist.name, checkDate);
+              const fullText = checkDate === todayStr ? "Fully Booked For Today" : "Fully Booked";
+
               return (
                 <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed opacity-50 grayscale border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
                   {isFull && (
                     <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
-                      <span className="bg-red-500 text-white text-[9px] font-bold px-2 py-1 rounded shadow-md transform -rotate-12">Booking Full For Today</span>
+                      <span className="bg-red-500 text-white text-[9px] font-bold px-2 py-1 rounded shadow-md transform -rotate-12">{fullText}</span>
                     </div>
                   )}
                   <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'}`}>
@@ -582,6 +626,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         </div>
       )}
 
+      {/* STEP 3: DATE & TIME */}
       {step === 3 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
@@ -606,6 +651,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         </div>
       )}
 
+      {/* STEP 4: CONFIRM */}
       {step === 4 && (
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး အတည်ပြုပေးပါ)</p></div>
