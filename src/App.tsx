@@ -100,7 +100,7 @@ function CustomerBooking() {
         status: 'pending',
         createdAt: Date.now()
       });
-      setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ Admin မှ မကြာမီ အတည်ပြုပေးပါမည်။');
+      setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ ငွေလွှဲမှတ်တမ်းကို စစ်ဆေးပြီး Admin မှ မကြာမီ အတည်ပြုပေးပါမည်။');
       setFormData({ name: '', phone: '', service: '', therapist: '', date: '', time: '', paymentMethod: '', txId: '' });
     } catch (error) {
       console.error("Error adding document: ", error);
@@ -127,7 +127,7 @@ function CustomerBooking() {
 
   return (
     <div className="bg-[#022c22] p-6 rounded-lg border border-[#D4AF37]/50 shadow-2xl">
-      <h2 className="text-2xl font-bold mb-6 text-center border-b border-[#D4AF37]/30 pb-4">Appointment ရယူရန်</h2>
+      <h2 className="text-2xl font-bold mb-6 text-center border-b border-[#D4AF37]/30 pb-4">Online Booking Appointment ရယူရန်</h2>
       
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Personal Info */}
