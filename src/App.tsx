@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase'; // Make sure to configure this file
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, MapPin, ShieldCheck, Activity } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity } from 'lucide-react';
 
 // --- Types ---
 interface Booking {
@@ -9,9 +9,10 @@ interface Booking {
   name: string;
   phone: string;
   service: string;
-  therapist: string; // <-- အသစ်ထပ်ထည့်ထားသော ဝန်ထမ်း Type
+  therapist: string;
   date: string;
   time: string;
+  paymentMethod: string; // <-- ငွေလွှဲမည့်စနစ်အတွက် အသစ်ထပ်ထည့်ထားသည်
   txId: string;
   status: 'pending' | 'approved';
   createdAt: number;
@@ -57,9 +58,10 @@ function CustomerBooking() {
     name: '',
     phone: '',
     service: '',
-    therapist: '', // <-- State တွင် ဝန်ထမ်းအသစ်ထပ်ထည့်ထားသည်
+    therapist: '',
     date: '',
     time: '',
+    paymentMethod: '', // <-- ငွေလွှဲစနစ် အသစ်
     txId: ''
   });
   const [loading, setLoading] = useState(false);
@@ -91,7 +93,7 @@ function CustomerBooking() {
         createdAt: Date.now()
       });
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ Admin မှ မကြာမီ အတည်ပြုပေးပါမည်။');
-      setFormData({ name: '', phone: '', service: '', therapist: '', date: '', time: '', txId: '' });
+      setFormData({ name: '', phone: '', service: '', therapist: '', date: '', time: '', paymentMethod: '', txId: '' });
     } catch (error) {
       console.error("Error adding document: ", error);
       alert("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။");
@@ -134,7 +136,7 @@ function CustomerBooking() {
           </div>
         </div>
 
-        {/* Services & Therapist (Added Section) */}
+        {/* Services & Therapist */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block mb-2 text-sm flex items-center"><Activity className="w-4 h-4 mr-2"/> ဝန်ဆောင်မှု ရွေးချယ်ရန်</label>
@@ -174,14 +176,42 @@ function CustomerBooking() {
           </div>
         </div>
 
-        {/* Payment Section */}
-        <div className="bg-[#064E3B]/50 p-4 rounded border border-yellow-600/50 mt-6">
-          <h3 className="font-bold flex items-center mb-2 text-yellow-500"><CreditCard className="w-5 h-5 mr-2"/> စရန်ငွေ လွှဲရန်</h3>
-          <p className="text-sm text-gray-300 mb-2 leading-relaxed">
-            Booking အတည်ပြုနိုင်ရန် စရန်ငွေ <strong className="text-white">10,000 Ks</strong> ကို အောက်ပါ အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။<br/>
-            <strong>KPay / Wave:</strong> <span className="text-white">09-458884517</span> (Htet Naing Kyaw)
-          </p>
-          <div className="mt-4">
+        {/* Payment Section (Dynamic) */}
+        <div className="bg-[#064E3B]/50 p-5 rounded border border-yellow-600/50 mt-6">
+          <h3 className="font-bold flex items-center mb-4 text-yellow-500"><CreditCard className="w-5 h-5 mr-2"/> စရန်ငွေ လွှဲရန်</h3>
+          
+          <div className="mb-4">
+            <label className="block mb-2 text-sm">ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန် (Payment Method)</label>
+            <select required name="paymentMethod" value={formData.paymentMethod} onChange={handleChange}
+              className="w-full p-3 bg-[#022c22] border border-[#D4AF37]/50 rounded focus:outline-none focus:border-[#D4AF37] text-white">
+              <option value="">-- ငွေလွှဲမည့် စနစ် ရွေးပါ --</option>
+              <option value="KBZ PAY">KBZ PAY</option>
+              <option value="Wave PAY">Wave PAY</option>
+              <option value="AYA PAY">AYA PAY</option>
+              <option value="UAB PAY">UAB PAY</option>
+            </select>
+          </div>
+
+          {/* ရွေးချယ်လိုက်မှ ပေါ်လာမည့် အကောင့်အချက်အလက် */}
+          {formData.paymentMethod && (
+            <div className="bg-[#022c22] p-4 rounded mb-4 border border-green-700/50">
+              <p className="text-sm text-gray-300 mb-3 leading-relaxed">
+                Booking အတည်ပြုနိုင်ရန် စရန်ငွေ <strong className="text-white">10,000 Ks</strong> ကို အောက်ပါ {formData.paymentMethod} အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။
+              </p>
+              <div className="flex flex-col space-y-1">
+                <div className="text-lg">
+                  <span className="text-gray-400 text-sm w-20 inline-block">အကောင့်:</span> 
+                  <strong className="tracking-widest text-yellow-400">09458888510</strong>
+                </div>
+                <div className="text-lg">
+                  <span className="text-gray-400 text-sm w-20 inline-block">အမည်:</span> 
+                  <strong className="text-white">Htet Naing Kyaw</strong>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div>
             <label className="block mb-2 text-sm">ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး)</label>
             <input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" 
               value={formData.txId} onChange={handleChange} 
@@ -254,7 +284,7 @@ function AdminDashboard() {
               <th className="p-3">Customer</th>
               <th className="p-3">Service & Therapist</th>
               <th className="p-3">Date & Time</th>
-              <th className="p-3">TxID (Last 6)</th>
+              <th className="p-3">TxID & Payment</th>
               <th className="p-3">Status</th>
               <th className="p-3">Actions</th>
             </tr>
@@ -277,7 +307,10 @@ function AdminDashboard() {
                   <div>{b.date}</div>
                   <div className="text-gray-400">{b.time}</div>
                 </td>
-                <td className="p-3 font-mono text-yellow-400">{b.txId}</td>
+                <td className="p-3">
+                  <div className="font-mono text-yellow-400">{b.txId}</div>
+                  <div className="text-xs text-green-400 font-sans mt-1">{b.paymentMethod}</div>
+                </td>
                 <td className="p-3">
                   {b.status === 'pending' 
                     ? <span className="bg-yellow-600/20 text-yellow-500 px-2 py-1 rounded text-xs border border-yellow-600/50">Pending</span>
