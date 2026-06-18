@@ -200,6 +200,58 @@ export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; 
 function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'history' | 'profile'>('book');
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
+  
+  // User Notification States
+  const [hasNoti, setHasNoti] = useState(false);
+  const prevStatuses = useRef<Record<string, string>>({});
+  const isFirstLoad = useRef(true);
+
+  // User Real-time Listener for Notification
+  useEffect(() => {
+    if (!userPhone) return;
+    const q = query(collection(db, 'bookings'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      let changed = false;
+      snap.docs.forEach((doc) => {
+        const b = { id: doc.id, ...doc.data() } as Booking;
+        if (b.phone === userPhone) {
+          const oldStatus = prevStatuses.current[b.id!];
+          // Trigger notification ONLY if the status changed from what it was previously
+          if (oldStatus && oldStatus !== b.status) {
+            changed = true;
+          }
+          prevStatuses.current[b.id!] = b.status;
+        }
+      });
+
+      if (!isFirstLoad.current && changed) {
+        if (activeTab !== 'history') setHasNoti(true);
+        const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
+        if (audioEl) {
+          audioEl.currentTime = 0;
+          audioEl.play().catch(e => console.log("Audio block:", e));
+        }
+      }
+      isFirstLoad.current = false;
+    });
+
+    return () => unsubscribe();
+  }, [userPhone, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'history') setHasNoti(false);
+  }, [activeTab]);
+
+  // Audio Unlocker for browser policy
+  const handleInteraction = () => {
+    const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
+    if (audioEl && audioEl.paused) {
+      audioEl.play().then(() => {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+      }).catch(() => {});
+    }
+  };
 
   const tabs = [
     { id: 'book', label: 'Book Now', icon: CalendarPlus },
@@ -208,7 +260,10 @@ function CustomerApp({ appData }: { appData: AppData }) {
   ] as const;
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
+      {/* Short sweet notification sound for User */}
+      <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
+
       {/* Customer Tabs Navigation */}
       <div className="flex justify-center items-center space-x-2 md:space-x-4 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
         {tabs.map((tab) => {
@@ -216,11 +271,19 @@ function CustomerApp({ appData }: { appData: AppData }) {
           return (
             <button
               key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center py-3 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`}
+              className={`relative flex-1 flex items-center justify-center py-3 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`}
               style={{ color: isActive ? THEME.primary : undefined }}
             >
               <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
               {tab.label}
+              
+              {/* Notification Badge for My Bookings */}
+              {tab.id === 'history' && hasNoti && (
+                <span className="absolute top-2 right-4 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>
+              )}
+              {tab.id === 'history' && hasNoti && (
+                <span className="absolute top-2 right-4 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></span>
+              )}
             </button>
           )
         })}
@@ -583,7 +646,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   );
 }
 
-// 1.2 Customer History Tab
+// 1.2 Customer History Tab (Realtime with Notification)
 function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -591,21 +654,22 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
 
   useEffect(() => {
     if (!userPhone) return;
-    const fetchMyBookings = async () => {
-      try {
-        const q = query(collection(db, 'bookings'));
-        const snap = await getDocs(q);
-        const data: Booking[] = [];
-        snap.forEach((doc) => {
-          const b = { id: doc.id, ...doc.data() } as Booking;
-          if (b.phone === userPhone) data.push(b);
-        });
-        data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setBookings(data);
-      } catch (e) { console.error(e); }
+    const q = query(collection(db, 'bookings'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const data: Booking[] = [];
+      snap.forEach((doc) => {
+        const b = { id: doc.id, ...doc.data() } as Booking;
+        if (b.phone === userPhone) data.push(b);
+      });
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setBookings(data);
       setLoading(false);
-    };
-    fetchMyBookings();
+    }, (e) => {
+      console.error(e);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [userPhone]);
 
   if (!userPhone) return <AuthRequest onLoginSuccess={onLoginSuccess} title="View My Bookings" />;
@@ -810,7 +874,6 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string
   );
 }
 
-// Fallback Icon for Cancel Status
 const XCircleIcon = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 
 function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
@@ -880,25 +943,7 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
   const [pendingCount, setPendingCount] = useState(0);
   const isFirstLoad = useRef(true);
 
-  // 🔔 1. Updated Notification System with Long Chime (5 seconds)
   useEffect(() => {
-    // 5-second long prominent chime sound
-    const notificationAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2862/2862-preview.mp3'); 
-    
-    // Attempt to unlock audio immediately upon interaction
-    const unlockAudio = () => {
-      if (notificationAudio) {
-        notificationAudio.play().then(() => {
-          notificationAudio.pause();
-          notificationAudio.currentTime = 0;
-        }).catch(() => {});
-      }
-      document.removeEventListener('click', unlockAudio);
-      document.removeEventListener('touchstart', unlockAudio);
-    };
-    document.addEventListener('click', unlockAudio);
-    document.addEventListener('touchstart', unlockAudio);
-
     const q = query(collection(db, 'bookings'));
     const unsubscribe = onSnapshot(q, (snap) => {
       const data: Booking[] = [];
@@ -916,32 +961,39 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
 
       if (!isFirstLoad.current) {
         const hasNewBooking = snap.docChanges().some(change => change.type === 'added' && change.doc.data().status === 'pending');
-        if (hasNewBooking && notificationAudio) {
-          notificationAudio.currentTime = 0;
-          // Loop the sound slightly to ensure it plays for around 5 seconds
-          notificationAudio.loop = true;
-          notificationAudio.play().catch(e => console.log("Audio play blocked:", e));
-          
-          // Stop after 5 seconds
-          setTimeout(() => {
-             notificationAudio.pause();
-             notificationAudio.currentTime = 0;
-             notificationAudio.loop = false;
-          }, 5000);
+        if (hasNewBooking) {
+           const audioEl = document.getElementById('admin-alert-sound') as HTMLAudioElement;
+           if (audioEl) {
+              audioEl.currentTime = 0;
+              audioEl.play().catch(e => console.log("Audio play blocked by browser:", e));
+              
+              setTimeout(() => {
+                 audioEl.pause();
+                 audioEl.currentTime = 0;
+              }, 5000);
+           }
         }
       }
       isFirstLoad.current = false;
     });
 
-    return () => {
-      unsubscribe();
-      document.removeEventListener('click', unlockAudio);
-      document.removeEventListener('touchstart', unlockAudio);
-    };
+    return () => unsubscribe();
   }, []);
 
+  const handleInteraction = () => {
+     const audioEl = document.getElementById('admin-alert-sound') as HTMLAudioElement;
+     if (audioEl && audioEl.paused) {
+        audioEl.play().then(() => {
+           audioEl.pause();
+           audioEl.currentTime = 0;
+        }).catch(() => {});
+     }
+  };
+
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in" onClick={handleInteraction}>
+      <audio id="admin-alert-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto" loop />
+      
       <div className="flex flex-wrap justify-center gap-2 mb-6">
         <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
           <Calendar className="w-4 h-4 mr-2" /> Bookings
