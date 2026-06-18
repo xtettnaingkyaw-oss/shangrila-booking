@@ -93,6 +93,7 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
   }
 }
 
+// --- Main App Setup ---
 function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
@@ -287,7 +288,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
   const getAvailableTimeSlots = () => {
-    if (!formData.selectedItem || !formData.date) return [];
+    if (!formData.selectedItem) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
     const serviceName = formData.selectedItem.name.toLowerCase();
     let allowedSlots = ALL_TIME_SLOTS;
@@ -403,7 +404,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
 
               let overlap = false;
               for (let i = 0; i < neededSlots; i++) {
-                  if (blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { overlap = true; break; }
+                  if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { overlap = true; break; }
               }
               if (!overlap) { hasAvailableSlot = true; break; }
           }
@@ -434,7 +435,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
       for (let i = 0; i < neededSlots; i++) {
-          if (blockedSlots.has(ALL_TIME_SLOTS[sIdx + i])) return false;
+          if (!ALL_TIME_SLOTS[sIdx + i] || blockedSlots.has(ALL_TIME_SLOTS[sIdx + i])) return false;
       }
       return true;
   };
@@ -469,7 +470,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
           const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           for (let i = 0; i < neededSlots; i++) { 
-              if (blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { isOverlap = true; break; }
+              if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { isOverlap = true; break; }
           }
       }
 
@@ -573,6 +574,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
       {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
+
           {viewGallery && (
             <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-fade-in">
               <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
@@ -725,6 +727,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
               </div>
             )}
             
+            {/* Countdown Timer Display */}
             {selectedPaymentConfig && (
               <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
                  <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
