@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase'; 
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, Image as ImageIconFeather, MapPin, History, UserCircle, CalendarPlus, LogOut, KeyRound, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, Image as ImageIconFeather, MapPin, Search } from 'lucide-react';
 
 // --- Types ---
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
@@ -126,9 +126,9 @@ function CustomerApp({ appData }: { appData: AppData }) {
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
 
   const tabs = [
-    { id: 'book', label: 'Book Now', icon: CalendarPlus },
-    { id: 'history', label: 'My Bookings', icon: History },
-    { id: 'profile', label: 'Profile', icon: UserCircle }
+    { id: 'book', label: 'Book Now', icon: Calendar },
+    { id: 'history', label: 'My Bookings', icon: Search },
+    { id: 'profile', label: 'Profile', icon: User }
   ] as const;
 
   return (
@@ -423,7 +423,6 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
           const b = { id: doc.id, ...doc.data() } as Booking;
           if (b.phone === userPhone) data.push(b);
         });
-        // Sort by newest
         data.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
         setBookings(data);
       } catch (e) { console.error(e); }
@@ -454,7 +453,6 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
                   <div className="text-[10px] uppercase font-bold text-gray-400 mt-1">{b.date} • {b.time}</div>
                 </div>
               </div>
-              
               <div className="flex flex-col sm:flex-row justify-between sm:items-center">
                 <div className="text-xs font-bold text-gray-500 mb-2 sm:mb-0">TxID: <span className="text-gray-800 tracking-wider">{b.txId}</span> ({b.paymentMethod})</div>
                 <StatusBadge status={b.status} cancelReason={b.cancelReason} />
@@ -510,7 +508,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
       <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>My Profile</h2></div>
       
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center mb-6">
-        <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4 text-[#D4AF37]"><UserCircle className="w-12 h-12"/></div>
+        <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4 text-[#D4AF37]"><User className="w-10 h-10"/></div>
         
         {!editMode ? (
           <>
@@ -537,7 +535,6 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
   );
 }
 
-// Simple Frictionless Auth Modal
 function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)=>void, title: string }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -572,7 +569,7 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)
 
   return (
     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in">
-      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><KeyRound className="w-8 h-8"/></div>
+      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><User className="w-8 h-8"/></div>
       <h2 className="text-xl font-bold text-gray-800 mb-2">Login Required</h2>
       <p className="text-xs font-bold text-gray-500 mb-6">{title} ကိုကြည့်ရန် လော့ဂ်အင် ဝင်ပေးပါ</p>
       
@@ -593,21 +590,17 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)
   );
 }
 
-// Status Badge Component
 function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
   if (status === 'payment_checking') return <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-[10px] font-bold border border-blue-200 flex items-center"><Clock className="w-3 h-3 mr-1"/> Payment Confirming</span>;
   if (status === 'approved') return <span className="bg-green-50 text-green-600 px-3 py-1 rounded-full text-[10px] font-bold border border-green-200 flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> Approved</span>;
   if (status === 'cancelled') return (
     <div className="flex flex-col items-end">
-      <span className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold border border-red-200 flex items-center"><XCircle className="w-3 h-3 mr-1"/> Cancelled</span>
+      <span className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold border border-red-200 flex items-center"><X className="w-3 h-3 mr-1"/> Cancelled</span>
       {cancelReason && <span className="text-[10px] text-red-400 mt-1 max-w-[200px] text-right leading-tight">Reason: {cancelReason}</span>}
     </div>
   );
   return <span className="bg-yellow-50 text-yellow-700 px-3 py-1 rounded-full text-[10px] font-bold border border-yellow-200 flex items-center"><Clock className="w-3 h-3 mr-1"/> Pending</span>;
 }
-
-// SVG Fallback for XCircle
-const XCircle = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 
 // ==========================================
 // 2. ADMIN DASHBOARD
@@ -617,8 +610,8 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
   return (
     <div className="animate-fade-in">
       <div className="flex flex-wrap justify-center gap-2 mb-6">
-        <button onClick={() => setTab('bookings')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Calendar className="w-4 h-4 mr-2" /> Bookings List</button>
-        <button onClick={() => setTab('users')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><UserCircle className="w-4 h-4 mr-2" /> Users List</button>
+        <button onClick={() => setTab('bookings')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Calendar className="w-4 h-4 mr-2" /> Bookings</button>
+        <button onClick={() => setTab('users')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>
         <button onClick={() => setTab('settings')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>
       </div>
       {tab === 'bookings' && <AdminBookingsList />}
@@ -700,8 +693,8 @@ function AdminUsersList() {
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]"/> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={4} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1"/> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1"/> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td></tr>))}</tbody></table></div>
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><User className="mr-2 text-[#D4AF37]"/> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={4} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><CheckCircle className="w-3 h-3 mr-1"/> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><User className="w-3 h-3 mr-1"/> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td></tr>))}</tbody></table></div>
     </div>
   );
 }
@@ -711,152 +704,36 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || DEFAULT_BRANDING)));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || DEFAULT_PAYMENT_METHODS)));
-  
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
 
-  const handleSaveCategory = async (cIdx: number) => {
-    const cat = localCategories[cIdx];
-    if(!window.confirm(`ဤပြောင်းလဲမှုများကို (${cat.title}) သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
-    setSavingCategory(cat.id);
-    try {
-      await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true });
-      onSettingsUpdated({ ...appData, categories: localCategories });
-      alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
-    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
-    setSavingCategory(null);
-  };
+  const handleSaveCategory = async (cIdx: number) => { const cat = localCategories[cIdx]; if(!window.confirm(`ဤပြောင်းလဲမှုများကို (${cat.title}) သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return; setSavingCategory(cat.id); try { await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true }); onSettingsUpdated({ ...appData, categories: localCategories }); alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။'); } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); } setSavingCategory(null); };
+  const handleSaveTherapists = async () => { if(!window.confirm(`ဝန်ထမ်းစာရင်းကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return; setSavingCategory('therapists'); try { const tPromises = localTherapists.map((t, idx) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: idx })); const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id))); await Promise.all([...tPromises, ...delPromises]); setDeletedTherapistIds([]); onSettingsUpdated({ ...appData, therapists: localTherapists }); alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။'); } catch (e) { alert('Update Error'); } setSavingCategory(null); };
+  const handleSaveBranding = async () => { if(!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return; setSavingCategory('branding'); try { await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true }); onSettingsUpdated({ ...appData, branding: localBranding }); alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။'); } catch (e) { alert('Update Error'); } setSavingCategory(null); };
+  const handleSavePayments = async () => { if(!window.confirm(`Payment အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return; setSavingCategory('payments'); try { await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true }); onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods }); alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။'); } catch (e) { alert('Update Error'); } setSavingCategory(null); };
 
-  const handleSaveTherapists = async () => {
-    if(!window.confirm(`ဝန်ထမ်းစာရင်းကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
-    setSavingCategory('therapists');
-    try {
-      const tPromises = localTherapists.map((t, idx) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: idx }));
-      const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id)));
-      await Promise.all([...tPromises, ...delPromises]);
-      setDeletedTherapistIds([]);
-      onSettingsUpdated({ ...appData, therapists: localTherapists });
-      alert('ဝန်ထမ်းစာရင်းကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
-    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
-    setSavingCategory(null);
-  };
-
-  const handleSaveBranding = async () => {
-    if(!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
-    setSavingCategory('branding');
-    try {
-      await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true });
-      onSettingsUpdated({ ...appData, branding: localBranding });
-      alert('Logo နှင့် Footer ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
-    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
-    setSavingCategory(null);
-  };
-
-  const handleSavePayments = async () => {
-    if(!window.confirm(`Payment အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
-    setSavingCategory('payments');
-    try {
-      await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true });
-      onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods });
-      alert('Payment အချက်အလက်များကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
-    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
-    setSavingCategory(null);
-  };
-
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingImage('logo');
-    try { const base64 = await compressImage(file, 400, 400); setLocalBranding({ ...localBranding, logoUrl: base64 }); } 
-    catch (err) { alert("Logo တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
-    setUploadingImage(null);
-  };
-
-  const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingImage(`pay_${idx}`);
-    try { const base64 = await compressImage(file, 200, 200); const updated = [...localPaymentMethods]; updated[idx].logoUrl = base64; setLocalPaymentMethods(updated); } 
-    catch (err) { alert("Logo တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
-    setUploadingImage(null);
-  };
-
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); setLocalBranding({ ...localBranding, logoUrl: base64 }); } catch (err) { alert("Error"); } setUploadingImage(null); };
+  const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const updated = [...localPaymentMethods]; updated[idx].logoUrl = base64; setLocalPaymentMethods(updated); } catch (err) { alert("Error"); } setUploadingImage(null); };
+  
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length }]);
   const updateTherapistName = (tIdx: number, name: string) => { const updated = [...localTherapists]; updated[tIdx].name = name; setLocalTherapists(updated); };
-  const removeTherapist = (tIdx: number) => {
-    if(!window.confirm("ဤဝန်ထမ်းအား ဖျက်မည် သေချာပါသလား?")) return;
-    const t = localTherapists[tIdx];
-    if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]);
-    const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated);
-  };
-
-  const handleImageUpload = async (tIdx: number, files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const therapist = localTherapists[tIdx];
-    if (therapist.images.length + files.length > 5) { alert('အများဆုံး ၅ ပုံသာ ထည့်ခွင့်ရှိပါတယ်။'); return; }
-
-    setUploadingImage(therapist.id);
-    const newUrls: string[] = [];
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const base64 = await compressImage(files[i], 450, 600); // 3:4 Ratio
-        newUrls.push(base64);
-      }
-      const updated = [...localTherapists];
-      updated[tIdx].images = [...updated[tIdx].images, ...newUrls];
-      setLocalTherapists(updated);
-    } catch (err) { alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
-    setUploadingImage(null);
-  };
-
+  const removeTherapist = (tIdx: number) => { if(!window.confirm("ဤဝန်ထမ်းအား ဖျက်မည် သေချာပါသလား?")) return; const t = localTherapists[tIdx]; if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]); const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated); };
+  const handleImageUpload = async (tIdx: number, files: FileList | null) => { if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('အများဆုံး ၅ ပုံသာ'); return; } setUploadingImage(therapist.id); const newUrls: string[] = []; try { for (let i = 0; i < files.length; i++) { const base64 = await compressImage(files[i], 450, 600); newUrls.push(base64); } const updated = [...localTherapists]; updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; setLocalTherapists(updated); } catch (err) { alert("Error"); } setUploadingImage(null); };
   const removeImage = (tIdx: number, imgIdx: number) => { const updated = [...localTherapists]; updated[tIdx].images.splice(imgIdx, 1); setLocalTherapists(updated); };
-  
   const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const updated = [...localCategories]; (updated[cIdx].items[iIdx] as any)[field] = val; setLocalCategories(updated); };
   const addItem = (cIdx: number) => { const updated = [...localCategories]; updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false }); setLocalCategories(updated); };
-  const deleteItem = (cIdx: number, iIdx: number) => { if(!window.confirm("ဤ Service အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
-
+  const deleteItem = (cIdx: number, iIdx: number) => { if(!window.confirm("ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
   const updatePaymentMethod = (pIdx: number, field: string, val: string) => { const updated = [...localPaymentMethods]; (updated[pIdx] as any)[field] = val; setLocalPaymentMethods(updated); };
   const addPaymentMethod = () => { setLocalPaymentMethods([...localPaymentMethods, { id: `p_${Date.now()}`, name: 'New Payment', accountNumber: '', accountName: '', logoUrl: '' }]); };
-  const removePaymentMethod = (pIdx: number) => { if(!window.confirm("ဤ Payment အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localPaymentMethods]; updated.splice(pIdx, 1); setLocalPaymentMethods(updated); };
+  const removePaymentMethod = (pIdx: number) => { if(!window.confirm("ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localPaymentMethods]; updated.splice(pIdx, 1); setLocalPaymentMethods(updated); };
 
   return (
     <div className="space-y-6">
-      
-      {/* Branding & Footer Editor */}
+      {/* Branding Editor */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
-          <div><h3 className="text-xl font-bold text-gray-800 flex items-center"><ImageIconFeather className="w-5 h-5 mr-2 text-[#D4AF37]"/> App Branding & Footer</h3></div>
-          <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90">
-            <Save className="w-4 h-4 mr-2"/> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
-            <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
-            <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
-              {localBranding.logoUrl ? (
-                <><img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({...localBranding, logoUrl: ''})} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4"/></button></div></>
-              ) : (
-                <div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : <ImageIconFeather className="w-8 h-8 opacity-50"/>}</div>
-              )}
-            </div>
-            <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">
-              {localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}
-              <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} />
-            </label>
-          </div>
-
-          <div className="space-y-4">
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({...localBranding, address: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({...localBranding, phone1: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({...localBranding, phone2: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-            </div>
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({...localBranding, copyright: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-          </div>
-        </div>
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><ImageIconFeather className="w-5 h-5 mr-2 text-[#D4AF37]"/> App Branding & Footer</h3></div><button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}</button></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center"><label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label><div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">{localBranding.logoUrl ? (<><img src={localBranding.logoUrl} alt="Logo" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({...localBranding, logoUrl: ''})} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4"/></button></div></>) : (<div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : <ImageIconFeather className="w-8 h-8 opacity-50"/>}</div>)}</div><label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">{localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}<input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} /></label></div><div className="space-y-4"><div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({...localBranding, address: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div><div className="grid grid-cols-2 gap-2"><div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({...localBranding, phone1: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({...localBranding, phone2: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({...localBranding, copyright: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div></div></div>
       </div>
 
       {/* Payment Editor */}
