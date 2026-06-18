@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase'; // Make sure to configure this file
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, Check } from 'lucide-react';
 
 // --- Types ---
 interface Booking {
@@ -36,7 +36,6 @@ const TIME_SLOTS = [
   "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM"
 ];
 
-// Dark Green Theme Color matching the reference
 const THEME = {
   primary: '#123524',
   gold: '#D4AF37',
@@ -68,14 +67,16 @@ export default function App() {
 }
 
 // ==========================================
-// 1. CUSTOMER BOOKING SYSTEM (STEP-BY-STEP)
+// 1. CUSTOMER BOOKING SYSTEM
 // ==========================================
 function CustomerBooking() {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    service: '',
+    service: '', 
+    serviceName: '', // <-- Added for safe UI render
+    serviceDuration: '', // <-- Added for safe UI render
     servicePrice: '',
     therapist: '',
     date: '',
@@ -107,14 +108,25 @@ function CustomerBooking() {
     }
     setLoading(true);
     try {
-      await addDoc(collection(db, 'bookings'), {
-        ...formData,
+      // Create a clean object to save to database
+      const dataToSave = {
+        name: formData.name,
+        phone: formData.phone,
+        service: formData.service, // Saved as single string for admin
+        therapist: formData.therapist,
+        date: formData.date,
+        time: formData.time,
+        paymentMethod: formData.paymentMethod,
+        txId: formData.txId,
         status: 'pending',
         createdAt: Date.now()
-      });
+      };
+      
+      await addDoc(collection(db, 'bookings'), dataToSave);
+      
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ ငွေလွှဲမှတ်တမ်းကို စစ်ဆေးပြီး Admin မှ မကြာမီ အတည်ပြုပေးပါမည်။');
-      setStep(1); // Reset to step 1
-      setFormData({ name: '', phone: '', service: '', servicePrice: '', therapist: '', date: '', time: '', paymentMethod: '', txId: '' });
+      setStep(1); 
+      setFormData({ name: '', phone: '', service: '', serviceName: '', serviceDuration: '', servicePrice: '', therapist: '', date: '', time: '', paymentMethod: '', txId: '' });
     } catch (error) {
       console.error("Error adding document: ", error);
       alert("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။");
@@ -140,8 +152,6 @@ function CustomerBooking() {
       </div>
     );
   }
-
-  // --- Step Components ---
 
   const renderStepper = () => {
     const steps = [
@@ -174,7 +184,7 @@ function CustomerBooking() {
   };
 
   const renderStep1 = () => (
-    <div className="animate-fade-in">
+    <div>
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
         <p className="text-sm text-gray-500 mt-2">Select the treatment that suits you best</p>
@@ -186,9 +196,15 @@ function CustomerBooking() {
         {SERVICES.map(s => (
           <div 
             key={s.id}
-            onClick={() => setFormData({ ...formData, service: s.name + ` (${s.duration})`, servicePrice: s.price })}
+            onClick={() => setFormData({ 
+              ...formData, 
+              service: `${s.name} (${s.duration})`, 
+              serviceName: s.name,
+              serviceDuration: s.duration,
+              servicePrice: s.price 
+            })}
             className={`flex justify-between items-center p-4 rounded-lg cursor-pointer border transition-all duration-200 ${
-              formData.service.includes(s.name) && formData.service.includes(s.duration)
+              formData.serviceName === s.name && formData.serviceDuration === s.duration
                 ? 'border-yellow-500 bg-yellow-50 shadow-sm' 
                 : 'border-gray-200 hover:border-yellow-400'
             }`}
@@ -215,13 +231,12 @@ function CustomerBooking() {
   );
 
   const renderStep2 = () => (
-    <div className="animate-fade-in">
+    <div>
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2>
         <p className="text-sm text-gray-500 mt-2">Choose your preferred therapist or let us assign one</p>
       </div>
       
-      {/* Any Available Therapist */}
       <div 
         onClick={() => setFormData({ ...formData, therapist: 'Any Available Therapist' })}
         className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${
@@ -237,7 +252,6 @@ function CustomerBooking() {
         </div>
       </div>
 
-      {/* Grid of Therapists */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {Array.from({ length: 15 }, (_, i) => {
           const therapistName = `Therapist No-${i + 1}`;
@@ -251,7 +265,6 @@ function CustomerBooking() {
               }`}
             >
               <div className="w-16 h-16 rounded-full mb-3 flex items-center justify-center text-white overflow-hidden shadow-inner" style={{ backgroundColor: THEME.primary }}>
-                 {/* Placeholder for Therapist Image */}
                  <User className="w-8 h-8 opacity-80" />
               </div>
               <div className="font-bold text-sm text-gray-800 text-center">{therapistName}</div>
@@ -276,7 +289,7 @@ function CustomerBooking() {
   );
 
   const renderStep3 = () => (
-    <div className="animate-fade-in">
+    <div>
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
         <p className="text-sm text-gray-500 mt-2">Select your preferred appointment date and time</p>
@@ -289,7 +302,7 @@ function CustomerBooking() {
           min={minDateStr} 
           max={maxDateStr} 
           value={formData.date} 
-          onChange={(e) => setFormData({...formData, date: e.target.value, time: ''})} // Reset time when date changes
+          onChange={(e) => setFormData({...formData, date: e.target.value, time: ''})} 
           className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-gray-800 bg-gray-50 mb-6" 
         />
 
@@ -328,7 +341,7 @@ function CustomerBooking() {
   );
 
   const renderStep4 = () => (
-    <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
+    <form onSubmit={handleSubmit} className="pb-10">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2>
         <p className="text-sm text-gray-500 mt-2">Review your booking and complete payment</p>
@@ -340,8 +353,12 @@ function CustomerBooking() {
         <div className="space-y-4">
           <div className="flex justify-between items-start">
             <div>
-              <div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/>{formData.service.split(' (')[0]}</div>
-              <div className="text-sm text-gray-500 ml-6">{formData.service.split('(')[1]?.replace(')', '')}</div>
+              {/* Safe display using separate variables */}
+              <div className="font-bold text-gray-800 flex items-center">
+                <Activity className="w-4 h-4 mr-2 text-yellow-600"/>
+                {formData.serviceName}
+              </div>
+              <div className="text-sm text-gray-500 ml-6">{formData.serviceDuration}</div>
             </div>
             <div className="font-bold text-gray-800">{formData.servicePrice}</div>
           </div>
@@ -375,7 +392,7 @@ function CustomerBooking() {
         </div>
       </div>
 
-      {/* Payment Section - EXACTLY AS REQUESTED BUT STYLED FOR LIGHT THEME */}
+      {/* Payment Section */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
         <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-4">Payment Method (Deposit Required)</h3>
         
@@ -456,7 +473,7 @@ function CustomerBooking() {
 }
 
 // ==========================================
-// 2. ADMIN DASHBOARD (Light Theme styled)
+// 2. ADMIN DASHBOARD
 // ==========================================
 function AdminDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
