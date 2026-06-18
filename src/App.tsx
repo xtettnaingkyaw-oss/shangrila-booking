@@ -1,20 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase'; 
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, Image as ImageIconFeather, MapPin } from 'lucide-react';
 
 // --- Types ---
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
 interface MenuCategory { id: string; title: string; items: MenuItem[]; }
 interface TherapistProfile { id: string; name: string; images: string[]; order: number; }
 interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'approved'; createdAt: number; }
-interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; }
+interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; }
+interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; }
 
 // --- Theme & Icons Map ---
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 const ICON_MAP: Record<string, any> = { massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home };
 
 // --- Default Initial Data ---
+const DEFAULT_BRANDING: AppBranding = {
+  logoUrl: '',
+  address: "33th(B) St, Between 65th & 65th(A) Sts, Chan Aye Tharzan Township, Mandalay",
+  phone1: "09-458884517",
+  phone2: "09-770072190",
+  copyright: "© 2026 The Shangri-La Men's Retreat. All rights reserved."
+};
 const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i }));
 const DEFAULT_CATEGORIES: MenuCategory[] = [
   { id: 'massage', title: 'Massage', items: [
@@ -58,6 +66,31 @@ const formatPrice = (price: any) => {
   return String(price); 
 };
 
+// Base64 Image Compressor Helper
+const compressImage = async (file: File, width: number, height: number): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let sW = img.width; let sH = img.height; let sX = 0; let sY = 0;
+        const targetRatio = width / height; const imageRatio = sW / sH;
+        if (imageRatio > targetRatio) { const nW = sH * targetRatio; sX = (sW - nW) / 2; sW = nW; } 
+        else { const nH = sW / targetRatio; sY = (sH - nH) / 2; sH = nH; }
+        canvas.width = width; canvas.height = height; 
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = (e) => reject(e);
+    };
+    reader.onerror = (e) => reject(e);
+  });
+};
+
 export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [appData, setAppData] = useState<AppData | null>(null);
@@ -71,10 +104,14 @@ export default function App() {
         const docRef = doc(db, 'settings', 'appData');
         const snap = await getDoc(docRef);
         let loadedCategories = DEFAULT_CATEGORIES;
-        if (snap.exists() && snap.data().categories) {
-          loadedCategories = snap.data().categories;
+        let loadedBranding = DEFAULT_BRANDING;
+
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.categories) loadedCategories = data.categories;
+          if (data.branding) loadedBranding = { ...DEFAULT_BRANDING, ...data.branding };
         } else {
-          await setDoc(docRef, { categories: DEFAULT_CATEGORIES }, { merge: true });
+          await setDoc(docRef, { categories: DEFAULT_CATEGORIES, branding: DEFAULT_BRANDING }, { merge: true });
         }
 
         const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc'));
@@ -84,18 +121,12 @@ export default function App() {
         if (!tSnap.empty) {
           tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile));
         } else {
-          if (snap.exists() && snap.data().therapists && typeof snap.data().therapists[0] === 'string') {
-            loadedTherapists = snap.data().therapists.map((t: string, idx: number) => ({ id: `t_${idx}_${Date.now()}`, name: t, images: [], order: idx }));
-            const batchPromises = loadedTherapists.map(t => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
-            await Promise.all(batchPromises);
-          } else {
-            const batchPromises = DEFAULT_THERAPISTS.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
-            await Promise.all(batchPromises);
-            loadedTherapists = DEFAULT_THERAPISTS;
-          }
+          const batchPromises = DEFAULT_THERAPISTS.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
+          await Promise.all(batchPromises);
+          loadedTherapists = DEFAULT_THERAPISTS;
         }
 
-        setAppData({ categories: loadedCategories, therapists: loadedTherapists });
+        setAppData({ categories: loadedCategories, therapists: loadedTherapists, branding: loadedBranding });
       } catch (err) {
         console.error("Error loading settings:", err);
       }
@@ -108,14 +139,33 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-10">
-      <header className="bg-white shadow-sm py-6 px-4 text-center border-b border-gray-200">
-        <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>The Shangri-La</h1>
-        <p className="text-xs mt-1 font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation) </p>
+    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
+      {/* 
+        Header Section 
+        အခုဆိုရင် Logo နဲ့ စာသားကို ဘေးချင်းယှဉ် (flex-row) ပြထားပါတယ်
+      */}
+      <header className="bg-white shadow-sm py-6 px-4 text-center border-b border-gray-200 flex flex-col items-center justify-center">
+        <div className="flex items-center justify-center mb-1">
+          {appData.branding.logoUrl && (
+            <img src={appData.branding.logoUrl} alt="Logo" className="h-10 w-10 object-contain mr-3" />
+          )}
+          <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>The Shangri-La</h1>
+        </div>
+        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation) </p>
       </header>
-      <main className="max-w-4xl mx-auto p-4 py-8">
+      
+      <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-8">
         {isAdminMode ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> : <CustomerBooking appData={appData} />}
       </main>
+
+      {!isAdminMode && (
+        <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500">
+          <h3 className="font-bold text-base mb-2" style={{ color: THEME.primary }}>The Shangri-La Men's Retreat</h3>
+          <p className="mb-2 flex items-center justify-center"><MapPin className="w-4 h-4 mr-1"/> {appData.branding.address}</p>
+          <p className="mb-4 flex items-center justify-center"><Phone className="w-4 h-4 mr-1"/> {appData.branding.phone1} &nbsp;|&nbsp; {appData.branding.phone2}</p>
+          <p className="text-xs text-gray-400">{appData.branding.copyright}</p>
+        </footer>
+      )}
     </div>
   );
 }
@@ -225,41 +275,28 @@ function CustomerBooking({ appData }: { appData: AppData }) {
       {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
-          
-          {/* Full Screen Photo Gallery Modal */}
           {viewGallery && (
             <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-fade-in">
               <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-50 text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full">
                 <X className="w-8 h-8" />
               </button>
               
+              {/* Full Screen size wrapper */}
               <div className="relative w-full h-[85vh] flex items-center justify-center">
-                <img 
-                  src={viewGallery.images[viewGallery.index]} 
-                  alt="Therapist Detail" 
-                  className="w-full h-full object-contain rounded-md drop-shadow-2xl" 
-                />
+                <img src={viewGallery.images[viewGallery.index]} alt="Therapist Detail" className="max-w-full max-h-full object-contain rounded-md drop-shadow-2xl" />
                 
                 {viewGallery.images.length > 1 && (
                   <>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} 
-                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition backdrop-blur-md"
-                    >
+                    <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition backdrop-blur-md">
                       <ChevronLeft className="w-8 h-8" />
                     </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} 
-                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition backdrop-blur-md"
-                    >
+                    <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition backdrop-blur-md">
                       <ChevronRight className="w-8 h-8" />
                     </button>
                   </>
                 )}
               </div>
-              <div className="text-white mt-4 font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full">
-                {viewGallery.index + 1} / {viewGallery.images.length}
-              </div>
+              <div className="text-white mt-4 font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full">{viewGallery.index + 1} / {viewGallery.images.length}</div>
             </div>
           )}
 
@@ -274,29 +311,18 @@ function CustomerBooking({ appData }: { appData: AppData }) {
               const isSelected = formData.therapist?.id === therapist.id;
               const hasImage = therapist.images && therapist.images.length > 0;
               return (
-                <div 
-                  key={therapist.id} 
-                  onClick={() => setFormData({...formData, therapist: therapist})} 
-                  className={`flex flex-col items-center p-3 rounded-xl cursor-pointer transition-all border-2 ${isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md'}`}
-                >
+                <div key={therapist.id} onClick={() => setFormData({...formData, therapist: therapist})} className={`flex flex-col items-center p-3 rounded-xl cursor-pointer transition-all border-2 ${isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md'}`}>
                   <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'}`}>
                     {hasImage ? (
                       <>
                         <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
                         {therapist.images.length > 1 && (
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} 
-                            className="absolute bottom-2 inset-x-2 bg-[#123524]/80 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1.5 rounded flex items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition"
-                          >
+                          <button onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/80 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1.5 rounded flex items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition">
                             <ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos
                           </button>
                         )}
                       </>
-                    ) : (
-                      <div className="flex flex-col items-center opacity-40">
-                        <User className="w-12 h-12 text-[#123524]" />
-                      </div>
-                    )}
+                    ) : (<div className="flex flex-col items-center opacity-40"><User className="w-12 h-12 text-[#123524]" /></div>)}
                   </div>
                   <div className="font-bold text-sm text-gray-800 text-center w-full truncate px-1">{therapist.name}</div>
                   <div className="text-[10px] text-gray-400 mt-1 text-center">Professional Therapist</div>
@@ -308,13 +334,9 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
-      {/* STEP 3 & 4 */}
       {step === 3 && (
         <div className="animate-fade-in">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
-            <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p>
-          </div>
+          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Select Date</label><input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value, time: ''})} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800 bg-gray-50 mb-6" /><label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Available Times</label><div className="grid grid-cols-3 sm:grid-cols-4 gap-3">{TIME_SLOTS.map(t => (<button key={t} type="button" disabled={!formData.date} onClick={() => setFormData({...formData, time: t})} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-yellow-500 bg-yellow-50 text-yellow-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-yellow-400 disabled:opacity-40 disabled:hover:border-gray-200 disabled:cursor-not-allowed'}`}>{t}</button>))}</div></div>
           <div className="mt-8 flex justify-between"><button onClick={() => setStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || !formData.time} onClick={() => setStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
@@ -322,10 +344,7 @@ function CustomerBooking({ appData }: { appData: AppData }) {
 
       {step === 4 && (
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2>
-            <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရွေးချယ်ခဲ့သော ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး စရံငွေကြိုတင်ပေးချေကာ ဘိုကင်ကို အတည်ပြုပေးပါ)</p>
-          </div>
+          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရွေးချယ်ခဲ့သော ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး စရံငွေကြိုတင်ပေးချေကာ ဘိုကင်ကို အတည်ပြုပေးပါ)</p></div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3><div className="space-y-4"><div className="flex justify-between items-start"><div><div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/>{formData.selectedItem?.name}</div><div className="text-sm text-gray-500 ml-6">{formData.selectedItem?.duration}</div></div><div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price || 0)}</div></div>{formData.isVvipUpgrade && formData.selectedItem?.vvipPrice && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div><div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice(formData.selectedItem.vvipPrice - formData.selectedItem.price)}</div></div>)}{formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}<div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div><div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.date} at {formData.time}</div></div><div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div></div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Your Information</h3><div className="space-y-4"><div><label className="block mb-1 text-sm font-semibold text-gray-700">Full Name</label><input required type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g. Aung Aung" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800" /></div><div><label className="block mb-1 text-sm font-semibold text-gray-700">Phone Number</label><input required type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="e.g. 09-xxxxxxxxx" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800" /></div></div></div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Deposit Payment</h3><div className="mb-4"><label className="block mb-2 text-sm font-semibold text-gray-700">ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label><select required name="paymentMethod" value={formData.paymentMethod} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800 font-bold"><option value="">-- ရွေးချယ်ပါ --</option><option value="KBZ PAY">KBZ PAY</option><option value="Wave PAY">Wave PAY</option><option value="AYA PAY">AYA PAY</option><option value="UAB PAY">UAB PAY</option></select></div>{formData.paymentMethod && (<div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in"><p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် အတွက် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက်တိတိကို ({formatPrice(calculateTotal()/2)})</strong> စရံငွေ အဖြစ် အောက်ပါ {formData.paymentMethod} အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။</p><div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100"><div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">09458888510</strong><button type="button" onClick={() => handleCopy('09458888510')} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> {copiedText === '09458888510' ? 'Copied!' : 'Copy'}</button></div><div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">Htet Naing Kyaw</strong><button type="button" onClick={() => handleCopy('Htet Naing Kyaw')} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> {copiedText === 'Htet Naing Kyaw' ? 'Copied!' : 'Copy'}</button></div></div></div>)}<div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>စရံငွေပေးချေမှု ပြုလုပ်ပြီးပါက ငွေလွှဲပြေစာတွင်ပါဝင်သော ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ကို အောက်မှာရိုက်ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div></div>
@@ -384,6 +403,8 @@ function AdminBookingsList() {
 function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(JSON.parse(JSON.stringify(appData.therapists)));
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories)));
+  const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || DEFAULT_BRANDING)));
+  
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
@@ -414,6 +435,28 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setSavingCategory(null);
   };
 
+  const handleSaveBranding = async () => {
+    if(!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    setSavingCategory('branding');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true });
+      onSettingsUpdated({ ...appData, branding: localBranding });
+      alert('Logo နှင့် Footer ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
+    setSavingCategory(null);
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage('logo');
+    try {
+      const base64 = await compressImage(file, 600, 400); 
+      setLocalBranding({ ...localBranding, logoUrl: base64 });
+    } catch (err) { alert("Logo တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
+    setUploadingImage(null);
+  };
+
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length }]);
   const updateTherapistName = (tIdx: number, name: string) => { const updated = [...localTherapists]; updated[tIdx].name = name; setLocalTherapists(updated); };
   const removeTherapist = (tIdx: number) => {
@@ -426,37 +469,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const handleImageUpload = async (tIdx: number, files: FileList | null) => {
     if (!files || files.length === 0) return;
     const therapist = localTherapists[tIdx];
-    
     if (therapist.images.length + files.length > 5) { alert('အများဆုံး ၅ ပုံသာ ထည့်ခွင့်ရှိပါတယ်။'); return; }
 
     setUploadingImage(therapist.id);
     const newUrls: string[] = [];
     try {
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        
-        const compressedBase64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.readAsDataURL(file);
-          reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target?.result as string;
-            img.onload = () => {
-              const canvas = document.createElement('canvas');
-              let sW = img.width; let sH = img.height; let sX = 0; let sY = 0;
-              const targetRatio = 3 / 4; const imageRatio = sW / sH;
-              if (imageRatio > targetRatio) { const nW = sH * targetRatio; sX = (sW - nW) / 2; sW = nW; } 
-              else { const nH = sW / targetRatio; sY = (sH - nH) / 2; sH = nH; }
-              canvas.width = 450; canvas.height = 600; 
-              const ctx = canvas.getContext('2d');
-              ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, 450, 600);
-              resolve(canvas.toDataURL('image/jpeg', 0.7));
-            };
-            img.onerror = (e) => reject(e);
-          };
-          reader.onerror = (e) => reject(e);
-        });
-        newUrls.push(compressedBase64);
+        const base64 = await compressImage(files[i], 450, 600); // 3:4 Ratio
+        newUrls.push(base64);
       }
       const updated = [...localTherapists];
       updated[tIdx].images = [...updated[tIdx].images, ...newUrls];
@@ -472,6 +492,60 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
   return (
     <div className="space-y-6">
+      
+      {/* Branding & Footer Editor */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+          <div><h3 className="text-xl font-bold text-gray-800 flex items-center"><ImageIconFeather className="w-5 h-5 mr-2 text-[#D4AF37]"/> App Branding & Footer</h3><p className="text-xs text-gray-500 mt-1">Logo ပုံနှင့် အောက်ခြေလိပ်စာများ ပြင်ဆင်ရန်</p></div>
+          <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90">
+            <Save className="w-4 h-4 mr-2"/> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
+            <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image</label>
+            <div className="w-40 h-40 bg-white border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center relative overflow-hidden mb-4 shadow-sm">
+              {localBranding.logoUrl ? (
+                <>
+                  <img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-contain p-2" />
+                  <button onClick={() => setLocalBranding({...localBranding, logoUrl: ''})} className="absolute top-2 right-2 bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200"><X className="w-4 h-4"/></button>
+                </>
+              ) : (
+                <div className="flex flex-col items-center text-gray-400">
+                  {uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : <ImageIconFeather className="w-8 h-8 mb-2 opacity-50"/>}
+                </div>
+              )}
+            </div>
+            <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">
+              {localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}
+              <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} />
+            </label>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Address</label>
+              <textarea value={localBranding.address} onChange={e => setLocalBranding({...localBranding, address: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label>
+                <input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({...localBranding, phone1: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label>
+                <input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({...localBranding, phone2: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label>
+              <input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({...localBranding, copyright: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
           <div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Therapists</h3><p className="text-xs text-gray-500 mt-1">ဝန်ထမ်းအမည်များနှင့် အလှပုံများ ထည့်သွင်းပါ။</p></div>
