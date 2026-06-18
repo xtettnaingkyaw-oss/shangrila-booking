@@ -1,45 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc } from 'firebase/firestore';
-import { db } from './firebase'; 
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, Image as ImageIconFeather, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, XCircle } from 'lucide-react';
+import { db } from './firebase';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus } from 'lucide-react';
 
 // --- Types ---
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
 interface MenuCategory { id: string; title: string; items: MenuItem[]; }
 interface TherapistProfile { id: string; name: string; images: string[]; order: number; }
-interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'payment_checking' | 'approved' | 'cancelled'; cancelReason?: string; createdAt: number; }
+interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'payment_checking' | 'approved' | 'cancelled'; cancelReason?: string; createdAt: number; specialRequest?: string; }
 interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; name: string; }
 interface PaymentMethod { id: string; name: string; accountNumber: string; accountName: string; logoUrl: string; }
 interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; }
 interface UserProfile { phone: string; name: string; password?: string; createdAt: number; }
 
-// --- Theme & Icons Map ---
+// --- Theme & Setup ---
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
-const ICON_MAP: Record<string, any> = { massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home };
 
-// --- Default Initial Data ---
-const DEFAULT_BRANDING: AppBranding = { 
-  logoUrl: '', 
-  name: "The Shangri-La",
-  address: "33th(B) St, Between 65th & 65th(A) Sts, Chan Aye Tharzan Township, Mandalay", 
-  phone1: "09-458884517", 
-  phone2: "09-770072190", 
-  copyright: "© 2026 The Shangri-La Men's Retreat. All rights reserved." 
+const DEFAULT_BRANDING: AppBranding = {
+  logoUrl: '', name: "The Shangri-La", address: "33th(B) St, Between 65th & 65th(A) Sts, Mandalay",
+  phone1: "09-458884517", phone2: "09-770072190", copyright: "© 2026 The Shangri-La Men's Retreat."
 };
-const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [ 
-  { id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' }, 
-  { id: 'p2', name: 'Wave PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' } 
-];
+const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [{ id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' }];
 const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i }));
 const DEFAULT_CATEGORIES: MenuCategory[] = [
-  { id: 'massage', title: 'Massage', items: [ { id: 'm1', name: 'Traditional Massage', price: 25000, duration: '60 Mins' } ]}
+  { id: 'massage', title: 'Massage', items: [{ id: 'm1', name: 'Traditional Massage', price: 25000, duration: '60 Mins' }] },
+  { id: 'hotel', title: 'Hotel & Home Services', items: [{ id: 'h1', name: 'Part Time Outcall Service', price: 70000, duration: '100 Mins' }] }
 ];
-const TIME_SLOTS = ["9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM"];
 
-const formatPrice = (price: any) => { 
+const ALL_TIME_SLOTS = ["6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM"];
+
+const formatPrice = (price: any) => {
   const num = Number(price);
-  if (isNaN(num)) return '0 Ks'; 
-  return num.toLocaleString() + ' Ks'; 
+  if (isNaN(num)) return '0 Ks';
+  return num.toLocaleString() + ' Ks';
 };
 
 const compressImage = async (file: File, width: number, height: number): Promise<string> => {
@@ -57,8 +50,28 @@ const compressImage = async (file: File, width: number, height: number): Promise
   });
 };
 
-// --- Error Boundary (White Screen အစား Error ပြပေးမည့်စနစ်) ---
-class ErrorBoundary extends React.Component<{children: any}, {hasError: boolean, error: any}> {
+// --- Countdown Timer Hook ---
+function useCountdown(initialMinutes: number, onExpire: () => void) {
+  const [timeLeft, setTimeLeft] = useState(initialMinutes * 60);
+
+  useEffect(() => {
+    if (timeLeft <= 0) {
+      onExpire();
+      return;
+    }
+    const intervalId = setInterval(() => {
+      setTimeLeft(t => t - 1);
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, [timeLeft, onExpire]);
+
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+// --- Error Boundary ---
+class ErrorBoundary extends React.Component<{ children: any }, { hasError: boolean, error: any }> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
   render() {
@@ -77,7 +90,7 @@ class ErrorBoundary extends React.Component<{children: any}, {hasError: boolean,
   }
 }
 
-// --- Main App Component ---
+// --- Main App Setup ---
 function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [appData, setAppData] = useState<AppData | null>(null);
@@ -89,7 +102,7 @@ function App() {
       const existingIcons = document.querySelectorAll("link[rel*='icon']"); existingIcons.forEach(icon => document.head.removeChild(icon));
       const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
     };
-    if(appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); } 
+    if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); }
     else { updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg"); }
   }, [appData?.branding?.logoUrl]);
 
@@ -108,10 +121,11 @@ function App() {
         const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
         const finalPaymentMethods = Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS;
 
-        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); 
-        const tSnap = await getDocs(tQuery); 
+        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc'));
+        const tSnap = await getDocs(tQuery);
         let loadedTherapists: TherapistProfile[] = [];
-        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); } 
+
+        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); }
         else { loadedTherapists = DEFAULT_THERAPISTS; }
 
         setAppData({ categories: finalCategories, therapists: loadedTherapists, branding: finalBranding, paymentMethods: finalPaymentMethods });
@@ -124,7 +138,7 @@ function App() {
   }, []);
 
   if (!appData) {
-      return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold">Loading The Shangri-La...</div>;
+    return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold">Loading The Shangri-La...</div>;
   }
 
   return (
@@ -141,7 +155,7 @@ function App() {
         </div>
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
       </header>
-      
+
       <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-6">
         {isAdminMode ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> : <CustomerApp appData={appData} />}
       </main>
@@ -149,8 +163,8 @@ function App() {
       {!isAdminMode && (
         <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500">
           <h3 className="font-bold text-base mb-2" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'} Men's Retreat</h3>
-          <p className="mb-2 flex items-center justify-center text-xs sm:text-sm"><MapPin className="w-4 h-4 mr-1"/> {appData.branding.address}</p>
-          <p className="mb-4 flex items-center justify-center text-xs sm:text-sm"><Phone className="w-4 h-4 mr-1"/> {appData.branding.phone1} &nbsp;|&nbsp; {appData.branding.phone2}</p>
+          <p className="mb-2 flex items-center justify-center text-xs sm:text-sm"><MapPin className="w-4 h-4 mr-1" /> {appData.branding.address}</p>
+          <p className="mb-4 flex items-center justify-center text-xs sm:text-sm"><Phone className="w-4 h-4 mr-1" /> {appData.branding.phone1} &nbsp;|&nbsp; {appData.branding.phone2}</p>
           <p className="text-xs text-gray-400">{appData.branding.copyright}</p>
         </footer>
       )}
@@ -158,7 +172,6 @@ function App() {
   );
 }
 
-// Ensure the whole app is wrapped in ErrorBoundary
 export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; }
 
 // ==========================================
@@ -176,17 +189,17 @@ function CustomerApp({ appData }: { appData: AppData }) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* 7. Customer Tabs Navigation */}
+      {/* Customer Tabs Navigation */}
       <div className="flex justify-center items-center space-x-2 md:space-x-4 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
-            <button 
+            <button
               key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center py-3 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`}
               style={{ color: isActive ? THEME.primary : undefined }}
             >
-              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'}`} /> 
+              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
               {tab.label}
             </button>
           )
@@ -203,42 +216,110 @@ function CustomerApp({ appData }: { appData: AppData }) {
 // 1.1 Booking Wizard
 function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void }) {
   const [step, setStep] = useState(1);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null); 
-  const [formData, setFormData] = useState({ name: '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '' });
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [formData, setFormData] = useState({ name: '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
+  
+  const stepContainerRef = useRef<HTMLDivElement>(null);
 
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  const minDateStr = new Date().toISOString().split('T')[0];
-  const maxD = new Date(); maxD.setDate(maxD.getDate() + 3); const maxDateStr = maxD.toISOString().split('T')[0];
+  // Time Validation Logic
+  const getAvailableTimeSlots = () => {
+    if (!formData.selectedItem || !formData.date) return [];
 
-  const calculateTotal = () => { 
-    if (!formData.selectedItem) return 0; 
+    const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
+    const serviceName = formData.selectedItem.name.toLowerCase();
+
+    // Base slots filtering by time constraints
+    let allowedSlots = ALL_TIME_SLOTS;
+
+    if (isHotelService) {
+      if (serviceName.includes("outcall")) {
+         // Outcall: 7 AM - 7 PM
+         allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
+      } else if (serviceName.includes("half day")) {
+         // Half day: 6 AM - 12 PM or 12 PM - 6 PM
+         allowedSlots = ALL_TIME_SLOTS.filter(time => {
+            const index = ALL_TIME_SLOTS.indexOf(time);
+            return (index >= ALL_TIME_SLOTS.indexOf("6:00 AM") && index <= ALL_TIME_SLOTS.indexOf("12:00 PM")) ||
+                   (index >= ALL_TIME_SLOTS.indexOf("12:00 PM") && index <= ALL_TIME_SLOTS.indexOf("6:00 PM"));
+         });
+      } else if (serviceName.includes("whole day")) {
+         // Whole day: 7 AM - 7 PM
+         allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
+      } else if (serviceName.includes("night")) {
+         // Night: 7 PM - 9 PM
+         allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 PM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+      }
+    } else {
+       // Regular services: 9 AM - 9 PM
+       allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+    }
+
+    return allowedSlots;
+  };
+
+  const availableTimeSlots = getAvailableTimeSlots();
+
+  // Date Constraints: Max 3 days in advance
+  const getMinMaxDates = () => {
+    // Current time is Friday, June 19, 2026 at 12:39:13 AM +0630.
+    const today = new Date('2026-06-19T00:39:13+06:30'); 
+    const minDateStr = today.toISOString().split('T')[0];
+    
+    const maxD = new Date(today); 
+    maxD.setDate(maxD.getDate() + 3); 
+    const maxDateStr = maxD.toISOString().split('T')[0];
+
+    return { minDateStr, maxDateStr };
+  }
+
+  const { minDateStr, maxDateStr } = getMinMaxDates();
+
+  const calculateTotal = () => {
+    if (!formData.selectedItem) return 0;
     const basePrice = Number(formData.selectedItem.price) || 0;
     const vvipPrice = Number(formData.selectedItem.vvipPrice) || 0;
-    return formData.isVvipUpgrade && vvipPrice > 0 ? vvipPrice : basePrice; 
+    return formData.isVvipUpgrade && vvipPrice > 0 ? vvipPrice : basePrice;
   };
-  
-  const handleCopy = (text: string) => { 
-    if(navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); alert('Copied!'); }
+
+  const handleCopy = (text: string) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); alert('Copied!'); }
     else { alert("Copying manually required: " + text); }
   };
 
-  // *** CRITICAL FIX: handleChange Error ကို ဖြေရှင်းပေးထားပါသည် ***
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
+
+  const handleNextStep = (nextStep: number) => {
+    setStep(nextStep);
+    // Scroll to top of the stepper container smoothly
+    if (stepContainerRef.current) {
+        stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleCountdownExpire = () => {
+     alert("ငွေပေးချေရန် သတ်မှတ်ချိန် (၁၅) မိနစ် ကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ ဘိုကင် အသစ်ပြန်လည်တင်ပေးပါ။");
+     setStep(1);
+     setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+  };
+
+  const formattedCountdown = useCountdown(15, handleCountdownExpire);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.txId.length !== 6) { alert("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
     setLoading(true);
     try {
-      // 8. Auto Create/Update Profile
       if (formData.phone && formData.phone.trim() !== '') {
         const userRef = doc(db, 'users', formData.phone);
         const userSnap = await getDoc(userRef);
@@ -249,15 +330,15 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         }
       }
 
-      // Save Booking
-      const dataToSave = { 
-        name: formData.name, phone: formData.phone, 
-        service: `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`, 
-        therapist: formData.therapist?.name || 'Any Available Therapist', 
-        date: formData.date, time: formData.time, paymentMethod: formData.paymentMethod, txId: formData.txId, totalPrice: calculateTotal(), status: 'pending', createdAt: Date.now() 
+      const dataToSave = {
+        name: formData.name, phone: formData.phone,
+        service: `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`,
+        therapist: formData.therapist?.name || 'Any Available Therapist',
+        date: formData.date, time: formData.time, paymentMethod: formData.paymentMethod, txId: formData.txId, totalPrice: calculateTotal(), status: 'pending', createdAt: Date.now(),
+        specialRequest: formData.specialRequest
       };
       await addDoc(collection(db, 'bookings'), dataToSave);
-      
+
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။');
     } catch (error) { console.error(error); alert("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
     setLoading(false);
@@ -267,7 +348,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
     return (
       <div className="bg-white p-10 rounded-2xl shadow-lg text-center border border-gray-100 max-w-lg mx-auto mt-10 animate-fade-in">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <CheckCircle className="w-10 h-10 text-green-600" />
+          <span className="text-4xl">✅</span>
         </div>
         <h2 className="text-2xl font-bold mb-3" style={{ color: THEME.primary }}>Booking Confirmed!</h2>
         <p className="text-gray-600 mb-8 leading-relaxed font-semibold">{successMsg}</p>
@@ -278,18 +359,17 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
     );
   }
 
-  // 1. Stepper Colors Customization
   const renderStepper = () => {
-    const steps = [ { num: 1, label: 'SERVICE', icon: Sparkles }, { num: 2, label: 'THERAPIST', icon: User }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard } ];
+    const steps = [{ num: 1, label: 'SERVICE', icon: '✨' }, { num: 2, label: 'THERAPIST', icon: '👤' }, { num: 3, label: 'DATE & TIME', icon: '📅' }, { num: 4, label: 'CONFIRM', icon: '💳' }];
     return (
-      <div className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto">
+      <div ref={stepContainerRef} className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
         {steps.map((s, idx) => {
           const isCompleted = step > s.num; const isActive = step === s.num;
           return (
             <React.Fragment key={s.num}>
               <div className="flex flex-col items-center relative z-10">
                 <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all duration-300 border-2 ${isCompleted ? 'bg-[#D4AF37] border-[#D4AF37] text-white' : isActive ? 'bg-[#123524] border-[#123524] text-white' : 'bg-white border-gray-200 text-gray-400'}`}>
-                  {isCompleted ? <Check className="w-5 h-5" /> : <s.icon className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  {isCompleted ? <Check className="w-5 h-5" /> : <span className="text-lg">{s.icon}</span>}
                 </div>
                 <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider font-bold mt-2 absolute -bottom-5 w-24 text-center ${isActive ? 'text-[#123524]' : 'text-gray-400'}`}>{s.label}</span>
               </div>
@@ -304,7 +384,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   return (
     <div>
       {renderStepper()}
-      
+
       {/* STEP 1: SERVICE */}
       {step === 1 && (
         <div className="animate-fade-in">
@@ -313,36 +393,35 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p>
           </div>
           <div className="space-y-4">{appData.categories.map(category => {
-            const CategoryIcon = ICON_MAP[category.id] || Activity;
             return (
-            <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
-                <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>
-                {activeCategory === category.id ? <ChevronUp className="w-6 h-6" style={{ color: THEME.primary }} /> : <ChevronDown className="w-6 h-6" style={{ color: THEME.primary }} />}
+              <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
+                  <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><span className="mr-3">💎</span> {category.title}</div>
+                  {activeCategory === category.id ? <ChevronUp className="w-6 h-6" style={{ color: THEME.primary }} /> : <ChevronDown className="w-6 h-6" style={{ color: THEME.primary }} />}
+                </div>
+                {activeCategory === category.id && (
+                  <div className="p-2 border-t border-gray-100 bg-gray-50/50">{category.items.map(s => (
+                    <div key={s.id} onClick={() => setFormData({ ...formData, selectedItem: s, isVvipUpgrade: false })} className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${formData.selectedItem?.id === s.id ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
+                      <div><div className="font-bold text-gray-800 text-sm">{s.name}</div>{s.duration && <div className="text-xs text-gray-500 mt-1">{s.duration}</div>}</div>
+                      <div className="font-bold text-sm" style={{ color: THEME.primary }}>{formatPrice(s.price)}</div>
+                    </div>
+                  ))}</div>
+                )}
               </div>
-              {activeCategory === category.id && (
-                <div className="p-2 border-t border-gray-100 bg-gray-50/50">{category.items.map(s => (
-                  <div key={s.id} onClick={() => setFormData({...formData, selectedItem: s, isVvipUpgrade: false})} className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${formData.selectedItem?.id === s.id ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
-                    <div><div className="font-bold text-gray-800 text-sm">{s.name}</div>{s.duration && <div className="text-xs text-gray-500 mt-1">{s.duration}</div>}</div>
-                    <div className="font-bold text-sm" style={{ color: THEME.primary }}>{formatPrice(s.price)}</div>
-                  </div>
-                ))}</div>
-              )}
-            </div>
-          )})}</div>
+            )
+          })}</div>
           <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
-            <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available'))}</div></div></div>
-            {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <button type="button" disabled={!formData.selectedItem?.vvipPrice} onClick={() => setFormData({...formData, isVvipUpgrade: !formData.isVvipUpgrade})} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'} ${!formData.selectedItem?.vvipPrice ? 'opacity-50' : ''}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'}`} /></button>}
+            <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><span className="text-lg">👑</span></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available'))}</div></div></div>
+            {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <button type="button" disabled={!formData.selectedItem?.vvipPrice} onClick={() => setFormData({ ...formData, isVvipUpgrade: !formData.isVvipUpgrade })} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'} ${!formData.selectedItem?.vvipPrice ? 'opacity-50' : ''}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'}`} /></button>}
           </div>
-          <div className="mt-8 flex justify-end"><button disabled={!formData.selectedItem} onClick={() => setStep(2)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" /></button></div>
+          <div className="mt-8 flex justify-end"><button disabled={!formData.selectedItem} onClick={() => handleNextStep(2)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" /></button></div>
         </div>
       )}
 
       {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
-          
-          {/* 4. Photo Gallery Full Screen */}
+
           {viewGallery && (
             <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-fade-in">
               <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
@@ -360,13 +439,13 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
           )}
 
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p></div>
-          <div onClick={() => setFormData({...formData, therapist: null})} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
-          
+          <div onClick={() => setFormData({ ...formData, therapist: null })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
+
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {appData.therapists.map((therapist) => { 
+            {appData.therapists.map((therapist) => {
               const isSelected = formData.therapist?.id === therapist.id; const hasImage = therapist.images && therapist.images.length > 0;
               return (
-                <div key={therapist.id} onClick={() => setFormData({...formData, therapist: therapist})} className={`flex flex-col items-center p-3 rounded-xl cursor-pointer transition-all border-2 ${isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md'}`}>
+                <div key={therapist.id} onClick={() => setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl cursor-pointer transition-all border-2 ${isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md'}`}>
                   <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'}`}>
                     {hasImage ? (
                       <>
@@ -378,10 +457,10 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
                   <div className="font-bold text-sm text-gray-800 text-center w-full truncate px-1">{therapist.name}</div>
                   <div className="text-[10px] text-gray-400 mt-1 text-center">Professional Therapist</div>
                 </div>
-              ) 
+              )
             })}
           </div>
-          <div className="mt-8 flex justify-between"><button onClick={() => setStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={formData.therapist === undefined} onClick={() => setStep(3)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
+          <div className="mt-8 flex justify-between"><button onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={formData.therapist === undefined} onClick={() => handleNextStep(3)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
 
@@ -389,19 +468,19 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
       {step === 3 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
-             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
-             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p>
+            <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
+            <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p>
           </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-             {/* 2. Theme Text Customization */}
-             <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Select Date</label>
-             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value, time: ''})} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
-             <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Available Times</label>
-             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-               {TIME_SLOTS.map(t => (<button key={t} type="button" disabled={!formData.date} onClick={() => setFormData({...formData, time: t})} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37] disabled:opacity-40 disabled:hover:border-gray-200 disabled:cursor-not-allowed'}`}>{t}</button>))}
-             </div>
+            <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
+            <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
+            <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              {availableTimeSlots.map(t => (<button key={t} type="button" disabled={!formData.date} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37] disabled:opacity-40 disabled:hover:border-gray-200 disabled:cursor-not-allowed'}`}>{t}</button>))}
+            </div>
+            {availableTimeSlots.length === 0 && formData.date && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
           </div>
-          <div className="mt-8 flex justify-between"><button onClick={() => setStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || !formData.time} onClick={() => setStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
+          <div className="mt-8 flex justify-between"><button onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || !formData.time} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
 
@@ -410,44 +489,53 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး အတည်ပြုပေးပါ)</p></div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            {/* 2. Theme Text Customization */}
             <h3 className="text-sm font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3>
             <div className="space-y-4">
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.selectedItem?.name || 'Unknown Service'}</div>
-                  {formData.selectedItem?.duration && <div className="text-sm text-gray-500 ml-6">{formData.selectedItem.duration}</div>}
+                  <div className="font-bold text-gray-800 flex items-center">✨ {formData.selectedItem?.name || 'Unknown Service'}</div>
+                  {formData.selectedItem?.duration && <div className="text-sm text-gray-500 ml-5">{formData.selectedItem.duration}</div>}
                 </div>
                 <div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price)}</div>
               </div>
               {formData.isVvipUpgrade && (
                 <div className="flex justify-between items-start pt-2 border-t border-gray-50">
-                  <div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div>
+                  <div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}>👑 VVIP Room Extra Fee</div>
                   <div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice((Number(formData.selectedItem?.vvipPrice) || 0) - (Number(formData.selectedItem?.price) || 0))}</div>
                 </div>
               )}
-              {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
-              <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div>
-              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/> {formData.date} at {formData.time}</div>
+              {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm">👑 VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
+              <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div>
+              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
             </div>
             <div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div>
           </div>
-          
+
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            {/* 2. Theme Text Customization */}
+             <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Special Request (Optional)</h3>
+             <textarea 
+               name="specialRequest" 
+               value={formData.specialRequest} 
+               onChange={handleChange} 
+               placeholder="Write any special requests or notes here..." 
+               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" 
+               rows={3}
+             />
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
             <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Your Information</h3>
             <div className="space-y-4">
               <div><label className="block mb-1 text-sm font-semibold text-gray-700">Full Name</label><input required type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g. Aung Aung" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" /></div>
               <div><label className="block mb-1 text-sm font-semibold text-gray-700">Phone Number (Login ID အဖြစ်အသုံးပြုရန်)</label><input required type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="e.g. 09-xxxxxxxxx" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" /></div>
             </div>
           </div>
-          
+
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <h3 className="text-sm font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Deposit Payment</h3>
+            <h3 className="text-sm font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Deposit Payment</h3>
             <div className="relative mb-4">
               <label className="block mb-2 text-sm font-semibold text-gray-700" style={{ color: THEME.primary }}>ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
-              
-              {/* 6. Payment Methods Custom Dropdown */}
+
               <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm">
                 {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
                 <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
@@ -460,12 +548,27 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
               )}
             </div>
             {selectedPaymentConfig && (
-              <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in"><p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက် ({formatPrice(calculateTotal()/2)})</strong> စရံငွေအား {selectedPaymentConfig.name} သို့ လွှဲပေးပါ။</p><div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100"><div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountNumber}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountNumber)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div><div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountName}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountName)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div></div></div>
+              <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in">
+                <p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက် ({formatPrice(calculateTotal() / 2)})</strong> စရံငွေအား {selectedPaymentConfig.name} သို့ လွှဲပေးပါ။</p>
+                <div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100">
+                  <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountNumber}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountNumber)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition">📋 Copy</button></div>
+                  <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountName}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountName)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition">📋 Copy</button></div>
+                </div>
+              </div>
             )}
+            
+            {/* Countdown Timer */}
+            {selectedPaymentConfig && (
+              <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100">
+                 <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
+                 <div className="text-2xl font-mono font-bold text-red-700 mt-1">{formattedCountdown}</div>
+              </div>
+            )}
+
             <div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div>
           </div>
-          
-          <div className="mt-8 flex justify-between"><button type="button" onClick={() => setStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={loading || !formData.paymentMethod} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : 'CONFIRM BOOKING'}</button></div>
+
+          <div className="mt-8 flex justify-between"><button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={loading || !formData.paymentMethod} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : 'CONFIRM BOOKING'}</button></div>
         </form>
       )}
     </div>
@@ -473,12 +576,13 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
 }
 
 // 1.2 Customer History Tab
-function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone:string) => void }) {
+function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if(!userPhone) return;
+    if (!userPhone) return;
     const fetchMyBookings = async () => {
       try {
         const q = query(collection(db, 'bookings'));
@@ -488,7 +592,7 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
           const b = { id: doc.id, ...doc.data() } as Booking;
           if (b.phone === userPhone) data.push(b);
         });
-        data.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
+        data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setBookings(data);
       } catch (e) { console.error(e); }
       setLoading(false);
@@ -506,24 +610,67 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
         <div className="bg-white p-10 rounded-2xl shadow-sm border border-gray-100 text-center text-gray-500 font-bold">ဘိုကင်မှတ်တမ်း မရှိသေးပါ။</div>
       ) : (
         <div className="space-y-4">
-          {bookings.map(b => (
-            <div key={b.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-              <div className="flex justify-between items-start mb-4 pb-4 border-b border-gray-100">
-                <div>
-                  <div className="font-bold text-gray-800 flex items-center mb-1"><Activity className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>{b.service}</div>
-                  <div className="text-xs font-semibold text-gray-500 flex items-center"><User className="w-3 h-3 mr-1"/>{b.therapist}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-bold" style={{ color: THEME.primary }}>{formatPrice(b.totalPrice)}</div>
-                  <div className="text-[10px] uppercase font-bold text-gray-400 mt-1">{b.date} • {b.time}</div>
-                </div>
-              </div>
-              <div className="flex flex-col sm:flex-row justify-between sm:items-center">
-                <div className="text-xs font-bold text-gray-500 mb-2 sm:mb-0">TxID: <span className="text-gray-800 tracking-wider">{b.txId}</span> ({b.paymentMethod})</div>
-                <StatusBadge status={b.status} cancelReason={b.cancelReason} />
-              </div>
-            </div>
-          ))}
+          {bookings.map(b => {
+             const isExpanded = expandedBookingId === b.id;
+             return (
+               <div key={b.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
+                  {/* Summary Header (Always visible) */}
+                  <div 
+                     className="p-5 flex justify-between items-center cursor-pointer hover:bg-gray-50"
+                     onClick={() => setExpandedBookingId(isExpanded ? null : b.id!)}
+                  >
+                     <div className="flex items-start">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mr-4 mt-1"><Sparkles className="w-5 h-5 text-gray-500"/></div>
+                        <div>
+                           <div className="font-bold text-gray-800 text-sm sm:text-base">{b.service.split('(')[0]}</div>
+                           <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> {b.time}</div>
+                        </div>
+                     </div>
+                     <div className="flex flex-col items-end">
+                        <StatusBadge status={b.status} cancelReason={b.cancelReason} />
+                        <div className="font-bold mt-2" style={{ color: THEME.gold }}>{formatPrice(b.totalPrice)}</div>
+                        <div className="text-[10px] text-gray-400 mt-1 flex items-center">
+                           {isExpanded ? <><ChevronUp className="w-3 h-3 mr-1"/> Less details</> : <><ChevronDown className="w-3 h-3 mr-1"/> More details</>}
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {isExpanded && (
+                     <div className="p-5 border-t border-gray-100 bg-gray-50 animate-fade-in">
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                           <div className="bg-white p-3 rounded-lg border border-gray-100">
+                              <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">THERAPIST</span>
+                              <span className="text-sm font-bold text-gray-800">{b.therapist}</span>
+                           </div>
+                           <div className="bg-white p-3 rounded-lg border border-gray-100">
+                              <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">DURATION / EXTRA</span>
+                              <span className="text-sm font-bold text-gray-800">{b.service.split('(')[1] ? '(' + b.service.split('(').slice(1).join('(') : '-'}</span>
+                           </div>
+                           <div className="bg-white p-3 rounded-lg border border-gray-100">
+                              <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">TXID</span>
+                              <span className="text-sm font-mono font-bold text-gray-800 tracking-widest">{b.txId}</span>
+                           </div>
+                           <div className="bg-white p-3 rounded-lg border border-gray-100">
+                              <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">PAYMENT</span>
+                              <span className="text-sm font-bold text-gray-800">{b.paymentMethod}</span>
+                           </div>
+                        </div>
+                        {b.specialRequest && (
+                           <div className="bg-white p-3 rounded-lg border border-gray-100 mb-4">
+                              <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">SPECIAL REQUEST NOTE</span>
+                              <span className="text-sm text-gray-700 italic">{b.specialRequest}</span>
+                           </div>
+                        )}
+                        <div className="flex justify-between items-center text-xs text-gray-400 font-semibold px-1">
+                           <span>Booked: {new Date(b.createdAt).toLocaleDateString()}</span>
+                           <span className="text-[#123524] text-sm">Total: {formatPrice(b.totalPrice)}</span>
+                        </div>
+                     </div>
+                  )}
+               </div>
+             )
+          })}
         </div>
       )}
     </div>
@@ -531,7 +678,7 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
 }
 
 // 1.3 Customer Profile Tab
-function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: string, onLoginSuccess: (phone:string) => void, onLogout: () => void }) {
+function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
@@ -539,7 +686,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if(!userPhone) return;
+    if (!userPhone) return;
     const fetchUser = async () => {
       const snap = await getDoc(doc(db, 'users', userPhone));
       if (snap.exists()) {
@@ -560,7 +707,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
       setProfile({ ...profile!, name: formData.name, password: formData.password });
       setEditMode(false);
       alert("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
-    } catch(e) { alert("Error updating profile."); }
+    } catch (e) { alert("Error updating profile."); }
     setSaving(false);
   };
 
@@ -571,14 +718,14 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
   return (
     <div className="animate-fade-in max-w-sm mx-auto">
       <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>My Profile</h2></div>
-      
+
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center mb-6">
-        <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4 text-[#D4AF37]"><UserCircle className="w-12 h-12"/></div>
-        
+        <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4 text-[#D4AF37]"><User className="w-10 h-10" /></div>
+
         {!editMode ? (
           <>
             <h3 className="text-xl font-bold text-gray-800">{profile.name || 'User'}</h3>
-            <p className="text-sm font-bold text-gray-500 mt-1 mb-6 flex items-center justify-center"><Phone className="w-4 h-4 mr-1"/> {profile.phone}</p>
+            <p className="text-sm font-bold text-gray-500 mt-1 mb-6 flex items-center justify-center"><Phone className="w-4 h-4 mr-1" /> {profile.phone}</p>
             <div className={`text-xs rounded-full px-3 py-1 inline-block font-bold mb-6 ${profile.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
               {profile.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
             </div>
@@ -586,8 +733,8 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
           </>
         ) : (
           <form onSubmit={handleSave} className="text-left space-y-4">
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name</label><input type="text" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" required/></div>
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Set Password (Optional)</label><input type="text" value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})} placeholder="Leave blank for no password" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" /></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name</label><input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" required /></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Set Password (Optional)</label><input type="text" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="Leave blank for no password" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" /></div>
             <div className="flex space-x-2 pt-2">
               <button type="button" onClick={() => setEditMode(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200">Cancel</button>
               <button type="submit" disabled={saving} className="flex-1 py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{saving ? 'Saving...' : 'Save'}</button>
@@ -595,15 +742,15 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
           </form>
         )}
       </div>
-      <button onClick={onLogout} className="w-full py-3 bg-red-50 text-red-600 rounded-lg font-bold border border-red-100 hover:bg-red-100 transition flex justify-center items-center"><LogOut className="w-4 h-4 mr-2"/> Log Out</button>
+      <button onClick={onLogout} className="w-full py-3 bg-red-50 text-red-600 rounded-lg font-bold border border-red-100 hover:bg-red-100 transition flex justify-center items-center"><LogOut className="w-4 h-4 mr-2" /> Log Out</button>
     </div>
   );
 }
 
-function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)=>void, title: string }) {
+function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string) => void, title: string }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [step, setStep] = useState(1); 
+  const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -611,11 +758,11 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)
     e.preventDefault(); setError(''); setLoading(true);
     try {
       const snap = await getDoc(doc(db, 'users', phone));
-      if (!snap.exists()) { setError("ဖုန်းနံပါတ် ရှာမတွေ့ပါ။ ဘိုကင်အရင်တင်ပေးပါခင်ဗျာ။"); } 
+      if (!snap.exists()) { setError("ဖုန်းနံပါတ် ရှာမတွေ့ပါ။ ဘိုကင်အရင်တင်ပေးပါခင်ဗျာ။"); }
       else {
         const user = snap.data() as UserProfile;
-        if (user.password) { setStep(2); } 
-        else { onLoginSuccess(phone); } 
+        if (user.password) { setStep(2); }
+        else { onLoginSuccess(phone); }
       }
     } catch (e) { setError("Network Error"); }
     setLoading(false);
@@ -626,7 +773,7 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)
     try {
       const snap = await getDoc(doc(db, 'users', phone));
       const user = snap.data() as UserProfile;
-      if (user.password === password) { onLoginSuccess(phone); } 
+      if (user.password === password) { onLoginSuccess(phone); }
       else { setError("Password မှားယွင်းနေပါသည်။"); }
     } catch (e) { setError("Network Error"); }
     setLoading(false);
@@ -634,19 +781,19 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)
 
   return (
     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in">
-      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><KeyRound className="w-8 h-8"/></div>
+      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><KeyRound className="w-8 h-8" /></div>
       <h2 className="text-xl font-bold text-gray-800 mb-2">Login Required</h2>
       <p className="text-xs font-bold text-gray-500 mb-6">{title} ကိုကြည့်ရန် လော့ဂ်အင် ဝင်ပေးပါ</p>
-      
+
       {step === 1 ? (
         <form onSubmit={handleNext} className="space-y-4">
-          <input required type="tel" placeholder="Enter Phone Number" value={phone} onChange={e=>setPhone(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider"/>
+          <input required type="tel" placeholder="Enter Phone Number" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
           {error && <div className="text-xs font-bold text-red-500">{error}</div>}
           <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Checking...' : 'Next'}</button>
         </form>
       ) : (
         <form onSubmit={handleLogin} className="space-y-4">
-          <input required type="password" placeholder="Enter Password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider"/>
+          <input required type="password" placeholder="Enter Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
           {error && <div className="text-xs font-bold text-red-500">{error}</div>}
           <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Logging in...' : 'Login'}</button>
         </form>
@@ -656,15 +803,15 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)
 }
 
 function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
-  if (status === 'payment_checking') return <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-[10px] font-bold border border-blue-200 flex items-center"><Clock className="w-3 h-3 mr-1"/> Payment Confirming</span>;
-  if (status === 'approved') return <span className="bg-green-50 text-green-600 px-3 py-1 rounded-full text-[10px] font-bold border border-green-200 flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> Approved</span>;
+  if (status === 'payment_checking') return <span className="text-blue-600 border border-blue-200 bg-blue-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Payment Confirming</span>;
+  if (status === 'approved') return <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> Confirmed</span>;
   if (status === 'cancelled') return (
     <div className="flex flex-col items-end">
-      <span className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold border border-red-200 flex items-center"><XCircle className="w-3 h-3 mr-1"/> Cancelled</span>
-      {cancelReason && <span className="text-[10px] text-red-400 mt-1 max-w-[200px] text-right leading-tight">Reason: {cancelReason}</span>}
+      <span className="text-red-500 border border-red-200 bg-red-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center"><X className="w-3 h-3 mr-1"/> Cancelled</span>
+      {cancelReason && <span className="text-[10px] text-red-400 mt-1 max-w-[200px] text-right leading-tight text-xs">Reason: {cancelReason}</span>}
     </div>
   );
-  return <span className="bg-yellow-50 text-yellow-700 px-3 py-1 rounded-full text-[10px] font-bold border border-yellow-200 flex items-center"><Clock className="w-3 h-3 mr-1"/> Pending</span>;
+  return <span className="text-yellow-600 border border-yellow-200 bg-yellow-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Pending</span>;
 }
 
 // ==========================================
@@ -697,7 +844,7 @@ function AdminBookingsList() {
       const snap = await getDocs(q);
       const data: Booking[] = [];
       snap.forEach((doc) => { data.push({ id: doc.id, ...doc.data() } as Booking); });
-      data.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setBookings(data);
     } catch (error) { console.error(error); }
     setLoading(false);
@@ -708,10 +855,10 @@ function AdminBookingsList() {
     let reason = '';
     if (newStatus === 'cancelled') {
       const input = window.prompt("ဖျက်သိမ်းရသည့် အကြောင်းရင်းကို ထည့်ပါ (ဥပမာ - ငွေလွှဲမဝင်ပါ):");
-      if (input === null) return; 
+      if (input === null) return;
       reason = input;
     } else {
-      if(!window.confirm('Status ပြောင်းလဲမည်မှာ သေချာပါသလား?')) return;
+      if (!window.confirm('Status ပြောင်းလဲမည်မှာ သေချာပါသလား?')) return;
     }
     try {
       await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason });
@@ -719,14 +866,14 @@ function AdminBookingsList() {
     } catch (e) { alert("Error Update"); }
   };
 
-  const handleDelete = async (id: string) => { if(window.confirm('ဤ Booking ကို အပြီးအပိုင်ဖျက်မည် သေချာပါသလား?')) { await deleteDoc(doc(db, 'bookings', id)); fetchBookings(); } };
+  const handleDelete = async (id: string) => { if (window.confirm('ဤ Booking ကို အပြီးအပိုင်ဖျက်မည် သေချာပါသလား?')) { await deleteDoc(doc(db, 'bookings', id)); fetchBookings(); } };
 
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Bookings...</div>;
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-yellow-500"/> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status & Action</th><th className="p-3 pb-4 text-right">Delete</th></tr></thead><tbody>{bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">Booking မရှိသေးပါ။</td></tr>)}{bookings.map((b) => (<tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div></td><td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1"/>{b.therapist || '-'}</div></td><td className="p-3 text-sm text-gray-700"><div className="font-semibold">{b.date || '-'}</div><div className="text-gray-500 text-xs mt-1">{b.time || '-'}</div></td><td className="p-3"><div className="font-mono font-bold text-gray-800">{b.txId || '-'}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div></td><td className="p-3">
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-yellow-500" /> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status & Action</th><th className="p-3 pb-4 text-right">Delete</th></tr></thead><tbody>{bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">Booking မရှိသေးပါ။</td></tr>)}{bookings.map((b) => (<tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div></td><td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div></td><td className="p-3 text-sm text-gray-700"><div className="font-semibold">{b.date || '-'}</div><div className="text-gray-500 text-xs mt-1">{b.time || '-'}</div></td><td className="p-3"><div className="font-mono font-bold text-gray-800">{b.txId || '-'}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div></td><td className="p-3">
         <select value={b.status} onChange={(e) => handleStatusChange(b.id!, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
           <option value="pending">Pending</option>
           <option value="payment_checking">Payment Confirming</option>
@@ -748,7 +895,7 @@ function AdminUsersList() {
       const snap = await getDocs(collection(db, 'users'));
       const data: UserProfile[] = [];
       snap.forEach(doc => data.push(doc.data() as UserProfile));
-      data.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setUsers(data);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -759,8 +906,8 @@ function AdminUsersList() {
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]"/> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={4} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1"/> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1"/> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td></tr>))}</tbody></table></div>
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={4} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td></tr>))}</tbody></table></div>
     </div>
   );
 }
@@ -771,14 +918,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || DEFAULT_BRANDING)));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || DEFAULT_PAYMENT_METHODS)));
-  
+
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
 
   const handleSaveCategory = async (cIdx: number) => {
     const cat = localCategories[cIdx];
-    if(!window.confirm(`ဤပြောင်းလဲမှုများကို (${cat.title}) သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    if (!window.confirm(`ဤပြောင်းလဲမှုများကို (${cat.title}) သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
     setSavingCategory(cat.id);
     try {
       await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true });
@@ -789,7 +936,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const handleSaveTherapists = async () => {
-    if(!window.confirm(`ဝန်ထမ်းစာရင်းကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    if (!window.confirm(`ဝန်ထမ်းစာရင်းကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
     setSavingCategory('therapists');
     try {
       const tPromises = localTherapists.map((t, idx) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: idx }));
@@ -803,7 +950,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const handleSaveBranding = async () => {
-    if(!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    if (!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
     setSavingCategory('branding');
     try {
       await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true });
@@ -814,7 +961,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const handleSavePayments = async () => {
-    if(!window.confirm(`Payment အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    if (!window.confirm(`Payment အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
     setSavingCategory('payments');
     try {
       await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true });
@@ -838,37 +985,58 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length }]);
   const updateTherapistName = (tIdx: number, name: string) => { const updated = [...localTherapists]; updated[tIdx].name = name; setLocalTherapists(updated); };
-  const removeTherapist = (tIdx: number) => { if(!window.confirm("ဤဝန်ထမ်းအား ဖျက်မည် သေချာပါသလား?")) return; const t = localTherapists[tIdx]; if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]); const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated); };
+  const removeTherapist = (tIdx: number) => {
+    if (!window.confirm("ဤဝန်ထမ်းအား ဖျက်မည် သေချာပါသလား?")) return;
+    const t = localTherapists[tIdx];
+    if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]);
+    const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated);
+  };
+
   const handleImageUpload = async (tIdx: number, files: FileList | null) => {
-    if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('အများဆုံး ၅ ပုံသာ'); return; }
+    if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('အများဆုံး ၅ ပုံသာ ထည့်ခွင့်ရှိပါတယ်။'); return; }
     setUploadingImage(therapist.id); const newUrls: string[] = [];
-    try { for (let i = 0; i < files.length; i++) { const base64 = await compressImage(files[i], 450, 600); newUrls.push(base64); } const updated = [...localTherapists]; updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; setLocalTherapists(updated); } catch (err) { alert("Error"); }
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const base64 = await compressImage(files[i], 450, 600); // 3:4 Ratio
+        newUrls.push(base64);
+      }
+      const updated = [...localTherapists];
+      updated[tIdx].images = [...updated[tIdx].images, ...newUrls];
+      setLocalTherapists(updated);
+    } catch (err) { alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
     setUploadingImage(null);
   };
+
   const removeImage = (tIdx: number, imgIdx: number) => { const updated = [...localTherapists]; updated[tIdx].images.splice(imgIdx, 1); setLocalTherapists(updated); };
-  
+
   const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const updated = [...localCategories]; (updated[cIdx].items[iIdx] as any)[field] = val; setLocalCategories(updated); };
   const addItem = (cIdx: number) => { const updated = [...localCategories]; updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false }); setLocalCategories(updated); };
-  const deleteItem = (cIdx: number, iIdx: number) => { if(!window.confirm("ဤ Service အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
+  const deleteItem = (cIdx: number, iIdx: number) => { if (!window.confirm("ဤ Service အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
 
   const updatePaymentMethod = (pIdx: number, field: string, val: string) => { const updated = [...localPaymentMethods]; (updated[pIdx] as any)[field] = val; setLocalPaymentMethods(updated); };
   const addPaymentMethod = () => { setLocalPaymentMethods([...localPaymentMethods, { id: `p_${Date.now()}`, name: 'New Payment', accountNumber: '', accountName: '', logoUrl: '' }]); };
-  const removePaymentMethod = (pIdx: number) => { if(!window.confirm("ဤ Payment အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localPaymentMethods]; updated.splice(pIdx, 1); setLocalPaymentMethods(updated); };
+  const removePaymentMethod = (pIdx: number) => { if (!window.confirm("ဤ Payment အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localPaymentMethods]; updated.splice(pIdx, 1); setLocalPaymentMethods(updated); };
 
   return (
     <div className="space-y-6">
-      
+
       {/* 5. Header Logo & Footer Settings */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><ImageIconFeather className="w-5 h-5 mr-2 text-[#D4AF37]"/> App Branding & Footer</h3></div><button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}</button></div>
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+          <div><h3 className="text-xl font-bold text-gray-800 flex items-center">App Branding & Footer</h3></div>
+          <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90">
+            <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
             <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
             <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
               {localBranding.logoUrl ? (
-                <><img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({...localBranding, logoUrl: ''})} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4"/></button></div></>
+                <><img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({ ...localBranding, logoUrl: '' })} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4" /></button></div></>
               ) : (
-                <div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : <ImageIconFeather className="w-8 h-8 opacity-50"/>}</div>
+                <div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : "No Logo"}</div>
               )}
             </div>
             <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">
@@ -877,35 +1045,35 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
             </label>
           </div>
           <div className="space-y-4">
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Business Name</label><input type="text" value={localBranding.name || ''} onChange={e => setLocalBranding({...localBranding, name: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({...localBranding, address: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Business Name</label><input type="text" value={localBranding.name || ''} onChange={e => setLocalBranding({ ...localBranding, name: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({ ...localBranding, address: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div>
             <div className="grid grid-cols-2 gap-2">
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({...localBranding, phone1: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({...localBranding, phone2: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({ ...localBranding, phone1: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({ ...localBranding, phone2: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
             </div>
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({...localBranding, copyright: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({ ...localBranding, copyright: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
           </div>
         </div>
       </div>
 
       {/* 6. Payment Methods Editor */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><CreditCard className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Payment</h3></div><div className="flex space-x-2"><button onClick={addPaymentMethod} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1"/> Add Payment</button><button disabled={savingCategory === 'payments'} onClick={handleSavePayments} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === 'payments' ? 'Saving...' : 'Save Payments'}</button></div></div>
-        <div className="space-y-3">{localPaymentMethods.map((pm, pIdx) => (<div key={pm.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-2 flex flex-col items-center justify-center border-r border-gray-200 pr-2"><div className="w-12 h-12 bg-white border border-gray-200 rounded mb-1 flex items-center justify-center overflow-hidden relative group">{pm.logoUrl ? (<><img src={pm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" /><button onClick={() => updatePaymentMethod(pIdx, 'logoUrl', '')} className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100"><X className="w-4 h-4"/></button></>) : (<div className="text-[8px] text-gray-400 text-center">{uploadingImage === `pay_${pIdx}` ? '...' : 'No Logo'}</div>)}</div><label className="text-[10px] text-[#D4AF37] font-bold cursor-pointer hover:underline">Upload Logo<input type="file" accept="image/*" className="hidden" onChange={(e) => handlePaymentLogoUpload(pIdx, e)} disabled={uploadingImage === `pay_${pIdx}`} /></label></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Bank Name</label><input type="text" value={pm.name} onChange={(e)=>updatePaymentMethod(pIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700"/></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account No</label><input type="text" value={pm.accountNumber} onChange={(e)=>updatePaymentMethod(pIdx, 'accountNumber', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524] tracking-wider"/></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account Name</label><input type="text" value={pm.accountName} onChange={(e)=>updatePaymentMethod(pIdx, 'accountName', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none"/></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={()=>removePaymentMethod(pIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5"/></button></div></div>))}</div>
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><CreditCard className="w-5 h-5 mr-2 text-[#D4AF37]" /> Manage Payment</h3></div><div className="flex space-x-2"><button onClick={addPaymentMethod} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1" /> Add Payment</button><button disabled={savingCategory === 'payments'} onClick={handleSavePayments} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'payments' ? 'Saving...' : 'Save Payments'}</button></div></div>
+        <div className="space-y-3">{localPaymentMethods.map((pm, pIdx) => (<div key={pm.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-2 flex flex-col items-center justify-center border-r border-gray-200 pr-2"><div className="w-12 h-12 bg-white border border-gray-200 rounded mb-1 flex items-center justify-center overflow-hidden relative group">{pm.logoUrl ? (<><img src={pm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" /><button onClick={() => updatePaymentMethod(pIdx, 'logoUrl', '')} className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button></>) : (<div className="text-[8px] text-gray-400 text-center">{uploadingImage === `pay_${pIdx}` ? '...' : 'No Logo'}</div>)}</div><label className="text-[10px] text-[#D4AF37] font-bold cursor-pointer hover:underline">Upload Logo<input type="file" accept="image/*" className="hidden" onChange={(e) => handlePaymentLogoUpload(pIdx, e)} disabled={uploadingImage === `pay_${pIdx}`} /></label></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Bank Name</label><input type="text" value={pm.name} onChange={(e) => updatePaymentMethod(pIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account No</label><input type="text" value={pm.accountNumber} onChange={(e) => updatePaymentMethod(pIdx, 'accountNumber', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524] tracking-wider" /></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account Name</label><input type="text" value={pm.accountName} onChange={(e) => updatePaymentMethod(pIdx, 'accountName', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => removePaymentMethod(pIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div></div>))}</div>
       </div>
 
       {/* 4. Therapist Editor */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manage Therapists</h3></div><div className="flex space-x-2"><button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1"/> Add Therapist</button><button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === 'therapists' ? 'Saving...' : 'Save Therapists'}</button></div></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{localTherapists.map((therapist, tIdx) => (<div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative"><button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4"/></button><label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label><input type="text" value={therapist.name} onChange={(e) => updateTherapistName(tIdx, e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded mb-4 focus:outline-none focus:border-[#D4AF37]"/><label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label><div className="flex flex-wrap gap-2 mb-2">{therapist.images.map((imgUrl, imgIdx) => (<div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200"><img src={imgUrl} alt="upload" className="w-full h-full object-cover" /><button onClick={() => removeImage(tIdx, imgIdx)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><X className="w-3 h-3"/></button></div>))}{therapist.images.length < 5 && (<label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400">{uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}<input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} /></label>)}</div></div>))}</div>
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]" /> Manage Therapists</h3></div><div className="flex space-x-2"><button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1" /> Add Therapist</button><button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save Therapists'}</button></div></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{localTherapists.map((therapist, tIdx) => (<div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative"><button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4" /></button><label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label><input type="text" value={therapist.name} onChange={(e) => updateTherapistName(tIdx, e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded mb-4 focus:outline-none focus:border-[#D4AF37]" /><label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label><div className="flex flex-wrap gap-2 mb-2">{therapist.images.map((imgUrl, imgIdx) => (<div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200"><img src={imgUrl} alt="upload" className="w-full h-full object-cover" /><button onClick={() => removeImage(tIdx, imgIdx)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><X className="w-3 h-3" /></button></div>))}{therapist.images.length < 5 && (<label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400">{uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}<input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} /></label>)}</div></div>))}</div>
       </div>
 
       {/* 3. Services Editor */}
       {localCategories.map((cat, cIdx) => (
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center text-lg"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]"/> {cat.title} Category</h3><div className="flex space-x-2"><button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold"><PlusCircle className="w-4 h-4 mr-1"/> Add Item</button><button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === cat.id ? 'Saving...' : `Save ${cat.title}`}</button></div></div>
+          <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center text-lg">💎 {cat.title} Category</h3><div className="flex space-x-2"><button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold"><PlusCircle className="w-4 h-4 mr-1" /> Add Item</button><button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : `Save ${cat.title}`}</button></div></div>
           <div className="p-4 space-y-3">{cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
-            {cat.items.map((item, iIdx) => (<div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e)=>updateItem(cIdx,iIdx,'name',e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700"/></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e)=>updateItem(cIdx,iIdx,'duration',e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none"/></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e)=>updateItem(cIdx,iIdx,'price',Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]"/></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e)=>updateItem(cIdx,iIdx,'vvipPrice',e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600"/></div><div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e)=>updateItem(cIdx,iIdx,'vvipIncluded',e.target.checked)} className="mr-2"/> VVIP Free</label></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={()=>deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5"/></button></div></div>))}
+            {cat.items.map((item, iIdx) => (<div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div><div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div></div>))}
           </div>
         </div>
       ))}
