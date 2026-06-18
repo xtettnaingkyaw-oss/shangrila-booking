@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock } from 'lucide-react';
 
 // --- Theme & Icons Setup ---
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
@@ -25,6 +25,7 @@ interface AppBranding { logoUrl: string; address: string; phone1: string; phone2
 interface PaymentMethod { id: string; name: string; accountNumber: string; accountName: string; logoUrl: string; }
 interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; }
 interface UserProfile { phone: string; name: string; password?: string; createdAt: number; }
+interface AdminProfile { username: string; password?: string; }
 
 // --- Default Data Setup ---
 const DEFAULT_BRANDING: AppBranding = {
@@ -104,6 +105,7 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
 // --- Main App Setup ---
 function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
   const [appData, setAppData] = useState<AppData | null>(null);
   const [dbError, setDbError] = useState(false);
 
@@ -155,7 +157,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
       {dbError && <div className="bg-red-500 text-white text-xs text-center py-1">Database Loading Warning. Showing Default Data.</div>}
-      <header className="bg-white shadow-sm py-6 px-4 text-center border-b border-gray-200 flex flex-col items-center justify-center">
+      <header className="bg-white shadow-sm py-6 px-4 text-center border-b border-gray-200 flex flex-col items-center justify-center relative">
         <div className="flex items-center justify-center mb-1">
           {appData.branding.logoUrl && (
             <div className="w-12 h-12 rounded-full overflow-hidden mr-3 border-2 shadow-sm flex-shrink-0" style={{ borderColor: THEME.gold }}>
@@ -165,10 +167,17 @@ function App() {
           <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'}</h1>
         </div>
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
+        
+        {isAdminMode && loggedInAdmin && (
+           <button onClick={() => { setLoggedInAdmin(null); sessionStorage.removeItem('shangrila_admin'); }} className="absolute top-6 right-4 sm:right-6 text-xs font-bold text-red-500 flex items-center bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100"><LogOut className="w-3 h-3 mr-1" /> Logout</button>
+        )}
       </header>
 
       <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-6">
-        {isAdminMode ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> : <CustomerApp appData={appData} />}
+        {isAdminMode ? (
+          loggedInAdmin ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> 
+                        : <AdminLogin onLogin={(user) => { setLoggedInAdmin(user); sessionStorage.setItem('shangrila_admin', user); }} />
+        ) : <CustomerApp appData={appData} />}
       </main>
 
       {!isAdminMode && (
@@ -514,7 +523,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
              <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Special Request (Optional)</h3>
              <textarea 
                name="specialRequest" 
-               value={formData.specialRequest} 
+               value={formData.specialRequest || ''} 
                onChange={handleChange} 
                placeholder="Write any special requests or notes here..." 
                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" 
@@ -728,7 +737,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
             <div className={`text-xs rounded-full px-3 py-1 inline-block font-bold mb-6 ${profile.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
               {profile.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
             </div>
-            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center">Edit Profile / Set Password</button>
+            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center"><Edit className="w-4 h-4 mr-2" /> Edit Profile</button>
           </>
         ) : (
           <form onSubmit={handleSave} className="text-left space-y-4">
@@ -801,15 +810,12 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string
   );
 }
 
-// Fallback Icon for Cancel Status
-const XCircleIcon = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-
 function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
-  if (status === 'payment_checking') return <span className="text-blue-600 border border-blue-200 bg-blue-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Payment Confirming</span>;
+  if (status === 'payment_checking') return <span className="text-blue-600 border border-blue-200 bg-blue-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Confirming</span>;
   if (status === 'approved') return <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><CheckCircle className="w-3 h-3 mr-1"/> Confirmed</span>;
   if (status === 'cancelled') return (
     <div className="flex flex-col items-end">
-      <span className="text-red-500 border border-red-200 bg-red-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><XCircleIcon className="w-3 h-3 mr-1"/> Cancelled</span>
+      <span className="text-red-500 border border-red-200 bg-red-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><X className="w-3 h-3 mr-1"/> Cancelled</span>
       {cancelReason && <span className="text-[10px] text-red-400 mt-1 max-w-[200px] text-right leading-tight text-xs">Reason: {cancelReason}</span>}
     </div>
   );
@@ -817,25 +823,73 @@ function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: 
 }
 
 // ==========================================
-// 2. ADMIN DASHBOARD
+// 2. ADMIN AUTHENTICATION
+// ==========================================
+function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true); setError('');
+    try {
+      const snap = await getDoc(doc(db, 'admins', username));
+      if (snap.exists()) {
+        if (snap.data().password === password) onLogin(username);
+        else setError('Invalid password');
+      } else {
+        // Fallback for very first time setup
+        const allAdmins = await getDocs(collection(db, 'admins'));
+        if (allAdmins.empty && username === 'admin' && password === 'admin123') {
+          await setDoc(doc(db, 'admins', 'admin'), { username: 'admin', password: 'admin123' });
+          onLogin('admin');
+        } else {
+          setError('Admin user not found');
+        }
+      }
+    } catch (e) { setError('Network error'); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in">
+      <div className="w-16 h-16 bg-red-50 rounded-full mx-auto flex items-center justify-center mb-6 text-red-600"><ShieldAlert className="w-8 h-8" /></div>
+      <h2 className="text-xl font-bold text-gray-800 mb-2">Admin Portal</h2>
+      <p className="text-xs font-bold text-gray-500 mb-6">Restricted Access</p>
+      
+      <form onSubmit={handleLogin} className="space-y-4">
+        <input required type="text" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
+        <input required type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
+        {error && <div className="text-xs font-bold text-red-500">{error}</div>}
+        <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Verifying...' : 'Login'}</button>
+      </form>
+    </div>
+  );
+}
+
+// ==========================================
+// 3. ADMIN DASHBOARD
 // ==========================================
 function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
-  const [tab, setTab] = useState<'bookings' | 'users' | 'settings'>('bookings');
+  const [tab, setTab] = useState<'bookings' | 'users' | 'admins' | 'settings'>('bookings');
   return (
     <div className="animate-fade-in">
       <div className="flex flex-wrap justify-center gap-2 mb-6">
-        <button onClick={() => setTab('bookings')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Calendar className="w-4 h-4 mr-2" /> Bookings</button>
-        <button onClick={() => setTab('users')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>
-        <button onClick={() => setTab('settings')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>
+        <button onClick={() => setTab('bookings')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Calendar className="w-4 h-4 mr-2" /> Bookings</button>
+        <button onClick={() => setTab('users')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>
+        <button onClick={() => setTab('admins')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>
+        <button onClick={() => setTab('settings')} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>
       </div>
       {tab === 'bookings' && <AdminBookingsList />}
       {tab === 'users' && <AdminUsersList />}
+      {tab === 'admins' && <AdminManagementList />}
       {tab === 'settings' && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
     </div>
   );
 }
 
-// Admin Bookings & Status Change
+// Admin Bookings List
 function AdminBookingsList() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -874,7 +928,7 @@ function AdminBookingsList() {
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-yellow-500" /> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="mr-2 text-yellow-500" /> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status & Action</th><th className="p-3 pb-4 text-right">Delete</th></tr></thead>
@@ -920,9 +974,12 @@ function AdminBookingsList() {
   );
 }
 
+// Admin Users List (Auto-Created Profiles) with Edit Capability
 function AdminUsersList() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', password: '' });
 
   const fetchUsers = async () => {
     try {
@@ -936,12 +993,94 @@ function AdminUsersList() {
   };
   useEffect(() => { fetchUsers(); }, []);
 
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    try {
+      await updateDoc(doc(db, 'users', editingUser.phone), { name: editForm.name, password: editForm.password });
+      alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။');
+      setEditingUser(null);
+      fetchUsers();
+    } catch (e) { alert('Error updating user'); }
+  };
+
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Users...</div>;
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 relative">
+      {/* Edit User Modal */}
+      {editingUser && (
+         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full">
+               <h3 className="text-lg font-bold mb-4 text-[#123524]">Edit User ({editingUser.phone})</h3>
+               <form onSubmit={handleUpdateUser} className="space-y-4">
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded" required /></div>
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Leave blank for no password" className="w-full p-2 border rounded" /></div>
+                 <div className="flex space-x-2 pt-2">
+                   <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold">Cancel</button>
+                   <button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold">Save</button>
+                 </div>
+               </form>
+            </div>
+         </div>
+      )}
+
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={4} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td></tr>))}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td><td className="p-3 text-right"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center ml-auto"><Edit className="w-3 h-3 mr-1"/> Edit</button></td></tr>))}</tbody></table></div>
+    </div>
+  );
+}
+
+// Admin Management List
+function AdminManagementList() {
+  const [admins, setAdmins] = useState<AdminProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newAdmin, setNewAdmin] = useState({ username: '', password: '' });
+
+  const fetchAdmins = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'admins'));
+      const data: AdminProfile[] = [];
+      snap.forEach(doc => data.push(doc.data() as AdminProfile));
+      setAdmins(data);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+  useEffect(() => { fetchAdmins(); }, []);
+
+  const handleAddAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if(!newAdmin.username || !newAdmin.password) return;
+    try {
+      await setDoc(doc(db, 'admins', newAdmin.username), { username: newAdmin.username, password: newAdmin.password });
+      setNewAdmin({ username: '', password: '' });
+      fetchAdmins();
+    } catch (e) { alert('Error adding admin'); }
+  };
+
+  const handleDeleteAdmin = async (username: string) => {
+    if (admins.length <= 1) { alert("အနည်းဆုံး Admin တစ်ယောက် ကျန်ရှိရပါမည်။"); return; }
+    if (!window.confirm(`Admin [${username}] ကို ဖျက်မည် သေချာပါသလား?`)) return;
+    try {
+      await deleteDoc(doc(db, 'admins', username));
+      fetchAdmins();
+    } catch (e) { alert('Error deleting admin'); }
+  };
+
+  if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Admins...</div>;
+
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-[#D4AF37]" /> Manage Admins</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {admins.length}</span></div>
+      
+      {/* Add Admin Form */}
+      <form onSubmit={handleAddAdmin} className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg flex flex-col sm:flex-row gap-3 items-end">
+        <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Username</label><input type="text" value={newAdmin.username} onChange={e=>setNewAdmin({...newAdmin, username: e.target.value})} className="w-full p-2 border rounded" required /></div>
+        <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Password</label><input type="text" value={newAdmin.password} onChange={e=>setNewAdmin({...newAdmin, password: e.target.value})} className="w-full p-2 border rounded" required /></div>
+        <button type="submit" className="w-full sm:w-auto px-4 py-2 bg-[#123524] text-white rounded font-bold flex items-center justify-center"><PlusCircle className="w-4 h-4 mr-1"/> Add Admin</button>
+      </form>
+
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-bold text-gray-800 flex items-center"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.username)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 font-bold text-[10px] flex items-center ml-auto"><Trash2 className="w-3 h-3 mr-1"/> Delete</button></td></tr>))}</tbody></table></div>
     </div>
   );
 }
