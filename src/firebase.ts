@@ -1,14 +1,13 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
 
-// (နောက်ပိုင်းမှ မိမိရဲ့ Firebase အချက်အလက်အမှန်တွေ ပြန်ပြောင်းထည့်ပါ)
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyD72t-U4ZQY1DVmsxj9O2Vu_XXXXXxw1Ko",
+  authDomain: "shangrila-online-booking-app.firebaseapp.com",
+  projectId: "shangrila-online-booking-app",
+  storageBucket: "shangrila-online-booking-app.firebasestorage.app",
+  messagingSenderId: "696764910771",
+  appId: "1:696764910771:web:04fb68544c4db32ff9b4c6"
 };
 
 const app = initializeApp(firebaseConfig);
