@@ -140,18 +140,17 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
-      {/* 
-        Header Section 
-        အခုဆိုရင် Logo နဲ့ စာသားကို ဘေးချင်းယှဉ် (flex-row) ပြထားပါတယ်
-      */}
+      {/* HEADER SECTION WITH CIRCULAR LOGO */}
       <header className="bg-white shadow-sm py-6 px-4 text-center border-b border-gray-200 flex flex-col items-center justify-center">
         <div className="flex items-center justify-center mb-1">
           {appData.branding.logoUrl && (
-            <img src={appData.branding.logoUrl} alt="Logo" className="h-10 w-10 object-contain mr-3" />
+            <div className="w-12 h-12 rounded-full overflow-hidden mr-3 border-2 shadow-sm flex-shrink-0" style={{ borderColor: THEME.gold }}>
+              <img src={appData.branding.logoUrl} alt="Logo" className="w-full h-full object-cover bg-white" />
+            </div>
           )}
           <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>The Shangri-La</h1>
         </div>
-        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation) </p>
+        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
       </header>
       
       <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-8">
@@ -239,7 +238,6 @@ function CustomerBooking({ appData }: { appData: AppData }) {
     <div className="max-w-2xl mx-auto">
       {renderStepper()}
       
-      {/* STEP 1: SERVICE */}
       {step === 1 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
@@ -272,7 +270,6 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
-      {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
           {viewGallery && (
@@ -281,10 +278,8 @@ function CustomerBooking({ appData }: { appData: AppData }) {
                 <X className="w-8 h-8" />
               </button>
               
-              {/* Full Screen size wrapper */}
               <div className="relative w-full h-[85vh] flex items-center justify-center">
-                <img src={viewGallery.images[viewGallery.index]} alt="Therapist Detail" className="max-w-full max-h-full object-contain rounded-md drop-shadow-2xl" />
-                
+                <img src={viewGallery.images[viewGallery.index]} alt="Therapist Detail" className="w-full h-full object-contain rounded-md drop-shadow-2xl" />
                 {viewGallery.images.length > 1 && (
                   <>
                     <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition backdrop-blur-md">
@@ -451,7 +446,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     if (!file) return;
     setUploadingImage('logo');
     try {
-      const base64 = await compressImage(file, 600, 400); 
+      // 1:1 Square crop for Logo to fit perfectly in a circle
+      const base64 = await compressImage(file, 400, 400); 
       setLocalBranding({ ...localBranding, logoUrl: base64 });
     } catch (err) { alert("Logo တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
     setUploadingImage(null);
@@ -504,19 +500,24 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
-            <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image</label>
-            <div className="w-40 h-40 bg-white border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center relative overflow-hidden mb-4 shadow-sm">
+            <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
+            
+            {/* Admin Panel အတွင်းမှ Logo Preview အဝိုင်းလေး */}
+            <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
               {localBranding.logoUrl ? (
                 <>
-                  <img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-contain p-2" />
-                  <button onClick={() => setLocalBranding({...localBranding, logoUrl: ''})} className="absolute top-2 right-2 bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200"><X className="w-4 h-4"/></button>
+                  <img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                     <button onClick={() => setLocalBranding({...localBranding, logoUrl: ''})} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4"/></button>
+                  </div>
                 </>
               ) : (
                 <div className="flex flex-col items-center text-gray-400">
-                  {uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : <ImageIconFeather className="w-8 h-8 mb-2 opacity-50"/>}
+                  {uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : <ImageIconFeather className="w-8 h-8 opacity-50"/>}
                 </div>
               )}
             </div>
+            
             <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">
               {localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}
               <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} />
