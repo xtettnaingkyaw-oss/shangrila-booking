@@ -810,6 +810,7 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string
   );
 }
 
+// Fallback Icon for Cancel Status
 const XCircleIcon = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 
 function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
@@ -878,18 +879,18 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const isFirstLoad = useRef(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // 🔔 1. Updated Notification System with Long Chime (5 seconds)
   useEffect(() => {
-    // Premium Short Notification Beep
-    audioRef.current = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    // 5-second long prominent chime sound
+    const notificationAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2862/2862-preview.mp3'); 
     
-    // Auto-play workaround for browsers
+    // Attempt to unlock audio immediately upon interaction
     const unlockAudio = () => {
-      if (audioRef.current) {
-        audioRef.current.play().then(() => {
-          audioRef.current!.pause();
-          audioRef.current!.currentTime = 0;
+      if (notificationAudio) {
+        notificationAudio.play().then(() => {
+          notificationAudio.pause();
+          notificationAudio.currentTime = 0;
         }).catch(() => {});
       }
       document.removeEventListener('click', unlockAudio);
@@ -915,9 +916,18 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
 
       if (!isFirstLoad.current) {
         const hasNewBooking = snap.docChanges().some(change => change.type === 'added' && change.doc.data().status === 'pending');
-        if (hasNewBooking && audioRef.current) {
-          audioRef.current.currentTime = 0;
-          audioRef.current.play().catch(e => console.log("Audio block:", e));
+        if (hasNewBooking && notificationAudio) {
+          notificationAudio.currentTime = 0;
+          // Loop the sound slightly to ensure it plays for around 5 seconds
+          notificationAudio.loop = true;
+          notificationAudio.play().catch(e => console.log("Audio play blocked:", e));
+          
+          // Stop after 5 seconds
+          setTimeout(() => {
+             notificationAudio.pause();
+             notificationAudio.currentTime = 0;
+             notificationAudio.loop = false;
+          }, 5000);
         }
       }
       isFirstLoad.current = false;
@@ -1210,7 +1220,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(therapist.id); const newUrls: string[] = [];
     try {
       for (let i = 0; i < files.length; i++) {
-        const base64 = await compressImage(files[i], 450, 600);
+        const base64 = await compressImage(files[i], 450, 600); // 3:4 Ratio
         newUrls.push(base64);
       }
       const updated = [...localTherapists];
