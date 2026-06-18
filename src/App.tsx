@@ -12,7 +12,7 @@ interface Booking {
   therapist: string;
   date: string;
   time: string;
-  paymentMethod: string; // <-- ငွေလွှဲမည့်စနစ်အတွက် အသစ်ထပ်ထည့်ထားသည်
+  paymentMethod: string;
   txId: string;
   status: 'pending' | 'approved';
   createdAt: number;
@@ -61,7 +61,7 @@ function CustomerBooking() {
     therapist: '',
     date: '',
     time: '',
-    paymentMethod: '', // <-- ငွေလွှဲစနစ် အသစ်
+    paymentMethod: '',
     txId: ''
   });
   const [loading, setLoading] = useState(false);
@@ -196,7 +196,7 @@ function CustomerBooking() {
           {formData.paymentMethod && (
             <div className="bg-[#022c22] p-4 rounded mb-4 border border-green-700/50">
               <p className="text-sm text-gray-300 mb-3 leading-relaxed">
-                Booking အတည်ပြုနိုင်ရန် စရန်ငွေ <strong className="text-white">10,000 Ks</strong> ကို အောက်ပါ {formData.paymentMethod} အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။
+                Booking အတည်ပြုနိုင်ရန် အတွက် <strong className="text-yellow-400 font-bold">ကျသင့်ငွေ၏ တစ်ဝက်တိတိကို</strong> စရံငွေ အဖြစ် အောက်ပါ {formData.paymentMethod} အကောင့်သို့ ကြိုလွှဲပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။
               </p>
               <div className="flex flex-col space-y-1">
                 <div className="text-lg">
