@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, where } from 'firebase/firestore';
 import { db } from './firebase';
 import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock } from 'lucide-react';
 
@@ -62,27 +62,17 @@ const compressImage = async (file: File, width: number, height: number): Promise
   });
 };
 
-// --- Countdown Timer Hook ---
 function useCountdown(initialMinutes: number, onExpire: () => void) {
   const [timeLeft, setTimeLeft] = useState(initialMinutes * 60);
-
   useEffect(() => {
-    if (timeLeft <= 0) {
-      onExpire();
-      return;
-    }
-    const intervalId = setInterval(() => {
-      setTimeLeft(t => t - 1);
-    }, 1000);
+    if (timeLeft <= 0) { onExpire(); return; }
+    const intervalId = setInterval(() => { setTimeLeft(t => t - 1); }, 1000);
     return () => clearInterval(intervalId);
   }, [timeLeft, onExpire]);
-
-  const minutes = Math.floor(timeLeft / 60);
-  const seconds = timeLeft % 60;
+  const minutes = Math.floor(timeLeft / 60); const seconds = timeLeft % 60;
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
-// --- Error Boundary ---
 class ErrorBoundary extends React.Component<{ children: any }, { hasError: boolean, error: any }> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
@@ -90,11 +80,7 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-red-50 flex items-center justify-center p-10 text-center">
-          <div>
-            <h1 className="text-3xl font-bold text-red-600 mb-4">App Crashed ⚠️</h1>
-            <p className="text-gray-700 font-mono text-sm bg-white p-4 rounded shadow">{this.state.error?.toString()}</p>
-            <button onClick={() => window.location.reload()} className="mt-6 px-6 py-3 bg-[#123524] text-white rounded-lg font-bold">Reload App</button>
-          </div>
+          <div><h1 className="text-3xl font-bold text-red-600 mb-4">App Crashed ⚠️</h1><p className="text-gray-700 font-mono text-sm bg-white p-4 rounded shadow">{this.state.error?.toString()}</p><button onClick={() => window.location.reload()} className="mt-6 px-6 py-3 bg-[#123524] text-white rounded-lg font-bold">Reload App</button></div>
         </div>
       );
     }
@@ -102,7 +88,6 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
   }
 }
 
-// --- Main App Setup ---
 function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
@@ -150,9 +135,7 @@ function App() {
     initData();
   }, []);
 
-  if (!appData) {
-    return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold">Loading The Shangri-La...</div>;
-  }
+  if (!appData) { return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold">Loading The Shangri-La...</div>; }
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
@@ -200,13 +183,10 @@ export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; 
 function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'history' | 'profile'>('book');
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
-  
-  // User Notification States
   const [hasNoti, setHasNoti] = useState(false);
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
-  // User Real-time Listener for Notification
   useEffect(() => {
     if (!userPhone) return;
     const q = query(collection(db, 'bookings'));
@@ -216,40 +196,26 @@ function CustomerApp({ appData }: { appData: AppData }) {
         const b = { id: doc.id, ...doc.data() } as Booking;
         if (b.phone === userPhone) {
           const oldStatus = prevStatuses.current[b.id!];
-          // Trigger notification ONLY if the status changed from what it was previously
-          if (oldStatus && oldStatus !== b.status) {
-            changed = true;
-          }
+          if (oldStatus && oldStatus !== b.status) changed = true;
           prevStatuses.current[b.id!] = b.status;
         }
       });
-
       if (!isFirstLoad.current && changed) {
         if (activeTab !== 'history') setHasNoti(true);
         const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
-        if (audioEl) {
-          audioEl.currentTime = 0;
-          audioEl.play().catch(e => console.log("Audio block:", e));
-        }
+        if (audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); }
       }
       isFirstLoad.current = false;
     });
-
     return () => unsubscribe();
   }, [userPhone, activeTab]);
 
-  useEffect(() => {
-    if (activeTab === 'history') setHasNoti(false);
-  }, [activeTab]);
+  useEffect(() => { if (activeTab === 'history') setHasNoti(false); }, [activeTab]);
 
-  // Audio Unlocker for browser policy
   const handleInteraction = () => {
     const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
     if (audioEl && audioEl.paused) {
-      audioEl.play().then(() => {
-        audioEl.pause();
-        audioEl.currentTime = 0;
-      }).catch(() => {});
+      audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {});
     }
   };
 
@@ -261,10 +227,8 @@ function CustomerApp({ appData }: { appData: AppData }) {
 
   return (
     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
-      {/* Short sweet notification sound for User */}
       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
 
-      {/* Customer Tabs Navigation */}
       <div className="flex justify-center items-center space-x-2 md:space-x-4 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -276,14 +240,8 @@ function CustomerApp({ appData }: { appData: AppData }) {
             >
               <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
               {tab.label}
-              
-              {/* Notification Badge for My Bookings */}
-              {tab.id === 'history' && hasNoti && (
-                <span className="absolute top-2 right-4 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>
-              )}
-              {tab.id === 'history' && hasNoti && (
-                <span className="absolute top-2 right-4 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></span>
-              )}
+              {tab.id === 'history' && hasNoti && <span className="absolute top-2 right-4 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
+              {tab.id === 'history' && hasNoti && <span className="absolute top-2 right-4 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></span>}
             </button>
           )
         })}
@@ -306,50 +264,54 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   
+  // Real-time bookings to check availability & blocks
+  const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const stepContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'bookings'));
+    const unsub = onSnapshot(q, (snap) => {
+        const arr: Booking[] = [];
+        snap.forEach(d => arr.push({id: d.id, ...d.data()} as Booking));
+        setAllBookings(arr);
+    });
+    return () => unsub();
+  }, []);
 
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // Time Constraints Logic
+  // Time & Blocking Logic
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem || !formData.date) return [];
-
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
     const serviceName = formData.selectedItem.name.toLowerCase();
 
     let allowedSlots = ALL_TIME_SLOTS;
 
     if (isHotelService) {
-      if (serviceName.includes("outcall")) {
-         allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
-      } else if (serviceName.includes("half day")) {
-         return ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
-      } else if (serviceName.includes("night")) {
-         allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 PM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
-      } else if (serviceName.includes("whole day")) {
-         return ["7:00 AM to 7:00 PM"];
-      }
+      if (serviceName.includes("outcall")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
+      else if (serviceName.includes("half day")) return ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
+      else if (serviceName.includes("night")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 PM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+      else if (serviceName.includes("whole day")) return ["7:00 AM to 7:00 PM"];
     } else {
        allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
     }
-
     return allowedSlots;
   };
 
   const availableTimeSlots = getAvailableTimeSlots();
 
-  // Date constraints (Max 3 days in advance)
+  // Date Logic
   const getMinMaxDates = () => {
     const today = new Date(); 
     const minDateStr = today.toISOString().split('T')[0];
-    const maxD = new Date(today); 
-    maxD.setDate(maxD.getDate() + 3); 
+    const maxD = new Date(today); maxD.setDate(maxD.getDate() + 3); 
     const maxDateStr = maxD.toISOString().split('T')[0];
     return { minDateStr, maxDateStr };
   }
-
   const { minDateStr, maxDateStr } = getMinMaxDates();
+  const todayStr = new Date().toISOString().split('T')[0];
 
   const calculateTotal = () => {
     if (!formData.selectedItem) return 0;
@@ -369,26 +331,116 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
 
   const handleNextStep = (nextStep: number) => {
     setStep(nextStep);
-    if (stepContainerRef.current) {
-        stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
+    else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
   };
 
   const handleCountdownExpire = () => {
      alert("ငွေပေးချေရန် သတ်မှတ်ချိန် (၁၅) မိနစ် ကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ ဘိုကင် အသစ်ပြန်လည်တင်ပေးပါ။");
-     setStep(1);
-     setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+     setStep(1); setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+  };
+  const formattedCountdown = useCountdown(15, handleCountdownExpire);
+
+  // Advanced Checking Functions
+  const isTherapistFullForToday = (tName: string) => {
+      const todaysBookings = allBookings.filter(b => b.status !== 'cancelled' && b.date === todayStr && b.therapist === tName);
+      let isFull = false;
+      let halfDayCount = 0;
+      todaysBookings.forEach(b => {
+          const srv = b.service.toLowerCase();
+          if (srv.includes('whole day') || srv.includes('whole night') || srv.includes('night')) isFull = true;
+          if (srv.includes('half day')) halfDayCount++;
+      });
+      if (halfDayCount >= 2) isFull = true;
+      return isFull;
   };
 
-  const formattedCountdown = useCountdown(15, handleCountdownExpire);
+  const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
+      let blocked = new Set<string>();
+      if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
+      
+      bookings.forEach(b => {
+          if (b.status === 'cancelled') return;
+          if (b.date !== selectedDate) return;
+          if (b.therapist !== selectedTherapistName) return;
+
+          if (b.time.includes("to")) {
+              const [start, end] = b.time.split(" to ");
+              const sIdx = ALL_TIME_SLOTS.indexOf(start);
+              const eIdx = ALL_TIME_SLOTS.indexOf(end);
+              if (sIdx !== -1 && eIdx !== -1) {
+                  for (let i = sIdx; i < eIdx; i++) blocked.add(ALL_TIME_SLOTS[i]);
+              }
+              blocked.add(b.time); 
+          } else {
+              const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
+              if (sIdx !== -1) {
+                  let slotsToBlock = 2; // Default 60 mins
+                  const match = b.service.match(/(\d+)\s*Mins/i);
+                  if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
+                  
+                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
+                      if (ALL_TIME_SLOTS[i]) blocked.add(ALL_TIME_SLOTS[i]);
+                  }
+              }
+          }
+      });
+      return blocked;
+  };
+
+  const blockedSlots = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
+
+  const isSlotAvailable = (t: string) => {
+      if (blockedSlots.has(t)) return false;
+      if (t.includes("to")) return !blockedSlots.has(t); 
+      
+      const sIdx = ALL_TIME_SLOTS.indexOf(t);
+      if (sIdx === -1) return true;
+
+      let neededSlots = 2;
+      if (formData.selectedItem) {
+          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+      }
+      
+      for (let i = 0; i < neededSlots; i++) {
+          if (blockedSlots.has(ALL_TIME_SLOTS[sIdx + i])) return false;
+      }
+      return true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.txId.length !== 6) { alert("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
     setLoading(true);
+    
     try {
+      // System Concurrency Final Check
+      const freshSnap = await getDocs(query(collection(db, 'bookings')));
+      const freshBookings: Booking[] = [];
+      freshSnap.forEach(d => freshBookings.push({id: d.id, ...d.data()} as Booking));
+      
+      const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
+      if (formData.time.includes("to")) {
+          if (blockedNow.has(formData.time)) {
+             alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်သွားပါပြီ။ ကျေးဇူးပြု၍ အခြားအချိန် ရွေးပေးပါ။");
+             setLoading(false); return;
+          }
+      } else {
+          const sIdx = ALL_TIME_SLOTS.indexOf(formData.time);
+          let neededSlots = 2; 
+          const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
+          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+          
+          let overlap = false;
+          for (let i = 0; i < neededSlots; i++) { if (blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) overlap = true; }
+          if (overlap) {
+             alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်သွားပါပြီ။ ကျေးဇူးပြု၍ အခြားအချိန် ရွေးပေးပါ။");
+             setLoading(false); return;
+          }
+      }
+
+      // Auto Create/Update Profile
       if (formData.phone && formData.phone.trim() !== '') {
         const userRef = doc(db, 'users', formData.phone);
         const userSnap = await getDoc(userRef);
@@ -407,7 +459,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         specialRequest: formData.specialRequest
       };
       await addDoc(collection(db, 'bookings'), dataToSave);
-
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။');
     } catch (error) { console.error(error); alert("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
     setLoading(false);
@@ -416,14 +467,10 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   if (successMsg) {
     return (
       <div className="bg-white p-10 rounded-2xl shadow-lg text-center border border-gray-100 max-w-lg mx-auto mt-10 animate-fade-in">
-        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <CheckCircle className="w-10 h-10 text-green-600" />
-        </div>
+        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="w-10 h-10 text-green-600" /></div>
         <h2 className="text-2xl font-bold mb-3" style={{ color: THEME.primary }}>Booking Confirmed!</h2>
         <p className="text-gray-600 mb-8 leading-relaxed font-semibold">{successMsg}</p>
-        <button onClick={() => { setSuccessMsg(''); onBooked(formData.phone); }} className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>
-          မှတ်တမ်းကြည့်ရန် (View History)
-        </button>
+        <button onClick={() => { setSuccessMsg(''); onBooked(formData.phone); }} className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>မှတ်တမ်းကြည့်ရန် (View History)</button>
       </div>
     );
   }
@@ -454,13 +501,9 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
     <div>
       {renderStepper()}
 
-      {/* STEP 1: SERVICE */}
       {step === 1 && (
         <div className="animate-fade-in">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
-            <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p>
-          </div>
+          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
           <div className="space-y-4">{appData.categories.map(category => {
             const CategoryIcon = ICON_MAP[category.id] || Activity;
             return (
@@ -488,10 +531,8 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         </div>
       )}
 
-      {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
-
           {viewGallery && (
             <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-fade-in">
               <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
@@ -514,13 +555,20 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {appData.therapists.map((therapist) => {
               const isSelected = formData.therapist?.id === therapist.id; const hasImage = therapist.images && therapist.images.length > 0;
+              const isFull = isTherapistFullForToday(therapist.name);
+              
               return (
-                <div key={therapist.id} onClick={() => setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl cursor-pointer transition-all border-2 ${isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md'}`}>
+                <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed opacity-50 grayscale border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
+                  {isFull && (
+                    <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
+                      <span className="bg-red-500 text-white text-[9px] font-bold px-2 py-1 rounded shadow-md transform -rotate-12">Booking Full For Today</span>
+                    </div>
+                  )}
                   <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'}`}>
                     {hasImage ? (
                       <>
                         <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
-                        {therapist.images.length > 1 && (<button onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/80 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1.5 rounded flex items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</button>)}
+                        {therapist.images.length > 1 && (<button onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/80 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1.5 rounded flex items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</button>)}
                       </>
                     ) : (<div className="flex flex-col items-center opacity-40"><User className="w-12 h-12 text-[#123524]" /></div>)}
                   </div>
@@ -534,7 +582,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         </div>
       )}
 
-      {/* STEP 3: DATE & TIME */}
       {step === 3 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
@@ -546,7 +593,12 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
             <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
             <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
-              {availableTimeSlots.map(t => (<button key={t} type="button" disabled={!formData.date} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37] disabled:opacity-40 disabled:hover:border-gray-200 disabled:cursor-not-allowed'}`}>{t}</button>))}
+              {availableTimeSlots.map(t => {
+                const isAvailable = isSlotAvailable(t);
+                return (
+                 <button key={t} type="button" disabled={!formData.date || !isAvailable} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : !isAvailable ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 cursor-not-allowed line-through' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'}`}>{t}</button>
+                )
+              })}
             </div>
             {availableTimeSlots.length === 0 && formData.date && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
           </div>
@@ -554,7 +606,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         </div>
       )}
 
-      {/* STEP 4: CONFIRM */}
       {step === 4 && (
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး အတည်ပြုပေးပါ)</p></div>
@@ -628,7 +679,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
               </div>
             )}
             
-            {/* Countdown Timer Display */}
             {selectedPaymentConfig && (
               <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
                  <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
@@ -646,7 +696,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   );
 }
 
-// 1.2 Customer History Tab (Realtime with Notification)
+// 1.2 Customer History Tab
 function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -654,22 +704,21 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
 
   useEffect(() => {
     if (!userPhone) return;
-    const q = query(collection(db, 'bookings'));
-    const unsubscribe = onSnapshot(q, (snap) => {
-      const data: Booking[] = [];
-      snap.forEach((doc) => {
-        const b = { id: doc.id, ...doc.data() } as Booking;
-        if (b.phone === userPhone) data.push(b);
-      });
-      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setBookings(data);
+    const fetchMyBookings = async () => {
+      try {
+        const q = query(collection(db, 'bookings'));
+        const snap = await getDocs(q);
+        const data: Booking[] = [];
+        snap.forEach((doc) => {
+          const b = { id: doc.id, ...doc.data() } as Booking;
+          if (b.phone === userPhone) data.push(b);
+        });
+        data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setBookings(data);
+      } catch (e) { console.error(e); }
       setLoading(false);
-    }, (e) => {
-      console.error(e);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    };
+    fetchMyBookings();
   }, [userPhone]);
 
   if (!userPhone) return <AuthRequest onLoginSuccess={onLoginSuccess} title="View My Bookings" />;
@@ -686,7 +735,6 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
              const isExpanded = expandedBookingId === b.id;
              return (
                <div key={b.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
-                  {/* Summary Header (Always visible) */}
                   <div 
                      className="p-5 flex justify-between items-center cursor-pointer hover:bg-gray-50"
                      onClick={() => setExpandedBookingId(isExpanded ? null : b.id!)}
@@ -707,7 +755,6 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
                      </div>
                   </div>
 
-                  {/* Expanded Details */}
                   {isExpanded && (
                      <div className="p-5 border-t border-gray-100 bg-gray-50 animate-fade-in">
                         <div className="grid grid-cols-2 gap-4 mb-4">
