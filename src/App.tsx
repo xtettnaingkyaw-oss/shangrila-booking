@@ -95,6 +95,19 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [appData, setAppData] = useState<AppData | null>(null);
 
+  // --- Dynamic Tab Title & Favicon Setup ---
+  useEffect(() => {
+    document.title = "The Shangri-La | Men's Retreat";
+    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    // Shangri-La Logo အား Tab ပေါ်တွင် ပြသရန်
+    link.href = "https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg";
+  }, []);
+
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('mode') === 'admin') setIsAdminMode(true);
@@ -140,7 +153,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
-      {/* HEADER SECTION WITH CIRCULAR LOGO */}
       <header className="bg-white shadow-sm py-6 px-4 text-center border-b border-gray-200 flex flex-col items-center justify-center">
         <div className="flex items-center justify-center mb-1">
           {appData.branding.logoUrl && (
@@ -238,6 +250,7 @@ function CustomerBooking({ appData }: { appData: AppData }) {
     <div className="max-w-2xl mx-auto">
       {renderStepper()}
       
+      {/* STEP 1: SERVICE */}
       {step === 1 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8">
@@ -270,6 +283,7 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
+      {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
           {viewGallery && (
@@ -329,6 +343,7 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
+      {/* STEP 3 & 4 */}
       {step === 3 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
@@ -446,7 +461,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     if (!file) return;
     setUploadingImage('logo');
     try {
-      // 1:1 Square crop for Logo to fit perfectly in a circle
       const base64 = await compressImage(file, 400, 400); 
       setLocalBranding({ ...localBranding, logoUrl: base64 });
     } catch (err) { alert("Logo တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
@@ -501,8 +515,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
             <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
-            
-            {/* Admin Panel အတွင်းမှ Logo Preview အဝိုင်းလေး */}
             <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
               {localBranding.logoUrl ? (
                 <>
@@ -517,7 +529,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                 </div>
               )}
             </div>
-            
             <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">
               {localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}
               <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} />
