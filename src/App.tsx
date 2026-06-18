@@ -3,6 +3,20 @@ import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy,
 import { db } from './firebase';
 import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus } from 'lucide-react';
 
+// --- Theme & Icons Setup ---
+const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
+
+// CRITICAL FIX: Defined ICON_MAP to map service categories to specific premium Lucide icons
+const ICON_MAP: Record<string, any> = {
+  massage: Sparkles,
+  scrub: Droplets,
+  waxing: Scissors,
+  hotel: Home,
+  facial: Droplets,
+  manicure: Scissors,
+  pedicure: Scissors,
+};
+
 // --- Types ---
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
 interface MenuCategory { id: string; title: string; items: MenuItem[]; }
@@ -13,9 +27,7 @@ interface PaymentMethod { id: string; name: string; accountNumber: string; accou
 interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; }
 interface UserProfile { phone: string; name: string; password?: string; createdAt: number; }
 
-// --- Theme & Setup ---
-const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
-
+// --- Default Data Setup ---
 const DEFAULT_BRANDING: AppBranding = {
   logoUrl: '', name: "The Shangri-La", address: "33th(B) St, Between 65th & 65th(A) Sts, Mandalay",
   phone1: "09-458884517", phone2: "09-770072190", copyright: "© 2026 The Shangri-La Men's Retreat."
@@ -503,7 +515,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
             <div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-6">
              <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Special Request (Optional)</h3>
              <textarea 
                name="specialRequest" 
@@ -549,7 +561,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
               </div>
             )}
             
-            {/* 1. Countdown Timer Display */}
+            {/* Countdown Timer Display */}
             {selectedPaymentConfig && (
               <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
                  <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
@@ -977,7 +989,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const handleSaveBranding = async () => {
-    if (!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    if (!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေသာပါသလား?`)) return;
     setSavingCategory('branding');
     try {
       await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true });
