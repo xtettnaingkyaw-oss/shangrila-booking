@@ -454,11 +454,13 @@ function CustomerBooking() {
     <div className="animate-fade-in">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
-        <p className="text-sm text-gray-500 mt-2">(ဘိုကင်ရယူလိုသော နေ့ရက်​ နှင့်​ အချိန်​ ကို​ ရွေးချယ်​ပါ)</p>
+        <p className="text-sm text-gray-500 mt-2">(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p>
       </div>
       
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-        <label className="block mb-2 text-sm font-bold text-gray-700 flex items-center"><Calendar className="w-4 h-4 mr-2 text-yellow-600"/> Select Date</label>
+        <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}>
+          <Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Select Date
+        </label>
         <input 
           type="date" 
           min={minDateStr} 
@@ -468,7 +470,9 @@ function CustomerBooking() {
           className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-gray-800 bg-gray-50 mb-6" 
         />
 
-        <label className="block mb-4 text-sm font-bold text-gray-700 flex items-center"><Clock className="w-4 h-4 mr-2 text-yellow-600"/> Available Times</label>
+        <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}>
+          <Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Available Times
+        </label>
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
           {TIME_SLOTS.map(t => (
             <button
@@ -510,12 +514,12 @@ function CustomerBooking() {
       <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2>
-          <p className="text-sm text-gray-500 mt-2">(သင်​ရွေးချယ်​ခဲ့သော​ ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး စရံငွေကြိုတင်ပေးချေကာ ဘိုကင်ကို အတည်ပြုပေးပါ)</p>
+          <p className="text-sm text-gray-500 mt-2">(သင်ရွေးချယ်ခဲ့သော ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး စရံငွေကြိုတင်ပေးချေကာ ဘိုကင်ကို အတည်ပြုပေးပါ)</p>
         </div>
         
         {/* Summary Card */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-          <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-5">Booking Summary</h3>
+          <h3 className="text-xs font-bold tracking-widest uppercase mb-5" style={{ color: THEME.primary }}>Booking Summary</h3>
           <div className="space-y-4">
             
             <div className="flex justify-between items-start">
@@ -569,7 +573,7 @@ function CustomerBooking() {
 
         {/* User Info */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-          <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-4">Your Information</h3>
+          <h3 className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: THEME.primary }}>Your Information</h3>
           <div className="space-y-4">
             <div>
               <label className="block mb-1 text-sm font-semibold text-gray-700">Full Name</label>
@@ -586,8 +590,8 @@ function CustomerBooking() {
 
         {/* Payment Section */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-          <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-4 flex items-center">
-            <CreditCard className="w-4 h-4 mr-2"/> Deposit Payment
+          <h3 className="text-xs font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}>
+            <CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Deposit Payment
           </h3>
           
           <div className="mb-4">
