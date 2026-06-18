@@ -284,7 +284,7 @@ function CustomerBooking() {
       <div className="animate-fade-in">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
-          <p className="text-sm text-gray-500 mt-2" text-yellow-600">(သင်ရယူလိုသော ဝန်ဆောင်မှုအမျိုးအစားကို အရင်ရွေးချယ်ပါ)</p>
+          <p className="text-sm text-gray-500 mt-2">(သင်ရယူလိုသော ဝန်ဆောင်မှုအမျိုးအစားကို အရင်ရွေးချယ်ပါ)</p>
         </div>
         
         <div className="space-y-4">
