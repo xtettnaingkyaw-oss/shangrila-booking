@@ -6,7 +6,6 @@ import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCh
 // --- Theme & Icons Setup ---
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 
-// CRITICAL FIX: Defined ICON_MAP to map service categories to specific premium Lucide icons
 const ICON_MAP: Record<string, any> = {
   massage: Sparkles,
   scrub: Droplets,
@@ -253,15 +252,11 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
       if (serviceName.includes("outcall")) {
          allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
       } else if (serviceName.includes("half day")) {
-         allowedSlots = ALL_TIME_SLOTS.filter(time => {
-            const index = ALL_TIME_SLOTS.indexOf(time);
-            return (index >= ALL_TIME_SLOTS.indexOf("6:00 AM") && index <= ALL_TIME_SLOTS.indexOf("12:00 PM")) ||
-                   (index >= ALL_TIME_SLOTS.indexOf("12:00 PM") && index <= ALL_TIME_SLOTS.indexOf("6:00 PM"));
-         });
+         return ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
       } else if (serviceName.includes("night")) {
          allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 PM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
       } else if (serviceName.includes("whole day")) {
-         allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
+         return ["7:00 AM to 7:00 PM"];
       }
     } else {
        allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
@@ -478,7 +473,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
             <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
             <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+            <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
               {availableTimeSlots.map(t => (<button key={t} type="button" disabled={!formData.date} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37] disabled:opacity-40 disabled:hover:border-gray-200 disabled:cursor-not-allowed'}`}>{t}</button>))}
             </div>
             {availableTimeSlots.length === 0 && formData.date && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
@@ -515,7 +510,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
             <div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-6">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
              <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Special Request (Optional)</h3>
              <textarea 
                name="specialRequest" 
@@ -989,7 +984,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const handleSaveBranding = async () => {
-    if (!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေသာပါသလား?`)) return;
+    if (!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
     setSavingCategory('branding');
     try {
       await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true });
