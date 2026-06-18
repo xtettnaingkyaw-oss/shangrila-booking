@@ -116,7 +116,7 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-10">
       <header className="bg-white shadow-sm py-6 px-4 text-center border-b border-gray-200">
         <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>The Shangri-La</h1>
-        <p className="text-xs mt-1 font-semibold uppercase tracking-widest text-yellow-600">Men's Retreat & Luxury Spa</p>
+        <p className="text-xs mt-1 font-semibold uppercase tracking-widest text-yellow-600">Men's Retreat (Beyond Relaxation) </p>
       </header>
 
       <main className="max-w-3xl mx-auto p-4 py-8">
