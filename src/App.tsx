@@ -237,6 +237,26 @@ function CustomerBooking({ appData }: { appData: AppData }) {
     setLoading(false);
   };
 
+  // --- Success Message Modal ပြသခြင်း ---
+  if (successMsg) {
+    return (
+      <div className="bg-white p-10 rounded-2xl shadow-lg text-center border border-gray-100 max-w-lg mx-auto mt-10 animate-fade-in">
+        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <CheckCircle className="w-10 h-10 text-green-600" />
+        </div>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: THEME.primary }}>Booking Confirmed!</h2>
+        <p className="text-gray-600 mb-8 leading-relaxed font-semibold">{successMsg}</p>
+        <button 
+          onClick={() => setSuccessMsg('')} 
+          className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90"
+          style={{ backgroundColor: THEME.primary }}
+        >
+          နောက်ထပ် Booking တင်ရန်
+        </button>
+      </div>
+    );
+  }
+
   const renderStepper = () => {
     const steps = [ { num: 1, label: 'SERVICE', icon: Sparkles }, { num: 2, label: 'THERAPIST', icon: User }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard } ];
     return (
@@ -359,7 +379,7 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
-      {/* STEP 3 & 4 */}
+      {/* STEP 3 */}
       {step === 3 && (
         <div className="animate-fade-in">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
@@ -368,6 +388,7 @@ function CustomerBooking({ appData }: { appData: AppData }) {
         </div>
       )}
 
+      {/* STEP 4 */}
       {step === 4 && (
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရွေးချယ်ခဲ့သော ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး စရံငွေကြိုတင်ပေးချေကာ ဘိုကင်ကို အတည်ပြုပေးပါ)</p></div>
@@ -377,7 +398,6 @@ function CustomerBooking({ appData }: { appData: AppData }) {
           
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><h3 className="text-xs font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Deposit Payment</h3>
             
-            {/* Custom Payment Dropdown */}
             <div className="relative mb-4">
               <label className="block mb-2 text-sm font-semibold text-gray-700">ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
               <div 
