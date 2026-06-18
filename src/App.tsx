@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase'; 
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, Image as ImageIconFeather, MapPin, Search } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, Image as ImageIconFeather, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus } from 'lucide-react';
 
 // --- Types ---
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
 interface MenuCategory { id: string; title: string; items: MenuItem[]; }
 interface TherapistProfile { id: string; name: string; images: string[]; order: number; }
 interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'payment_checking' | 'approved' | 'cancelled'; cancelReason?: string; createdAt: number; }
-interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; }
+interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; name: string; }
 interface PaymentMethod { id: string; name: string; accountNumber: string; accountName: string; logoUrl: string; }
 interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; }
 interface UserProfile { phone: string; name: string; password?: string; createdAt: number; }
@@ -18,8 +18,18 @@ const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 const ICON_MAP: Record<string, any> = { massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home };
 
 // --- Default Initial Data ---
-const DEFAULT_BRANDING: AppBranding = { logoUrl: '', address: "33th(B) St, Between 65th & 65th(A) Sts, Chan Aye Tharzan Township, Mandalay", phone1: "09-458884517", phone2: "09-770072190", copyright: "© 2026 The Shangri-La Men's Retreat. All rights reserved." };
-const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [ { id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' }, { id: 'p2', name: 'Wave PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' } ];
+const DEFAULT_BRANDING: AppBranding = { 
+  logoUrl: '', 
+  name: "The Shangri-La",
+  address: "33th(B) St, Between 65th & 65th(A) Sts, Chan Aye Tharzan Township, Mandalay", 
+  phone1: "09-458884517", 
+  phone2: "09-770072190", 
+  copyright: "© 2026 The Shangri-La Men's Retreat. All rights reserved." 
+};
+const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [ 
+  { id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' }, 
+  { id: 'p2', name: 'Wave PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' } 
+];
 const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i }));
 const DEFAULT_CATEGORIES: MenuCategory[] = [
   { id: 'massage', title: 'Massage', items: [ { id: 'm1', name: 'Traditional Massage', price: 25000, vvipPrice: 35000, duration: '60 Mins' }, { id: 'm2', name: 'Traditional Massage', price: 37000, vvipPrice: 52500, duration: '90 Mins' } ]},
@@ -27,29 +37,13 @@ const DEFAULT_CATEGORIES: MenuCategory[] = [
 ];
 const TIME_SLOTS = ["9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM"];
 
-// SAFE Price Formatter (Anti-Crash)
 const formatPrice = (price: any) => { 
   const num = Number(price);
   if (isNaN(num)) return '0 Ks'; 
   return num.toLocaleString() + ' Ks'; 
 };
 
-// Image Compressor
-const compressImage = async (file: File, width: number, height: number): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader(); reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image(); img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas'); let sW = img.width; let sH = img.height; let sX = 0; let sY = 0;
-        const targetRatio = width / height; const imageRatio = sW / sH;
-        if (imageRatio > targetRatio) { const nW = sH * targetRatio; sX = (sW - nW) / 2; sW = nW; } else { const nH = sW / targetRatio; sY = (sH - nH) / 2; sH = nH; }
-        canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', 0.7));
-      }; img.onerror = (e) => reject(e);
-    }; reader.onerror = (e) => reject(e);
-  });
-};
-
+// --- Main App Component ---
 export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [appData, setAppData] = useState<AppData | null>(null);
@@ -60,44 +54,81 @@ export default function App() {
       const existingIcons = document.querySelectorAll("link[rel*='icon']"); existingIcons.forEach(icon => document.head.removeChild(icon));
       const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
     };
-    const iconUrl = appData?.branding?.logoUrl || "https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg";
-    updateFavicon(iconUrl);
+    if(appData?.branding?.logoUrl) {
+       updateFavicon(appData.branding.logoUrl);
+    } else {
+       updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg");
+    }
   }, [appData?.branding?.logoUrl]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('mode') === 'admin') setIsAdminMode(true);
 
-    const fetchSettings = async () => {
+    const initData = async () => {
       try {
         const docRef = doc(db, 'settings', 'appData');
         const snap = await getDoc(docRef);
-        let loadedCategories = DEFAULT_CATEGORIES; let loadedBranding = DEFAULT_BRANDING; let loadedPaymentMethods = DEFAULT_PAYMENT_METHODS;
+        
+        // 1. App Settings Loading (Fail-safe)
+        let loadedData: Partial<AppData> = {};
         if (snap.exists()) {
-          const data = snap.data();
-          if (data.categories) loadedCategories = data.categories; 
-          if (data.branding) loadedBranding = { ...DEFAULT_BRANDING, ...data.branding }; 
-          if (data.paymentMethods && Array.isArray(data.paymentMethods)) loadedPaymentMethods = data.paymentMethods;
-        } else { await setDoc(docRef, { categories: DEFAULT_CATEGORIES, branding: DEFAULT_BRANDING, paymentMethods: DEFAULT_PAYMENT_METHODS }, { merge: true }); }
+           loadedData = snap.data() || {};
+        }
+
+        const finalCategories = Array.isArray(loadedData.categories) ? loadedData.categories : DEFAULT_CATEGORIES;
+        const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
+        const finalPaymentMethods = Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS;
+
+        // 2. Therapists Loading
+        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); 
+        const tSnap = await getDocs(tQuery); 
+        let loadedTherapists: TherapistProfile[] = [];
         
-        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); const tSnap = await getDocs(tQuery); let loadedTherapists: TherapistProfile[] = [];
-        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); } 
-        else { const batchPromises = DEFAULT_THERAPISTS.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order })); await Promise.all(batchPromises); loadedTherapists = DEFAULT_THERAPISTS; }
-        
-        setAppData({ categories: loadedCategories, therapists: loadedTherapists, branding: loadedBranding, paymentMethods: loadedPaymentMethods });
-      } catch (err) { console.error("Error loading settings:", err); }
+        if (!tSnap.empty) { 
+            tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); 
+        } else { 
+            loadedTherapists = DEFAULT_THERAPISTS; 
+            // Optional: Background write default therapists
+            DEFAULT_THERAPISTS.forEach(t => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
+        }
+
+        // Apply all data
+        setAppData({ 
+            categories: finalCategories, 
+            therapists: loadedTherapists, 
+            branding: finalBranding, 
+            paymentMethods: finalPaymentMethods 
+        });
+
+      } catch (err) {
+        console.error("Critical Init Error:", err);
+        // Fallback Data if network fails to avoid White Screen
+        setAppData({ 
+            categories: DEFAULT_CATEGORIES, 
+            therapists: DEFAULT_THERAPISTS, 
+            branding: DEFAULT_BRANDING, 
+            paymentMethods: DEFAULT_PAYMENT_METHODS 
+        });
+      }
     };
-    fetchSettings();
+    initData();
   }, []);
 
-  if (!appData) return <div className="min-h-screen bg-gray-50 flex items-center justify-center font-bold" style={{ color: THEME.primary }}>Loading System Data...</div>;
+  if (!appData) {
+      return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold">Loading The Shangri-La...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
       <header className="bg-white shadow-sm py-6 px-4 text-center border-b border-gray-200 flex flex-col items-center justify-center">
         <div className="flex items-center justify-center mb-1">
-          {appData.branding.logoUrl && (<div className="w-12 h-12 rounded-full overflow-hidden mr-3 border-2 shadow-sm flex-shrink-0" style={{ borderColor: THEME.gold }}><img src={appData.branding.logoUrl} alt="Logo" className="w-full h-full object-cover bg-white" /></div>)}
-          <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>The Shangri-La</h1>
+          {appData.branding.logoUrl && (
+            <div className="w-12 h-12 rounded-full overflow-hidden mr-3 border-2 shadow-sm flex-shrink-0" style={{ borderColor: THEME.gold }}>
+              <img src={appData.branding.logoUrl} alt="Logo" className="w-full h-full object-cover bg-white" />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'}</h1>
         </div>
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
       </header>
@@ -108,9 +139,9 @@ export default function App() {
 
       {!isAdminMode && (
         <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500">
-          <h3 className="font-bold text-base mb-2" style={{ color: THEME.primary }}>The Shangri-La Men's Retreat</h3>
-          <p className="mb-2 flex items-center justify-center"><MapPin className="w-4 h-4 mr-1"/> {appData.branding.address}</p>
-          <p className="mb-4 flex items-center justify-center"><Phone className="w-4 h-4 mr-1"/> {appData.branding.phone1} &nbsp;|&nbsp; {appData.branding.phone2}</p>
+          <h3 className="font-bold text-base mb-2" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'} Men's Retreat</h3>
+          <p className="mb-2 flex items-center justify-center text-xs sm:text-sm"><MapPin className="w-4 h-4 mr-1"/> {appData.branding.address}</p>
+          <p className="mb-4 flex items-center justify-center text-xs sm:text-sm"><Phone className="w-4 h-4 mr-1"/> {appData.branding.phone1} &nbsp;|&nbsp; {appData.branding.phone2}</p>
           <p className="text-xs text-gray-400">{appData.branding.copyright}</p>
         </footer>
       )}
@@ -126,14 +157,14 @@ function CustomerApp({ appData }: { appData: AppData }) {
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
 
   const tabs = [
-    { id: 'book', label: 'Book Now', icon: Calendar },
-    { id: 'history', label: 'My Bookings', icon: Search },
-    { id: 'profile', label: 'Profile', icon: User }
+    { id: 'book', label: 'Book Now', icon: CalendarPlus },
+    { id: 'history', label: 'My Bookings', icon: History },
+    { id: 'profile', label: 'Profile', icon: UserCircle }
   ] as const;
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Custom Tabs Navigation */}
+      {/* Customer Tabs */}
       <div className="flex justify-center items-center space-x-2 md:space-x-4 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -167,7 +198,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Safeguards
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
@@ -265,7 +295,10 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
       {/* STEP 1: SERVICE */}
       {step === 1 && (
         <div className="animate-fade-in">
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
+            <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p>
+          </div>
           <div className="space-y-4">{appData.categories.map(category => {
             const CategoryIcon = ICON_MAP[category.id] || Activity;
             return (
@@ -288,13 +321,15 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
             <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available'))}</div></div></div>
             {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <button type="button" disabled={!formData.selectedItem?.vvipPrice} onClick={() => setFormData({...formData, isVvipUpgrade: !formData.isVvipUpgrade})} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'} ${!formData.selectedItem?.vvipPrice ? 'opacity-50' : ''}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'}`} /></button>}
           </div>
-          <div className="mt-8 flex justify-end"><button disabled={!formData.selectedItem} onClick={() => setStep(2)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>CONTINUE <ChevronRight className="w-5 h-5 ml-2" /></button></div>
+          <div className="mt-8 flex justify-end"><button disabled={!formData.selectedItem} onClick={() => setStep(2)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" /></button></div>
         </div>
       )}
 
       {/* STEP 2: THERAPIST */}
       {step === 2 && (
         <div className="animate-fade-in relative">
+          
+          {/* See All Photos Modal */}
           {viewGallery && (
             <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-fade-in">
               <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
@@ -310,8 +345,10 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
               <div className="text-white mt-4 font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full">{viewGallery.index + 1} / {viewGallery.images.length}</div>
             </div>
           )}
+
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p></div>
           <div onClick={() => setFormData({...formData, therapist: null})} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
+          
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {appData.therapists.map((therapist) => { 
               const isSelected = formData.therapist?.id === therapist.id; const hasImage = therapist.images && therapist.images.length > 0;
@@ -335,11 +372,21 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
         </div>
       )}
 
-      {/* STEP 3 */}
+      {/* STEP 3: DATE & TIME */}
       {step === 3 && (
         <div className="animate-fade-in">
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6"><label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Select Date</label><input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value, time: ''})} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800 bg-gray-50 mb-6" /><label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Available Times</label><div className="grid grid-cols-3 sm:grid-cols-4 gap-3">{TIME_SLOTS.map(t => (<button key={t} type="button" disabled={!formData.date} onClick={() => setFormData({...formData, time: t})} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-yellow-500 bg-yellow-50 text-yellow-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-yellow-400 disabled:opacity-40 disabled:hover:border-gray-200 disabled:cursor-not-allowed'}`}>{t}</button>))}</div></div>
+          <div className="text-center mb-8">
+             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
+             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
+             <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Select Date</label>
+             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value, time: ''})} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-800 bg-gray-50 mb-6" />
+             <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }}/> Available Times</label>
+             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+               {TIME_SLOTS.map(t => (<button key={t} type="button" disabled={!formData.date} onClick={() => setFormData({...formData, time: t})} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-yellow-500 bg-yellow-50 text-yellow-700 shadow-sm' : 'border-gray-200 bg-white text-gray-600 hover:border-yellow-400 disabled:opacity-40 disabled:hover:border-gray-200 disabled:cursor-not-allowed'}`}>{t}</button>))}
+             </div>
+          </div>
           <div className="mt-8 flex justify-between"><button onClick={() => setStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || !formData.time} onClick={() => setStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
@@ -535,6 +582,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
   );
 }
 
+// Simple Auth Modal
 function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)=>void, title: string }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -569,7 +617,7 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)
 
   return (
     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in">
-      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><User className="w-8 h-8"/></div>
+      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><KeyRound className="w-8 h-8"/></div>
       <h2 className="text-xl font-bold text-gray-800 mb-2">Login Required</h2>
       <p className="text-xs font-bold text-gray-500 mb-6">{title} ကိုကြည့်ရန် လော့ဂ်အင် ဝင်ပေးပါ</p>
       
@@ -590,12 +638,15 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:string)
   );
 }
 
+// SVG Fallback for XCircle
+const XCircle = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+
 function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
   if (status === 'payment_checking') return <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-[10px] font-bold border border-blue-200 flex items-center"><Clock className="w-3 h-3 mr-1"/> Payment Confirming</span>;
   if (status === 'approved') return <span className="bg-green-50 text-green-600 px-3 py-1 rounded-full text-[10px] font-bold border border-green-200 flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> Approved</span>;
   if (status === 'cancelled') return (
     <div className="flex flex-col items-end">
-      <span className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold border border-red-200 flex items-center"><X className="w-3 h-3 mr-1"/> Cancelled</span>
+      <span className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold border border-red-200 flex items-center"><XCircle className="w-3 h-3 mr-1"/> Cancelled</span>
       {cancelReason && <span className="text-[10px] text-red-400 mt-1 max-w-[200px] text-right leading-tight">Reason: {cancelReason}</span>}
     </div>
   );
@@ -693,8 +744,8 @@ function AdminUsersList() {
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><User className="mr-2 text-[#D4AF37]"/> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={4} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><CheckCircle className="w-3 h-3 mr-1"/> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><User className="w-3 h-3 mr-1"/> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td></tr>))}</tbody></table></div>
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]"/> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={4} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1"/> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1"/> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td></tr>))}</tbody></table></div>
     </div>
   );
 }
@@ -704,36 +755,153 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || DEFAULT_BRANDING)));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || DEFAULT_PAYMENT_METHODS)));
+  
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
 
-  const handleSaveCategory = async (cIdx: number) => { const cat = localCategories[cIdx]; if(!window.confirm(`ဤပြောင်းလဲမှုများကို (${cat.title}) သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return; setSavingCategory(cat.id); try { await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true }); onSettingsUpdated({ ...appData, categories: localCategories }); alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။'); } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); } setSavingCategory(null); };
-  const handleSaveTherapists = async () => { if(!window.confirm(`ဝန်ထမ်းစာရင်းကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return; setSavingCategory('therapists'); try { const tPromises = localTherapists.map((t, idx) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: idx })); const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id))); await Promise.all([...tPromises, ...delPromises]); setDeletedTherapistIds([]); onSettingsUpdated({ ...appData, therapists: localTherapists }); alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။'); } catch (e) { alert('Update Error'); } setSavingCategory(null); };
-  const handleSaveBranding = async () => { if(!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return; setSavingCategory('branding'); try { await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true }); onSettingsUpdated({ ...appData, branding: localBranding }); alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။'); } catch (e) { alert('Update Error'); } setSavingCategory(null); };
-  const handleSavePayments = async () => { if(!window.confirm(`Payment အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return; setSavingCategory('payments'); try { await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true }); onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods }); alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။'); } catch (e) { alert('Update Error'); } setSavingCategory(null); };
+  const handleSaveCategory = async (cIdx: number) => {
+    const cat = localCategories[cIdx];
+    if(!window.confirm(`ဤပြောင်းလဲမှုများကို (${cat.title}) သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    setSavingCategory(cat.id);
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true });
+      onSettingsUpdated({ ...appData, categories: localCategories });
+      alert('အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
+    setSavingCategory(null);
+  };
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); setLocalBranding({ ...localBranding, logoUrl: base64 }); } catch (err) { alert("Error"); } setUploadingImage(null); };
-  const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const updated = [...localPaymentMethods]; updated[idx].logoUrl = base64; setLocalPaymentMethods(updated); } catch (err) { alert("Error"); } setUploadingImage(null); };
-  
+  const handleSaveTherapists = async () => {
+    if(!window.confirm(`ဝန်ထမ်းစာရင်းကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    setSavingCategory('therapists');
+    try {
+      const tPromises = localTherapists.map((t, idx) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: idx }));
+      const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id)));
+      await Promise.all([...tPromises, ...delPromises]);
+      setDeletedTherapistIds([]);
+      onSettingsUpdated({ ...appData, therapists: localTherapists });
+      alert('ဝန်ထမ်းစာရင်းကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
+    setSavingCategory(null);
+  };
+
+  const handleSaveBranding = async () => {
+    if(!window.confirm(`Logo နှင့် Footer အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    setSavingCategory('branding');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true });
+      onSettingsUpdated({ ...appData, branding: localBranding });
+      alert('Logo နှင့် Footer ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
+    setSavingCategory(null);
+  };
+
+  const handleSavePayments = async () => {
+    if(!window.confirm(`Payment အချက်အလက်များကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    setSavingCategory('payments');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true });
+      onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods });
+      alert('Payment အချက်အလက်များကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+    } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
+    setSavingCategory(null);
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage('logo');
+    try { const base64 = await compressImage(file, 400, 400); setLocalBranding({ ...localBranding, logoUrl: base64 }); } 
+    catch (err) { alert("Logo တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
+    setUploadingImage(null);
+  };
+
+  const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(`pay_${idx}`);
+    try { const base64 = await compressImage(file, 200, 200); const updated = [...localPaymentMethods]; updated[idx].logoUrl = base64; setLocalPaymentMethods(updated); } 
+    catch (err) { alert("Logo တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
+    setUploadingImage(null);
+  };
+
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length }]);
   const updateTherapistName = (tIdx: number, name: string) => { const updated = [...localTherapists]; updated[tIdx].name = name; setLocalTherapists(updated); };
-  const removeTherapist = (tIdx: number) => { if(!window.confirm("ဤဝန်ထမ်းအား ဖျက်မည် သေချာပါသလား?")) return; const t = localTherapists[tIdx]; if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]); const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated); };
-  const handleImageUpload = async (tIdx: number, files: FileList | null) => { if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('အများဆုံး ၅ ပုံသာ'); return; } setUploadingImage(therapist.id); const newUrls: string[] = []; try { for (let i = 0; i < files.length; i++) { const base64 = await compressImage(files[i], 450, 600); newUrls.push(base64); } const updated = [...localTherapists]; updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; setLocalTherapists(updated); } catch (err) { alert("Error"); } setUploadingImage(null); };
+  const removeTherapist = (tIdx: number) => {
+    if(!window.confirm("ဤဝန်ထမ်းအား ဖျက်မည် သေချာပါသလား?")) return;
+    const t = localTherapists[tIdx];
+    if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]);
+    const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated);
+  };
+
+  const handleImageUpload = async (tIdx: number, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const therapist = localTherapists[tIdx];
+    if (therapist.images.length + files.length > 5) { alert('အများဆုံး ၅ ပုံသာ ထည့်ခွင့်ရှိပါတယ်။'); return; }
+
+    setUploadingImage(therapist.id);
+    const newUrls: string[] = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const base64 = await compressImage(files[i], 450, 600); // 3:4 Ratio
+        newUrls.push(base64);
+      }
+      const updated = [...localTherapists];
+      updated[tIdx].images = [...updated[tIdx].images, ...newUrls];
+      setLocalTherapists(updated);
+    } catch (err) { alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
+    setUploadingImage(null);
+  };
+
   const removeImage = (tIdx: number, imgIdx: number) => { const updated = [...localTherapists]; updated[tIdx].images.splice(imgIdx, 1); setLocalTherapists(updated); };
+  
   const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const updated = [...localCategories]; (updated[cIdx].items[iIdx] as any)[field] = val; setLocalCategories(updated); };
   const addItem = (cIdx: number) => { const updated = [...localCategories]; updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false }); setLocalCategories(updated); };
-  const deleteItem = (cIdx: number, iIdx: number) => { if(!window.confirm("ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
+  const deleteItem = (cIdx: number, iIdx: number) => { if(!window.confirm("ဤ Service အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
+
   const updatePaymentMethod = (pIdx: number, field: string, val: string) => { const updated = [...localPaymentMethods]; (updated[pIdx] as any)[field] = val; setLocalPaymentMethods(updated); };
   const addPaymentMethod = () => { setLocalPaymentMethods([...localPaymentMethods, { id: `p_${Date.now()}`, name: 'New Payment', accountNumber: '', accountName: '', logoUrl: '' }]); };
-  const removePaymentMethod = (pIdx: number) => { if(!window.confirm("ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localPaymentMethods]; updated.splice(pIdx, 1); setLocalPaymentMethods(updated); };
+  const removePaymentMethod = (pIdx: number) => { if(!window.confirm("ဤ Payment အား ဖျက်မည် သေချာပါသလား?")) return; const updated = [...localPaymentMethods]; updated.splice(pIdx, 1); setLocalPaymentMethods(updated); };
 
   return (
     <div className="space-y-6">
-      {/* Branding Editor */}
+      
+      {/* Branding & Footer Editor */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><ImageIconFeather className="w-5 h-5 mr-2 text-[#D4AF37]"/> App Branding & Footer</h3></div><button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2"/> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}</button></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center"><label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label><div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">{localBranding.logoUrl ? (<><img src={localBranding.logoUrl} alt="Logo" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({...localBranding, logoUrl: ''})} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4"/></button></div></>) : (<div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : <ImageIconFeather className="w-8 h-8 opacity-50"/>}</div>)}</div><label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">{localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}<input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} /></label></div><div className="space-y-4"><div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({...localBranding, address: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div><div className="grid grid-cols-2 gap-2"><div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({...localBranding, phone1: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({...localBranding, phone2: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({...localBranding, copyright: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div></div></div>
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+          <div><h3 className="text-xl font-bold text-gray-800 flex items-center"><ImageIconFeather className="w-5 h-5 mr-2 text-[#D4AF37]"/> App Branding & Footer</h3></div>
+          <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90">
+            <Save className="w-4 h-4 mr-2"/> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
+            <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
+            <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
+              {localBranding.logoUrl ? (
+                <><img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({...localBranding, logoUrl: ''})} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4"/></button></div></>
+              ) : (
+                <div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : <ImageIconFeather className="w-8 h-8 opacity-50"/>}</div>
+              )}
+            </div>
+            <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">
+              {localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}
+              <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} />
+            </label>
+          </div>
+
+          <div className="space-y-4">
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Business Name</label><input type="text" value={localBranding.name || ''} onChange={e => setLocalBranding({...localBranding, name: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({...localBranding, address: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({...localBranding, phone1: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({...localBranding, phone2: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+            </div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({...localBranding, copyright: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+          </div>
+        </div>
       </div>
 
       {/* Payment Editor */}
