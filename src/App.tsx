@@ -737,7 +737,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
             <div className={`text-xs rounded-full px-3 py-1 inline-block font-bold mb-6 ${profile.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
               {profile.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
             </div>
-            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center">Edit Profile / Set Password</button>
+            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center"><Edit className="w-4 h-4 mr-2" /> Edit Profile</button>
           </>
         ) : (
           <form onSubmit={handleSave} className="text-left space-y-4">
@@ -810,12 +810,14 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string
   );
 }
 
+const XCircleIcon = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+
 function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
   if (status === 'payment_checking') return <span className="text-blue-600 border border-blue-200 bg-blue-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Confirming</span>;
   if (status === 'approved') return <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><CheckCircle className="w-3 h-3 mr-1"/> Confirmed</span>;
   if (status === 'cancelled') return (
     <div className="flex flex-col items-end">
-      <span className="text-red-500 border border-red-200 bg-red-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><X className="w-3 h-3 mr-1"/> Cancelled</span>
+      <span className="text-red-500 border border-red-200 bg-red-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><XCircleIcon className="w-3 h-3 mr-1"/> Cancelled</span>
       {cancelReason && <span className="text-[10px] text-red-400 mt-1 max-w-[200px] text-right leading-tight text-xs">Reason: {cancelReason}</span>}
     </div>
   );
@@ -868,22 +870,35 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
 // ==========================================
-// 3. ADMIN DASHBOARD (With Notification & Badge)
+// 3. ADMIN DASHBOARD
 // ==========================================
 function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [tab, setTab] = useState<'bookings' | 'users' | 'admins' | 'settings'>('bookings');
   
-  // Real-time Notification States
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const isFirstLoad = useRef(true);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // 🔔 1. Firebase Real-time Listener & Audio Notification
   useEffect(() => {
-    // 🔔 Use a reliable, pleasant notification sound URL
-    const notificationAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
-    const q = query(collection(db, 'bookings'));
+    // Premium Short Notification Beep
+    audioRef.current = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
     
+    // Auto-play workaround for browsers
+    const unlockAudio = () => {
+      if (audioRef.current) {
+        audioRef.current.play().then(() => {
+          audioRef.current!.pause();
+          audioRef.current!.currentTime = 0;
+        }).catch(() => {});
+      }
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
+    };
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('touchstart', unlockAudio);
+
+    const q = query(collection(db, 'bookings'));
     const unsubscribe = onSnapshot(q, (snap) => {
       const data: Booking[] = [];
       let currentPendingCount = 0;
@@ -898,17 +913,21 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
       setBookings(data);
       setPendingCount(currentPendingCount);
 
-      // Play sound only if a completely NEW booking is added (not just updated)
       if (!isFirstLoad.current) {
         const hasNewBooking = snap.docChanges().some(change => change.type === 'added' && change.doc.data().status === 'pending');
-        if (hasNewBooking) {
-          notificationAudio.play().catch(e => console.log("Audio play blocked by browser (user needs to interact with page first):", e));
+        if (hasNewBooking && audioRef.current) {
+          audioRef.current.currentTime = 0;
+          audioRef.current.play().catch(e => console.log("Audio block:", e));
         }
       }
       isFirstLoad.current = false;
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      document.removeEventListener('click', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
+    };
   }, []);
 
   return (
@@ -916,7 +935,6 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
       <div className="flex flex-wrap justify-center gap-2 mb-6">
         <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
           <Calendar className="w-4 h-4 mr-2" /> Bookings
-          {/* 🔔 2. Notification Badge Icon */}
           {pendingCount > 0 && (
              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
                {pendingCount}
@@ -935,9 +953,7 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
   );
 }
 
-// Admin Bookings (Now receives real-time data from Dashboard)
 function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
-  
   const handleStatusChange = async (id: string, newStatus: string) => {
     let reason = '';
     if (newStatus === 'cancelled') {
@@ -1002,7 +1018,6 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
   );
 }
 
-// Admin Users List (Auto-Created Profiles) with Edit Capability
 function AdminUsersList() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1036,7 +1051,6 @@ function AdminUsersList() {
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 relative">
-      {/* Edit User Modal */}
       {editingUser && (
          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
             <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full">
@@ -1059,7 +1073,6 @@ function AdminUsersList() {
   );
 }
 
-// Admin Management List
 function AdminManagementList() {
   const [admins, setAdmins] = useState<AdminProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1101,7 +1114,6 @@ function AdminManagementList() {
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-[#D4AF37]" /> Manage Admins</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {admins.length}</span></div>
       
-      {/* Add Admin Form */}
       <form onSubmit={handleAddAdmin} className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg flex flex-col sm:flex-row gap-3 items-end">
         <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Username</label><input type="text" value={newAdmin.username} onChange={e=>setNewAdmin({...newAdmin, username: e.target.value})} className="w-full p-2 border rounded" required /></div>
         <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Password</label><input type="text" value={newAdmin.password} onChange={e=>setNewAdmin({...newAdmin, password: e.target.value})} className="w-full p-2 border rounded" required /></div>
@@ -1198,7 +1210,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(therapist.id); const newUrls: string[] = [];
     try {
       for (let i = 0; i < files.length; i++) {
-        const base64 = await compressImage(files[i], 450, 600); // 3:4 Ratio
+        const base64 = await compressImage(files[i], 450, 600);
         newUrls.push(base64);
       }
       const updated = [...localTherapists];
