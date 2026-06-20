@@ -287,7 +287,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // Time Constraints Logic
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
@@ -624,19 +623,23 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
             {appData.therapists.map((therapist) => {
               const isSelected = formData.therapist?.id === therapist.id; const hasImage = therapist.images && therapist.images.length > 0;
               
-              // Check ONLY if this particular therapist is full for the selected date
+              // Dynamic Overlap/Full check for Therapist Selection Step
               const checkDate = formData.date || todayStr;
               const isFull = isTherapistFullForDate(therapist.name, checkDate);
-              const fullText = checkDate === todayStr ? "Fully Booked For Today" : "Fully Booked";
+              const fullTextEn = checkDate === todayStr ? "Fully Booked For Today" : "Fully Booked";
+              const fullTextMm = checkDate === todayStr ? "(ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ)" : "(ဘိုကင်ပြည့်သွားပါပြီ)";
 
               return (
-                <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed opacity-50 grayscale border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
+                <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
                   {isFull && (
-                    <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
-                      <span className="bg-red-500 text-white text-[9px] font-bold px-2 py-1 rounded shadow-md transform -rotate-12">{fullText}</span>
+                    <div className="absolute inset-0 z-20 bg-white/50 backdrop-blur-[2px] flex items-center justify-center">
+                      <div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500">
+                        <div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div>
+                        <div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div>
+                      </div>
                     </div>
                   )}
-                  <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'}`}>
+                  <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-40 grayscale' : ''}`}>
                     {hasImage ? (
                       <>
                         <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
@@ -644,8 +647,8 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
                       </>
                     ) : (<div className="flex flex-col items-center opacity-40"><User className="w-12 h-12 text-[#123524]" /></div>)}
                   </div>
-                  <div className="font-bold text-sm text-gray-800 text-center w-full truncate px-1">{therapist.name}</div>
-                  <div className="text-[10px] text-gray-400 mt-1 text-center">Professional Therapist</div>
+                  <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-400' : 'text-gray-800'}`}>{therapist.name}</div>
+                  <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
                 </div>
               )
             })}
@@ -900,7 +903,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
       await updateDoc(doc(db, 'users', userPhone), { name: formData.name, password: formData.password });
       setProfile({ ...profile!, name: formData.name, password: formData.password });
       setEditMode(false);
-      alert("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ.");
+      alert("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
     } catch (e) { alert("Error updating profile."); }
     setSaving(false);
   };
