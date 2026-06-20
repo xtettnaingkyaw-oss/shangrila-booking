@@ -224,6 +224,8 @@ function App() {
   );
 }
 
+export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; }
+
 // ==========================================
 // 1. CUSTOMER MAIN APP
 // ==========================================
@@ -327,7 +329,20 @@ function CustomerApp({ appData }: { appData: AppData }) {
   );
 }
 
-// 1.1A Dashboard Component
+// 1.1A Staff App Component
+function StaffApp({ appData }: { appData: AppData }) {
+   return (
+      <div className="max-w-2xl mx-auto bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100">
+         <div className="text-center mb-8 border-b border-gray-100 pb-6">
+            <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><User className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Portal</h2>
+            <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
+         </div>
+         <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} />
+      </div>
+   );
+}
+
+// 1.1B Dashboard Component
 function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const todayStr = getLocalTodayStr();
@@ -421,7 +436,6 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
       return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
   };
 
-  // Top 5 Calculation Logic
   const bookingCounts: Record<string, number> = {};
   bookings.forEach(b => {
      if (b.status !== 'cancelled') {
@@ -433,16 +447,12 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
      const countA = bookingCounts[a.name] || 0;
      const countB = bookingCounts[b.name] || 0;
      
-     // 1. Sort by actual booking count
      if (countA !== countB) return countB - countA; 
-     
-     // 2. Tie-breaker: Admin defined order
      return (a.order || 0) - (b.order || 0);
   }).slice(0, 5);
 
   return (
     <div className="animate-fade-in">
-       {/* Availability Section */}
        <div className="text-center mb-8">
          <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
          <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
@@ -474,7 +484,6 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
           })}
        </div>
 
-       {/* Top 5 Therapists Section */}
        {top5Therapists.length > 0 && (
          <div className="mt-14 pt-8 border-t-2 border-gray-100">
              <div className="text-center mb-6">
@@ -503,19 +512,6 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
        )}
     </div>
   );
-}
-
-// 1.1B Staff App Component
-function StaffApp({ appData }: { appData: AppData }) {
-   return (
-      <div className="max-w-2xl mx-auto bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100">
-         <div className="text-center mb-8 border-b border-gray-100 pb-6">
-            <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><User className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Portal</h2>
-            <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
-         </div>
-         <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} />
-      </div>
-   );
 }
 
 // 1.1 Booking Wizard
