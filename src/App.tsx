@@ -33,7 +33,7 @@ const DEFAULT_BRANDING: AppBranding = {
   phone1: "09-458884517", phone2: "09-770072190", copyright: "© 2026 The Shangri-La Men's Retreat."
 };
 const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [{ id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' }];
-const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i }));
+const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i, password: '' }));
 const DEFAULT_CATEGORIES: MenuCategory[] = [
   { id: 'massage', title: 'Massage', items: [{ id: 'm1', name: 'Traditional Massage', price: 25000, duration: '60 Mins' }] },
   { id: 'hotel', title: 'Hotel & Home Services', items: [{ id: 'h1', name: 'Part Time Outcall Service', price: 70000, duration: '100 Mins' }] }
@@ -329,9 +329,7 @@ function CustomerApp({ appData }: { appData: AppData }) {
   );
 }
 
-// ==========================================
-// 1.1 STAFF APP (JIBBLE-STYLE)
-// ==========================================
+// 1.1A Staff App Component
 function StaffApp({ appData }: { appData: AppData }) {
    const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
        const saved = localStorage.getItem('shangrila_staff_profile');
@@ -357,7 +355,6 @@ function StaffApp({ appData }: { appData: AppData }) {
    );
 }
 
-// 1.1A Staff Login Screen
 function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfile[], onLoginSuccess: (p: TherapistProfile) => void }) {
    const [therapistId, setTherapistId] = useState('');
    const [password, setPassword] = useState('');
@@ -370,7 +367,7 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
        if (staff && staff.password === password) {
            onLoginSuccess(staff);
        } else {
-           setError('Invalid Therapist ID or Password.');
+           setError('Invalid Therapist Selection or Password.');
        }
    };
 
@@ -381,8 +378,18 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
            <p className="text-xs font-bold text-gray-500 mb-6">Secure Access Only</p>
            <form onSubmit={handleLogin} className="space-y-4">
                <div>
-                   <label className="block text-left text-xs font-bold text-gray-500 mb-1">Therapist ID</label>
-                   <input required type="text" placeholder="t_01" value={therapistId} onChange={e=>setTherapistId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
+                   <label className="block text-left text-xs font-bold text-gray-500 mb-1">Select Therapist</label>
+                   <div className="relative">
+                       <select required value={therapistId} onChange={e=>setTherapistId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider appearance-none cursor-pointer text-gray-800">
+                           <option value="" disabled>-- Select Your Profile --</option>
+                           {therapists.map(t => (
+                               <option key={t.id} value={t.id}>{t.name}</option>
+                           ))}
+                       </select>
+                       <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-400">
+                           <ChevronDown className="w-4 h-4" />
+                       </div>
+                   </div>
                </div>
                <div>
                    <label className="block text-left text-xs font-bold text-gray-500 mb-1">Password</label>
@@ -395,7 +402,6 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
    );
 }
 
-// 1.1B Staff Session Manager (Dashboard)
 function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: AppData, loggedInStaff: TherapistProfile, onLogout: () => void }) {
    const [activeSession, setActiveSession] = useState<Booking | null>(null);
    const [showClockInFlow, setShowClockInFlow] = useState(false);
@@ -451,7 +457,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                    </div>
                    <div>
                        <h2 className="text-2xl font-bold text-[#123524]">{loggedInStaff.name}</h2>
-                       <p className="text-xs font-bold text-gray-500 mt-0.5">Professional Therapist • ID: {loggedInStaff.id}</p>
+                       <p className="text-xs font-bold text-gray-500 mt-0.5">Professional Therapist</p>
                    </div>
                </div>
                <button onClick={onLogout} className="text-xs font-bold text-red-500 flex items-center bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100"><LogOut className="w-3.5 h-3.5 mr-1" /> Log Out</button>
@@ -480,7 +486,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    );
 }
 
-// 1.1C Active Session Display with Countdown
 function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: () => void }) {
    const [remainingTime, setRemainingTime] = useState<number | null>(null);
    const [overtimeSecs, setOvertimeSecs] = useState<number>(0);
@@ -505,7 +510,6 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
 
    useEffect(() => {
       if (!isInitialLoad.current && remainingTime === 0 && overtimeSecs > 0) {
-         // Optionally play sound for overtime start
       }
       isInitialLoad.current = false;
    }, [remainingTime, overtimeSecs]);
@@ -554,7 +558,6 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
    );
 }
 
-// Helper to map intervals to blocks
 function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: number, dateStr: string): Set<string> {
     const blocked = new Set<string>();
     const dateObj = new Date(dateStr);
@@ -564,18 +567,192 @@ function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: numbe
     if (endTimeMillis < startOfDay || startTimeMillis > endOfDay) return blocked;
 
     ALL_TIME_SLOTS.forEach(slot => {
-        if (slot.includes("to")) return; // Skip day/night ranges
+        if (slot.includes("to")) return; 
 
         const slotTime = new Date(`${dateStr} ${slot}`);
         const slotTimeMillis = slotTime.getTime();
         const nextSlotTimeMillis = slotTimeMillis + (30 * 60 * 1000); 
 
-        // Does the interval intersect with this slot?
         if ((startTimeMillis < nextSlotTimeMillis) && (endTimeMillis > slotTimeMillis)) {
             blocked.add(slot);
         }
     });
     return blocked;
+}
+
+// 1.1B Dashboard Component
+function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const todayStr = getLocalTodayStr();
+
+  useEffect(() => {
+    const q = query(collection(db, 'bookings'));
+    const unsub = onSnapshot(q, (snap) => {
+        const arr: Booking[] = [];
+        snap.forEach(d => arr.push({id: d.id, ...d.data()} as Booking));
+        setBookings(arr);
+    });
+    return () => unsub();
+  }, []);
+
+  const getTherapistStatus = (tName: string) => {
+      let blockedNow = new Set<string>();
+      
+      bookings.forEach(b => {
+          if (b.status === 'cancelled' || b.status === 'completed') return;
+          if (b.date !== todayStr) return;
+          if (b.therapist !== tName) return;
+
+          if (b.status === 'in_progress' && b.startTimeMillis) {
+               const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
+               getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blockedNow.add(slot));
+          } else if (b.time && b.time.includes("to")) {
+              const [start, endRaw] = b.time.split(" to ");
+              const end = endRaw.replace(" (Next Day)", "");
+              const sIdx = ALL_TIME_SLOTS.indexOf(start);
+              let eIdx = ALL_TIME_SLOTS.indexOf(end);
+              
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+                  eIdx = ALL_TIME_SLOTS.length;
+              }
+              if (sIdx !== -1 && eIdx !== -1) {
+                  for (let i = sIdx; i < eIdx; i++) blockedNow.add(ALL_TIME_SLOTS[i]);
+              }
+              blockedNow.add(b.time); 
+          } else if (b.time) {
+              const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
+              if (sIdx !== -1) {
+                  let slotsToBlock = 2; // Default 60 mins
+                  const match = b.service.match(/(\d+)\s*Mins/i);
+                  if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
+                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
+                      if (ALL_TIME_SLOTS[i]) blockedNow.add(ALL_TIME_SLOTS[i]);
+                  }
+              }
+          }
+      });
+
+      let is24hFull = false;
+      if (blockedNow.has("7:00 AM to 7:00 AM (Next Day)")) {
+          is24hFull = true;
+      } else if (blockedNow.has("7:00 AM to 7:00 PM") && blockedNow.has("7:00 PM to 7:00 AM (Next Day)")) {
+          is24hFull = true;
+      }
+
+      if (is24hFull) {
+          return { label: 'Fully Booked (Day & Night)', mm: 'နေ့ရောညပါ ပြည့်နေပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+      }
+
+      const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
+      const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
+
+      let shopSlotsTotal = 0;
+      let shopSlotsBooked = 0;
+      for (let i = 6; i <= 30; i++) {
+          shopSlotsTotal++;
+          if (blockedNow.has(ALL_TIME_SLOTS[i])) shopSlotsBooked++;
+      }
+      const isShopFull = shopSlotsBooked === shopSlotsTotal;
+
+      if (isDayFull && !isNightFull) {
+          return { label: 'Day Full / Night Available', mm: 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+      }
+
+      if (isNightFull && !isDayFull && !isShopFull) {
+          return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
+      }
+
+      if (isShopFull && isNightFull) {
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+      }
+
+      if (isShopFull && !isNightFull) {
+          return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+      }
+
+      if (shopSlotsBooked > 0) {
+          return { label: 'Partially Booked', mm: 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်', color: 'bg-blue-100 text-blue-700 border-blue-200' };
+      }
+
+      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
+  };
+
+  const bookingCounts: Record<string, number> = {};
+  bookings.forEach(b => {
+     if (b.status !== 'cancelled') {
+         bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1;
+     }
+  });
+
+  const top5Therapists = [...appData.therapists].sort((a, b) => {
+     const countA = bookingCounts[a.name] || 0;
+     const countB = bookingCounts[b.name] || 0;
+     
+     if (countA !== countB) return countB - countA; 
+     return (a.order || 0) - (b.order || 0);
+  }).slice(0, 5);
+
+  return (
+    <div className="animate-fade-in">
+       <div className="text-center mb-8">
+         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
+         <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
+       </div>
+       
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {appData.therapists.map(t => {
+             const status = getTherapistStatus(t.name);
+             const isAvailable = status.label === 'Available';
+             const isPartiallyBooked = status.label === 'Partially Booked';
+             const isFullyBooked = status.label.includes('Fully Booked');
+
+             return (
+                <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
+                   <div className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
+                       {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
+                   </div>
+                   <div className="flex-1">
+                       <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
+                       <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
+                          {status.label} <br/> <span className="font-semibold opacity-90">{status.mm}</span>
+                       </div>
+                   </div>
+                   <button onClick={() => onBookTherapist(t)} className="ml-2 px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold whitespace-nowrap shadow-sm hover:bg-[#1a4a32] flex items-center border border-[#1a4a32]">
+                       Book Now
+                   </button>
+                </div>
+             )
+          })}
+       </div>
+
+       {top5Therapists.length > 0 && (
+         <div className="mt-14 pt-8 border-t-2 border-gray-100">
+             <div className="text-center mb-6">
+                 <h2 className="text-2xl font-bold flex items-center justify-center" style={{ color: THEME.primary }}><Crown className="w-6 h-6 mr-2 text-yellow-500"/> Our Top 5 Therapists</h2>
+                 <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ)</p>
+             </div>
+             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                 {top5Therapists.map((t, idx) => (
+                     <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
+                         <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">
+                            {idx + 1}
+                         </div>
+                         <div className="w-full aspect-[3/4] bg-gray-100 relative">
+                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
+                         </div>
+                         <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
+                             <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
+                             <button onClick={() => onBookTherapist(t)} className="w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] flex justify-center items-center border border-[#1a4a32]">
+                                 Book Now <ChevronRight className="w-3 h-3 ml-0.5"/>
+                             </button>
+                         </div>
+                     </div>
+                 ))}
+             </div>
+         </div>
+       )}
+    </div>
+  );
 }
 
 // 1.1 Booking Wizard (COMMON COMPONENT)
@@ -680,12 +857,11 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
       
       bookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed') return; // completed don't block
+          if (b.status === 'cancelled' || b.status === 'completed') return; 
           if (b.date !== selectedDate) return;
           if (b.therapist !== selectedTherapistName) return;
 
           if (b.status === 'in_progress' && b.startTimeMillis) {
-               // Time-based session blocking
                const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
                getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blocked.add(slot));
           } else if (b.time && b.time.includes("to")) {
@@ -695,7 +871,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
               
               if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-                  eIdx = ALL_TIME_SLOTS.length; // Blocks till end of day slots
+                  eIdx = ALL_TIME_SLOTS.length; 
               }
 
               if (sIdx !== -1 && eIdx !== -1) {
@@ -798,9 +974,49 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isStaffMode && formData.txId.length !== 6) { alert("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
     setLoading(true);
     
     try {
+      // Concurrency Overlap Check before inserting
+      const freshSnap = await getDocs(query(collection(db, 'bookings')));
+      const freshBookings: Booking[] = [];
+      freshSnap.forEach(d => freshBookings.push({id: d.id, ...d.data()} as Booking));
+      
+      const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
+      let isOverlap = false;
+
+      if (formData.time.includes("to")) {
+          const [start, endRaw] = formData.time.split(" to ");
+          const end = endRaw.replace(" (Next Day)", "");
+          const sIdx = ALL_TIME_SLOTS.indexOf(start);
+          let eIdx = ALL_TIME_SLOTS.indexOf(end);
+          
+          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+              eIdx = ALL_TIME_SLOTS.length;
+          }
+
+          if (sIdx !== -1 && eIdx !== -1) {
+              for (let i = sIdx; i < eIdx; i++) {
+                  if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; }
+              }
+          }
+          if (blockedNow.has(formData.time)) isOverlap = true;
+      } else {
+          const sIdx = ALL_TIME_SLOTS.indexOf(formData.time);
+          let neededSlots = 2; 
+          const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
+          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+          for (let i = 0; i < neededSlots; i++) { 
+              if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { isOverlap = true; break; }
+          }
+      }
+
+      if (isOverlap) {
+         alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်သွားပါပြီ။ ကျေးဇူးပြု၍ အခြားအချိန် ရွေးပေးပါ။");
+         setLoading(false); return;
+      }
+
       // Auto Create/Update Profile
       if (formData.phone && formData.phone.trim() !== '') {
         const userRef = doc(db, 'users', formData.phone);
@@ -1136,6 +1352,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
                   </div>
                 )}
                 
+                {/* Countdown Timer Display */}
                 {selectedPaymentConfig && (
                   <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
                      <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
@@ -1829,7 +2046,13 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
-  const updateTherapistField = (tIdx: number, field: string, val: string) => { const updated = [...localTherapists]; (updated[tIdx] as any)[field] = val; setLocalTherapists(updated); };
+  
+  const updateTherapistField = (tIdx: number, field: keyof TherapistProfile, val: any) => { 
+      const updated = [...localTherapists]; 
+      updated[tIdx] = { ...updated[tIdx], [field]: val };
+      setLocalTherapists(updated); 
+  };
+
   const removeTherapist = (tIdx: number) => {
     if (!window.confirm("ဤဝန်ထမ်းအား ဖျက်မည် သေချာပါသလား?")) return;
     const t = localTherapists[tIdx];
@@ -1957,14 +2180,18 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
             <div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
               <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4" /></button>
               
-              <div className="grid grid-cols-2 gap-3 mb-4 mt-2">
+              <div className="mb-3 mt-2">
+                 <span className="bg-[#123524] text-white text-[10px] font-bold px-2 py-1 rounded">Login ID: {therapist.id}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-4">
                  <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label>
                     <input type="text" value={therapist.name} onChange={(e) => updateTherapistField(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" />
                  </div>
                  <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Login Password</label>
-                    <input type="password" value={therapist.password || ''} onChange={(e) => updateTherapistField(tIdx, 'password', e.target.value)} placeholder="Password for Staff Portal" className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" />
+                    <input type="text" value={therapist.password || ''} onChange={(e) => updateTherapistField(tIdx, 'password', e.target.value)} placeholder="Password" className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" />
                  </div>
               </div>
               
