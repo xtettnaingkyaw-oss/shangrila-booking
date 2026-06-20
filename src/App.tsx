@@ -101,10 +101,11 @@ function App() {
   const [dbError, setDbError] = useState(false);
 
   useEffect(() => {
-    document.title = "The Shangri-La | Men's Retreat";
+    document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
+    
     const updateFavicon = (url: string) => {
-      // Remove old icons
-      const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon']"); 
+      // Remove old icons and manifest
+      const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='manifest']"); 
       existingIcons.forEach(icon => document.head.removeChild(icon));
       
       // Standard Favicon
@@ -114,15 +115,37 @@ function App() {
       newIcon.href = url; 
       document.head.appendChild(newIcon);
 
-      // Apple Touch Icon for "Add to Home Screen"
+      // Apple Touch Icon
       const appleIcon = document.createElement('link');
       appleIcon.rel = 'apple-touch-icon';
       appleIcon.href = url;
       document.head.appendChild(appleIcon);
+
+      // PWA Manifest for Android "Add to Home Screen"
+      const appName = appData?.branding?.name || "The Shangri-La";
+      const manifest = {
+        name: appName,
+        short_name: appName,
+        start_url: "/",
+        display: "standalone",
+        background_color: "#ffffff",
+        theme_color: THEME.primary,
+        icons: [
+          { src: url, sizes: "192x192", type: "image/png" },
+          { src: url, sizes: "512x512", type: "image/png" }
+        ]
+      };
+      const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
+      const manifestUrl = URL.createObjectURL(manifestBlob);
+      const manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = manifestUrl;
+      document.head.appendChild(manifestLink);
     };
+
     if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); }
     else { updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg"); }
-  }, [appData?.branding?.logoUrl]);
+  }, [appData?.branding?.logoUrl, appData?.branding?.name]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -184,11 +207,17 @@ function App() {
       </main>
 
       {!isAdminMode && (
-        <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500">
-          <h3 className="font-bold text-base mb-2" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'} Men's Retreat</h3>
-          <p className="mb-2 flex items-center justify-center text-xs sm:text-sm"><MapPin className="w-4 h-4 mr-1" /> {appData.branding.address}</p>
-          <p className="mb-4 flex items-center justify-center text-xs sm:text-sm"><Phone className="w-4 h-4 mr-1" /> {appData.branding.phone1} &nbsp;|&nbsp; {appData.branding.phone2}</p>
-          <p className="text-xs text-gray-400">{appData.branding.copyright}</p>
+        <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500 px-4">
+          <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'} Men's Retreat</h3>
+          <div className="mb-2 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto">
+            <MapPin className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" />
+            <span className="text-left sm:text-center leading-relaxed">{appData.branding.address}</span>
+          </div>
+          <div className="mb-4 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto">
+            <Phone className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" />
+            <span className="text-left sm:text-center leading-relaxed">{appData.branding.phone1} &nbsp;|&nbsp; {appData.branding.phone2}</span>
+          </div>
+          <p className="text-xs text-gray-400 mt-4">{appData.branding.copyright}</p>
         </footer>
       )}
     </div>
@@ -317,7 +346,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
       if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) return ["7:00 AM to 7:00 AM (Next Day)"];
       else if (serviceName.includes("outcall")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
       else if (serviceName.includes("half day")) return ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
-      else if (serviceName.includes("night")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 PM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+      else if (serviceName.includes("night")) return ["7:00 PM to 7:00 AM (Next Day)"];
       else if (serviceName.includes("whole day")) return ["7:00 AM to 7:00 PM"];
     } else {
        allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
