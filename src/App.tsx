@@ -608,18 +608,18 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
   const renderTherapistSelection = (currentStep: number) => (
     <div className="animate-fade-in relative">
       {viewGallery && (
-        <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in">
           <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
-          <div className="relative w-full h-[85vh] flex items-center justify-center">
-            <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="max-w-full max-h-full object-contain rounded-md drop-shadow-2xl" />
+          <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden py-10 px-0 sm:px-10">
+            <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="w-full h-full object-contain drop-shadow-2xl" />
             {viewGallery.images.length > 1 && (
               <>
-                <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition"><ChevronLeft className="w-8 h-8" /></button>
-                <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition"><ChevronRight className="w-8 h-8" /></button>
+                <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 sm:left-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" /></button>
+                <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 sm:right-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" /></button>
               </>
             )}
           </div>
-          <div className="text-white mt-4 font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full">{viewGallery.index + 1} / {viewGallery.images.length}</div>
+          <div className="absolute bottom-6 text-white font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full z-[110]">{viewGallery.index + 1} / {viewGallery.images.length}</div>
         </div>
       )}
 
@@ -649,14 +649,18 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
                 {hasImage ? (
                   <>
                     <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
-                    {therapist.images.length > 1 && (<button onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/80 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1.5 rounded flex items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</button>)}
+                    {therapist.images.length > 1 && (
+                      <button onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/90 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1 px-1 rounded flex flex-col items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30 leading-tight">
+                        <div className="flex items-center"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</div>
+                        <div className="text-[8px] mt-0.5 text-[#D4AF37]/80">(နောက်ထပ်ပုံများကြည့်ရန်)</div>
+                      </button>
+                    )}
                   </>
                 ) : (<div className="flex flex-col items-center opacity-40"><User className="w-12 h-12 text-[#123524]" /></div>)}
               </div>
               <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-400' : 'text-gray-800'}`}>{therapist.name}</div>
               <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
               
-              {/* NEW BOOK NOW BUTTON FOR GALLERY VIEW */}
               {isTherapistFirst && !isFull && (
                 <button
                   type="button"
