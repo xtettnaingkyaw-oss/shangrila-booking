@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
 
 // --- Theme & Icons Setup ---
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
@@ -153,6 +153,38 @@ function App() {
   const [appData, setAppData] = useState<AppData | null>(null);
   const [dbError, setDbError] = useState(false);
 
+  // PWA Install State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    // Check if app is already installed/standalone
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsStandalone(true);
+    }
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleDownloadApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        setIsStandalone(true);
+      }
+    } else {
+      alert("App အဖြစ် အသုံးပြုရန် - သင့်ဖုန်း Browser ရဲ့ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပြီး 'Add to Home Screen' ကို ရွေးချယ်ပေးပါ။");
+    }
+  };
+
   useEffect(() => {
     document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
     
@@ -247,6 +279,12 @@ function App() {
         
         {appMode === 'admin' && loggedInAdmin && (
            <button onClick={() => { setLoggedInAdmin(null); sessionStorage.removeItem('shangrila_admin'); }} className="absolute top-6 right-4 sm:right-6 text-xs font-bold text-red-500 flex items-center bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100"><LogOut className="w-3 h-3 mr-1" /> Logout</button>
+        )}
+
+        {!isStandalone && appMode === 'customer' && (
+           <button onClick={handleDownloadApp} className="absolute top-4 right-4 sm:top-6 sm:right-6 text-[10px] sm:text-xs font-bold text-white flex items-center bg-[#D4AF37] px-2.5 py-1.5 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
+             <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1" /> Download App
+           </button>
         )}
       </header>
 
@@ -496,6 +534,7 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
   const top5Therapists = [...appData.therapists].sort((a, b) => {
      const countA = bookingCounts[a.name] || 0;
      const countB = bookingCounts[b.name] || 0;
+     
      if (countA !== countB) return countB - countA; 
      return (a.order || 0) - (b.order || 0);
   }).slice(0, 5);
@@ -1038,7 +1077,7 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
                        </>
                    ) : (
                        <div className="animate-pulse">
-                           <div className="text-[10px] sm:text-xs font-bold text-red-500 uppercase">OVERTIME</div>
+                           <div className="text-[10px] sm:text-xs font-bold text-red-500 uppercase">OVERTIME (အချိန်ပို)</div>
                            <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecondsMMSS(overtimeSecs)}</div>
                            <div className="text-[10px] sm:text-xs font-bold text-red-400 mt-0.5">Duration passed expected time.</div>
                        </div>
@@ -1639,6 +1678,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
             
+            {/* Staff Clock In Fluid Time Input (Today only) */}
             {staffClockIn && formData.date === todayStr ? (
                 <div className="bg-yellow-50 p-5 rounded-lg border border-yellow-200 mb-4 animate-fade-in">
                     <label className="block mb-2 text-sm font-bold flex items-center text-yellow-800"><Clock className="w-4 h-4 mr-2" /> Service Start Time (ဧည့်သည်ရောက်ရှိချိန်)</label>
@@ -1768,6 +1808,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
                   </div>
                 )}
                 
+                {/* Countdown Timer Display */}
                 {selectedPaymentConfig && (
                   <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
                      <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
@@ -2738,10 +2779,12 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                   </div>
                 ))}
                 {therapist.images.length < 5 && (
-                  <label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400">
-                    {uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} />
-                  </label>
+                    <>
+                    <label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400 relative">
+                        {uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}
+                        <input type="file" accept="image/*" multiple className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} />
+                    </label>
+                    </>
                 )}
               </div>
             </div>
@@ -2749,7 +2792,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         </div>
       </div>
 
-      {/* Manual Therapist Ranking Section */}
+      {/* Manual Therapist Ranking Section (DO NOT REMOVE - Frustrated User Requirement) */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <div>
