@@ -19,8 +19,8 @@ const ICON_MAP: Record<string, any> = {
 // --- Types ---
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
 interface MenuCategory { id: string; title: string; items: MenuItem[]; }
-interface TherapistProfile { id: string; name: string; images: string[]; order: number; }
-interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'payment_checking' | 'approved' | 'cancelled'; cancelReason?: string; specialRequest?: string; createdAt: number; }
+interface TherapistProfile { id: string; name: string; images: string[]; order: number; password?: string; }
+interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'payment_checking' | 'approved' | 'in_progress' | 'completed' | 'cancelled'; cancelReason?: string; specialRequest?: string; createdAt: number; startTimeMillis?: number; expectedEndTimeMillis?: number; actualEndTimeMillis?: number; overtimeSeconds?: number; }
 interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; name: string; }
 interface PaymentMethod { id: string; name: string; accountNumber: string; accountName: string; logoUrl: string; }
 interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; }
@@ -329,196 +329,263 @@ function CustomerApp({ appData }: { appData: AppData }) {
   );
 }
 
-// 1.1A Staff App Component
+// ==========================================
+// 1.1 STAFF APP (JIBBLE-STYLE)
+// ==========================================
 function StaffApp({ appData }: { appData: AppData }) {
+   const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
+       const saved = localStorage.getItem('shangrila_staff_profile');
+       return saved ? JSON.parse(saved) : null;
+   });
+
+   const handleLogout = () => {
+       setLoggedInStaff(null);
+       localStorage.removeItem('shangrila_staff_profile');
+   };
+
    return (
-      <div className="max-w-2xl mx-auto bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100">
-         <div className="text-center mb-8 border-b border-gray-100 pb-6">
-            <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><User className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Portal</h2>
-            <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
-         </div>
-         <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} />
-      </div>
+       <div className="max-w-3xl mx-auto">
+           {loggedInStaff ? (
+               <StaffSessionManager appData={appData} loggedInStaff={loggedInStaff} onLogout={handleLogout} />
+           ) : (
+               <StaffLogin therapists={appData.therapists} onLoginSuccess={(profile) => {
+                   setLoggedInStaff(profile);
+                   localStorage.setItem('shangrila_staff_profile', JSON.stringify(profile));
+               }} />
+           )}
+       </div>
    );
 }
 
-// 1.1B Dashboard Component
-function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const todayStr = getLocalTodayStr();
+// 1.1A Staff Login Screen
+function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfile[], onLoginSuccess: (p: TherapistProfile) => void }) {
+   const [therapistId, setTherapistId] = useState('');
+   const [password, setPassword] = useState('');
+   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const q = query(collection(db, 'bookings'));
-    const unsub = onSnapshot(q, (snap) => {
-        const arr: Booking[] = [];
-        snap.forEach(d => arr.push({id: d.id, ...d.data()} as Booking));
-        setBookings(arr);
-    });
-    return () => unsub();
-  }, []);
+   const handleLogin = (e: React.FormEvent) => {
+       e.preventDefault();
+       setError('');
+       const staff = therapists.find(t => t.id === therapistId);
+       if (staff && staff.password === password) {
+           onLoginSuccess(staff);
+       } else {
+           setError('Invalid Therapist ID or Password.');
+       }
+   };
 
-  const getTherapistStatus = (tName: string) => {
-      let blockedNow = new Set<string>();
-      
-      bookings.forEach(b => {
-          if (b.status === 'cancelled') return;
-          if (b.date !== todayStr) return;
-          if (b.therapist !== tName) return;
-
-          if (b.time.includes("to")) {
-              const [start, endRaw] = b.time.split(" to ");
-              const end = endRaw.replace(" (Next Day)", "");
-              const sIdx = ALL_TIME_SLOTS.indexOf(start);
-              let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-                  eIdx = ALL_TIME_SLOTS.length;
-              }
-              if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) blockedNow.add(ALL_TIME_SLOTS[i]);
-              }
-              blockedNow.add(b.time); 
-          } else {
-              const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
-              if (sIdx !== -1) {
-                  let slotsToBlock = 2; // Default 60 mins
-                  const match = b.service.match(/(\d+)\s*Mins/i);
-                  if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
-                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
-                      if (ALL_TIME_SLOTS[i]) blockedNow.add(ALL_TIME_SLOTS[i]);
-                  }
-              }
-          }
-      });
-
-      let is24hFull = false;
-      if (blockedNow.has("7:00 AM to 7:00 AM (Next Day)")) {
-          is24hFull = true;
-      } else if (blockedNow.has("7:00 AM to 7:00 PM") && blockedNow.has("7:00 PM to 7:00 AM (Next Day)")) {
-          is24hFull = true;
-      }
-
-      if (is24hFull) {
-          return { label: 'Fully Booked (Day & Night)', mm: 'နေ့ရောညပါ ပြည့်နေပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
-      }
-
-      const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
-      const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
-
-      let shopSlotsTotal = 0;
-      let shopSlotsBooked = 0;
-      for (let i = 6; i <= 30; i++) {
-          shopSlotsTotal++;
-          if (blockedNow.has(ALL_TIME_SLOTS[i])) shopSlotsBooked++;
-      }
-      const isShopFull = shopSlotsBooked === shopSlotsTotal;
-
-      if (isDayFull && !isNightFull) {
-          return { label: 'Day Full / Night Available', mm: 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
-      }
-
-      if (isNightFull && !isDayFull && !isShopFull) {
-          return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
-      }
-
-      if (isShopFull && isNightFull) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
-      }
-
-      if (isShopFull && !isNightFull) {
-          return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
-      }
-
-      if (shopSlotsBooked > 0) {
-          return { label: 'Partially Booked', mm: 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်', color: 'bg-blue-100 text-blue-700 border-blue-200' };
-      }
-
-      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
-  };
-
-  const bookingCounts: Record<string, number> = {};
-  bookings.forEach(b => {
-     if (b.status !== 'cancelled') {
-         bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1;
-     }
-  });
-
-  const top5Therapists = [...appData.therapists].sort((a, b) => {
-     const countA = bookingCounts[a.name] || 0;
-     const countB = bookingCounts[b.name] || 0;
-     
-     if (countA !== countB) return countB - countA; 
-     return (a.order || 0) - (b.order || 0);
-  }).slice(0, 5);
-
-  return (
-    <div className="animate-fade-in">
-       <div className="text-center mb-8">
-         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
-         <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
+   return (
+       <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 max-w-sm mx-auto text-center mt-10 animate-fade-in">
+           <div className="w-16 h-16 bg-red-50 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><ShieldAlert className="w-8 h-8" /></div>
+           <h2 className="text-xl font-bold text-gray-800 mb-2">Staff Portal Login</h2>
+           <p className="text-xs font-bold text-gray-500 mb-6">Secure Access Only</p>
+           <form onSubmit={handleLogin} className="space-y-4">
+               <div>
+                   <label className="block text-left text-xs font-bold text-gray-500 mb-1">Therapist ID</label>
+                   <input required type="text" placeholder="t_01" value={therapistId} onChange={e=>setTherapistId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
+               </div>
+               <div>
+                   <label className="block text-left text-xs font-bold text-gray-500 mb-1">Password</label>
+                   <input required type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
+               </div>
+               {error && <div className="text-xs font-bold text-red-500">{error}</div>}
+               <button type="submit" className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex items-center justify-center"><KeyRound className="w-4 h-4 mr-2"/> Verify and Login</button>
+           </form>
        </div>
-       
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {appData.therapists.map(t => {
-             const status = getTherapistStatus(t.name);
-             const isAvailable = status.label === 'Available';
-             const isPartiallyBooked = status.label === 'Partially Booked';
-             const isFullyBooked = status.label.includes('Fully Booked');
-
-             return (
-                <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
-                   <div className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
-                       {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
-                   </div>
-                   <div className="flex-1">
-                       <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
-                       <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
-                          {status.label} <br/> <span className="font-semibold opacity-90">{status.mm}</span>
-                       </div>
-                   </div>
-                   <button onClick={() => onBookTherapist(t)} className="ml-2 px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold whitespace-nowrap shadow-sm hover:bg-[#1a4a32] flex items-center border border-[#1a4a32]">
-                       Book Now
-                   </button>
-                </div>
-             )
-          })}
-       </div>
-
-       {top5Therapists.length > 0 && (
-         <div className="mt-14 pt-8 border-t-2 border-gray-100">
-             <div className="text-center mb-6">
-                 <h2 className="text-2xl font-bold flex items-center justify-center" style={{ color: THEME.primary }}><Crown className="w-6 h-6 mr-2 text-yellow-500"/> Our Top 5 Therapists</h2>
-                 <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ)</p>
-             </div>
-             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                 {top5Therapists.map((t, idx) => (
-                     <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
-                         <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">
-                            {idx + 1}
-                         </div>
-                         <div className="w-full aspect-[3/4] bg-gray-100 relative">
-                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
-                         </div>
-                         <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
-                             <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
-                             <button onClick={() => onBookTherapist(t)} className="w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] flex justify-center items-center border border-[#1a4a32]">
-                                 Book Now <ChevronRight className="w-3 h-3 ml-0.5"/>
-                             </button>
-                         </div>
-                     </div>
-                 ))}
-             </div>
-         </div>
-       )}
-    </div>
-  );
+   );
 }
 
-// 1.1 Booking Wizard
-function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean }) {
+// 1.1B Staff Session Manager (Dashboard)
+function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: AppData, loggedInStaff: TherapistProfile, onLogout: () => void }) {
+   const [activeSession, setActiveSession] = useState<Booking | null>(null);
+   const [showClockInFlow, setShowClockInFlow] = useState(false);
+   const [loading, setLoading] = useState(true);
+
+   useEffect(() => {
+       const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
+       const unsubscribe = onSnapshot(q, (snap) => {
+           let foundActive = null;
+           snap.forEach((doc) => {
+               const b = { id: doc.id, ...doc.data() } as Booking;
+               if (b.therapist === loggedInStaff.name && b.status === 'in_progress') {
+                   foundActive = b;
+               }
+           });
+           setActiveSession(foundActive);
+           setLoading(false);
+       });
+       return () => unsubscribe();
+   }, [loggedInStaff.name]);
+
+   const handleClockInSuccess = () => {
+       setShowClockInFlow(false);
+   };
+
+   const handleStopSession = async () => {
+       if (!activeSession || !activeSession.id) return;
+       if (!window.confirm("Are you sure you want to STOP this service now?")) return;
+       
+       try {
+           const now = Date.now();
+           const overtimeMillis = Math.max(0, now - (activeSession.expectedEndTimeMillis || now));
+           await updateDoc(doc(db, 'bookings', activeSession.id), {
+               status: 'completed',
+               actualEndTimeMillis: now,
+               overtimeSeconds: Math.floor(overtimeMillis / 1000)
+           });
+           setActiveSession(null);
+       } catch (error) {
+           console.error(error);
+           alert("Error stopping session.");
+       }
+   };
+
+   if (loading) return <div className="text-center py-20 font-bold text-gray-500">Loading Dashboard...</div>;
+
+   return (
+       <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100 animate-fade-in relative">
+           <div className="flex justify-between items-center mb-10 pb-6 border-b border-gray-100">
+               <div className="flex items-center">
+                   <div className="w-14 h-14 rounded-full overflow-hidden mr-4 border-2 border-[#123524] shadow-sm flex-shrink-0">
+                       {loggedInStaff.images && loggedInStaff.images[0] ? <img src={loggedInStaff.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-3 text-gray-400 bg-gray-100" />}
+                   </div>
+                   <div>
+                       <h2 className="text-2xl font-bold text-[#123524]">{loggedInStaff.name}</h2>
+                       <p className="text-xs font-bold text-gray-500 mt-0.5">Professional Therapist • ID: {loggedInStaff.id}</p>
+                   </div>
+               </div>
+               <button onClick={onLogout} className="text-xs font-bold text-red-500 flex items-center bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100"><LogOut className="w-3.5 h-3.5 mr-1" /> Log Out</button>
+           </div>
+
+           {activeSession ? (
+               <ActiveSessionDisplay session={activeSession} onStop={handleStopSession} />
+           ) : showClockInFlow ? (
+               <div className="animate-fade-in">
+                   <button onClick={() => setShowClockInFlow(false)} className="absolute top-8 left-8 text-xs font-bold text-gray-500 flex items-center"><ChevronLeft className="w-3 h-3 mr-1"/> BACK</button>
+                   <div className="text-center mb-8 border-b border-gray-100 pb-6">
+                      <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><CalendarPlus className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Clock In</h2>
+                      <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
+                   </div>
+                   <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} staffClockIn={true} staffClockInSuccess={handleClockInSuccess} preselectedStaff={loggedInStaff.name}/>
+               </div>
+           ) : (
+               <div className="text-center py-20 border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50">
+                   <div className="w-24 h-24 bg-white rounded-full mx-auto flex items-center justify-center mb-8 text-[#D4AF37] shadow-inner border border-gray-100"><CheckCircle className="w-12 h-12" /></div>
+                   <h3 className="text-2xl font-bold text-gray-800 mb-2">Ready For Service</h3>
+                   <p className="text-xs font-bold text-gray-500 mb-10 max-w-sm mx-auto leading-relaxed">No active session. Please click the button below to Clock In and start tracking your service time.</p>
+                   <button onClick={() => setShowClockInFlow(true)} className="px-10 py-4 bg-[#123524] text-white rounded-xl font-bold shadow-lg flex items-center mx-auto hover:bg-green-900 transition"><Sparkles className="w-5 h-5 mr-2 text-[#D4AF37]"/> Clock In / Start New Service</button>
+               </div>
+           )}
+       </div>
+   );
+}
+
+// 1.1C Active Session Display with Countdown
+function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: () => void }) {
+   const [remainingTime, setRemainingTime] = useState<number | null>(null);
+   const [overtimeSecs, setOvertimeSecs] = useState<number>(0);
+   const isInitialLoad = useRef(true);
+
+   useEffect(() => {
+       if (!session.expectedEndTimeMillis) return;
+       const updateTimer = () => {
+           const now = Date.now();
+           if (now < session.expectedEndTimeMillis!) {
+               setRemainingTime(Math.ceil((session.expectedEndTimeMillis! - now) / 1000));
+               setOvertimeSecs(0);
+           } else {
+               setRemainingTime(0);
+               setOvertimeSecs(Math.floor((now - session.expectedEndTimeMillis!) / 1000));
+           }
+       };
+       updateTimer();
+       const intervalId = setInterval(updateTimer, 1000);
+       return () => clearInterval(intervalId);
+   }, [session.expectedEndTimeMillis]);
+
+   useEffect(() => {
+      if (!isInitialLoad.current && remainingTime === 0 && overtimeSecs > 0) {
+         // Optionally play sound for overtime start
+      }
+      isInitialLoad.current = false;
+   }, [remainingTime, overtimeSecs]);
+
+   const formatSeconds = (totalSeconds: number) => {
+       const h = Math.floor(totalSeconds / 3600);
+       const m = Math.floor((totalSeconds % 3600) / 60);
+       const s = totalSeconds % 60;
+       return `${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+   };
+
+   return (
+       <div className="animate-fade-in space-y-6">
+           <div className="bg-white p-6 rounded-xl border border-gray-100 flex flex-wrap sm:flex-nowrap justify-between items-center">
+               <div className="w-full sm:w-auto">
+                   <StatusBadge status={session.status} />
+                   <h3 className="text-xl font-bold text-gray-800 mt-3">{session.service.split('(')[0]}</h3>
+                   <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {session.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> Started: {session.time}</div>
+                   <div className="text-xs font-bold mt-2" style={{ color: THEME.gold }}>Customer: {session.name}</div>
+               </div>
+               <div className="text-right mt-4 sm:mt-0 w-full sm:w-auto pt-4 sm:pt-0 border-t sm:border-0 border-gray-100">
+                   {remainingTime !== null && remainingTime > 0 ? (
+                       <>
+                           <div className="text-xs font-bold text-gray-400 uppercase">REMAINING TIME</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSeconds(remainingTime)}</div>
+                           <div className="text-xs font-bold text-gray-500 mt-0.5">Total Service: {session.service.split('(')[1]?.replace(')', '') || '-'}</div>
+                       </>
+                   ) : (
+                       <div className="animate-pulse">
+                           <div className="text-xs font-bold text-red-500 uppercase">OVERTIME (시간 초과)</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSeconds(overtimeSecs)}</div>
+                           <div className="text-xs font-bold text-red-400 mt-0.5">Duration passed expected time.</div>
+                       </div>
+                   )}
+               </div>
+           </div>
+           
+           <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 border border-gray-100 text-xs text-gray-500">
+               <span>Total Price: <strong className="text-gray-800 text-sm">{formatPrice(session.totalPrice)}</strong></span>
+               <span>TxID: <strong className="text-gray-800 text-sm tracking-wider">{session.txId}</strong></span>
+               <span>Live Counter: <strong className="text-gray-800 text-sm">{formatSeconds(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
+           </div>
+
+           <button onClick={onStop} className="w-full py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg flex items-center justify-center mx-auto hover:bg-red-600 transition"><Trash2 className="w-5 h-5 mr-2"/> Stop Service / End Now</button>
+       </div>
+   );
+}
+
+// Helper to map intervals to blocks
+function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: number, dateStr: string): Set<string> {
+    const blocked = new Set<string>();
+    const dateObj = new Date(dateStr);
+    const startOfDay = dateObj.setHours(0, 0, 0, 0);
+    const endOfDay = dateObj.setHours(23, 59, 59, 999);
+
+    if (endTimeMillis < startOfDay || startTimeMillis > endOfDay) return blocked;
+
+    ALL_TIME_SLOTS.forEach(slot => {
+        if (slot.includes("to")) return; // Skip day/night ranges
+
+        const slotTime = new Date(`${dateStr} ${slot}`);
+        const slotTimeMillis = slotTime.getTime();
+        const nextSlotTimeMillis = slotTimeMillis + (30 * 60 * 1000); 
+
+        // Does the interval intersect with this slot?
+        if ((startTimeMillis < nextSlotTimeMillis) && (endTimeMillis > slotTimeMillis)) {
+            blocked.add(slot);
+        }
+    });
+    return blocked;
+}
+
+// 1.1 Booking Wizard (COMMON COMPONENT)
+function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
-  const [step, setStep] = useState(initialTherapist ? 2 : 1);
+  const [step, setStep] = useState(() => {
+      if (staffClockIn) return isTherapistFirst ? 2 : 1;
+      return initialTherapist ? 2 : 1;
+  });
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   const [loading, setLoading] = useState(false);
@@ -531,14 +598,21 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
   const todayStr = getLocalTodayStr();
 
   useEffect(() => {
-    const q = query(collection(db, 'bookings'));
-    const unsub = onSnapshot(q, (snap) => {
-        const arr: Booking[] = [];
-        snap.forEach(d => arr.push({id: d.id, ...d.data()} as Booking));
-        setAllBookings(arr);
-    });
-    return () => unsub();
+      const q = query(collection(db, 'bookings'));
+      const unsub = onSnapshot(q, (snap) => {
+          const arr: Booking[] = [];
+          snap.forEach(d => arr.push({id: d.id, ...d.data()} as Booking));
+          setAllBookings(arr);
+      });
+      return () => unsub();
   }, []);
+
+  useEffect(() => {
+     if (preselectedStaff && !formData.therapist) {
+         const t = appData.therapists.find(staff => staff.name === preselectedStaff);
+         if (t) setFormData(prev => ({...prev, therapist: t}));
+     }
+  }, [preselectedStaff, appData.therapists, formData.therapist]);
 
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
@@ -606,11 +680,15 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
       
       bookings.forEach(b => {
-          if (b.status === 'cancelled') return;
+          if (b.status === 'cancelled' || b.status === 'completed') return; // completed don't block
           if (b.date !== selectedDate) return;
           if (b.therapist !== selectedTherapistName) return;
 
-          if (b.time.includes("to")) {
+          if (b.status === 'in_progress' && b.startTimeMillis) {
+               // Time-based session blocking
+               const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
+               getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blocked.add(slot));
+          } else if (b.time && b.time.includes("to")) {
               const [start, endRaw] = b.time.split(" to ");
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
@@ -624,7 +702,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
                   for (let i = sIdx; i < eIdx; i++) blocked.add(ALL_TIME_SLOTS[i]);
               }
               blocked.add(b.time); 
-          } else {
+          } else if (b.time) {
               const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
               if (sIdx !== -1) {
                   let slotsToBlock = 2; // Default 60 mins
@@ -720,49 +798,9 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isStaffMode && formData.txId.length !== 6) { alert("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
     setLoading(true);
     
     try {
-      // Concurrency Overlap Check before inserting
-      const freshSnap = await getDocs(query(collection(db, 'bookings')));
-      const freshBookings: Booking[] = [];
-      freshSnap.forEach(d => freshBookings.push({id: d.id, ...d.data()} as Booking));
-      
-      const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
-      let isOverlap = false;
-
-      if (formData.time.includes("to")) {
-          const [start, endRaw] = formData.time.split(" to ");
-          const end = endRaw.replace(" (Next Day)", "");
-          const sIdx = ALL_TIME_SLOTS.indexOf(start);
-          let eIdx = ALL_TIME_SLOTS.indexOf(end);
-          
-          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-              eIdx = ALL_TIME_SLOTS.length;
-          }
-
-          if (sIdx !== -1 && eIdx !== -1) {
-              for (let i = sIdx; i < eIdx; i++) {
-                  if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; }
-              }
-          }
-          if (blockedNow.has(formData.time)) isOverlap = true;
-      } else {
-          const sIdx = ALL_TIME_SLOTS.indexOf(formData.time);
-          let neededSlots = 2; 
-          const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
-          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-          for (let i = 0; i < neededSlots; i++) { 
-              if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { isOverlap = true; break; }
-          }
-      }
-
-      if (isOverlap) {
-         alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်သွားပါပြီ။ ကျေးဇူးပြု၍ အခြားအချိန် ရွေးပေးပါ။");
-         setLoading(false); return;
-      }
-
       // Auto Create/Update Profile
       if (formData.phone && formData.phone.trim() !== '') {
         const userRef = doc(db, 'users', formData.phone);
@@ -774,18 +812,31 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
         }
       }
 
+      let durationMins = 60;
+      if (formData.selectedItem) {
+         const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+         if (match) durationMins = parseInt(match[1]);
+      }
+
+      const now = Date.now();
+      const isStaffImmediate = staffClockIn && formData.date === todayStr;
+
       const dataToSave = {
-        name: formData.name || 'Walk-in Guest', 
+        name: formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest'), 
         phone: formData.phone || '-',
         service: `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`,
         therapist: formData.therapist?.name || 'Any Available Therapist',
-        date: formData.date, time: formData.time, 
+        date: formData.date, time: isStaffImmediate ? 'NOW' : formData.time, 
         paymentMethod: isStaffMode ? 'Cash Payment in Shop' : formData.paymentMethod, 
         txId: isStaffMode ? 'CASH' : formData.txId, 
         totalPrice: calculateTotal(), 
-        status: isStaffMode ? 'approved' : 'pending', 
-        createdAt: Date.now(),
-        specialRequest: formData.specialRequest
+        status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
+        createdAt: now,
+        specialRequest: formData.specialRequest,
+        ...(isStaffImmediate && {
+           startTimeMillis: now,
+           expectedEndTimeMillis: now + (durationMins * 60 * 1000)
+        })
       };
       await addDoc(collection(db, 'bookings'), dataToSave);
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
@@ -800,9 +851,13 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
         <h2 className="text-2xl font-bold mb-3" style={{ color: THEME.primary }}>Booking Confirmed!</h2>
         <p className="text-gray-600 mb-8 leading-relaxed font-semibold">{successMsg}</p>
         <button onClick={() => { 
+           if (staffClockInSuccess) {
+               staffClockInSuccess();
+               return;
+           }
            if (isStaffMode) {
                setStep(1);
-               setFormData({ name: 'Walk-in Guest', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+               setFormData({ name: 'Walk-in Guest', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
                setSuccessMsg('');
                window.scrollTo({ top: 0, behavior: 'smooth' });
            } else {
@@ -810,7 +865,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
                onBooked(formData.phone); 
            }
         }} className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>
-           {isStaffMode ? 'နောက်ထပ် ဘိုကင်တင်မည် (Add Another)' : 'မှတ်တမ်းကြည့်ရန် (View History)'}
+           {staffClockIn ? 'Finish' : (isStaffMode ? 'နောက်ထပ် ဘိုကင်တင်မည် (Add Another)' : 'မှတ်တမ်းကြည့်ရန် (View History)')}
         </button>
       </div>
     );
@@ -974,17 +1029,28 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
             <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
-            <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
-              {availableTimeSlots.map(t => {
-                const isAvailable = isSlotAvailable(t);
-                return (
-                 <button key={t} type="button" disabled={!formData.date || !isAvailable} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : !isAvailable ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 cursor-not-allowed line-through' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'}`}>{t}</button>
-                )
-              })}
-            </div>
-            {availableTimeSlots.length === 0 && formData.date && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
+            
+            {staffClockIn && formData.date === todayStr ? (
+                <div className="bg-green-50 p-6 rounded-lg text-center border-2 border-dashed border-green-200">
+                    <Sparkles className="w-10 h-10 text-green-500 mx-auto mb-3"/>
+                    <span className="font-bold text-green-800 text-lg">Start Immediately (NOW)</span>
+                    <p className="text-xs text-green-600 mt-2 font-semibold">"Confirm" နှိပ်လိုက်သည်နှင့် ဝန်ဆောင်မှုအချိန်ကို စတင်မှတ်သားပါမည်။</p>
+                </div>
+            ) : (
+                <>
+                <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
+                {availableTimeSlots.map(t => {
+                    const isAvailable = isSlotAvailable(t);
+                    return (
+                    <button key={t} type="button" disabled={!formData.date || !isAvailable} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : !isAvailable ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 cursor-not-allowed line-through' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'}`}>{t}</button>
+                    )
+                })}
+                </div>
+                {availableTimeSlots.length === 0 && formData.date && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
+                </>
+            )}
           </div>
-          <div className="mt-8 flex justify-between"><button onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || !formData.time} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
+          <div className="mt-8 flex justify-between"><button onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || (!formData.time && !(staffClockIn && formData.date === todayStr))} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
 
@@ -1011,7 +1077,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               )}
               {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
               <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div>
-              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
+              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {staffClockIn && formData.date === todayStr ? 'NOW' : formData.time}</div>
             </div>
             <div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div>
           </div>
@@ -1042,7 +1108,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             {isStaffMode ? (
               <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
                   <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
-                  <p className="text-xs font-semibold text-green-600 mt-2">ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။</p>
+                  <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
               </div>
             ) : (
               <>
@@ -1084,7 +1150,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
 
           <div className="mt-8 flex justify-between">
             <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
-            <button disabled={loading || (!isStaffMode && !formData.paymentMethod)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : 'CONFIRM BOOKING'}</button>
+            <button disabled={loading || (!isStaffMode && !formData.paymentMethod)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : (staffClockIn && formData.date === todayStr ? 'CONFIRM AND START NOW' : 'CONFIRM BOOKING')}</button>
           </div>
         </form>
       )}
@@ -1320,6 +1386,8 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string
 const XCircleIcon = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 
 function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
+  if (status === 'in_progress') return <span className="text-orange-600 border border-orange-200 bg-orange-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit animate-pulse"><Droplets className="w-3 h-3 mr-1"/> In Progress</span>;
+  if (status === 'completed') return <span className="text-gray-600 border border-gray-200 bg-gray-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><CheckCircle className="w-3 h-3 mr-1"/> Completed</span>;
   if (status === 'payment_checking') return <span className="text-blue-600 border border-blue-200 bg-blue-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Confirming</span>;
   if (status === 'approved') return <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><CheckCircle className="w-3 h-3 mr-1"/> Confirmed</span>;
   if (status === 'cancelled') return (
@@ -1380,7 +1448,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 // 3. ADMIN DASHBOARD
 // ==========================================
 function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
-  const [tab, setTab] = useState<'bookings' | 'users' | 'admins' | 'settings'>('bookings');
+  const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'admins' | 'settings'>('bookings');
   
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -1442,20 +1510,22 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
     <div className="animate-fade-in" onClick={handleInteraction}>
       <audio id="admin-alert-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto" loop />
       
-      <div className="flex flex-wrap justify-center gap-2 mb-6">
-        <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-          <Calendar className="w-4 h-4 mr-2" /> Bookings
+      <div className="flex flex-wrap justify-center gap-2 mb-6 scrollbar-hide overflow-x-auto p-1">
+        <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+          <CalendarPlus className="w-4 h-4 mr-2" /> Bookings
           {pendingCount > 0 && (
              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
                {pendingCount}
              </span>
           )}
         </button>
-        <button onClick={() => setTab('users')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>
-        <button onClick={() => setTab('admins')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>
-        <button onClick={() => setTab('settings')} className={`px-4 sm:px-6 py-3 rounded-lg font-bold text-xs sm:text-sm transition-all flex items-center ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>
+        <button onClick={() => setTab('reports')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'reports' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><BarChart2 className="w-4 h-4 mr-2" /> Staff History</button>
+        <button onClick={() => setTab('users')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>
+        <button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>
+        <button onClick={() => setTab('settings')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>
       </div>
-      {tab === 'bookings' && <AdminBookingsList bookings={bookings} />}
+      {tab === 'bookings' && <AdminBookingsList bookings={bookings.filter(b => b.status !== 'in_progress' && b.status !== 'completed')} />}
+      {tab === 'reports' && <AdminStaffHistoryList bookings={bookings.filter(b => b.status === 'in_progress' || b.status === 'completed')} />}
       {tab === 'users' && <AdminUsersList />}
       {tab === 'admins' && <AdminManagementList />}
       {tab === 'settings' && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
@@ -1482,16 +1552,16 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-yellow-500" /> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><CalendarPlus className="mr-2 text-yellow-500" /> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
       <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+        <table className="w-full text-left border-collapse min-w-[800px]">
           <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status & Action</th><th className="p-3 pb-4 text-right">Delete</th></tr></thead>
           <tbody>
             {bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">Booking မရှိသေးပါ။</td></tr>)}
             {bookings.map((b) => (
               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                 <td className="p-3">
-                  <div className="font-bold text-gray-800">{b.name || 'No Name'}</div>
+                  <div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div>
                   <div className="text-xs text-gray-500">{b.phone || '-'}</div>
                 </td>
                 <td className="p-3">
@@ -1504,13 +1574,13 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
                   <div className="text-gray-500 text-xs mt-1">{b.time || '-'}</div>
                 </td>
                 <td className="p-3">
-                  <div className="font-mono font-bold text-gray-800">{b.txId || '-'}</div>
+                  <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div>
                   <div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div>
                 </td>
                 <td className="p-3">
                   <select value={b.status} onChange={(e) => handleStatusChange(b.id!, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
                     <option value="pending">Pending</option>
-                    <option value="payment_checking">Payment Confirming</option>
+                    <option value="payment_checking">Confirming</option>
                     <option value="approved">Approve</option>
                     <option value="cancelled">Cancel</option>
                   </select>
@@ -1526,6 +1596,51 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
       </div>
     </div>
   );
+}
+
+// Staff Session History (Jibble-style Report)
+function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
+   const formatMillis = (millis: number | undefined) => {
+       if (!millis) return '-';
+       const date = new Date(millis);
+       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+   };
+
+   const formatSeconds = (totalSeconds: number | undefined) => {
+       if (!totalSeconds || totalSeconds <= 0) return '00:00';
+       const h = Math.floor(totalSeconds / 3600);
+       const m = Math.floor((totalSeconds % 3600) / 60);
+       const s = totalSeconds % 60;
+       return `${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+   };
+
+   return (
+       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+           <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><BarChart2 className="mr-2 text-[#D4AF37]" /> Staff History & Overtime Report</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {bookings.length}</span></div>
+           <div className="overflow-x-auto">
+               <table className="w-full text-left border-collapse min-w-[900px]">
+                   <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Service & Customer</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Start Time</th><th className="p-3 pb-4">Expected End</th><th className="p-3 pb-4">Actual End</th><th className="p-3 pb-4 text-right">Overtime</th></tr></thead>
+                   <tbody>
+                       {bookings.length === 0 && (<tr><td colSpan={7} className="p-10 text-center text-gray-400">ဝန်ထမ်းမှတ်တမ်း မရှိသေးပါ။</td></tr>)}
+                       {bookings.map((b) => (
+                           <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
+                               <td className="p-3 font-bold text-[#123524]">{b.therapist}</td>
+                               <td className="p-3">
+                                   <div className="font-semibold text-gray-800">{b.service.split('(')[0]}</div>
+                                   <div className="text-xs text-gray-500 mt-0.5">Cust: {b.name}</div>
+                               </td>
+                               <td className="p-3 text-gray-700 font-semibold">{b.date}</td>
+                               <td className="p-3 font-mono text-gray-600">{formatMillis(b.startTimeMillis)}</td>
+                               <td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td>
+                               <td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td>
+                               <td className="p-3 text-right font-mono font-bold text-base {b.overtimeSeconds && b.overtimeSeconds > 0 ? 'text-red-600' : 'text-gray-400'}">{formatSeconds(b.overtimeSeconds)}</td>
+                           </tr>
+                       ))}
+                   </tbody>
+               </table>
+           </div>
+       </div>
+   );
 }
 
 function AdminUsersList() {
@@ -1578,7 +1693,7 @@ function AdminUsersList() {
       )}
 
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td><td className="p-3 text-right"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center ml-auto"><Edit className="w-3 h-3 mr-1"/> Edit</button></td></tr>))}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[700px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td><td className="p-3 text-right"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center ml-auto"><Edit className="w-3 h-3 mr-1"/> Edit</button></td></tr>))}</tbody></table></div>
     </div>
   );
 }
@@ -1630,7 +1745,7 @@ function AdminManagementList() {
         <button type="submit" className="w-full sm:w-auto px-4 py-2 bg-[#123524] text-white rounded font-bold flex items-center justify-center"><PlusCircle className="w-4 h-4 mr-1"/> Add Admin</button>
       </form>
 
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-bold text-gray-800 flex items-center"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.username)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 font-bold text-[10px] flex items-center ml-auto"><Trash2 className="w-3 h-3 mr-1"/> Delete</button></td></tr>))}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-bold text-gray-800 flex items-center"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.username)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 font-bold text-[10px] flex items-center ml-auto"><Trash2 className="w-3 h-3 mr-1"/> Delete</button></td></tr>))}</tbody></table></div>
     </div>
   );
 }
@@ -1665,7 +1780,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       // Re-assign order property based on the array index before saving to ensure exact ranking is kept
       const finalizedTherapists = localTherapists.map((t, idx) => ({ ...t, order: idx }));
       
-      const tPromises = finalizedTherapists.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
+      const tPromises = finalizedTherapists.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order, password: t.password || '' }));
       const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id)));
       
       await Promise.all([...tPromises, ...delPromises]);
@@ -1713,8 +1828,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(null);
   };
 
-  const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length }]);
-  const updateTherapistName = (tIdx: number, name: string) => { const updated = [...localTherapists]; updated[tIdx].name = name; setLocalTherapists(updated); };
+  const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
+  const updateTherapistField = (tIdx: number, field: string, val: string) => { const updated = [...localTherapists]; (updated[tIdx] as any)[field] = val; setLocalTherapists(updated); };
   const removeTherapist = (tIdx: number) => {
     if (!window.confirm("ဤဝန်ထမ်းအား ဖျက်မည် သေချာပါသလား?")) return;
     const t = localTherapists[tIdx];
@@ -1778,27 +1893,27 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                     const url = window.location.origin + window.location.pathname + '?view=therapists';
                     navigator.clipboard.writeText(url);
                     alert('Gallery Link Copied:\n' + url);
-                 }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition">
+                 }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap">
                     <Copy className="w-3 h-3 mr-1"/> Copy Gallery Link
                  </button>
                  <button type="button" onClick={() => {
                     const url = window.location.origin + window.location.pathname + '?view=dashboard';
                     navigator.clipboard.writeText(url);
                     alert('Dashboard Link Copied:\n' + url);
-                 }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition">
+                 }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap">
                     <Copy className="w-3 h-3 mr-1"/> Copy Dashboard Link
                  </button>
                  <button type="button" onClick={() => {
                     const url = window.location.origin + window.location.pathname + '?mode=staff';
                     navigator.clipboard.writeText(url);
                     alert('Staff Portal Link Copied:\n' + url);
-                 }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition mt-2 sm:mt-0 sm:ml-2">
+                 }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2">
                     <Copy className="w-3 h-3 mr-1"/> Copy Staff Portal Link
                  </button>
              </div>
           </div>
-          <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90">
-            <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}
+          <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3">
+            <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}
           </button>
         </div>
 
@@ -1830,20 +1945,28 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><CreditCard className="w-5 h-5 mr-2 text-[#D4AF37]" /> Manage Payment</h3></div><div className="flex space-x-2"><button onClick={addPaymentMethod} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1" /> Add Payment</button><button disabled={savingCategory === 'payments'} onClick={handleSavePayments} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'payments' ? 'Saving...' : 'Save Payments'}</button></div></div>
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><CreditCard className="w-5 h-5 mr-2 text-[#D4AF37]" /> Manage Payment</h3></div><div className="flex space-x-2"><button onClick={addPaymentMethod} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Payment</button><button disabled={savingCategory === 'payments'} onClick={handleSavePayments} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'payments' ? 'Saving...' : 'Save'}</button></div></div>
         <div className="space-y-3">{localPaymentMethods.map((pm, pIdx) => (<div key={pm.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-2 flex flex-col items-center justify-center border-r border-gray-200 pr-2"><div className="w-12 h-12 bg-white border border-gray-200 rounded mb-1 flex items-center justify-center overflow-hidden relative group">{pm.logoUrl ? (<><img src={pm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" /><button onClick={() => updatePaymentMethod(pIdx, 'logoUrl', '')} className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button></>) : (<div className="text-[8px] text-gray-400 text-center">{uploadingImage === `pay_${pIdx}` ? '...' : 'No Logo'}</div>)}</div><label className="text-[10px] text-[#D4AF37] font-bold cursor-pointer hover:underline">Upload Logo<input type="file" accept="image/*" className="hidden" onChange={(e) => handlePaymentLogoUpload(pIdx, e)} disabled={uploadingImage === `pay_${pIdx}`} /></label></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Bank Name</label><input type="text" value={pm.name} onChange={(e) => updatePaymentMethod(pIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account No</label><input type="text" value={pm.accountNumber} onChange={(e) => updatePaymentMethod(pIdx, 'accountNumber', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524] tracking-wider" /></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account Name</label><input type="text" value={pm.accountName} onChange={(e) => updatePaymentMethod(pIdx, 'accountName', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => removePaymentMethod(pIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div></div>))}</div>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]" /> Manage Therapists</h3></div><div className="flex space-x-2"><button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1" /> Add Therapist</button><button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save Therapists'}</button></div></div>
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]" /> Manage Therapists (Staff)</h3></div><div className="flex space-x-2"><button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Therapist</button><button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save'}</button></div></div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {localTherapists.map((therapist, tIdx) => (
             <div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
               <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4" /></button>
               
-              <label className="block text-xs font-bold text-gray-500 mb-1 mt-2">Therapist Name</label>
-              <input type="text" value={therapist.name} onChange={(e) => updateTherapistName(tIdx, e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded mb-4 focus:outline-none focus:border-[#D4AF37]" />
+              <div className="grid grid-cols-2 gap-3 mb-4 mt-2">
+                 <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label>
+                    <input type="text" value={therapist.name} onChange={(e) => updateTherapistField(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" />
+                 </div>
+                 <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Login Password</label>
+                    <input type="password" value={therapist.password || ''} onChange={(e) => updateTherapistField(tIdx, 'password', e.target.value)} placeholder="Password for Staff Portal" className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" />
+                 </div>
+              </div>
               
               <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label>
               <div className="flex flex-wrap gap-2 mb-2">
@@ -1872,8 +1995,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                <h3 className="text-xl font-bold text-gray-800 flex items-center"><Crown className="w-5 h-5 mr-2 text-[#D4AF37]" /> Top 5 Therapists Ranking</h3>
                <p className="text-xs text-gray-500 mt-1">ဘိုကင်အရေအတွက် တူညီနေပါက အောက်ပါအစီအစဉ်အတိုင်း Top 5 တွင် ပေါ်မည်ဖြစ်ပါသည်။</p>
             </div>
-            <button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90">
-               <Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save Ranking'}
+            <button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3">
+               <Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save'}
             </button>
          </div>
          <div className="flex flex-col space-y-2">
@@ -1894,7 +2017,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
       {localCategories.map((cat, cIdx) => (
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
-          <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center text-lg"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> {cat.title} Category</h3><div className="flex space-x-2"><button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold"><PlusCircle className="w-4 h-4 mr-1" /> Add Item</button><button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : `Save ${cat.title}`}</button></div></div>
+          <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center text-lg"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> {cat.title} Category</h3><div className="flex space-x-2"><button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Item</button><button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : 'Save'}</button></div></div>
           <div className="p-4 space-y-3">{cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
             {cat.items.map((item, iIdx) => (<div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div><div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div></div>))}
           </div>
