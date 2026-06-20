@@ -48,6 +48,16 @@ const formatPrice = (price: any) => {
   return num.toLocaleString() + ' Ks';
 };
 
+const formatSeconds = (totalSeconds: number | undefined) => {
+    if (totalSeconds === undefined) return '00:00';
+    const isNegative = totalSeconds < 0;
+    const absSecs = Math.abs(totalSeconds);
+    const h = Math.floor(absSecs / 3600);
+    const m = Math.floor((absSecs % 3600) / 60);
+    const s = Math.floor(absSecs % 60);
+    return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
 const compressImage = async (file: File, width: number, height: number): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader(); reader.readAsDataURL(file);
@@ -93,16 +103,23 @@ const calculateDistanceInMeters = (lat1: number, lon1: number, lat2: number, lon
 
 function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: number, dateStr: string): Set<string> {
     const blocked = new Set<string>();
-    const dateObj = new Date(dateStr);
+    const [y, m, d] = dateStr.split('-');
+    const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
     const startOfDay = dateObj.setHours(0, 0, 0, 0);
     const endOfDay = dateObj.setHours(23, 59, 59, 999);
 
-    if (endTimeMillis < startOfDay || startTimeMillis > endOfDay) return blocked;
+    if (endTimeMillis <= startOfDay || startTimeMillis >= endOfDay) return blocked;
 
     ALL_TIME_SLOTS.forEach(slot => {
         if (slot.includes("to")) return; 
 
-        const slotTime = new Date(`${dateStr} ${slot}`);
+        const slotTime = new Date(Number(y), Number(m) - 1, Number(d));
+        const [time, ampm] = slot.split(' ');
+        let [sh, sm] = time.split(':').map(Number);
+        if (ampm === 'PM' && sh < 12) sh += 12;
+        if (ampm === 'AM' && sh === 12) sh = 0;
+        slotTime.setHours(sh, sm, 0, 0);
+        
         const slotTimeMillis = slotTime.getTime();
         const nextSlotTimeMillis = slotTimeMillis + (30 * 60 * 1000); 
 
@@ -363,7 +380,7 @@ function CustomerApp({ appData }: { appData: AppData }) {
 }
 
 // ==========================================
-// 1.1 CUSTOMER DASHBOARD (AVAILABILITY)
+// 1.1A CUSTOMER DASHBOARD (AVAILABILITY)
 // ==========================================
 function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -952,12 +969,6 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
         return () => clearInterval(intervalId);
     }, [pass.expectedInTimeMillis]);
 
-    const formatSecs = (ts: number) => {
-        const m = Math.floor(ts / 60);
-        const s = ts % 60;
-        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    };
-
     return (
         <div className="bg-white py-8 rounded-2xl text-center animate-fade-in mt-4 border border-gray-100 shadow-sm px-4">
             <div className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-700 text-[10px] font-bold uppercase tracking-wider rounded-full mb-6 border border-purple-200 animate-pulse"><Coffee className="w-3 h-3 mr-1.5"/> Personal Out Pass Active</div>
@@ -965,12 +976,12 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
             {remainingTime !== null && remainingTime > 0 ? (
                 <div className="mb-8">
                     <div className="text-xs font-bold text-gray-400 uppercase mb-2">REMAINING TIME</div>
-                    <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecs(remainingTime)}</div>
+                    <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSeconds(remainingTime)}</div>
                 </div>
             ) : (
                 <div className="mb-8">
                     <div className="text-xs font-bold text-red-500 uppercase mb-2 animate-bounce">LATE (OVERTIME)</div>
-                    <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecs(overtimeSecs)}</div>
+                    <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSeconds(overtimeSecs)}</div>
                 </div>
             )}
             
@@ -984,7 +995,6 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
 function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: () => void }) {
    const [remainingTime, setRemainingTime] = useState<number | null>(null);
    const [overtimeSecs, setOvertimeSecs] = useState<number>(0);
-   const isInitialLoad = useRef(true);
 
    useEffect(() => {
        if (!session.expectedEndTimeMillis) return;
@@ -1002,13 +1012,6 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
        const intervalId = setInterval(updateTimer, 1000);
        return () => clearInterval(intervalId);
    }, [session.expectedEndTimeMillis]);
-
-   const formatSeconds = (totalSeconds: number) => {
-       const h = Math.floor(totalSeconds / 3600);
-       const m = Math.floor((totalSeconds % 3600) / 60);
-       const s = totalSeconds % 60;
-       return `${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-   };
 
    return (
        <div className="animate-fade-in space-y-6 mt-4">
@@ -1085,6 +1088,14 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
      }
   }, [preselectedStaff, appData.therapists, formData.therapist]);
 
+  useEffect(() => {
+      if (staffClockIn && formData.date === todayStr && (!formData.time || !/^\d{2}:\d{2}$/.test(formData.time))) {
+          const now = new Date();
+          const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          setFormData(prev => ({ ...prev, time: hhmm }));
+      }
+  }, [staffClockIn, formData.date, todayStr]);
+
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
@@ -1154,7 +1165,10 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
           if (b.date !== selectedDate) return;
           if (b.therapist !== selectedTherapistName) return;
 
-          if (b.time && b.time.includes("to")) {
+          if (b.status === 'in_progress' && b.startTimeMillis) {
+               const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
+               getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blocked.add(slot));
+          } else if (b.time && b.time.includes("to")) {
               const [start, endRaw] = b.time.split(" to ");
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
@@ -1175,14 +1189,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
                   const match = b.service.match(/(\d+)\s*Mins/i);
                   if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
                   
-                  if (b.status === 'in_progress' && b.expectedEndTimeMillis) {
-                      const now = Date.now();
-                      if (now > b.expectedEndTimeMillis && b.date === getLocalTodayStr()) {
-                          const extraMins = (now - b.expectedEndTimeMillis) / 60000;
-                          slotsToBlock += Math.ceil(extraMins / 30);
-                      }
-                  }
-
                   for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
                       if (ALL_TIME_SLOTS[i]) blocked.add(ALL_TIME_SLOTS[i]);
                   }
@@ -1280,74 +1286,92 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
       const freshBookings: Booking[] = [];
       freshSnap.forEach(d => freshBookings.push({id: d.id, ...d.data()} as Booking));
       
-      const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
+      const isStaffImmediate = staffClockIn && formData.date === todayStr && /^\d{2}:\d{2}$/.test(formData.time);
       let isOverlap = false;
 
-      // Staff Clock In Fluid time handling (e.g., 9:12 AM)
-      const isFluidTime = staffClockIn && formData.date === todayStr && /^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(formData.time);
+      let fluidStartTimeMillis = Date.now();
+      let expectedEndTimeMillis = Date.now();
+      let durationMins = 60;
+      let finalTimeStr = formData.time;
 
-      if (isFluidTime) {
-          // Convert fluid time to Millis and block the slot in Dashboard Set (getSlotsCoveredByInterval will handle it)
-          const [timePart, ampm] = formData.time.split(' ');
-          let [hours, minutes] = timePart.split(':').map(Number);
-          if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
-          if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+      if (formData.selectedItem) {
+         const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+         if (match) durationMins = parseInt(match[1]);
+      }
+
+      if (isStaffImmediate) {
+          const [h, m] = formData.time.split(':').map(Number);
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const hrs12 = h % 12 || 12;
+          finalTimeStr = `${hrs12}:${m.toString().padStart(2, '0')} ${ampm}`;
+
+          const [y, mo, d] = formData.date.split('-');
+          const startDateTime = new Date(Number(y), Number(mo)-1, Number(d));
+          startDateTime.setHours(h, m, 0, 0);
           
-          const startDateTime = new Date(`${formData.date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`);
-          const fluidStartTimeMillis = startDateTime.getTime();
+          fluidStartTimeMillis = startDateTime.getTime();
+          expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000);
 
-          let durationMins = 60;
-          const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
-          if (match) durationMins = parseInt(match[1]);
-          const expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000);
-
-          // Standard overlap check against other bookings (we simplify this for fluid time; ideally, you check against all intervals)
           freshBookings.forEach(b => {
               if (b.therapist !== formData.therapist?.name || b.status === 'cancelled' || b.status === 'completed' || b.date !== formData.date) return;
               
-              let otherStart: number, otherEnd: number;
-              if (b.startTimeMillis) {
+              let otherStart = 0, otherEnd = 0;
+              if (b.status === 'in_progress' && b.startTimeMillis) {
                   otherStart = b.startTimeMillis;
                   otherEnd = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
               } else if (b.time && !b.time.includes('to')) {
-                  otherStart = new Date(`${b.date} ${b.time}`).getTime();
-                  let bDuration = 60;
+                  const [oy, omo, od] = b.date.split('-');
+                  const slotTime = new Date(Number(oy), Number(omo)-1, Number(od));
+                  const [tPart, oampm] = b.time.split(' ');
+                  let [sh, sm] = tPart.split(':').map(Number);
+                  if (oampm === 'PM' && sh < 12) sh += 12;
+                  if (oampm === 'AM' && sh === 12) sh = 0;
+                  slotTime.setHours(sh, sm, 0, 0);
+
+                  otherStart = slotTime.getTime();
+                  let bDur = 60;
                   const bMatch = b.service.match(/(\d+)\s*Mins/i);
-                  if (bMatch) bDuration = parseInt(bMatch[1]);
-                  otherEnd = otherStart + bDuration * 60000;
+                  if (bMatch) bDur = parseInt(bMatch[1]);
+                  otherEnd = otherStart + bDur * 60000;
               } else {
-                  return; // Simplify: skip checking against range bookings ("7AM to 7PM") for fluid clock-in collision
+                  return; 
               }
 
               if (fluidStartTimeMillis < otherEnd && expectedEndTimeMillis > otherStart) {
                   isOverlap = true;
               }
           });
-      } else if (formData.time.includes("to")) {
-          const [start, endRaw] = formData.time.split(" to ");
-          const end = endRaw.replace(" (Next Day)", "");
-          const sIdx = ALL_TIME_SLOTS.indexOf(start);
-          let eIdx = ALL_TIME_SLOTS.indexOf(end);
-          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
-          if (sIdx !== -1 && eIdx !== -1) {
-              for (let i = sIdx; i < eIdx; i++) {
-                  if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; }
-              }
-          }
-          if (blockedNow.has(formData.time)) isOverlap = true;
+
       } else {
-          const sIdx = ALL_TIME_SLOTS.indexOf(formData.time);
-          let neededSlots = 2; 
-          const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
-          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-          for (let i = 0; i < neededSlots; i++) { 
-              if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { isOverlap = true; break; }
+          const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
+          
+          if (formData.time.includes("to")) {
+              const [start, endRaw] = formData.time.split(" to ");
+              const end = endRaw.replace(" (Next Day)", "");
+              const sIdx = ALL_TIME_SLOTS.indexOf(start);
+              let eIdx = ALL_TIME_SLOTS.indexOf(end);
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
+
+              if (sIdx !== -1 && eIdx !== -1) {
+                  for (let i = sIdx; i < eIdx; i++) {
+                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; }
+                  }
+              }
+              if (blockedNow.has(formData.time)) isOverlap = true;
+          } else {
+              const sIdx = ALL_TIME_SLOTS.indexOf(formData.time);
+              let neededSlots = 2; 
+              const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
+              if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+              for (let i = 0; i < neededSlots; i++) { 
+                  if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { isOverlap = true; break; }
+              }
           }
       }
 
       if (isOverlap) {
          alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်သွားပါပြီ။ ကျေးဇူးပြု၍ အခြားအချိန် ရွေးပေးပါ။");
-         setLoading(false); return; 
+         setLoading(false); return;
       }
 
       if (formData.phone && formData.phone.trim() !== '') {
@@ -1360,45 +1384,22 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
         }
       }
 
-      let durationMins = 60;
-      if (formData.selectedItem) {
-         const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
-         if (match) durationMins = parseInt(match[1]);
-      }
-
-      const now = Date.now();
-      const isStaffImmediate = staffClockIn && formData.date === todayStr;
-
-      // Calculate fluid times if applicable
-      let fluidStartTimeMillis: number | undefined;
-      let expectedEndTimeMillis: number | undefined;
-      if (isFluidTime) {
-          const [timePart, ampm] = formData.time.split(' ');
-          let [hours, minutes] = timePart.split(':').map(Number);
-          if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
-          if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
-          
-          const startDateTime = new Date(`${formData.date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`);
-          fluidStartTimeMillis = startDateTime.getTime();
-          expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000);
-      }
-
       const dataToSave = {
         name: formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest'), 
         phone: formData.phone || '-',
         service: `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`,
         therapist: formData.therapist?.name || 'Any Available Therapist',
         date: formData.date, 
-        time: formData.time, 
+        time: finalTimeStr, 
         paymentMethod: isStaffMode ? 'Cash Payment in Shop' : formData.paymentMethod, 
         txId: isStaffMode ? 'CASH' : formData.txId, 
         totalPrice: calculateTotal(), 
         status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
-        createdAt: now,
+        createdAt: Date.now(),
         specialRequest: formData.specialRequest,
         ...(isStaffImmediate && {
-           startTimeMillis: isFluidTime ? fluidStartTimeMillis : now,
-           expectedEndTimeMillis: isFluidTime ? expectedEndTimeMillis : now + (durationMins * 60 * 1000)
+           startTimeMillis: fluidStartTimeMillis,
+           expectedEndTimeMillis: expectedEndTimeMillis
         })
       };
       await addDoc(collection(db, 'bookings'), dataToSave);
@@ -1592,18 +1593,16 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
             
-            {/* Staff Clock In Fluid Time Input (Today only) */}
             {staffClockIn && formData.date === todayStr ? (
                 <div className="bg-yellow-50 p-5 rounded-lg border border-yellow-200 mb-4 animate-fade-in">
                     <label className="block mb-2 text-sm font-bold flex items-center text-yellow-800"><Clock className="w-4 h-4 mr-2" /> Service Start Time (ဧည့်သည်ရောက်ရှိချိန်)</label>
                     <input 
-                       type="text" 
-                       placeholder="e.g., 9:12 AM or 2:30 PM" 
+                       type="time" 
                        value={formData.time}
                        onChange={(e) => setFormData({...formData, time: e.target.value})}
-                       className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-white mb-2 font-bold text-center tracking-wider"
+                       className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-white mb-2 font-bold text-center tracking-wider text-lg"
                     />
-                    <p className="text-[10px] text-yellow-700 font-semibold text-center mt-1">အမှန်တကယ် စတင်သည့်အချိန်ကို AM/PM အပါအဝင် ထည့်ပေးပါ။ (ပုံသေ slots များရွေးရန်မလိုပါ)</p>
+                    <p className="text-[10px] text-yellow-700 font-semibold text-center mt-1">အမှန်တကယ် စတင်သည့်အချိန်ကို ပြင်ဆင်ရွေးချယ်နိုင်ပါသည်။</p>
                 </div>
             ) : (
                 <>
@@ -1733,9 +1732,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
   );
 }
 
-// ==========================================
-// 1.4 CUSTOMER HISTORY TAB
-// ==========================================
+// 1.2 Customer History Tab
 function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1782,7 +1779,7 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
                         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mr-4 mt-1"><Sparkles className="w-5 h-5 text-gray-500"/></div>
                         <div>
                            <div className="font-bold text-gray-800 text-sm sm:text-base">{b.service.split('(')[0]}</div>
-                           <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> Slot: {b.time}</div>
+                           <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> {b.time}</div>
                         </div>
                      </div>
                      <div className="flex flex-col items-end">
@@ -1835,9 +1832,7 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
   );
 }
 
-// ==========================================
-// 1.5 CUSTOMER PROFILE TAB
-// ==========================================
+// 1.3 Customer Profile Tab
 function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2196,14 +2191,6 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
    };
 
-   const formatSeconds = (totalSeconds: number | undefined) => {
-       if (!totalSeconds || totalSeconds <= 0) return '00:00';
-       const h = Math.floor(totalSeconds / 3600);
-       const m = Math.floor((totalSeconds % 3600) / 60);
-       const s = totalSeconds % 60;
-       return `${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-   };
-
    const handleDeleteBooking = async (id: string) => { if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
@@ -2541,7 +2528,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                     const url = window.location.origin + window.location.pathname + '?mode=staff';
                     navigator.clipboard.writeText(url);
                     alert('Staff Portal Link Copied:\n' + url);
-                 }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition mt-2 sm:mt-0 sm:ml-2">
+                 }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2">
                     <Copy className="w-3 h-3 mr-1"/> Copy Staff Portal Link
                  </button>
              </div>
@@ -2633,12 +2620,10 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                   </div>
                 ))}
                 {therapist.images.length < 5 && (
-                    <>
-                    <label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400 relative">
-                        {uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}
-                        <input type="file" accept="image/*" multiple className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} />
-                    </label>
-                    </>
+                  <label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400">
+                    {uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} />
+                  </label>
                 )}
               </div>
             </div>
@@ -2677,7 +2662,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
           <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center text-lg"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> {cat.title} Category</h3><div className="flex space-x-2"><button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Item</button><button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : 'Save'}</button></div></div>
           <div className="p-4 space-y-3">{cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
-            {cat.items.map((item, iIdx) => (<div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div><div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div></div>))}
+            {cat.items.map((item, iIdx) => (<div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div><div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash className="w-5 h-5" /></button></div></div>))}
           </div>
         </div>
       ))}
