@@ -508,6 +508,7 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
 function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
+  // If initialTherapist is provided (coming from Dashboard), skip to step 2 (Service Selection)
   const [step, setStep] = useState(initialTherapist ? 2 : 1);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
@@ -1618,15 +1619,22 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const handleSaveTherapists = async () => {
-    if (!window.confirm(`ဝန်ထမ်းစာရင်းကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
+    if (!window.confirm(`ဝန်ထမ်းစာရင်းနှင့် Ranking ကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
     setSavingCategory('therapists');
     try {
-      const tPromises = localTherapists.map((t, idx) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: idx }));
+      // Re-assign order property based on the array index before saving to ensure exact ranking is kept
+      const finalizedTherapists = localTherapists.map((t, idx) => ({ ...t, order: idx }));
+      
+      const tPromises = finalizedTherapists.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order }));
       const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id)));
+      
       await Promise.all([...tPromises, ...delPromises]);
+      
       setDeletedTherapistIds([]);
-      onSettingsUpdated({ ...appData, therapists: localTherapists });
-      alert('ဝန်ထမ်းစာရင်းကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+      setLocalTherapists(finalizedTherapists);
+      onSettingsUpdated({ ...appData, therapists: finalizedTherapists });
+      
+      alert('ဝန်ထမ်းစာရင်းနှင့် Ranking ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
     } catch (e) { alert('Update လုပ်ရာတွင် အခက်အခဲရှိနေပါသည်။'); }
     setSavingCategory(null);
   };
@@ -1697,6 +1705,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(therapist.id); const newUrls: string[] = [];
     try {
       for (let i = 0; i < files.length; i++) {
+        // High Definition Resolution for clearer viewing
         const base64 = await compressImage(files[i], 900, 1200); 
         newUrls.push(base64);
       }
@@ -1780,25 +1789,64 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]" /> Manage Therapists</h3></div><div className="flex space-x-2"><button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold"><PlusCircle className="w-4 h-4 mr-1" /> Add Therapist</button><button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save Therapists'}</button></div></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{localTherapists.map((therapist, tIdx) => (<div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
-          
-          <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4" /></button>
-          
-          {/* Re-order Arrows for Admin to manually set the Default/Top5 Priority */}
-          <div className="absolute top-2 left-2 flex space-x-1">
-            <button type="button" onClick={() => moveTherapistUp(tIdx)} disabled={tIdx === 0} className="p-1 bg-gray-200 text-gray-600 rounded hover:bg-gray-300 disabled:opacity-30"><ChevronUp className="w-4 h-4" /></button>
-            <button type="button" onClick={() => moveTherapistDown(tIdx)} disabled={tIdx === localTherapists.length - 1} className="p-1 bg-gray-200 text-gray-600 rounded hover:bg-gray-300 disabled:opacity-30"><ChevronDown className="w-4 h-4" /></button>
-          </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {localTherapists.map((therapist, tIdx) => (
+            <div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
+              <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4" /></button>
+              
+              <label className="block text-xs font-bold text-gray-500 mb-1 mt-2">Therapist Name</label>
+              <input type="text" value={therapist.name} onChange={(e) => updateTherapistName(tIdx, e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded mb-4 focus:outline-none focus:border-[#D4AF37]" />
+              
+              <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {therapist.images.map((imgUrl, imgIdx) => (
+                  <div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200">
+                    <img src={imgUrl} alt="upload" className="w-full h-full object-cover" />
+                    <button onClick={() => removeImage(tIdx, imgIdx)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><X className="w-3 h-3" /></button>
+                  </div>
+                ))}
+                {therapist.images.length < 5 && (
+                  <label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400">
+                    {uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} />
+                  </label>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
-          <label className="block text-xs font-bold text-gray-500 mb-1 mt-6">Therapist Name</label>
-          <input type="text" value={therapist.name} onChange={(e) => updateTherapistName(tIdx, e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded mb-4 focus:outline-none focus:border-[#D4AF37]" />
-          <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label>
-          <div className="flex flex-wrap gap-2 mb-2">{therapist.images.map((imgUrl, imgIdx) => (<div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200"><img src={imgUrl} alt="upload" className="w-full h-full object-cover" /><button onClick={() => removeImage(tIdx, imgIdx)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><X className="w-3 h-3" /></button></div>))}{therapist.images.length < 5 && (<label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400">{uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}<input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} /></label>)}</div>
-        </div>))}</div>
+      {/* Manage Therapist Ranking Section */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
+         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+            <div>
+               <h3 className="text-xl font-bold text-gray-800 flex items-center"><Crown className="w-5 h-5 mr-2 text-[#D4AF37]" /> Top 5 Therapists Ranking</h3>
+               <p className="text-xs text-gray-500 mt-1">ဘိုကင်အရေအတွက် တူညီနေပါက အောက်ပါအစီအစဉ်အတိုင်း Top 5 တွင် ပေါ်မည်ဖြစ်ပါသည်။</p>
+            </div>
+            <button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90">
+               <Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save Ranking'}
+            </button>
+         </div>
+         <div className="flex flex-col space-y-2">
+            {localTherapists.map((therapist, tIdx) => (
+                <div key={therapist.id} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:border-[#D4AF37] transition">
+                    <div className="flex items-center">
+                        <span className="w-6 h-6 rounded bg-[#123524] text-white flex items-center justify-center text-xs font-bold mr-3">{tIdx + 1}</span>
+                        <span className="font-bold text-gray-800 text-sm">{therapist.name}</span>
+                    </div>
+                    <div className="flex space-x-1">
+                        <button type="button" onClick={() => moveTherapistUp(tIdx)} disabled={tIdx === 0} className="p-1.5 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronUp className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => moveTherapistDown(tIdx)} disabled={tIdx === localTherapists.length - 1} className="p-1.5 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronDown className="w-4 h-4" /></button>
+                    </div>
+                </div>
+            ))}
+         </div>
       </div>
 
       {localCategories.map((cat, cIdx) => (
-        <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
           <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center text-lg"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> {cat.title} Category</h3><div className="flex space-x-2"><button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold"><PlusCircle className="w-4 h-4 mr-1" /> Add Item</button><button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : `Save ${cat.title}`}</button></div></div>
           <div className="p-4 space-y-3">{cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
             {cat.items.map((item, iIdx) => (<div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div><div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div></div>))}
