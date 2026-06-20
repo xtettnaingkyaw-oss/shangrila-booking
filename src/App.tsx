@@ -390,12 +390,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
   };
 
   const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
-      // If service is not selected yet, assume the smallest service to determine if completely full.
-      // But actually, we just need to see if ALL slots are blocked.
       const blockedNow = getBlockedSlots(allBookings, tName, dateToCheck);
-      
-      // If therapist is selected first, we check if 9AM to 9PM is entirely blocked (typical day)
-      // Since we don't know the service, we assume a 60 min service.
       let neededSlots = 2; 
       if (formData.selectedItem) {
           const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
@@ -660,6 +655,21 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               </div>
               <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-400' : 'text-gray-800'}`}>{therapist.name}</div>
               <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
+              
+              {/* NEW BOOK NOW BUTTON FOR GALLERY VIEW */}
+              {isTherapistFirst && !isFull && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFormData({ ...formData, therapist: therapist });
+                    handleNextStep(currentStep + 1);
+                  }}
+                  className="mt-3 w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-xs font-bold flex items-center justify-center hover:opacity-90 transition shadow-sm border border-[#1a4a32]"
+                >
+                  ဘိုကင်ယူမည် <ChevronRight className="w-3 h-3 ml-1" />
+                </button>
+              )}
             </div>
           )
         })}
