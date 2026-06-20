@@ -48,14 +48,13 @@ const formatPrice = (price: any) => {
   return num.toLocaleString() + ' Ks';
 };
 
-const formatSeconds = (totalSeconds: number | undefined) => {
+const formatSecondsMMSS = (totalSeconds: number | undefined) => {
     if (totalSeconds === undefined) return '00:00';
     const isNegative = totalSeconds < 0;
     const absSecs = Math.abs(totalSeconds);
-    const h = Math.floor(absSecs / 3600);
-    const m = Math.floor((absSecs % 3600) / 60);
+    const m = Math.floor(absSecs / 60);
     const s = Math.floor(absSecs % 60);
-    return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${isNegative ? '-' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
 const compressImage = async (file: File, width: number, height: number): Promise<string> => {
@@ -398,6 +397,7 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
 
   const getTherapistStatus = (tName: string) => {
       let blockedNow = new Set<string>();
+      let isCurrentlyActive = false;
       
       bookings.forEach(b => {
           if (b.status === 'cancelled' || b.status === 'completed') return;
@@ -405,6 +405,7 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
           if (b.therapist !== tName) return;
 
           if (b.status === 'in_progress' && b.startTimeMillis) {
+               isCurrentlyActive = true;
                const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
                getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blockedNow.add(slot));
           } else if (b.time && b.time.includes("to")) {
@@ -432,6 +433,10 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
               }
           }
       });
+
+      if (isCurrentlyActive) {
+          return { label: 'In Service (Active)', mm: 'ဝန်ဆောင်မှုပေးနေပါသည်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+      }
 
       let is24hFull = false;
       if (blockedNow.has("7:00 AM to 7:00 AM (Next Day)")) {
@@ -504,7 +509,7 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
           {appData.therapists.map(t => {
              const status = getTherapistStatus(t.name);
              const isAvailable = status.label === 'Available';
-             const isPartiallyBooked = status.label === 'Partially Booked';
+             const isPartiallyBooked = status.label === 'Partially Booked' || status.label === 'In Service (Active)';
              const isFullyBooked = status.label.includes('Fully Booked');
 
              return (
@@ -976,12 +981,12 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
             {remainingTime !== null && remainingTime > 0 ? (
                 <div className="mb-8">
                     <div className="text-xs font-bold text-gray-400 uppercase mb-2">REMAINING TIME</div>
-                    <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSeconds(remainingTime)}</div>
+                    <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecondsMMSS(remainingTime)}</div>
                 </div>
             ) : (
                 <div className="mb-8">
                     <div className="text-xs font-bold text-red-500 uppercase mb-2 animate-bounce">LATE (OVERTIME)</div>
-                    <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSeconds(overtimeSecs)}</div>
+                    <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecondsMMSS(overtimeSecs)}</div>
                 </div>
             )}
             
@@ -1026,13 +1031,13 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
                    {remainingTime !== null && remainingTime > 0 ? (
                        <>
                            <div className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase">REMAINING TIME</div>
-                           <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSeconds(remainingTime)}</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecondsMMSS(remainingTime)}</div>
                            <div className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">Total Service: {session.service.split('(')[1]?.replace(')', '') || '-'}</div>
                        </>
                    ) : (
                        <div className="animate-pulse">
-                           <div className="text-[10px] sm:text-xs font-bold text-red-500 uppercase">OVERTIME (시간 초과)</div>
-                           <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSeconds(overtimeSecs)}</div>
+                           <div className="text-[10px] sm:text-xs font-bold text-red-500 uppercase">OVERTIME (အချိန်ပို)</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecondsMMSS(overtimeSecs)}</div>
                            <div className="text-[10px] sm:text-xs font-bold text-red-400 mt-0.5">Duration passed expected time.</div>
                        </div>
                    )}
@@ -1042,7 +1047,7 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
            <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 border border-gray-100 text-[10px] sm:text-xs text-gray-500">
                <span>Price: <strong className="text-gray-800 text-xs sm:text-sm">{formatPrice(session.totalPrice)}</strong></span>
                <span className="hidden sm:inline">TxID: <strong className="text-gray-800 text-sm tracking-wider">{session.txId}</strong></span>
-               <span>Live: <strong className="text-gray-800 text-xs sm:text-sm">{formatSeconds(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
+               <span>Live: <strong className="text-gray-800 text-xs sm:text-sm">{formatSecondsMMSS(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
            </div>
 
            <button onClick={onStop} className="w-full py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg flex items-center justify-center mx-auto hover:bg-red-600 transition text-sm"><Trash2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> Stop Service / End Now</button>
@@ -1087,14 +1092,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
          if (t) setFormData(prev => ({...prev, therapist: t}));
      }
   }, [preselectedStaff, appData.therapists, formData.therapist]);
-
-  useEffect(() => {
-      if (staffClockIn && formData.date === todayStr && (!formData.time || !/^\d{2}:\d{2}$/.test(formData.time))) {
-          const now = new Date();
-          const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-          setFormData(prev => ({ ...prev, time: hhmm }));
-      }
-  }, [staffClockIn, formData.date, todayStr]);
 
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
@@ -1286,8 +1283,9 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
       const freshBookings: Booking[] = [];
       freshSnap.forEach(d => freshBookings.push({id: d.id, ...d.data()} as Booking));
       
-      const isStaffImmediate = staffClockIn && formData.date === todayStr && /^\d{2}:\d{2}$/.test(formData.time);
+      const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
       let isOverlap = false;
+      const isStaffImmediate = formData.time === 'NOW';
 
       let fluidStartTimeMillis = Date.now();
       let expectedEndTimeMillis = Date.now();
@@ -1300,16 +1298,12 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
       }
 
       if (isStaffImmediate) {
-          const [h, m] = formData.time.split(':').map(Number);
-          const ampm = h >= 12 ? 'PM' : 'AM';
-          const hrs12 = h % 12 || 12;
-          finalTimeStr = `${hrs12}:${m.toString().padStart(2, '0')} ${ampm}`;
+          const now = new Date();
+          const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
+          const hrs12 = now.getHours() % 12 || 12;
+          finalTimeStr = `${hrs12}:${now.getMinutes().toString().padStart(2, '0')} ${ampm}`;
 
-          const [y, mo, d] = formData.date.split('-');
-          const startDateTime = new Date(Number(y), Number(mo)-1, Number(d));
-          startDateTime.setHours(h, m, 0, 0);
-          
-          fluidStartTimeMillis = startDateTime.getTime();
+          fluidStartTimeMillis = now.getTime();
           expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000);
 
           freshBookings.forEach(b => {
@@ -1343,8 +1337,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
           });
 
       } else {
-          const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
-          
           if (formData.time.includes("to")) {
               const [start, endRaw] = formData.time.split(" to ");
               const end = endRaw.replace(" (Next Day)", "");
@@ -1593,37 +1585,83 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
             
-            {staffClockIn && formData.date === todayStr ? (
-                <div className="bg-yellow-50 p-5 rounded-lg border border-yellow-200 mb-4 animate-fade-in">
-                    <label className="block mb-2 text-sm font-bold flex items-center text-yellow-800"><Clock className="w-4 h-4 mr-2" /> Service Start Time (ဧည့်သည်ရောက်ရှိချိန်)</label>
-                    <input 
-                       type="time" 
-                       value={formData.time}
-                       onChange={(e) => setFormData({...formData, time: e.target.value})}
-                       className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-white mb-2 font-bold text-center tracking-wider text-lg"
-                    />
-                    <p className="text-[10px] text-yellow-700 font-semibold text-center mt-1">အမှန်တကယ် စတင်သည့်အချိန်ကို ပြင်ဆင်ရွေးချယ်နိုင်ပါသည်။</p>
+            {/* Walk-in Box: Only shown to Staff if the selected date is TODAY */}
+            {staffClockIn && formData.date === todayStr && (
+                <div className="bg-green-50 p-5 rounded-lg border border-green-200 mb-6 animate-fade-in text-center">
+                    <Sparkles className="w-8 h-8 text-green-500 mx-auto mb-2"/>
+                    <h4 className="font-bold text-green-800 text-lg mb-1">Walk-in Customer</h4>
+                    <p className="text-xs text-green-600 mb-4">ဧည့်သည်ရောက်လာသော လက်ရှိအချိန်အတိအကျမှစ၍ ဝန်ဆောင်မှုကို ချက်ချင်းစတင်မည်။</p>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const nowMillis = Date.now();
+                            let durationMins = 60;
+                            if (formData.selectedItem) {
+                                const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+                                if (match) durationMins = parseInt(match[1]);
+                            }
+                            const endMillis = nowMillis + (durationMins * 60000);
+                            let isOverlap = false;
+                            
+                            allBookings.forEach(b => {
+                                if (b.therapist !== formData.therapist?.name || b.date !== todayStr || b.status === 'cancelled' || b.status === 'completed') return;
+                                
+                                let oStart = 0, oEnd = 0;
+                                if (b.status === 'in_progress' && b.startTimeMillis) {
+                                    oStart = b.startTimeMillis;
+                                    oEnd = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
+                                } else if (b.time && !b.time.includes('to')) {
+                                    const [y, mo, d] = b.date.split('-');
+                                    const st = new Date(Number(y), Number(mo)-1, Number(d));
+                                    const [tPart, ampm] = b.time.split(' ');
+                                    let [sh, sm] = tPart.split(':').map(Number);
+                                    if (ampm === 'PM' && sh < 12) sh += 12;
+                                    if (ampm === 'AM' && sh === 12) sh = 0;
+                                    st.setHours(sh, sm, 0, 0);
+
+                                    oStart = st.getTime();
+                                    let bDur = 60;
+                                    const bMatch = b.service.match(/(\d+)\s*Mins/i);
+                                    if (bMatch) bDur = parseInt(bMatch[1]);
+                                    oEnd = oStart + bDur * 60000;
+                                }
+                                
+                                if (oStart && oEnd) {
+                                    if (nowMillis < oEnd && endMillis > oStart) isOverlap = true;
+                                }
+                            });
+
+                            if (isOverlap) {
+                                alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။");
+                            } else {
+                                setFormData({ ...formData, time: 'NOW' });
+                                handleNextStep(4);
+                            }
+                        }}
+                        className="bg-green-600 text-white px-6 py-3 rounded-lg font-bold shadow-md hover:bg-green-700 w-full flex items-center justify-center transition"
+                    >
+                        <Clock className="w-4 h-4 mr-2" /> Start Immediately (NOW)
+                    </button>
                 </div>
-            ) : (
-                <>
-                    <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
-                    <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
-                        {availableTimeSlots.map(t => {
-                            const isAvailable = isSlotAvailable(t);
-                            return (
-                                <button key={t} type="button" disabled={!formData.date || !isAvailable} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : !isAvailable ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 cursor-not-allowed line-through' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'}`}>{t}</button>
-                            )
-                        })}
-                    </div>
-                </>
             )}
 
-            {availableTimeSlots.length === 0 && formData.date && !(staffClockIn && formData.date === todayStr) && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
+            <div className="relative">
+                 <div className="absolute inset-0 flex items-center" aria-hidden="true"><div className="w-full border-t border-gray-200"></div></div>
+                 <div className="relative flex justify-center mb-4"><span className="px-3 bg-white text-xs font-bold text-gray-400 uppercase">{staffClockIn && formData.date === todayStr ? 'OR SELECT TIME SLOT' : 'AVAILABLE TIME SLOTS'}</span></div>
+            </div>
+            
+            <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
+            {availableTimeSlots.map(t => {
+                const isAvailable = isSlotAvailable(t);
+                return (
+                <button key={t} type="button" disabled={!formData.date || !isAvailable} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : !isAvailable ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 cursor-not-allowed line-through' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'}`}>{t}</button>
+                )
+            })}
+            </div>
+            {availableTimeSlots.length === 0 && formData.date && <p className="text-sm text-red-500 mt-4 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
           </div>
-          <div className="mt-8 flex justify-between">
-            <button onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
-            <button disabled={!formData.date || !formData.time.trim()} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button>
-          </div>
+
+          <div className="mt-8 flex justify-between"><button onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || !formData.time || formData.time === 'NOW'} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
 
@@ -1650,7 +1688,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               )}
               {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
               <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div>
-              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
+              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time === 'NOW' ? 'NOW (Immediate Start)' : formData.time}</div>
             </div>
             <div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div>
           </div>
@@ -1681,7 +1719,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             {isStaffMode ? (
               <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
                   <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
-                  <p className="text-xs font-semibold text-green-600 mt-2">"{staffClockIn && formData.date === todayStr ? 'Confirm and Start Now' : 'Confirm Booking'}" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။</p>
+                  <p className="text-xs font-semibold text-green-600 mt-2">{formData.time === 'NOW' ? 'ဝန်ဆောင်မှုကို ချက်ချင်း စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
               </div>
             ) : (
               <>
@@ -1724,7 +1762,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
 
           <div className="mt-8 flex justify-between">
             <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
-            <button disabled={loading || (!isStaffMode && !formData.paymentMethod)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : (staffClockIn && formData.date === todayStr ? 'CONFIRM AND START NOW' : 'CONFIRM BOOKING')}</button>
+            <button disabled={loading || (!isStaffMode && !formData.paymentMethod)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : (formData.time === 'NOW' ? 'CONFIRM AND START NOW' : 'CONFIRM BOOKING')}</button>
           </div>
         </form>
       )}
@@ -2065,7 +2103,6 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
     return () => unsubscribe();
   }, []);
 
-  // Auto scroll to top on admin tab switch
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [tab]);
@@ -2191,6 +2228,14 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
    };
 
+   const formatSecondsAdmin = (totalSeconds: number | undefined) => {
+       if (!totalSeconds || totalSeconds <= 0) return '00:00';
+       const h = Math.floor(totalSeconds / 3600);
+       const m = Math.floor((totalSeconds % 3600) / 60);
+       const s = totalSeconds % 60;
+       return `${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+   };
+
    const handleDeleteBooking = async (id: string) => { if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
@@ -2222,7 +2267,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${b.overtimeSeconds && b.overtimeSeconds > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSeconds(b.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${b.overtimeSeconds && b.overtimeSeconds > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(b.overtimeSeconds)}</div>
                                      <button onClick={() => handleDeleteBooking(b.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
@@ -2247,7 +2292,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${o.overtimeSeconds && o.overtimeSeconds > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSeconds(o.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${o.overtimeSeconds && o.overtimeSeconds > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(o.overtimeSeconds)}</div>
                                      <button onClick={() => handleDeleteOutpass(o.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
@@ -2631,7 +2676,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         </div>
       </div>
 
-      {/* Manual Therapist Ranking Section (DO NOT REMOVE - Frustrated User Requirement) */}
+      {/* Manual Therapist Ranking Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <div>
@@ -2662,7 +2707,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
           <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center text-lg"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> {cat.title} Category</h3><div className="flex space-x-2"><button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Item</button><button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : 'Save'}</button></div></div>
           <div className="p-4 space-y-3">{cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
-            {cat.items.map((item, iIdx) => (<div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div><div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash className="w-5 h-5" /></button></div></div>))}
+            {cat.items.map((item, iIdx) => (<div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div><div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div></div>))}
           </div>
         </div>
       ))}
