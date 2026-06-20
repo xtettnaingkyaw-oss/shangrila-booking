@@ -187,7 +187,9 @@ export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; 
 // 1. CUSTOMER MAIN APP
 // ==========================================
 function CustomerApp({ appData }: { appData: AppData }) {
-  const [activeTab, setActiveTab] = useState<'book' | 'history' | 'profile'>('book');
+  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'history' | 'profile'>(() => {
+     return new URLSearchParams(window.location.search).get('view') === 'therapists' ? 'therapists' : 'book';
+  });
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
   const [hasNoti, setHasNoti] = useState(false);
   const prevStatuses = useRef<Record<string, string>>({});
@@ -227,6 +229,7 @@ function CustomerApp({ appData }: { appData: AppData }) {
 
   const tabs = [
     { id: 'book', label: 'Book Now', icon: CalendarPlus },
+    { id: 'therapists', label: 'View Therapists', icon: User },
     { id: 'history', label: 'My Bookings', icon: History },
     { id: 'profile', label: 'Profile', icon: UserCircle }
   ] as const;
@@ -235,25 +238,26 @@ function CustomerApp({ appData }: { appData: AppData }) {
     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
 
-      <div className="flex justify-center items-center space-x-2 md:space-x-4 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
+      <div className="flex justify-center items-center space-x-1 md:space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`relative flex-1 flex items-center justify-center py-3 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`}
+              className={`relative flex-1 min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[10px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`}
               style={{ color: isActive ? THEME.primary : undefined }}
             >
-              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
-              {tab.label}
-              {tab.id === 'history' && hasNoti && <span className="absolute top-2 right-4 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
-              {tab.id === 'history' && hasNoti && <span className="absolute top-2 right-4 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></span>}
+              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
+              <span className="text-center">{tab.label}</span>
+              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
+              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
             </button>
           )
         })}
       </div>
 
       {activeTab === 'book' && <CustomerBookingWizard appData={appData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
+      {activeTab === 'therapists' && <CustomerBookingWizard appData={appData} userPhone={userPhone} forceTherapistFirst={true} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
       {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
       {activeTab === 'profile' && <CustomerProfile userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
     </div>
@@ -261,7 +265,9 @@ function CustomerApp({ appData }: { appData: AppData }) {
 }
 
 // 1.1 Booking Wizard
-function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void }) {
+function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean }) {
+  const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
+  
   const [step, setStep] = useState(1);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
@@ -384,9 +390,19 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   };
 
   const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
-      if (!formData.selectedItem) return false;
-      const allowedSlots = getAvailableTimeSlots();
+      // If service is not selected yet, assume the smallest service to determine if completely full.
+      // But actually, we just need to see if ALL slots are blocked.
       const blockedNow = getBlockedSlots(allBookings, tName, dateToCheck);
+      
+      // If therapist is selected first, we check if 9AM to 9PM is entirely blocked (typical day)
+      // Since we don't know the service, we assume a 60 min service.
+      let neededSlots = 2; 
+      if (formData.selectedItem) {
+          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+      }
+
+      const allowedSlots = formData.selectedItem ? getAvailableTimeSlots() : ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
 
       let hasAvailableSlot = false;
       for (const t of allowedSlots) {
@@ -411,9 +427,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
           } else {
               const sIdx = ALL_TIME_SLOTS.indexOf(t);
               if (sIdx === -1) continue;
-              let neededSlots = 2;
-              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
-              if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
 
               let overlap = false;
               for (let i = 0; i < neededSlots; i++) {
@@ -539,123 +552,133 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
     );
   }
 
-  const renderStepper = () => {
-    const steps = [{ num: 1, label: 'SERVICE', icon: Sparkles }, { num: 2, label: 'THERAPIST', icon: User }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard }];
-    return (
-      <div ref={stepContainerRef} className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
-        {steps.map((s, idx) => {
-          const isCompleted = step > s.num; const isActive = step === s.num;
-          return (
-            <React.Fragment key={s.num}>
-              <div className="flex flex-col items-center relative z-10">
-                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all duration-300 border-2 ${isCompleted ? 'bg-[#D4AF37] border-[#D4AF37] text-white' : isActive ? 'bg-[#123524] border-[#123524] text-white' : 'bg-white border-gray-200 text-gray-400'}`}>
-                  {isCompleted ? <Check className="w-5 h-5" /> : <s.icon className="w-4 h-4 sm:w-5 sm:h-5" />}
-                </div>
-                <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider font-bold mt-2 absolute -bottom-5 w-24 text-center ${isActive ? 'text-[#123524]' : 'text-gray-400'}`}>{s.label}</span>
+  const steps = isTherapistFirst
+    ? [{ num: 1, label: 'THERAPIST', icon: User }, { num: 2, label: 'SERVICE', icon: Sparkles }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard }]
+    : [{ num: 1, label: 'SERVICE', icon: Sparkles }, { num: 2, label: 'THERAPIST', icon: User }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard }];
+
+  const renderStepper = () => (
+    <div ref={stepContainerRef} className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
+      {steps.map((s, idx) => {
+        const isCompleted = step > s.num; const isActive = step === s.num;
+        return (
+          <React.Fragment key={s.num}>
+            <div className="flex flex-col items-center relative z-10">
+              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all duration-300 border-2 ${isCompleted ? 'bg-[#D4AF37] border-[#D4AF37] text-white' : isActive ? 'bg-[#123524] border-[#123524] text-white' : 'bg-white border-gray-200 text-gray-400'}`}>
+                {isCompleted ? <Check className="w-5 h-5" /> : <s.icon className="w-4 h-4 sm:w-5 sm:h-5" />}
               </div>
-              {idx < steps.length - 1 && <div className={`flex-1 h-[2px] mx-1 transition-colors duration-300 ${isCompleted ? 'bg-[#D4AF37]' : 'bg-gray-200'}`} />}
-            </React.Fragment>
-          );
+              <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider font-bold mt-2 absolute -bottom-5 w-24 text-center ${isActive ? 'text-[#123524]' : 'text-gray-400'}`}>{s.label}</span>
+            </div>
+            {idx < steps.length - 1 && <div className={`flex-1 h-[2px] mx-1 transition-colors duration-300 ${isCompleted ? 'bg-[#D4AF37]' : 'bg-gray-200'}`} />}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+
+  const renderServiceSelection = (currentStep: number) => (
+    <div className="animate-fade-in">
+      <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
+      <div className="space-y-4">{appData.categories.map(category => {
+        const CategoryIcon = ICON_MAP[category.id] || Activity;
+        return (
+          <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
+              <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>
+              {activeCategory === category.id ? <ChevronUp className="w-6 h-6" style={{ color: THEME.primary }} /> : <ChevronDown className="w-6 h-6" style={{ color: THEME.primary }} />}
+            </div>
+            {activeCategory === category.id && (
+              <div className="p-2 border-t border-gray-100 bg-gray-50/50">{category.items.map(s => (
+                <div key={s.id} onClick={() => setFormData({ ...formData, selectedItem: s, isVvipUpgrade: false })} className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${formData.selectedItem?.id === s.id ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
+                  <div><div className="font-bold text-gray-800 text-sm">{s.name}</div>{s.duration && <div className="text-xs text-gray-500 mt-1">{s.duration}</div>}</div>
+                  <div className="font-bold text-sm" style={{ color: THEME.primary }}>{formatPrice(s.price)}</div>
+                </div>
+              ))}</div>
+            )}
+          </div>
+        )
+      })}</div>
+      <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
+        <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available'))}</div></div></div>
+        {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <button type="button" disabled={!formData.selectedItem?.vvipPrice} onClick={() => setFormData({ ...formData, isVvipUpgrade: !formData.isVvipUpgrade })} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'} ${!formData.selectedItem?.vvipPrice ? 'opacity-50' : ''}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'}`} /></button>}
+      </div>
+      <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
+        {currentStep === 2 && <button onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
+        <button disabled={!formData.selectedItem} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>
+          {isTherapistFirst && currentStep === 2 ? 'CONTINUE TO DATE & TIME' : 'CONTINUE TO THERAPIST'} <ChevronRight className="w-5 h-5 ml-2" />
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderTherapistSelection = (currentStep: number) => (
+    <div className="animate-fade-in relative">
+      {viewGallery && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-fade-in">
+          <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
+          <div className="relative w-full h-[85vh] flex items-center justify-center">
+            <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="max-w-full max-h-full object-contain rounded-md drop-shadow-2xl" />
+            {viewGallery.images.length > 1 && (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition"><ChevronLeft className="w-8 h-8" /></button>
+                <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition"><ChevronRight className="w-8 h-8" /></button>
+              </>
+            )}
+          </div>
+          <div className="text-white mt-4 font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full">{viewGallery.index + 1} / {viewGallery.images.length}</div>
+        </div>
+      )}
+
+      <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p></div>
+      <div onClick={() => setFormData({ ...formData, therapist: null })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        {appData.therapists.map((therapist) => {
+          const isSelected = formData.therapist?.id === therapist.id; const hasImage = therapist.images && therapist.images.length > 0;
+          
+          const checkDate = formData.date || todayStr;
+          const isFull = isTherapistFullForDate(therapist.name, checkDate);
+          const fullTextEn = checkDate === todayStr ? "Fully Booked For Today" : "Fully Booked";
+          const fullTextMm = checkDate === todayStr ? "(ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ)" : "(ဘိုကင်ပြည့်သွားပါပြီ)";
+
+          return (
+            <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
+              {isFull && (
+                <div className="absolute inset-0 z-20 bg-white/50 backdrop-blur-[2px] flex items-center justify-center">
+                  <div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500">
+                    <div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div>
+                    <div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div>
+                  </div>
+                </div>
+              )}
+              <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-40 grayscale' : ''}`}>
+                {hasImage ? (
+                  <>
+                    <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
+                    {therapist.images.length > 1 && (<button onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/80 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1.5 rounded flex items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</button>)}
+                  </>
+                ) : (<div className="flex flex-col items-center opacity-40"><User className="w-12 h-12 text-[#123524]" /></div>)}
+              </div>
+              <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-400' : 'text-gray-800'}`}>{therapist.name}</div>
+              <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
+            </div>
+          )
         })}
       </div>
-    );
-  };
+      <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
+         {currentStep === 2 && <button onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
+         <button disabled={formData.therapist === undefined} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center`} style={{ backgroundColor: THEME.primary }}>
+           {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
+         </button>
+      </div>
+    </div>
+  );
 
   return (
     <div>
       {renderStepper()}
 
-      {/* STEP 1: SERVICE */}
-      {step === 1 && (
-        <div className="animate-fade-in">
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
-          <div className="space-y-4">{appData.categories.map(category => {
-            const CategoryIcon = ICON_MAP[category.id] || Activity;
-            return (
-              <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
-                  <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>
-                  {activeCategory === category.id ? <ChevronUp className="w-6 h-6" style={{ color: THEME.primary }} /> : <ChevronDown className="w-6 h-6" style={{ color: THEME.primary }} />}
-                </div>
-                {activeCategory === category.id && (
-                  <div className="p-2 border-t border-gray-100 bg-gray-50/50">{category.items.map(s => (
-                    <div key={s.id} onClick={() => setFormData({ ...formData, selectedItem: s, isVvipUpgrade: false })} className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${formData.selectedItem?.id === s.id ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
-                      <div><div className="font-bold text-gray-800 text-sm">{s.name}</div>{s.duration && <div className="text-xs text-gray-500 mt-1">{s.duration}</div>}</div>
-                      <div className="font-bold text-sm" style={{ color: THEME.primary }}>{formatPrice(s.price)}</div>
-                    </div>
-                  ))}</div>
-                )}
-              </div>
-            )
-          })}</div>
-          <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
-            <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available'))}</div></div></div>
-            {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <button type="button" disabled={!formData.selectedItem?.vvipPrice} onClick={() => setFormData({ ...formData, isVvipUpgrade: !formData.isVvipUpgrade })} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'} ${!formData.selectedItem?.vvipPrice ? 'opacity-50' : ''}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'}`} /></button>}
-          </div>
-          <div className="mt-8 flex justify-end"><button disabled={!formData.selectedItem} onClick={() => handleNextStep(2)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" /></button></div>
-        </div>
-      )}
-
-      {/* STEP 2: THERAPIST */}
-      {step === 2 && (
-        <div className="animate-fade-in relative">
-
-          {viewGallery && (
-            <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-fade-in">
-              <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
-              <div className="relative w-full h-[85vh] flex items-center justify-center">
-                <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="max-w-full max-h-full object-contain rounded-md drop-shadow-2xl" />
-                {viewGallery.images.length > 1 && (
-                  <>
-                    <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition"><ChevronLeft className="w-8 h-8" /></button>
-                    <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition"><ChevronRight className="w-8 h-8" /></button>
-                  </>
-                )}
-              </div>
-              <div className="text-white mt-4 font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full">{viewGallery.index + 1} / {viewGallery.images.length}</div>
-            </div>
-          )}
-
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p></div>
-          <div onClick={() => setFormData({ ...formData, therapist: null })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {appData.therapists.map((therapist) => {
-              const isSelected = formData.therapist?.id === therapist.id; const hasImage = therapist.images && therapist.images.length > 0;
-              
-              // Dynamic Overlap/Full check for Therapist Selection Step
-              const checkDate = formData.date || todayStr;
-              const isFull = isTherapistFullForDate(therapist.name, checkDate);
-              const fullTextEn = checkDate === todayStr ? "Fully Booked For Today" : "Fully Booked";
-              const fullTextMm = checkDate === todayStr ? "(ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ)" : "(ဘိုကင်ပြည့်သွားပါပြီ)";
-
-              return (
-                <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
-                  {isFull && (
-                    <div className="absolute inset-0 z-20 bg-white/50 backdrop-blur-[2px] flex items-center justify-center">
-                      <div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500">
-                        <div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div>
-                        <div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div>
-                      </div>
-                    </div>
-                  )}
-                  <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-40 grayscale' : ''}`}>
-                    {hasImage ? (
-                      <>
-                        <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
-                        {therapist.images.length > 1 && (<button onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/80 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1.5 rounded flex items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</button>)}
-                      </>
-                    ) : (<div className="flex flex-col items-center opacity-40"><User className="w-12 h-12 text-[#123524]" /></div>)}
-                  </div>
-                  <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-400' : 'text-gray-800'}`}>{therapist.name}</div>
-                  <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
-                </div>
-              )
-            })}
-          </div>
-          <div className="mt-8 flex justify-between"><button onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={formData.therapist === undefined} onClick={() => handleNextStep(3)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
-        </div>
-      )}
+      {step === 1 && (isTherapistFirst ? renderTherapistSelection(1) : renderServiceSelection(1))}
+      {step === 2 && (isTherapistFirst ? renderServiceSelection(2) : renderTherapistSelection(2))}
 
       {/* STEP 3: DATE & TIME */}
       {step === 3 && (
@@ -1422,7 +1445,16 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
-          <div><h3 className="text-xl font-bold text-gray-800 flex items-center">App Branding & Footer</h3></div>
+          <div>
+             <h3 className="text-xl font-bold text-gray-800 flex items-center">App Branding & Footer</h3>
+             <button type="button" onClick={() => {
+                const url = window.location.origin + window.location.pathname + '?view=therapists';
+                navigator.clipboard.writeText(url);
+                alert('Gallery Link Copied:\n' + url);
+             }} className="mt-2 text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition">
+                <Copy className="w-3 h-3 mr-1"/> Copy Gallery Link for Customers
+             </button>
+          </div>
           <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90">
             <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}
           </button>
