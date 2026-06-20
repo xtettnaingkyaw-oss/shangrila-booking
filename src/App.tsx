@@ -56,7 +56,9 @@ const compressImage = async (file: File, width: number, height: number): Promise
         const canvas = document.createElement('canvas'); let sW = img.width; let sH = img.height; let sX = 0; let sY = 0;
         const targetRatio = width / height; const imageRatio = sW / sH;
         if (imageRatio > targetRatio) { const nW = sH * targetRatio; sX = (sW - nW) / 2; sW = nW; } else { const nH = sW / targetRatio; sY = (sH - nH) / 2; sH = nH; }
-        canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', 0.7));
+        canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, width, height); 
+        // Increased quality from 0.7 to 0.85 for clearer images
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
       }; img.onerror = (e) => reject(e);
     }; reader.onerror = (e) => reject(e);
   });
@@ -1477,7 +1479,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(therapist.id); const newUrls: string[] = [];
     try {
       for (let i = 0; i < files.length; i++) {
-        const base64 = await compressImage(files[i], 450, 600); // 3:4 Ratio
+        // High Definition Resolution for clearer viewing
+        const base64 = await compressImage(files[i], 900, 1200); 
         newUrls.push(base64);
       }
       const updated = [...localTherapists];
