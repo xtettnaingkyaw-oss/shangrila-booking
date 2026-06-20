@@ -103,8 +103,22 @@ function App() {
   useEffect(() => {
     document.title = "The Shangri-La | Men's Retreat";
     const updateFavicon = (url: string) => {
-      const existingIcons = document.querySelectorAll("link[rel*='icon']"); existingIcons.forEach(icon => document.head.removeChild(icon));
-      const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
+      // Remove old icons
+      const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon']"); 
+      existingIcons.forEach(icon => document.head.removeChild(icon));
+      
+      // Standard Favicon
+      const newIcon = document.createElement('link'); 
+      newIcon.rel = 'shortcut icon'; 
+      newIcon.type = 'image/png'; 
+      newIcon.href = url; 
+      document.head.appendChild(newIcon);
+
+      // Apple Touch Icon for "Add to Home Screen"
+      const appleIcon = document.createElement('link');
+      appleIcon.rel = 'apple-touch-icon';
+      appleIcon.href = url;
+      document.head.appendChild(appleIcon);
     };
     if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); }
     else { updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg"); }
@@ -301,9 +315,9 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
 
     if (isHotelService) {
       if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) return ["7:00 AM to 7:00 AM (Next Day)"];
-      else if (serviceName.includes("night")) return ["7:00 PM to 7:00 AM (Next Day)"];
       else if (serviceName.includes("outcall")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
       else if (serviceName.includes("half day")) return ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
+      else if (serviceName.includes("night")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 PM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
       else if (serviceName.includes("whole day")) return ["7:00 AM to 7:00 PM"];
     } else {
        allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
