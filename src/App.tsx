@@ -228,10 +228,17 @@ export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; 
 // ==========================================
 function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
-     return new URLSearchParams(window.location.search).get('view') === 'therapists' ? 'therapists' : 'book';
+     const view = new URLSearchParams(window.location.search).get('view');
+     if (view === 'therapists') return 'therapists';
+     if (view === 'dashboard') return 'dashboard';
+     return 'book';
   });
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
   const [hasNoti, setHasNoti] = useState(false);
+  
+  // State for prefilling therapist when jumping from Dashboard
+  const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
+
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
@@ -272,6 +279,11 @@ function CustomerApp({ appData }: { appData: AppData }) {
     }
   };
 
+  const handleDashboardBook = (t: TherapistProfile) => {
+     setPrefillTherapist(t);
+     setActiveTab('therapists'); // Jump to therapist-first booking flow
+  };
+
   const tabs = [
     { id: 'book', label: 'Book Now', icon: CalendarPlus },
     { id: 'therapists', label: 'View Therapists', icon: User },
@@ -289,7 +301,11 @@ function CustomerApp({ appData }: { appData: AppData }) {
           const isActive = activeTab === tab.id;
           return (
             <button
-              key={tab.id} onClick={() => setActiveTab(tab.id as any)}
+              key={tab.id} 
+              onClick={() => {
+                 setPrefillTherapist(null); // Clear any prefilled therapist when manually switching tabs
+                 setActiveTab(tab.id as any);
+              }}
               className={`relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`}
               style={{ color: isActive ? THEME.primary : undefined }}
             >
@@ -303,8 +319,8 @@ function CustomerApp({ appData }: { appData: AppData }) {
       </div>
 
       {activeTab === 'book' && <CustomerBookingWizard appData={appData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
-      {activeTab === 'therapists' && <CustomerBookingWizard appData={appData} userPhone={userPhone} forceTherapistFirst={true} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
-      {activeTab === 'dashboard' && <CustomerDashboard appData={appData} />}
+      {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={appData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
+      {activeTab === 'dashboard' && <CustomerDashboard appData={appData} onBookTherapist={handleDashboardBook} />}
       {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
       {activeTab === 'profile' && <CustomerProfile userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
     </div>
@@ -312,7 +328,7 @@ function CustomerApp({ appData }: { appData: AppData }) {
 }
 
 // 1.1A Dashboard Component
-function CustomerDashboard({ appData }: { appData: AppData }) {
+function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const todayStr = getLocalTodayStr();
 
@@ -360,7 +376,6 @@ function CustomerDashboard({ appData }: { appData: AppData }) {
           }
       });
 
-      // Check Full 24h
       let is24hFull = false;
       if (blockedNow.has("7:00 AM to 7:00 AM (Next Day)")) {
           is24hFull = true;
@@ -375,7 +390,6 @@ function CustomerDashboard({ appData }: { appData: AppData }) {
       const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
       const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
 
-      // Normal shop sessions (9:00 AM to 9:00 PM -> indices 6 to 30)
       let shopSlotsTotal = 0;
       let shopSlotsBooked = 0;
       for (let i = 6; i <= 30; i++) {
@@ -407,8 +421,37 @@ function CustomerDashboard({ appData }: { appData: AppData }) {
       return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
   };
 
+  // Top 5 Calculation Logic
+  const bookingCounts: Record<string, number> = {};
+  bookings.forEach(b => {
+     if (b.status !== 'cancelled') {
+         bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1;
+     }
+  });
+
+  const defaultTop5Names = ['Therapist No-1', 'Therapist No-12', 'Therapist No-13', 'Therapist No-6', 'Therapist No-10'];
+
+  const top5Therapists = [...appData.therapists].sort((a, b) => {
+     const countA = bookingCounts[a.name] || 0;
+     const countB = bookingCounts[b.name] || 0;
+     
+     // 1. Sort by actual booking count if possible
+     if (countA !== countB) return countB - countA; 
+     
+     // 2. If counts are equal, fallback to user's explicitly requested default list
+     const idxA = defaultTop5Names.indexOf(a.name);
+     const idxB = defaultTop5Names.indexOf(b.name);
+     
+     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+     if (idxA !== -1) return -1;
+     if (idxB !== -1) return 1;
+     
+     return 0;
+  }).slice(0, 5);
+
   return (
     <div className="animate-fade-in">
+       {/* Availability Section */}
        <div className="text-center mb-8">
          <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
          <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
@@ -423,7 +466,7 @@ function CustomerDashboard({ appData }: { appData: AppData }) {
 
              return (
                 <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
-                   <div className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
+                   <div className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
                        {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
                    </div>
                    <div className="flex-1">
@@ -432,21 +475,53 @@ function CustomerDashboard({ appData }: { appData: AppData }) {
                           {status.label} <br/> <span className="font-semibold opacity-90">{status.mm}</span>
                        </div>
                    </div>
+                   <button onClick={() => onBookTherapist(t)} className="ml-2 px-3 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold whitespace-nowrap shadow-sm hover:bg-[#1a4a32] flex items-center border border-[#1a4a32]">
+                       Book
+                   </button>
                 </div>
              )
           })}
        </div>
+
+       {/* Top 5 Therapists Section */}
+       {top5Therapists.length > 0 && (
+         <div className="mt-14 pt-8 border-t-2 border-gray-100">
+             <div className="text-center mb-6">
+                 <h2 className="text-2xl font-bold flex items-center justify-center" style={{ color: THEME.primary }}><Crown className="w-6 h-6 mr-2 text-yellow-500"/> Our Top 5 Therapists</h2>
+                 <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ)</p>
+             </div>
+             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                 {top5Therapists.map((t, idx) => (
+                     <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
+                         <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">
+                            {idx + 1}
+                         </div>
+                         <div className="w-full aspect-[3/4] bg-gray-100 relative">
+                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
+                         </div>
+                         <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
+                             <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
+                             <button onClick={() => onBookTherapist(t)} className="w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] flex justify-center items-center border border-[#1a4a32]">
+                                 Book Now <ChevronRight className="w-3 h-3 ml-0.5"/>
+                             </button>
+                         </div>
+                     </div>
+                 ))}
+             </div>
+         </div>
+       )}
     </div>
   );
 }
 
-// 1.1 Booking Wizard (continued)
-function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean }) {
+// 1.1 Booking Wizard
+function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
-  const [step, setStep] = useState(1);
+  // If initialTherapist is provided (coming from Dashboard), skip to step 2 (Service Selection)
+  const [step, setStep] = useState(initialTherapist ? 2 : 1);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+  const [formData, setFormData] = useState({ name: '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
@@ -1643,13 +1718,22 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
           <div>
              <h3 className="text-xl font-bold text-gray-800 flex items-center">App Branding & Footer</h3>
-             <button type="button" onClick={() => {
-                const url = window.location.origin + window.location.pathname + '?view=therapists';
-                navigator.clipboard.writeText(url);
-                alert('Gallery Link Copied:\n' + url);
-             }} className="mt-2 text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition">
-                <Copy className="w-3 h-3 mr-1"/> Copy Gallery Link for Customers
-             </button>
+             <div className="flex flex-wrap gap-2 mt-2">
+                 <button type="button" onClick={() => {
+                    const url = window.location.origin + window.location.pathname + '?view=therapists';
+                    navigator.clipboard.writeText(url);
+                    alert('Gallery Link Copied:\n' + url);
+                 }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition">
+                    <Copy className="w-3 h-3 mr-1"/> Copy Gallery Link
+                 </button>
+                 <button type="button" onClick={() => {
+                    const url = window.location.origin + window.location.pathname + '?view=dashboard';
+                    navigator.clipboard.writeText(url);
+                    alert('Dashboard Link Copied:\n' + url);
+                 }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition">
+                    <Copy className="w-3 h-3 mr-1"/> Copy Dashboard Link
+                 </button>
+             </div>
           </div>
           <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90">
             <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}
