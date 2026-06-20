@@ -21,8 +21,8 @@ interface MenuItem { id: string; name: string; price: number; duration: string; 
 interface MenuCategory { id: string; title: string; items: MenuItem[]; }
 interface TherapistProfile { id: string; name: string; images: string[]; order: number; password?: string; }
 interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'payment_checking' | 'approved' | 'in_progress' | 'completed' | 'cancelled'; cancelReason?: string; specialRequest?: string; createdAt: number; startTimeMillis?: number; expectedEndTimeMillis?: number; actualEndTimeMillis?: number; overtimeSeconds?: number; }
-interface OutPass { id?: string; therapist: string; date: string; outTimeMillis: number; inTimeMillis?: number; expectedInTimeMillis: number; status: 'out' | 'returned'; overtimeSeconds?: number; }
-interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; name: string; }
+interface OutPass { id?: string; therapist: string; date: string; outTimeMillis: number; inTimeMillis?: number; expectedInTimeMillis: number; status: 'out' | 'returned'; overtimeSeconds?: number; reason?: string; }
+interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; name: string; shopLat?: number; shopLng?: number; }
 interface PaymentMethod { id: string; name: string; accountNumber: string; accountName: string; logoUrl: string; }
 interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; }
 interface UserProfile { phone: string; name: string; password?: string; createdAt: number; }
@@ -78,6 +78,17 @@ function useCountdown(initialMinutes: number, onExpire: () => void) {
 const getLocalTodayStr = () => {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
+const calculateDistanceInMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371e3;
+  const p1 = lat1 * Math.PI / 180;
+  const p2 = lat2 * Math.PI / 180;
+  const dp = (lat2 - lat1) * Math.PI / 180;
+  const dl = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 };
 
 class ErrorBoundary extends React.Component<{ children: any }, { hasError: boolean, error: any }> {
@@ -473,7 +484,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            </div>
 
            {staffTab === 'history' && <StaffDailyHistoryTab loggedInStaff={loggedInStaff} />}
-           {staffTab === 'outpass' && <StaffOutPassTab loggedInStaff={loggedInStaff} />}
+           {staffTab === 'outpass' && <StaffOutPassTab appData={appData} loggedInStaff={loggedInStaff} />}
            {staffTab === 'service' && (
                activeSession ? (
                    <ActiveSessionDisplay session={activeSession} onStop={handleStopSession} />
@@ -555,9 +566,12 @@ function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfi
     );
 }
 
-function StaffOutPassTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
+function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedInStaff: TherapistProfile }) {
     const [outpasses, setOutpasses] = useState<OutPass[]>([]);
     const [loading, setLoading] = useState(true);
+    const [reason, setReason] = useState('');
+    const [locating, setLocating] = useState(false);
+    const [locError, setLocError] = useState('');
     const todayStr = getLocalTodayStr();
 
     useEffect(() => {
@@ -582,31 +596,84 @@ function StaffOutPassTab({ loggedInStaff }: { loggedInStaff: TherapistProfile })
     const handleGoOut = async () => {
         if (activePasses.length >= 2) return;
         if (myPasses.length >= 4) return;
-        const now = Date.now();
-        await addDoc(collection(db, 'outpasses'), {
-            therapist: loggedInStaff.name,
-            date: todayStr,
-            outTimeMillis: now,
-            expectedInTimeMillis: now + 30 * 60 * 1000,
-            status: 'out'
-        });
+        if (!reason.trim()) { setLocError("အကြောင်းပြချက် (Reason) ရေးပေးပါ။"); return; }
+        
+        if (!appData.branding.shopLat || !appData.branding.shopLng) {
+            setLocError("Admin Panel -> Settings တွင် ဆိုင်၏ Location အရင်သတ်မှတ်ပါ။");
+            return;
+        }
+
+        setLocating(true);
+        setLocError('');
+
+        if (!navigator.geolocation) {
+            setLocError("ဖုန်းတွင် Location Service မရနိုင်ပါ။");
+            setLocating(false);
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const dist = calculateDistanceInMeters(pos.coords.latitude, pos.coords.longitude, appData.branding.shopLat!, appData.branding.shopLng!);
+            if (dist > 15) { 
+                setLocError(`ဆိုင်နှင့် အကွာအဝေး ${Math.round(dist)} မီတာ ရှိနေပါသည်။ (၁၀ မီတာအတွင်းသာ နှိပ်ခွင့်ရှိသည်)`);
+                setLocating(false);
+                return;
+            }
+
+            const now = Date.now();
+            await addDoc(collection(db, 'outpasses'), {
+                therapist: loggedInStaff.name,
+                date: todayStr,
+                outTimeMillis: now,
+                expectedInTimeMillis: now + 30 * 60 * 1000,
+                status: 'out',
+                reason: reason.trim()
+            });
+            setReason('');
+            setLocating(false);
+        }, (err) => {
+            setLocError("Location (GPS) ဖွင့်ပေးရန် လိုအပ်ပါသည်။");
+            setLocating(false);
+        }, { enableHighAccuracy: true });
     };
 
     const handleReturn = async () => {
         if (!myActivePass || !myActivePass.id) return;
-        const now = Date.now();
-        const overtimeMillis = Math.max(0, now - myActivePass.expectedInTimeMillis);
-        await updateDoc(doc(db, 'outpasses', myActivePass.id), {
-            status: 'returned',
-            inTimeMillis: now,
-            overtimeSeconds: Math.floor(overtimeMillis / 1000)
-        });
+        
+        if (!appData.branding.shopLat || !appData.branding.shopLng) {
+            setLocError("Admin Panel -> Settings တွင် ဆိုင်၏ Location အရင်သတ်မှတ်ပါ။");
+            return;
+        }
+
+        setLocating(true);
+        setLocError('');
+
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const dist = calculateDistanceInMeters(pos.coords.latitude, pos.coords.longitude, appData.branding.shopLat!, appData.branding.shopLng!);
+            if (dist > 15) {
+                setLocError(`ဆိုင်နှင့် အကွာအဝေး ${Math.round(dist)} မီတာ ရှိနေပါသည်။ (၁၀ မီတာအတွင်းသာ နှိပ်ခွင့်ရှိသည်)`);
+                setLocating(false);
+                return;
+            }
+
+            const now = Date.now();
+            const overtimeMillis = Math.max(0, now - myActivePass.expectedInTimeMillis);
+            await updateDoc(doc(db, 'outpasses', myActivePass.id), {
+                status: 'returned',
+                inTimeMillis: now,
+                overtimeSeconds: Math.floor(overtimeMillis / 1000)
+            });
+            setLocating(false);
+        }, (err) => {
+            setLocError("Location (GPS) ဖွင့်ပေးရန် လိုအပ်ပါသည်။");
+            setLocating(false);
+        }, { enableHighAccuracy: true });
     };
 
     if (loading) return <div className="text-center py-10 text-xs font-bold text-gray-400">Loading...</div>;
 
     if (myActivePass) {
-        return <OutPassActiveDisplay pass={myActivePass} onReturn={handleReturn} />;
+        return <OutPassActiveDisplay pass={myActivePass} onReturn={handleReturn} locating={locating} locError={locError} />;
     }
 
     const canGoOut = myPasses.length < 4 && activePasses.length < 2;
@@ -629,11 +696,20 @@ function StaffOutPassTab({ loggedInStaff }: { loggedInStaff: TherapistProfile })
                 </div>
             )}
 
+            {canGoOut && (
+                <div className="mb-4 text-left max-w-xs mx-auto">
+                   <label className="block text-xs font-bold text-gray-500 mb-1">အကြောင်းပြချက် (Reason)</label>
+                   <input type="text" placeholder="ဥပမာ - စျေးဝယ်၊ မုန့်ဝယ်" value={reason} onChange={e=>setReason(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-purple-400 text-xs" />
+                </div>
+            )}
+            
+            {locError && <div className="text-xs font-bold text-red-500 mb-4">{locError}</div>}
+
             <button 
-                disabled={!canGoOut} 
+                disabled={!canGoOut || locating} 
                 onClick={handleGoOut} 
                 className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600 text-white rounded-xl font-bold shadow-md w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition text-sm">
-                Clock Out (Take 30 Mins Pass)
+                {locating ? 'Checking Location...' : 'Clock Out (Take 30 Mins Pass)'}
             </button>
 
             {myPasses.filter(p => p.status === 'returned').length > 0 && (
@@ -657,7 +733,7 @@ function StaffOutPassTab({ loggedInStaff }: { loggedInStaff: TherapistProfile })
     );
 }
 
-function OutPassActiveDisplay({ pass, onReturn }: { pass: OutPass, onReturn: () => void }) {
+function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: OutPass, onReturn: () => void, locating: boolean, locError: string }) {
     const [remainingTime, setRemainingTime] = useState<number | null>(null);
     const [overtimeSecs, setOvertimeSecs] = useState<number>(0);
 
@@ -699,7 +775,9 @@ function OutPassActiveDisplay({ pass, onReturn }: { pass: OutPass, onReturn: () 
                 </div>
             )}
             
-            <button onClick={onReturn} className="w-full sm:w-auto sm:px-16 py-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-[#1a4a32] transition border border-[#1a4a32] mx-auto text-sm"><CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> Clock In (Return)</button>
+            {locError && <div className="text-xs font-bold text-red-500 mb-4">{locError}</div>}
+
+            <button disabled={locating} onClick={onReturn} className="w-full sm:w-auto sm:px-16 py-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-[#1a4a32] transition border border-[#1a4a32] mx-auto text-sm disabled:opacity-50"><CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> {locating ? 'Checking Location...' : 'Clock In (Return)'}</button>
         </div>
     );
 }
@@ -1761,18 +1839,18 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
   const handleStatusChange = async (id: string, newStatus: string) => {
     let reason = '';
     if (newStatus === 'cancelled') {
-      const input = window.prompt("Reason for cancellation:");
+      const input = window.prompt("ဖျက်သိမ်းရသည့် အကြောင်းရင်းကို ထည့်ပါ (ဥပမာ - ငွေလွှဲမဝင်ပါ):");
       if (input === null) return;
       reason = input;
     } else {
-      if (!window.confirm('Are you sure you want to change this status?')) return;
+      if (!window.confirm('Status ပြောင်းလဲမည်မှာ သေချာပါသလား?')) return;
     }
     try {
       await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason });
     } catch (e) { alert("Error Update"); }
   };
 
-  const handleDelete = async (id: string) => { if (window.confirm('Are you sure you want to delete this booking?')) { await deleteDoc(doc(db, 'bookings', id)); } };
+  const handleDelete = async (id: string) => { if (window.confirm('ဤ Booking ကို အပြီးအပိုင်ဖျက်မည် သေချာပါသလား?')) { await deleteDoc(doc(db, 'bookings', id)); } };
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -1781,7 +1859,7 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
         <table className="w-full text-left border-collapse min-w-[800px]">
           <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status & Action</th><th className="p-3 pb-4 text-right">Delete</th></tr></thead>
           <tbody>
-            {bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No pending bookings.</td></tr>)}
+            {bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">Booking မရှိသေးပါ။</td></tr>)}
             {bookings.map((b) => (
               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                 <td className="p-3">
@@ -1896,7 +1974,10 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                           {outpasses.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No out pass records found.</td></tr>)}
                           {outpasses.map((o) => (
                               <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
-                                  <td className="p-3 font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</td>
+                                  <td className="p-3">
+                                      <div className="font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</div>
+                                      <div className="text-[10px] text-gray-500 mt-0.5">Reason: {o.reason || '-'}</div>
+                                  </td>
                                   <td className="p-3 text-gray-700 font-semibold">{o.date}</td>
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(o.outTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td>
@@ -2218,6 +2299,24 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
             <div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({ ...localBranding, copyright: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
           </div>
         </div>
+
+        <div className="border-t border-gray-100 pt-6 mt-6">
+          <h4 className="text-sm font-bold text-gray-800 mb-2">Shop Location (For Staff Out Pass GPS Restriction)</h4>
+          <div className="flex items-center space-x-2">
+             <div className="flex-1 bg-gray-50 p-3 rounded border border-gray-200 text-xs text-gray-600 font-mono">
+               Lat: {localBranding.shopLat ? localBranding.shopLat.toFixed(5) : 'Not set'}, Lng: {localBranding.shopLng ? localBranding.shopLng.toFixed(5) : 'Not set'}
+             </div>
+             <button type="button" onClick={() => {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                   setLocalBranding({...localBranding, shopLat: pos.coords.latitude, shopLng: pos.coords.longitude});
+                   alert("Location updated! Please click 'Save' above to confirm.");
+                }, () => alert("Please enable Location Services in your browser to get coordinates."), {enableHighAccuracy: true});
+             }} className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-xs font-bold border border-green-200 hover:bg-green-100 transition whitespace-nowrap">
+                Get Current GPS
+             </button>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">Staff will only be able to Clock Out/In within 10 meters of this exact location. Make sure you are physically at the shop when setting this.</p>
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -2268,6 +2367,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         </div>
       </div>
 
+      {/* Manage Therapist Ranking Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <div>
