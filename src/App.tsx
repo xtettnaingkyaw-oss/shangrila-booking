@@ -287,6 +287,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
+  // Time Constraints Logic
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
@@ -294,7 +295,8 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
     let allowedSlots = ALL_TIME_SLOTS;
 
     if (isHotelService) {
-      if (serviceName.includes("outcall")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
+      if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) return ["7:00 AM to 7:00 AM (Next Day)"];
+      else if (serviceName.includes("outcall")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
       else if (serviceName.includes("half day")) return ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
       else if (serviceName.includes("night")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 PM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
       else if (serviceName.includes("whole day")) return ["7:00 AM to 7:00 PM"];
@@ -353,9 +355,15 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
           if (b.therapist !== selectedTherapistName) return;
 
           if (b.time.includes("to")) {
-              const [start, end] = b.time.split(" to ");
+              const [start, endRaw] = b.time.split(" to ");
+              const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
-              const eIdx = ALL_TIME_SLOTS.indexOf(end);
+              let eIdx = ALL_TIME_SLOTS.indexOf(end);
+              
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+                  eIdx = ALL_TIME_SLOTS.length; // Blocks till end of day slots
+              }
+
               if (sIdx !== -1 && eIdx !== -1) {
                   for (let i = sIdx; i < eIdx; i++) blocked.add(ALL_TIME_SLOTS[i]);
               }
@@ -384,9 +392,15 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
       let hasAvailableSlot = false;
       for (const t of allowedSlots) {
           if (t.includes("to")) {
-              const [start, end] = t.split(" to ");
+              const [start, endRaw] = t.split(" to ");
+              const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
-              const eIdx = ALL_TIME_SLOTS.indexOf(end);
+              let eIdx = ALL_TIME_SLOTS.indexOf(end);
+              
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+                  eIdx = ALL_TIME_SLOTS.length;
+              }
+
               let overlap = false;
               if (sIdx !== -1 && eIdx !== -1) {
                   for (let i = sIdx; i < eIdx; i++) {
@@ -417,9 +431,15 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
   const isSlotAvailable = (t: string) => {
       if (blockedSlots.has(t)) return false;
       if (t.includes("to")) {
-          const [start, end] = t.split(" to ");
+          const [start, endRaw] = t.split(" to ");
+          const end = endRaw.replace(" (Next Day)", "");
           const sIdx = ALL_TIME_SLOTS.indexOf(start);
-          const eIdx = ALL_TIME_SLOTS.indexOf(end);
+          let eIdx = ALL_TIME_SLOTS.indexOf(end);
+          
+          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+              eIdx = ALL_TIME_SLOTS.length;
+          }
+
           if (sIdx !== -1 && eIdx !== -1) {
               for (let i = sIdx; i < eIdx; i++) {
                   if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false;
@@ -455,9 +475,15 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
       let isOverlap = false;
 
       if (formData.time.includes("to")) {
-          const [start, end] = formData.time.split(" to ");
+          const [start, endRaw] = formData.time.split(" to ");
+          const end = endRaw.replace(" (Next Day)", "");
           const sIdx = ALL_TIME_SLOTS.indexOf(start);
-          const eIdx = ALL_TIME_SLOTS.indexOf(end);
+          let eIdx = ALL_TIME_SLOTS.indexOf(end);
+          
+          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+              eIdx = ALL_TIME_SLOTS.length;
+          }
+
           if (sIdx !== -1 && eIdx !== -1) {
               for (let i = sIdx; i < eIdx; i++) {
                   if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; }
@@ -598,7 +624,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked }: { appData: AppD
             {appData.therapists.map((therapist) => {
               const isSelected = formData.therapist?.id === therapist.id; const hasImage = therapist.images && therapist.images.length > 0;
               
-              // Dynamic Overlap/Full check for Therapist Selection Step
+              // Check ONLY if this particular therapist is full for the selected date
               const checkDate = formData.date || todayStr;
               const isFull = isTherapistFullForDate(therapist.name, checkDate);
               const fullText = checkDate === todayStr ? "Fully Booked For Today" : "Fully Booked";
@@ -874,7 +900,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
       await updateDoc(doc(db, 'users', userPhone), { name: formData.name, password: formData.password });
       setProfile({ ...profile!, name: formData.name, password: formData.password });
       setEditMode(false);
-      alert("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
+      alert("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ.");
     } catch (e) { alert("Error updating profile."); }
     setSaving(false);
   };
