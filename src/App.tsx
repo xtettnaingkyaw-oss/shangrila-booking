@@ -244,7 +244,6 @@ function CustomerApp({ appData }: { appData: AppData }) {
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
-  // Auto scroll to top when tab changes
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [activeTab]);
@@ -329,7 +328,9 @@ function CustomerApp({ appData }: { appData: AppData }) {
   );
 }
 
-// 1.1A Staff App Component
+// ==========================================
+// 1.1 STAFF APP (JIBBLE-STYLE)
+// ==========================================
 function StaffApp({ appData }: { appData: AppData }) {
    const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
        const saved = localStorage.getItem('shangrila_staff_profile');
@@ -978,7 +979,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
     setLoading(true);
     
     try {
-      // Concurrency Overlap Check before inserting
+      // 1. Concurrency Check 
       const freshSnap = await getDocs(query(collection(db, 'bookings')));
       const freshBookings: Booking[] = [];
       freshSnap.forEach(d => freshBookings.push({id: d.id, ...d.data()} as Booking));
@@ -1042,7 +1043,8 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
         phone: formData.phone || '-',
         service: `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`,
         therapist: formData.therapist?.name || 'Any Available Therapist',
-        date: formData.date, time: isStaffImmediate ? 'NOW' : formData.time, 
+        date: formData.date, 
+        time: formData.time, 
         paymentMethod: isStaffMode ? 'Cash Payment in Shop' : formData.paymentMethod, 
         txId: isStaffMode ? 'CASH' : formData.txId, 
         totalPrice: calculateTotal(), 
@@ -1246,27 +1248,17 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
             <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
             
-            {staffClockIn && formData.date === todayStr ? (
-                <div className="bg-green-50 p-6 rounded-lg text-center border-2 border-dashed border-green-200">
-                    <Sparkles className="w-10 h-10 text-green-500 mx-auto mb-3"/>
-                    <span className="font-bold text-green-800 text-lg">Start Immediately (NOW)</span>
-                    <p className="text-xs text-green-600 mt-2 font-semibold">"Confirm" နှိပ်လိုက်သည်နှင့် ဝန်ဆောင်မှုအချိန်ကို စတင်မှတ်သားပါမည်။</p>
-                </div>
-            ) : (
-                <>
-                <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
-                {availableTimeSlots.map(t => {
-                    const isAvailable = isSlotAvailable(t);
-                    return (
-                    <button key={t} type="button" disabled={!formData.date || !isAvailable} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : !isAvailable ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 cursor-not-allowed line-through' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'}`}>{t}</button>
-                    )
-                })}
-                </div>
-                {availableTimeSlots.length === 0 && formData.date && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
-                </>
-            )}
+            <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
+            {availableTimeSlots.map(t => {
+                const isAvailable = isSlotAvailable(t);
+                return (
+                <button key={t} type="button" disabled={!formData.date || !isAvailable} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : !isAvailable ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 cursor-not-allowed line-through' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'}`}>{t}</button>
+                )
+            })}
+            </div>
+            {availableTimeSlots.length === 0 && formData.date && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
           </div>
-          <div className="mt-8 flex justify-between"><button onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || (!formData.time && !(staffClockIn && formData.date === todayStr))} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
+          <div className="mt-8 flex justify-between"><button onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || !formData.time} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
 
@@ -1293,7 +1285,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               )}
               {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
               <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div>
-              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {staffClockIn && formData.date === todayStr ? 'NOW' : formData.time}</div>
+              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
             </div>
             <div className="mt-6 pt-4 border-t-2 border-gray-100 flex justify-between items-center"><span className="font-bold text-gray-800">Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div>
           </div>
@@ -1324,7 +1316,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             {isStaffMode ? (
               <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
                   <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
-                  <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
+                  <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm and Start Now" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
               </div>
             ) : (
               <>
@@ -1994,7 +1986,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     if (!window.confirm(`ဝန်ထမ်းစာရင်းနှင့် Ranking ကို သိမ်းဆည်းမည်မှာ သေချာပါသလား?`)) return;
     setSavingCategory('therapists');
     try {
-      // Re-assign order property based on the array index before saving to ensure exact ranking is kept
       const finalizedTherapists = localTherapists.map((t, idx) => ({ ...t, order: idx }));
       
       const tPromises = finalizedTherapists.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order, password: t.password || '' }));
@@ -2083,7 +2074,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(therapist.id); const newUrls: string[] = [];
     try {
       for (let i = 0; i < files.length; i++) {
-        // High Definition Resolution for clearer viewing
         const base64 = await compressImage(files[i], 900, 1200); 
         newUrls.push(base64);
       }
