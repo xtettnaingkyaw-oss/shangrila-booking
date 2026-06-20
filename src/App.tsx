@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2 } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee } from 'lucide-react';
 
 // --- Theme & Icons Setup ---
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
@@ -21,6 +21,7 @@ interface MenuItem { id: string; name: string; price: number; duration: string; 
 interface MenuCategory { id: string; title: string; items: MenuItem[]; }
 interface TherapistProfile { id: string; name: string; images: string[]; order: number; password?: string; }
 interface Booking { id?: string; name: string; phone: string; service: string; therapist: string; date: string; time: string; paymentMethod: string; txId: string; totalPrice: number; status: 'pending' | 'payment_checking' | 'approved' | 'in_progress' | 'completed' | 'cancelled'; cancelReason?: string; specialRequest?: string; createdAt: number; startTimeMillis?: number; expectedEndTimeMillis?: number; actualEndTimeMillis?: number; overtimeSeconds?: number; }
+interface OutPass { id?: string; therapist: string; date: string; outTimeMillis: number; inTimeMillis?: number; expectedInTimeMillis: number; status: 'out' | 'returned'; overtimeSeconds?: number; }
 interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; name: string; }
 interface PaymentMethod { id: string; name: string; accountNumber: string; accountName: string; logoUrl: string; }
 interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; }
@@ -329,7 +330,7 @@ function CustomerApp({ appData }: { appData: AppData }) {
 }
 
 // ==========================================
-// 1.1 STAFF APP (JIBBLE-STYLE)
+// 1.1 STAFF APP (JIBBLE-STYLE + OUT PASS)
 // ==========================================
 function StaffApp({ appData }: { appData: AppData }) {
    const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
@@ -407,6 +408,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    const [activeSession, setActiveSession] = useState<Booking | null>(null);
    const [showClockInFlow, setShowClockInFlow] = useState(false);
    const [loading, setLoading] = useState(true);
+   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass'>('service');
 
    useEffect(() => {
        const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
@@ -450,41 +452,256 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    if (loading) return <div className="text-center py-20 font-bold text-gray-500">Loading Dashboard...</div>;
 
    return (
-       <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100 animate-fade-in relative">
-           <div className="flex justify-between items-center mb-10 pb-6 border-b border-gray-100">
+       <div className="bg-white p-4 sm:p-8 rounded-2xl shadow-sm border border-gray-100 animate-fade-in relative">
+           <div className="flex justify-between items-center mb-6 pb-6 border-b border-gray-100">
                <div className="flex items-center">
-                   <div className="w-14 h-14 rounded-full overflow-hidden mr-4 border-2 border-[#123524] shadow-sm flex-shrink-0">
-                       {loggedInStaff.images && loggedInStaff.images[0] ? <img src={loggedInStaff.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-3 text-gray-400 bg-gray-100" />}
+                   <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden mr-3 sm:mr-4 border-2 border-[#123524] shadow-sm flex-shrink-0">
+                       {loggedInStaff.images && loggedInStaff.images[0] ? <img src={loggedInStaff.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 sm:p-3 text-gray-400 bg-gray-100" />}
                    </div>
                    <div>
-                       <h2 className="text-2xl font-bold text-[#123524]">{loggedInStaff.name}</h2>
-                       <p className="text-xs font-bold text-gray-500 mt-0.5">Professional Therapist</p>
+                       <h2 className="text-xl sm:text-2xl font-bold text-[#123524]">{loggedInStaff.name}</h2>
+                       <p className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">Professional Therapist</p>
                    </div>
                </div>
-               <button onClick={onLogout} className="text-xs font-bold text-red-500 flex items-center bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100"><LogOut className="w-3.5 h-3.5 mr-1" /> Log Out</button>
+               <button onClick={onLogout} className="text-[10px] sm:text-xs font-bold text-red-500 flex items-center bg-red-50 px-2 sm:px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100 whitespace-nowrap"><LogOut className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Log Out</span></button>
            </div>
 
-           {activeSession ? (
-               <ActiveSessionDisplay session={activeSession} onStop={handleStopSession} />
-           ) : showClockInFlow ? (
-               <div className="animate-fade-in">
-                   <button onClick={() => setShowClockInFlow(false)} className="absolute top-8 left-8 text-xs font-bold text-gray-500 flex items-center"><ChevronLeft className="w-3 h-3 mr-1"/> BACK</button>
-                   <div className="text-center mb-8 border-b border-gray-100 pb-6">
-                      <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><CalendarPlus className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Clock In</h2>
-                      <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
+           <div className="flex space-x-1 sm:space-x-2 mb-6 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
+              <button onClick={() => setStaffTab('service')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'service' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Service</button>
+              <button onClick={() => setStaffTab('history')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'history' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>History</button>
+              <button onClick={() => setStaffTab('outpass')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Pass</button>
+           </div>
+
+           {staffTab === 'history' && <StaffDailyHistoryTab loggedInStaff={loggedInStaff} />}
+           {staffTab === 'outpass' && <StaffOutPassTab loggedInStaff={loggedInStaff} />}
+           {staffTab === 'service' && (
+               activeSession ? (
+                   <ActiveSessionDisplay session={activeSession} onStop={handleStopSession} />
+               ) : showClockInFlow ? (
+                   <div className="animate-fade-in mt-4">
+                       <div className="flex items-center justify-between mb-6">
+                           <button onClick={() => setShowClockInFlow(false)} className="text-xs font-bold text-gray-500 flex items-center bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200"><ChevronLeft className="w-3 h-3 mr-1"/> BACK</button>
+                       </div>
+                       <div className="text-center mb-8 border-b border-gray-100 pb-6">
+                          <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><CalendarPlus className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Clock In</h2>
+                          <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
+                       </div>
+                       <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} staffClockIn={true} staffClockInSuccess={handleClockInSuccess} preselectedStaff={loggedInStaff.name}/>
                    </div>
-                   <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} staffClockIn={true} staffClockInSuccess={handleClockInSuccess} preselectedStaff={loggedInStaff.name}/>
-               </div>
-           ) : (
-               <div className="text-center py-20 border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50">
-                   <div className="w-24 h-24 bg-white rounded-full mx-auto flex items-center justify-center mb-8 text-[#D4AF37] shadow-inner border border-gray-100"><CheckCircle className="w-12 h-12" /></div>
-                   <h3 className="text-2xl font-bold text-gray-800 mb-2">Ready For Service</h3>
-                   <p className="text-xs font-bold text-gray-500 mb-10 max-w-sm mx-auto leading-relaxed">No active session. Please click the button below to Clock In and start tracking your service time.</p>
-                   <button onClick={() => setShowClockInFlow(true)} className="px-10 py-4 bg-[#123524] text-white rounded-xl font-bold shadow-lg flex items-center mx-auto hover:bg-green-900 transition"><Sparkles className="w-5 h-5 mr-2 text-[#D4AF37]"/> Clock In / Start New Service</button>
-               </div>
+               ) : (
+                   <div className="text-center py-16 sm:py-20 border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50 mt-4">
+                       <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white rounded-full mx-auto flex items-center justify-center mb-6 sm:mb-8 text-[#D4AF37] shadow-inner border border-gray-100"><CheckCircle className="w-10 h-10 sm:w-12 sm:h-12" /></div>
+                       <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">Ready For Service</h3>
+                       <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-8 sm:mb-10 max-w-sm mx-auto leading-relaxed px-4">No active session. Please click the button below to Clock In and start tracking your service time.</p>
+                       <button onClick={() => setShowClockInFlow(true)} className="px-6 sm:px-10 py-3 sm:py-4 bg-[#123524] text-white rounded-xl font-bold shadow-lg flex items-center mx-auto hover:bg-green-900 transition text-sm"><Sparkles className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-[#D4AF37]"/> Clock In / Start New Service</button>
+                   </div>
+               )
            )}
        </div>
    );
+}
+
+function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
+    const [history, setHistory] = useState<Booking[]>([]);
+    const [loading, setLoading] = useState(true);
+    const todayStr = getLocalTodayStr();
+
+    useEffect(() => {
+        const q = query(collection(db, 'bookings'));
+        const unsub = onSnapshot(q, (snap) => {
+            const arr: Booking[] = [];
+            snap.forEach(doc => {
+                const b = { id: doc.id, ...doc.data() } as Booking;
+                if (b.therapist === loggedInStaff.name && b.date === todayStr && (b.status === 'completed' || b.status === 'cancelled')) {
+                    arr.push(b);
+                }
+            });
+            arr.sort((a,b) => (b.actualEndTimeMillis || 0) - (a.actualEndTimeMillis || 0));
+            setHistory(arr);
+            setLoading(false);
+        });
+        return () => unsub();
+    }, [loggedInStaff.name, todayStr]);
+
+    if (loading) return <div className="text-center py-10 text-xs font-bold text-gray-400">Loading...</div>;
+
+    return (
+        <div className="animate-fade-in mt-4">
+            <h3 className="font-bold text-gray-800 mb-4 text-sm flex items-center"><History className="w-4 h-4 mr-2 text-[#D4AF37]"/> Today's Completed Services</h3>
+            {history.length === 0 ? (
+                <div className="text-center py-10 bg-gray-50 rounded-xl border border-gray-100 text-xs font-bold text-gray-400">No completed services today.</div>
+            ) : (
+                <div className="space-y-3">
+                    {history.map(b => (
+                        <div key={b.id} className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                            <div className="flex justify-between items-start mb-2">
+                                <span className="font-bold text-sm text-[#123524]">{b.service.split('(')[0]}</span>
+                                <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${b.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{b.status}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-gray-500">
+                                <span>Cust: {b.name}</span>
+                                <span>Slot: {b.time}</span>
+                            </div>
+                            {b.status === 'completed' && b.overtimeSeconds !== undefined && b.overtimeSeconds > 0 && (
+                                <div className="mt-2 text-[10px] text-red-500 font-bold bg-red-50 p-1.5 rounded text-right">
+                                    Overtime: +{Math.floor(b.overtimeSeconds / 60)} mins
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function StaffOutPassTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
+    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
+    const [loading, setLoading] = useState(true);
+    const todayStr = getLocalTodayStr();
+
+    useEffect(() => {
+        const q = query(collection(db, 'outpasses'));
+        const unsub = onSnapshot(q, snap => {
+            const arr: OutPass[] = [];
+            snap.forEach(d => {
+                const data = d.data() as OutPass;
+                if (data.date === todayStr) arr.push({ id: d.id, ...data });
+            });
+            arr.sort((a,b) => b.outTimeMillis - a.outTimeMillis);
+            setOutpasses(arr);
+            setLoading(false);
+        });
+        return () => unsub();
+    }, [todayStr]);
+
+    const myPasses = outpasses.filter(o => o.therapist === loggedInStaff.name);
+    const activePasses = outpasses.filter(o => o.status === 'out');
+    const myActivePass = myPasses.find(o => o.status === 'out');
+
+    const handleGoOut = async () => {
+        if (activePasses.length >= 2) return;
+        if (myPasses.length >= 4) return;
+        const now = Date.now();
+        await addDoc(collection(db, 'outpasses'), {
+            therapist: loggedInStaff.name,
+            date: todayStr,
+            outTimeMillis: now,
+            expectedInTimeMillis: now + 30 * 60 * 1000,
+            status: 'out'
+        });
+    };
+
+    const handleReturn = async () => {
+        if (!myActivePass || !myActivePass.id) return;
+        const now = Date.now();
+        const overtimeMillis = Math.max(0, now - myActivePass.expectedInTimeMillis);
+        await updateDoc(doc(db, 'outpasses', myActivePass.id), {
+            status: 'returned',
+            inTimeMillis: now,
+            overtimeSeconds: Math.floor(overtimeMillis / 1000)
+        });
+    };
+
+    if (loading) return <div className="text-center py-10 text-xs font-bold text-gray-400">Loading...</div>;
+
+    if (myActivePass) {
+        return <OutPassActiveDisplay pass={myActivePass} onReturn={handleReturn} />;
+    }
+
+    const canGoOut = myPasses.length < 4 && activePasses.length < 2;
+
+    return (
+        <div className="bg-white py-6 sm:p-8 rounded-2xl text-center animate-fade-in mt-4">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-purple-50 rounded-full mx-auto flex items-center justify-center mb-4 sm:mb-6 text-purple-600 border border-purple-100"><Coffee className="w-8 h-8 sm:w-10 sm:h-10" /></div>
+            <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-2">Personal Out Pass</h3>
+            <p className="text-xs text-gray-500 mb-6">တစ်ရက်လျှင် အများဆုံး ၄ ကြိမ် (၁ ကြိမ်လျှင် မိနစ် ၃၀) ထွက်ခွင့်ရှိပါသည်။<br/><span className="mt-2 inline-block bg-gray-100 px-3 py-1 rounded-full">ယနေ့ထွက်ပြီးသားအကြိမ်ရေ: <strong>{myPasses.length} / 4</strong></span></p>
+            
+            {!canGoOut && myPasses.length >= 4 && (
+                <div className="bg-red-50 text-red-600 p-4 rounded-xl font-bold border border-red-100 text-[11px] sm:text-xs mb-6">
+                    ဒီနေ့အတွက် သင်၏ အပြင်ထွက်ခွင့် (၄ ကြိမ်) ပြည့်သွားပါပြီ။
+                </div>
+            )}
+
+            {!canGoOut && myPasses.length < 4 && activePasses.length >= 2 && (
+                <div className="bg-orange-50 text-orange-700 p-4 rounded-xl font-bold border border-orange-100 text-[11px] sm:text-xs mb-6 leading-relaxed">
+                    လက်ရှိတွင် ဝန်ထမ်း ၂ ယောက်<br/>({activePasses.map(p => p.therapist).join(', ')})<br/>အပြင်ထွက်နေပါသည်။ ၎င်းတို့ပြန်လာမှသာ ထွက်ခွင့်ရပါမည်။
+                </div>
+            )}
+
+            <button 
+                disabled={!canGoOut} 
+                onClick={handleGoOut} 
+                className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600 text-white rounded-xl font-bold shadow-md w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition text-sm">
+                Clock Out (Take 30 Mins Pass)
+            </button>
+
+            {myPasses.filter(p => p.status === 'returned').length > 0 && (
+                <div className="mt-10 text-left">
+                    <h4 className="font-bold text-gray-800 text-xs sm:text-sm mb-3 px-1">Today's Out Pass History</h4>
+                    <div className="space-y-2">
+                        {myPasses.filter(p => p.status === 'returned').map(p => (
+                            <div key={p.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex justify-between items-center text-xs">
+                                <span className="text-gray-600 font-mono font-semibold">{new Date(p.outTimeMillis).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {p.inTimeMillis ? new Date(p.inTimeMillis).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
+                                {p.overtimeSeconds && p.overtimeSeconds > 0 ? (
+                                    <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded">Late +{Math.floor(p.overtimeSeconds/60)} mins</span>
+                                ) : (
+                                    <span className="text-green-600 font-bold bg-green-50 px-2 py-1 rounded">On Time</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function OutPassActiveDisplay({ pass, onReturn }: { pass: OutPass, onReturn: () => void }) {
+    const [remainingTime, setRemainingTime] = useState<number | null>(null);
+    const [overtimeSecs, setOvertimeSecs] = useState<number>(0);
+
+    useEffect(() => {
+        const updateTimer = () => {
+            const now = Date.now();
+            if (now < pass.expectedInTimeMillis) {
+                setRemainingTime(Math.ceil((pass.expectedInTimeMillis - now) / 1000));
+                setOvertimeSecs(0);
+            } else {
+                setRemainingTime(0);
+                setOvertimeSecs(Math.floor((now - pass.expectedInTimeMillis) / 1000));
+            }
+        };
+        updateTimer();
+        const intervalId = setInterval(updateTimer, 1000);
+        return () => clearInterval(intervalId);
+    }, [pass.expectedInTimeMillis]);
+
+    const formatSecs = (ts: number) => {
+        const m = Math.floor(ts / 60);
+        const s = ts % 60;
+        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    };
+
+    return (
+        <div className="bg-white py-8 rounded-2xl text-center animate-fade-in mt-4 border border-gray-100 shadow-sm px-4">
+            <div className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-700 text-[10px] font-bold uppercase tracking-wider rounded-full mb-6 border border-purple-200 animate-pulse"><Coffee className="w-3 h-3 mr-1.5"/> Personal Out Pass Active</div>
+            
+            {remainingTime !== null && remainingTime > 0 ? (
+                <div className="mb-8">
+                    <div className="text-xs font-bold text-gray-400 uppercase mb-2">REMAINING TIME</div>
+                    <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecs(remainingTime)}</div>
+                </div>
+            ) : (
+                <div className="mb-8">
+                    <div className="text-xs font-bold text-red-500 uppercase mb-2 animate-bounce">LATE (OVERTIME)</div>
+                    <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecs(overtimeSecs)}</div>
+                </div>
+            )}
+            
+            <button onClick={onReturn} className="w-full sm:w-auto sm:px-16 py-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-[#1a4a32] transition border border-[#1a4a32] mx-auto text-sm"><CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> Clock In (Return)</button>
+        </div>
+    );
 }
 
 function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: () => void }) {
@@ -523,240 +740,42 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
    };
 
    return (
-       <div className="animate-fade-in space-y-6">
-           <div className="bg-white p-6 rounded-xl border border-gray-100 flex flex-wrap sm:flex-nowrap justify-between items-center">
-               <div className="w-full sm:w-auto">
+       <div className="animate-fade-in space-y-6 mt-4">
+           <div className="bg-white p-5 sm:p-6 rounded-xl border border-gray-100 flex flex-col sm:flex-row sm:flex-nowrap justify-between items-start sm:items-center">
+               <div className="w-full sm:w-auto mb-6 sm:mb-0">
                    <StatusBadge status={session.status} />
-                   <h3 className="text-xl font-bold text-gray-800 mt-3">{session.service.split('(')[0]}</h3>
-                   <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {session.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> Started: {session.time}</div>
-                   <div className="text-xs font-bold mt-2" style={{ color: THEME.gold }}>Customer: {session.name}</div>
+                   <h3 className="text-lg sm:text-xl font-bold text-gray-800 mt-3">{session.service.split('(')[0]}</h3>
+                   <div className="text-[10px] sm:text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {session.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> Slot: {session.time}</div>
+                   <div className="text-[10px] sm:text-xs font-bold mt-2 bg-yellow-50 px-2 py-1 rounded inline-block" style={{ color: THEME.gold }}>Customer: {session.name}</div>
                </div>
-               <div className="text-right mt-4 sm:mt-0 w-full sm:w-auto pt-4 sm:pt-0 border-t sm:border-0 border-gray-100">
+               <div className="text-left sm:text-right w-full sm:w-auto pt-4 sm:pt-0 border-t sm:border-0 border-gray-100">
                    {remainingTime !== null && remainingTime > 0 ? (
                        <>
-                           <div className="text-xs font-bold text-gray-400 uppercase">REMAINING TIME</div>
+                           <div className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase">REMAINING TIME</div>
                            <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSeconds(remainingTime)}</div>
-                           <div className="text-xs font-bold text-gray-500 mt-0.5">Total Service: {session.service.split('(')[1]?.replace(')', '') || '-'}</div>
+                           <div className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">Total Service: {session.service.split('(')[1]?.replace(')', '') || '-'}</div>
                        </>
                    ) : (
                        <div className="animate-pulse">
-                           <div className="text-xs font-bold text-red-500 uppercase">OVERTIME (시간 초과)</div>
+                           <div className="text-[10px] sm:text-xs font-bold text-red-500 uppercase">OVERTIME (시간 초과)</div>
                            <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSeconds(overtimeSecs)}</div>
-                           <div className="text-xs font-bold text-red-400 mt-0.5">Duration passed expected time.</div>
+                           <div className="text-[10px] sm:text-xs font-bold text-red-400 mt-0.5">Duration passed expected time.</div>
                        </div>
                    )}
                </div>
            </div>
            
-           <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 border border-gray-100 text-xs text-gray-500">
-               <span>Total Price: <strong className="text-gray-800 text-sm">{formatPrice(session.totalPrice)}</strong></span>
-               <span>TxID: <strong className="text-gray-800 text-sm tracking-wider">{session.txId}</strong></span>
-               <span>Live Counter: <strong className="text-gray-800 text-sm">{formatSeconds(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
+           <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 border border-gray-100 text-[10px] sm:text-xs text-gray-500">
+               <span>Price: <strong className="text-gray-800 text-xs sm:text-sm">{formatPrice(session.totalPrice)}</strong></span>
+               <span className="hidden sm:inline">TxID: <strong className="text-gray-800 text-sm tracking-wider">{session.txId}</strong></span>
+               <span>Live: <strong className="text-gray-800 text-xs sm:text-sm">{formatSeconds(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
            </div>
 
-           <button onClick={onStop} className="w-full py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg flex items-center justify-center mx-auto hover:bg-red-600 transition"><Trash2 className="w-5 h-5 mr-2"/> Stop Service / End Now</button>
+           <button onClick={onStop} className="w-full py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg flex items-center justify-center mx-auto hover:bg-red-600 transition text-sm"><Trash2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> Stop Service / End Now</button>
        </div>
    );
 }
 
-function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: number, dateStr: string): Set<string> {
-    const blocked = new Set<string>();
-    const dateObj = new Date(dateStr);
-    const startOfDay = dateObj.setHours(0, 0, 0, 0);
-    const endOfDay = dateObj.setHours(23, 59, 59, 999);
-
-    if (endTimeMillis < startOfDay || startTimeMillis > endOfDay) return blocked;
-
-    ALL_TIME_SLOTS.forEach(slot => {
-        if (slot.includes("to")) return; 
-
-        const slotTime = new Date(`${dateStr} ${slot}`);
-        const slotTimeMillis = slotTime.getTime();
-        const nextSlotTimeMillis = slotTimeMillis + (30 * 60 * 1000); 
-
-        if ((startTimeMillis < nextSlotTimeMillis) && (endTimeMillis > slotTimeMillis)) {
-            blocked.add(slot);
-        }
-    });
-    return blocked;
-}
-
-// 1.1B Dashboard Component
-function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const todayStr = getLocalTodayStr();
-
-  useEffect(() => {
-    const q = query(collection(db, 'bookings'));
-    const unsub = onSnapshot(q, (snap) => {
-        const arr: Booking[] = [];
-        snap.forEach(d => arr.push({id: d.id, ...d.data()} as Booking));
-        setBookings(arr);
-    });
-    return () => unsub();
-  }, []);
-
-  const getTherapistStatus = (tName: string) => {
-      let blockedNow = new Set<string>();
-      
-      bookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed') return;
-          if (b.date !== todayStr) return;
-          if (b.therapist !== tName) return;
-
-          if (b.status === 'in_progress' && b.startTimeMillis) {
-               const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
-               getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blockedNow.add(slot));
-          } else if (b.time && b.time.includes("to")) {
-              const [start, endRaw] = b.time.split(" to ");
-              const end = endRaw.replace(" (Next Day)", "");
-              const sIdx = ALL_TIME_SLOTS.indexOf(start);
-              let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-                  eIdx = ALL_TIME_SLOTS.length;
-              }
-              if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) blockedNow.add(ALL_TIME_SLOTS[i]);
-              }
-              blockedNow.add(b.time); 
-          } else if (b.time) {
-              const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
-              if (sIdx !== -1) {
-                  let slotsToBlock = 2; // Default 60 mins
-                  const match = b.service.match(/(\d+)\s*Mins/i);
-                  if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
-                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
-                      if (ALL_TIME_SLOTS[i]) blockedNow.add(ALL_TIME_SLOTS[i]);
-                  }
-              }
-          }
-      });
-
-      let is24hFull = false;
-      if (blockedNow.has("7:00 AM to 7:00 AM (Next Day)")) {
-          is24hFull = true;
-      } else if (blockedNow.has("7:00 AM to 7:00 PM") && blockedNow.has("7:00 PM to 7:00 AM (Next Day)")) {
-          is24hFull = true;
-      }
-
-      if (is24hFull) {
-          return { label: 'Fully Booked (Day & Night)', mm: 'နေ့ရောညပါ ပြည့်နေပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
-      }
-
-      const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
-      const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
-
-      let shopSlotsTotal = 0;
-      let shopSlotsBooked = 0;
-      for (let i = 6; i <= 30; i++) {
-          shopSlotsTotal++;
-          if (blockedNow.has(ALL_TIME_SLOTS[i])) shopSlotsBooked++;
-      }
-      const isShopFull = shopSlotsBooked === shopSlotsTotal;
-
-      if (isDayFull && !isNightFull) {
-          return { label: 'Day Full / Night Available', mm: 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
-      }
-
-      if (isNightFull && !isDayFull && !isShopFull) {
-          return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
-      }
-
-      if (isShopFull && isNightFull) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
-      }
-
-      if (isShopFull && !isNightFull) {
-          return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
-      }
-
-      if (shopSlotsBooked > 0) {
-          return { label: 'Partially Booked', mm: 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်', color: 'bg-blue-100 text-blue-700 border-blue-200' };
-      }
-
-      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
-  };
-
-  const bookingCounts: Record<string, number> = {};
-  bookings.forEach(b => {
-     if (b.status !== 'cancelled') {
-         bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1;
-     }
-  });
-
-  const top5Therapists = [...appData.therapists].sort((a, b) => {
-     const countA = bookingCounts[a.name] || 0;
-     const countB = bookingCounts[b.name] || 0;
-     
-     if (countA !== countB) return countB - countA; 
-     return (a.order || 0) - (b.order || 0);
-  }).slice(0, 5);
-
-  return (
-    <div className="animate-fade-in">
-       <div className="text-center mb-8">
-         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
-         <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
-       </div>
-       
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {appData.therapists.map(t => {
-             const status = getTherapistStatus(t.name);
-             const isAvailable = status.label === 'Available';
-             const isPartiallyBooked = status.label === 'Partially Booked';
-             const isFullyBooked = status.label.includes('Fully Booked');
-
-             return (
-                <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
-                   <div className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
-                       {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
-                   </div>
-                   <div className="flex-1">
-                       <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
-                       <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
-                          {status.label} <br/> <span className="font-semibold opacity-90">{status.mm}</span>
-                       </div>
-                   </div>
-                   <button onClick={() => onBookTherapist(t)} className="ml-2 px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold whitespace-nowrap shadow-sm hover:bg-[#1a4a32] flex items-center border border-[#1a4a32]">
-                       Book Now
-                   </button>
-                </div>
-             )
-          })}
-       </div>
-
-       {top5Therapists.length > 0 && (
-         <div className="mt-14 pt-8 border-t-2 border-gray-100">
-             <div className="text-center mb-6">
-                 <h2 className="text-2xl font-bold flex items-center justify-center" style={{ color: THEME.primary }}><Crown className="w-6 h-6 mr-2 text-yellow-500"/> Our Top 5 Therapists</h2>
-                 <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ)</p>
-             </div>
-             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                 {top5Therapists.map((t, idx) => (
-                     <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
-                         <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">
-                            {idx + 1}
-                         </div>
-                         <div className="w-full aspect-[3/4] bg-gray-100 relative">
-                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
-                         </div>
-                         <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
-                             <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
-                             <button onClick={() => onBookTherapist(t)} className="w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] flex justify-center items-center border border-[#1a4a32]">
-                                 Book Now <ChevronRight className="w-3 h-3 ml-0.5"/>
-                             </button>
-                         </div>
-                     </div>
-                 ))}
-             </div>
-         </div>
-       )}
-    </div>
-  );
-}
-
-// 1.1 Booking Wizard (COMMON COMPONENT)
 function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
@@ -852,7 +871,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
   };
   const formattedCountdown = useCountdown(isStaffMode ? 0 : 15, handleCountdownExpire);
 
-  // --- Dynamic Checking for Overlaps and Blocked Slots ---
   const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
       let blocked = new Set<string>();
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
@@ -979,7 +997,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
     setLoading(true);
     
     try {
-      // 1. Concurrency Check 
       const freshSnap = await getDocs(query(collection(db, 'bookings')));
       const freshBookings: Booking[] = [];
       freshSnap.forEach(d => freshBookings.push({id: d.id, ...d.data()} as Booking));
@@ -1018,7 +1035,6 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
          setLoading(false); return;
       }
 
-      // Auto Create/Update Profile
       if (formData.phone && formData.phone.trim() !== '') {
         const userRef = doc(db, 'users', formData.phone);
         const userSnap = await getDoc(userRef);
@@ -1700,7 +1716,6 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
     return () => unsubscribe();
   }, []);
 
-  // Auto scroll to top on admin tab switch
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [tab]);
@@ -1746,18 +1761,18 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
   const handleStatusChange = async (id: string, newStatus: string) => {
     let reason = '';
     if (newStatus === 'cancelled') {
-      const input = window.prompt("ဖျက်သိမ်းရသည့် အကြောင်းရင်းကို ထည့်ပါ (ဥပမာ - ငွေလွှဲမဝင်ပါ):");
+      const input = window.prompt("Reason for cancellation:");
       if (input === null) return;
       reason = input;
     } else {
-      if (!window.confirm('Status ပြောင်းလဲမည်မှာ သေချာပါသလား?')) return;
+      if (!window.confirm('Are you sure you want to change this status?')) return;
     }
     try {
       await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason });
     } catch (e) { alert("Error Update"); }
   };
 
-  const handleDelete = async (id: string) => { if (window.confirm('ဤ Booking ကို အပြီးအပိုင်ဖျက်မည် သေချာပါသလား?')) { await deleteDoc(doc(db, 'bookings', id)); } };
+  const handleDelete = async (id: string) => { if (window.confirm('Are you sure you want to delete this booking?')) { await deleteDoc(doc(db, 'bookings', id)); } };
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -1766,7 +1781,7 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
         <table className="w-full text-left border-collapse min-w-[800px]">
           <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status & Action</th><th className="p-3 pb-4 text-right">Delete</th></tr></thead>
           <tbody>
-            {bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">Booking မရှိသေးပါ။</td></tr>)}
+            {bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No pending bookings.</td></tr>)}
             {bookings.map((b) => (
               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                 <td className="p-3">
@@ -1807,8 +1822,19 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
   );
 }
 
-// Staff Session History (Jibble-style Report)
 function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
+   const [view, setView] = useState<'service' | 'outpass'>('service');
+   const [outpasses, setOutpasses] = useState<OutPass[]>([]);
+
+   useEffect(() => {
+       const unsub = onSnapshot(query(collection(db, 'outpasses'), orderBy('outTimeMillis', 'desc')), snap => {
+           const arr: OutPass[] = [];
+           snap.forEach(d => arr.push({id: d.id, ...d.data()} as OutPass));
+           setOutpasses(arr);
+       });
+       return () => unsub();
+   }, []);
+
    const formatMillis = (millis: number | undefined) => {
        if (!millis) return '-';
        const date = new Date(millis);
@@ -1823,31 +1849,68 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
        return `${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
    };
 
+   const handleDeleteBooking = async (id: string) => { if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
+   const handleDeleteOutpass = async (id: string) => { if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
+
    return (
        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-           <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><BarChart2 className="mr-2 text-[#D4AF37]" /> Staff History & Overtime Report</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {bookings.length}</span></div>
-           <div className="overflow-x-auto">
-               <table className="w-full text-left border-collapse min-w-[900px]">
-                   <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Service & Customer</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Start Time</th><th className="p-3 pb-4">Expected End</th><th className="p-3 pb-4">Actual End</th><th className="p-3 pb-4 text-right">Overtime</th></tr></thead>
-                   <tbody>
-                       {bookings.length === 0 && (<tr><td colSpan={7} className="p-10 text-center text-gray-400">ဝန်ထမ်းမှတ်တမ်း မရှိသေးပါ။</td></tr>)}
-                       {bookings.map((b) => (
-                           <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
-                               <td className="p-3 font-bold text-[#123524]">{b.therapist}</td>
-                               <td className="p-3">
-                                   <div className="font-semibold text-gray-800">{b.service.split('(')[0]}</div>
-                                   <div className="text-xs text-gray-500 mt-0.5">Cust: {b.name}</div>
-                               </td>
-                               <td className="p-3 text-gray-700 font-semibold">{b.date}</td>
-                               <td className="p-3 font-mono text-gray-600">{formatMillis(b.startTimeMillis)}</td>
-                               <td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td>
-                               <td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td>
-                               <td className="p-3 text-right font-mono font-bold text-base {b.overtimeSeconds && b.overtimeSeconds > 0 ? 'text-red-600' : 'text-gray-400'}">{formatSeconds(b.overtimeSeconds)}</td>
-                           </tr>
-                       ))}
-                   </tbody>
-               </table>
+           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4">
+              <h2 className="text-xl font-bold flex items-center mb-4 sm:mb-0" style={{ color: THEME.primary }}><BarChart2 className="mr-2 text-[#D4AF37]" /> Staff Reports</h2>
+              <div className="flex space-x-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full sm:w-auto">
+                 <button onClick={() => setView('service')} className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services</button>
+                 <button onClick={() => setView('outpass')} className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Passes</button>
+              </div>
            </div>
+
+           {view === 'service' ? (
+              <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[900px]">
+                      <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Service & Customer</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Start Time</th><th className="p-3 pb-4">Expected End</th><th className="p-3 pb-4">Actual End</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead>
+                      <tbody>
+                          {bookings.length === 0 && (<tr><td colSpan={7} className="p-10 text-center text-gray-400">No service records found.</td></tr>)}
+                          {bookings.map((b) => (
+                              <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
+                                  <td className="p-3 font-bold text-[#123524]">{b.therapist}</td>
+                                  <td className="p-3">
+                                      <div className="font-semibold text-gray-800">{b.service.split('(')[0]}</div>
+                                      <div className="text-xs text-gray-500 mt-0.5">Cust: {b.name}</div>
+                                  </td>
+                                  <td className="p-3 text-gray-700 font-semibold">{b.date}</td>
+                                  <td className="p-3 font-mono text-gray-600">{formatMillis(b.startTimeMillis)}</td>
+                                  <td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td>
+                                  <td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td>
+                                  <td className="p-3 text-right">
+                                     <div className={`font-mono font-bold text-base mb-1 ${b.overtimeSeconds && b.overtimeSeconds > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSeconds(b.overtimeSeconds)}</div>
+                                     <button onClick={() => handleDeleteBooking(b.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+           ) : (
+              <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[900px]">
+                      <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Out Time</th><th className="p-3 pb-4">Expected Return</th><th className="p-3 pb-4">Actual Return</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead>
+                      <tbody>
+                          {outpasses.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No out pass records found.</td></tr>)}
+                          {outpasses.map((o) => (
+                              <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
+                                  <td className="p-3 font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</td>
+                                  <td className="p-3 text-gray-700 font-semibold">{o.date}</td>
+                                  <td className="p-3 font-mono text-gray-600">{formatMillis(o.outTimeMillis)}</td>
+                                  <td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td>
+                                  <td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td>
+                                  <td className="p-3 text-right">
+                                     <div className={`font-mono font-bold text-base mb-1 ${o.overtimeSeconds && o.overtimeSeconds > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSeconds(o.overtimeSeconds)}</div>
+                                     <button onClick={() => handleDeleteOutpass(o.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+           )}
        </div>
    );
 }
@@ -2205,7 +2268,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         </div>
       </div>
 
-      {/* Manage Therapist Ranking Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <div>
