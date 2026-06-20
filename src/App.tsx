@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2 } from 'lucide-react';
 
 // --- Theme & Icons Setup ---
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
@@ -57,7 +57,7 @@ const compressImage = async (file: File, width: number, height: number): Promise
         const targetRatio = width / height; const imageRatio = sW / sH;
         if (imageRatio > targetRatio) { const nW = sH * targetRatio; sX = (sW - nW) / 2; sW = nW; } else { const nH = sW / targetRatio; sY = (sH - nH) / 2; sH = nH; }
         canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, width, height); 
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
+        resolve(canvas.toDataURL('image/jpeg', 0.85)); // High Quality HD images
       }; img.onerror = (e) => reject(e);
     }; reader.onerror = (e) => reject(e);
   });
@@ -105,24 +105,20 @@ function App() {
     document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
     
     const updateFavicon = (url: string) => {
-      // Remove old icons and manifest
       const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='manifest']"); 
       existingIcons.forEach(icon => document.head.removeChild(icon));
       
-      // Standard Favicon
       const newIcon = document.createElement('link'); 
       newIcon.rel = 'shortcut icon'; 
       newIcon.type = 'image/png'; 
       newIcon.href = url; 
       document.head.appendChild(newIcon);
 
-      // Apple Touch Icon
       const appleIcon = document.createElement('link');
       appleIcon.rel = 'apple-touch-icon';
       appleIcon.href = url;
       document.head.appendChild(appleIcon);
 
-      // PWA Manifest for Android "Add to Home Screen"
       const appName = appData?.branding?.name || "The Shangri-La";
       const manifest = {
         name: appName,
@@ -231,7 +227,7 @@ export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; 
 // 1. CUSTOMER MAIN APP
 // ==========================================
 function CustomerApp({ appData }: { appData: AppData }) {
-  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'history' | 'profile'>(() => {
+  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
      return new URLSearchParams(window.location.search).get('view') === 'therapists' ? 'therapists' : 'book';
   });
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
@@ -279,6 +275,7 @@ function CustomerApp({ appData }: { appData: AppData }) {
   const tabs = [
     { id: 'book', label: 'Book Now', icon: CalendarPlus },
     { id: 'therapists', label: 'View Therapists', icon: User },
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 },
     { id: 'history', label: 'My Bookings', icon: History },
     { id: 'profile', label: 'Profile', icon: UserCircle }
   ] as const;
@@ -287,13 +284,13 @@ function CustomerApp({ appData }: { appData: AppData }) {
     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
 
-      <div className="flex justify-center items-center space-x-1 md:space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
+      <div className="flex justify-start sm:justify-center items-center space-x-1 md:space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
             <button
-              key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`relative flex-1 min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[10px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`}
+              key={tab.id} onClick={() => setActiveTab(tab.id as any)}
+              className={`relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`}
               style={{ color: isActive ? THEME.primary : undefined }}
             >
               <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
@@ -307,13 +304,143 @@ function CustomerApp({ appData }: { appData: AppData }) {
 
       {activeTab === 'book' && <CustomerBookingWizard appData={appData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
       {activeTab === 'therapists' && <CustomerBookingWizard appData={appData} userPhone={userPhone} forceTherapistFirst={true} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
+      {activeTab === 'dashboard' && <CustomerDashboard appData={appData} />}
       {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
       {activeTab === 'profile' && <CustomerProfile userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
     </div>
   );
 }
 
-// 1.1 Booking Wizard
+// 1.1A Dashboard Component
+function CustomerDashboard({ appData }: { appData: AppData }) {
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const todayStr = getLocalTodayStr();
+
+  useEffect(() => {
+    const q = query(collection(db, 'bookings'));
+    const unsub = onSnapshot(q, (snap) => {
+        const arr: Booking[] = [];
+        snap.forEach(d => arr.push({id: d.id, ...d.data()} as Booking));
+        setBookings(arr);
+    });
+    return () => unsub();
+  }, []);
+
+  const getTherapistStatus = (tName: string) => {
+      let blockedNow = new Set<string>();
+      
+      bookings.forEach(b => {
+          if (b.status === 'cancelled') return;
+          if (b.date !== todayStr) return;
+          if (b.therapist !== tName) return;
+
+          if (b.time.includes("to")) {
+              const [start, endRaw] = b.time.split(" to ");
+              const end = endRaw.replace(" (Next Day)", "");
+              const sIdx = ALL_TIME_SLOTS.indexOf(start);
+              let eIdx = ALL_TIME_SLOTS.indexOf(end);
+              
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+                  eIdx = ALL_TIME_SLOTS.length;
+              }
+              if (sIdx !== -1 && eIdx !== -1) {
+                  for (let i = sIdx; i < eIdx; i++) blockedNow.add(ALL_TIME_SLOTS[i]);
+              }
+              blockedNow.add(b.time); 
+          } else {
+              const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
+              if (sIdx !== -1) {
+                  let slotsToBlock = 2; // Default 60 mins
+                  const match = b.service.match(/(\d+)\s*Mins/i);
+                  if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
+                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
+                      if (ALL_TIME_SLOTS[i]) blockedNow.add(ALL_TIME_SLOTS[i]);
+                  }
+              }
+          }
+      });
+
+      // Check Full 24h
+      let is24hFull = false;
+      if (blockedNow.has("7:00 AM to 7:00 AM (Next Day)")) {
+          is24hFull = true;
+      } else if (blockedNow.has("7:00 AM to 7:00 PM") && blockedNow.has("7:00 PM to 7:00 AM (Next Day)")) {
+          is24hFull = true;
+      }
+
+      if (is24hFull) {
+          return { label: 'Fully Booked (Day & Night)', mm: 'နေ့ရောညပါ ပြည့်နေပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+      }
+
+      const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
+      const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
+
+      // Normal shop sessions (9:00 AM to 9:00 PM -> indices 6 to 30)
+      let shopSlotsTotal = 0;
+      let shopSlotsBooked = 0;
+      for (let i = 6; i <= 30; i++) {
+          shopSlotsTotal++;
+          if (blockedNow.has(ALL_TIME_SLOTS[i])) shopSlotsBooked++;
+      }
+      const isShopFull = shopSlotsBooked === shopSlotsTotal;
+
+      if (isDayFull && !isNightFull) {
+          return { label: 'Day Full / Night Available', mm: 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+      }
+
+      if (isNightFull && !isDayFull && !isShopFull) {
+          return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
+      }
+
+      if (isShopFull && isNightFull) {
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+      }
+
+      if (isShopFull && !isNightFull) {
+          return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+      }
+
+      if (shopSlotsBooked > 0) {
+          return { label: 'Partially Booked', mm: 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်', color: 'bg-blue-100 text-blue-700 border-blue-200' };
+      }
+
+      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
+  };
+
+  return (
+    <div className="animate-fade-in">
+       <div className="text-center mb-8">
+         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
+         <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
+       </div>
+       
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {appData.therapists.map(t => {
+             const status = getTherapistStatus(t.name);
+             const isAvailable = status.label === 'Available';
+             const isPartiallyBooked = status.label === 'Partially Booked';
+             const isFullyBooked = status.label.includes('Fully Booked');
+
+             return (
+                <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
+                   <div className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
+                       {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
+                   </div>
+                   <div className="flex-1">
+                       <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
+                       <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
+                          {status.label} <br/> <span className="font-semibold opacity-90">{status.mm}</span>
+                       </div>
+                   </div>
+                </div>
+             )
+          })}
+       </div>
+    </div>
+  );
+}
+
+// 1.1 Booking Wizard (continued)
 function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
