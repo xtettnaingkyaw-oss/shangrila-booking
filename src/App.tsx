@@ -96,7 +96,7 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
 
 // --- Main App Setup ---
 function App() {
-  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff'>('customer');
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
   const [appData, setAppData] = useState<AppData | null>(null);
   const [dbError, setDbError] = useState(false);
@@ -146,7 +146,8 @@ function App() {
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get('mode') === 'admin') setIsAdminMode(true);
+    if (searchParams.get('mode') === 'admin') setAppMode('admin');
+    else if (searchParams.get('mode') === 'staff') setAppMode('staff');
 
     const initData = async () => {
       try {
@@ -191,19 +192,21 @@ function App() {
         </div>
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
         
-        {isAdminMode && loggedInAdmin && (
+        {appMode === 'admin' && loggedInAdmin && (
            <button onClick={() => { setLoggedInAdmin(null); sessionStorage.removeItem('shangrila_admin'); }} className="absolute top-6 right-4 sm:right-6 text-xs font-bold text-red-500 flex items-center bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100"><LogOut className="w-3 h-3 mr-1" /> Logout</button>
         )}
       </header>
 
       <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-6">
-        {isAdminMode ? (
+        {appMode === 'admin' ? (
           loggedInAdmin ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> 
                         : <AdminLogin onLogin={(user) => { setLoggedInAdmin(user); sessionStorage.setItem('shangrila_admin', user); }} />
+        ) : appMode === 'staff' ? (
+          <StaffApp appData={appData} />
         ) : <CustomerApp appData={appData} />}
       </main>
 
-      {!isAdminMode && (
+      {appMode !== 'admin' && (
         <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500 px-4">
           <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'} Men's Retreat</h3>
           <div className="mb-2 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto">
@@ -220,8 +223,6 @@ function App() {
     </div>
   );
 }
-
-export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; }
 
 // ==========================================
 // 1. CUSTOMER MAIN APP
@@ -504,14 +505,26 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
   );
 }
 
+// 1.1B Staff App Component
+function StaffApp({ appData }: { appData: AppData }) {
+   return (
+      <div className="max-w-2xl mx-auto bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100">
+         <div className="text-center mb-8 border-b border-gray-100 pb-6">
+            <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><User className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Portal</h2>
+            <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
+         </div>
+         <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} />
+      </div>
+   );
+}
+
 // 1.1 Booking Wizard
-function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null }) {
+function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
-  // If initialTherapist is provided (coming from Dashboard), skip to step 2 (Service Selection)
   const [step, setStep] = useState(initialTherapist ? 2 : 1);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+  const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
@@ -585,10 +598,11 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
   };
 
   const handleCountdownExpire = () => {
+     if (isStaffMode) return;
      alert("ငွေပေးချေရန် သတ်မှတ်ချိန် (၁၅) မိနစ် ကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ ဘိုကင် အသစ်ပြန်လည်တင်ပေးပါ။");
      setStep(1); setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   };
-  const formattedCountdown = useCountdown(15, handleCountdownExpire);
+  const formattedCountdown = useCountdown(isStaffMode ? 0 : 15, handleCountdownExpire);
 
   // --- Dynamic Checking for Overlaps and Blocked Slots ---
   const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
@@ -710,7 +724,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.txId.length !== 6) { alert("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
+    if (!isStaffMode && formData.txId.length !== 6) { alert("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
     setLoading(true);
     
     try {
@@ -765,14 +779,20 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
       }
 
       const dataToSave = {
-        name: formData.name, phone: formData.phone,
+        name: formData.name || 'Walk-in Guest', 
+        phone: formData.phone || '-',
         service: `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`,
         therapist: formData.therapist?.name || 'Any Available Therapist',
-        date: formData.date, time: formData.time, paymentMethod: formData.paymentMethod, txId: formData.txId, totalPrice: calculateTotal(), status: 'pending', createdAt: Date.now(),
+        date: formData.date, time: formData.time, 
+        paymentMethod: isStaffMode ? 'Cash Payment in Shop' : formData.paymentMethod, 
+        txId: isStaffMode ? 'CASH' : formData.txId, 
+        totalPrice: calculateTotal(), 
+        status: isStaffMode ? 'approved' : 'pending', 
+        createdAt: Date.now(),
         specialRequest: formData.specialRequest
       };
       await addDoc(collection(db, 'bookings'), dataToSave);
-      setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။ Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။');
+      setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
     } catch (error) { console.error(error); alert("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
     setLoading(false);
   };
@@ -783,7 +803,19 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="w-10 h-10 text-green-600" /></div>
         <h2 className="text-2xl font-bold mb-3" style={{ color: THEME.primary }}>Booking Confirmed!</h2>
         <p className="text-gray-600 mb-8 leading-relaxed font-semibold">{successMsg}</p>
-        <button onClick={() => { setSuccessMsg(''); onBooked(formData.phone); }} className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>မှတ်တမ်းကြည့်ရန် (View History)</button>
+        <button onClick={() => { 
+           if (isStaffMode) {
+               setStep(1);
+               setFormData({ name: 'Walk-in Guest', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+               setSuccessMsg('');
+               window.scrollTo({ top: 0, behavior: 'smooth' });
+           } else {
+               setSuccessMsg(''); 
+               onBooked(formData.phone); 
+           }
+        }} className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>
+           {isStaffMode ? 'နောက်ထပ် ဘိုကင်တင်မည် (Add Another)' : 'မှတ်တမ်းကြည့်ရန် (View History)'}
+        </button>
       </div>
     );
   }
@@ -1004,48 +1036,60 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Your Information</h3>
             <div className="space-y-4">
               <div><label className="block mb-1 text-sm font-semibold text-gray-700">Full Name</label><input required type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g. Aung Aung" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" /></div>
-              <div><label className="block mb-1 text-sm font-semibold text-gray-700">Phone Number (Login ID အဖြစ်အသုံးပြုရန်)</label><input required type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="e.g. 09-xxxxxxxxx" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" /></div>
+              <div><label className="block mb-1 text-sm font-semibold text-gray-700">Phone Number {isStaffMode ? '' : '(Login ID အဖြစ်အသုံးပြုရန်)'}</label><input required={!isStaffMode} type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="e.g. 09-xxxxxxxxx" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" /></div>
             </div>
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
             <h3 className="text-sm font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Deposit Payment</h3>
-            <div className="relative mb-4">
-              <label className="block mb-2 text-sm font-semibold text-gray-700" style={{ color: THEME.primary }}>ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
-
-              <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm">
-                {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
-                <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
-              </div>
-              {paymentDropdownOpen && (
-                <><div className="fixed inset-0 z-40" onClick={() => setPaymentDropdownOpen(false)}></div>
-                  <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-lg shadow-xl overflow-hidden border border-[#1a4a32]">
-                    {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" className="w-7 h-7 mr-3 object-contain bg-white rounded-sm p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
-                  </div></>
-              )}
-            </div>
-            {selectedPaymentConfig && (
-              <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in">
-                <p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက် ({formatPrice(calculateTotal() / 2)})</strong> စရံငွေအား {selectedPaymentConfig.name} သို့ လွှဲပေးပါ။</p>
-                <div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100">
-                  <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountNumber}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountNumber)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
-                  <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountName}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountName)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
-                </div>
-              </div>
-            )}
             
-            {/* Countdown Timer Display */}
-            {selectedPaymentConfig && (
-              <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
-                 <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
-                 <div className="text-2xl font-mono font-bold text-red-700 mt-1">{formattedCountdown}</div>
+            {isStaffMode ? (
+              <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
+                  <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
+                  <p className="text-xs font-semibold text-green-600 mt-2">ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။</p>
               </div>
-            )}
+            ) : (
+              <>
+                <div className="relative mb-4">
+                  <label className="block mb-2 text-sm font-semibold text-gray-700" style={{ color: THEME.primary }}>ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
 
-            <div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div>
+                  <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm">
+                    {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
+                    <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
+                  </div>
+                  {paymentDropdownOpen && (
+                    <><div className="fixed inset-0 z-40" onClick={() => setPaymentDropdownOpen(false)}></div>
+                      <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-lg shadow-xl overflow-hidden border border-[#1a4a32]">
+                        {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" className="w-7 h-7 mr-3 object-contain bg-white rounded-sm p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
+                      </div></>
+                  )}
+                </div>
+                {selectedPaymentConfig && (
+                  <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in">
+                    <p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက် ({formatPrice(calculateTotal() / 2)})</strong> စရံငွေအား {selectedPaymentConfig.name} သို့ လွှဲပေးပါ။</p>
+                    <div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100">
+                      <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountNumber}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountNumber)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
+                      <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountName}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountName)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
+                    </div>
+                  </div>
+                )}
+                
+                {selectedPaymentConfig && (
+                  <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
+                     <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
+                     <div className="text-2xl font-mono font-bold text-red-700 mt-1">{formattedCountdown}</div>
+                  </div>
+                )}
+
+                <div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div>
+              </>
+            )}
           </div>
 
-          <div className="mt-8 flex justify-between"><button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={loading || !formData.paymentMethod} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : 'CONFIRM BOOKING'}</button></div>
+          <div className="mt-8 flex justify-between">
+            <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
+            <button disabled={loading || (!isStaffMode && !formData.paymentMethod)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : 'CONFIRM BOOKING'}</button>
+          </div>
         </form>
       )}
     </div>
@@ -1747,6 +1791,13 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                     alert('Dashboard Link Copied:\n' + url);
                  }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition">
                     <Copy className="w-3 h-3 mr-1"/> Copy Dashboard Link
+                 </button>
+                 <button type="button" onClick={() => {
+                    const url = window.location.origin + window.location.pathname + '?mode=staff';
+                    navigator.clipboard.writeText(url);
+                    alert('Staff Portal Link Copied:\n' + url);
+                 }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition mt-2 sm:mt-0 sm:ml-2">
+                    <Copy className="w-3 h-3 mr-1"/> Copy Staff Portal Link
                  </button>
              </div>
           </div>
