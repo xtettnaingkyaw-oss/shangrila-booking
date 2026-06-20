@@ -57,7 +57,6 @@ const compressImage = async (file: File, width: number, height: number): Promise
         const targetRatio = width / height; const imageRatio = sW / sH;
         if (imageRatio > targetRatio) { const nW = sH * targetRatio; sX = (sW - nW) / 2; sW = nW; } else { const nH = sW / targetRatio; sY = (sH - nH) / 2; sH = nH; }
         canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx?.drawImage(img, sX, sY, sW, sH, 0, 0, width, height); 
-        // Increased quality from 0.7 to 0.85 for clearer images
         resolve(canvas.toDataURL('image/jpeg', 0.85));
       }; img.onerror = (e) => reject(e);
     }; reader.onerror = (e) => reject(e);
@@ -239,6 +238,11 @@ function CustomerApp({ appData }: { appData: AppData }) {
   const [hasNoti, setHasNoti] = useState(false);
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
+
+  // Auto scroll to top when tab changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeTab]);
 
   useEffect(() => {
     if (!userPhone) return;
@@ -1186,6 +1190,11 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
 
     return () => unsubscribe();
   }, []);
+
+  // Auto scroll to top on admin tab switch
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [tab]);
 
   const handleInteraction = () => {
      const audioEl = document.getElementById('admin-alert-sound') as HTMLAudioElement;
