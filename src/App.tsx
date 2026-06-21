@@ -142,4 +142,6 @@ function App() {
   );
 }
 
-export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; }
+export default function Main() { 
+  return <ErrorBoundary><App /></ErrorBoundary>; 
+}
