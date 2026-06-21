@@ -4,8 +4,7 @@ import { db } from '../firebase';
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Sparkles, Percent } from 'lucide-react';
 
 // Shared ဖိုင်မှ လိုအပ်သည်များကို လှမ်းယူခြင်း
-import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
-
+import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, MenuItem, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
 // ==========================================
 // ADMIN APP WRAPPER
 // ==========================================
