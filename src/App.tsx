@@ -1,18 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, X, ImageIcon, MapPin, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
 
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 
 const ICON_MAP: Record<string, any> = {
-  massage: Sparkles,
-  scrub: Droplets,
-  waxing: Scissors,
-  hotel: Home,
-  facial: Droplets,
-  manicure: Scissors,
-  pedicure: Scissors,
+  massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
 };
 
 interface MenuItem { id: string; name: string; price: number; duration: string; vvipPrice?: number; vvipIncluded?: boolean; }
@@ -43,13 +37,14 @@ const ALL_TIME_SLOTS = ["6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "
 
 const formatPrice = (price: any) => { const num = Number(price); if (isNaN(num)) return '0 Ks'; return num.toLocaleString() + ' Ks'; };
 
-const formatSecondsMMSS = (totalSeconds: number | undefined) => {
-    if (totalSeconds === undefined) return '00:00';
+const formatDuration = (totalSeconds: number | undefined | null) => {
+    if (totalSeconds === undefined || totalSeconds === null) return '00:00';
     const isNegative = totalSeconds < 0;
     const absSecs = Math.abs(totalSeconds);
-    const m = Math.floor(absSecs / 60);
+    const h = Math.floor(absSecs / 3600);
+    const m = Math.floor((absSecs % 3600) / 60);
     const s = Math.floor(absSecs % 60);
-    return `${isNegative ? '-' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
 const compressImage = async (file: File, width: number, height: number): Promise<string> => {
@@ -106,7 +101,6 @@ function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: numbe
 
     ALL_TIME_SLOTS.forEach(slot => {
         if (slot.includes("to")) return; 
-
         const slotTime = new Date(Number(y), Number(m) - 1, Number(d));
         const [time, ampm] = slot.split(' ');
         let [sh, sm] = time.split(':').map(Number);
@@ -155,12 +149,10 @@ function App() {
     if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
       setIsStandalone(true);
     }
-
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
     };
-
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
@@ -180,45 +172,18 @@ function App() {
 
   useEffect(() => {
     document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
-    
     const updateFavicon = (url: string) => {
       const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='manifest']"); 
       existingIcons.forEach(icon => document.head.removeChild(icon));
-      
-      const newIcon = document.createElement('link'); 
-      newIcon.rel = 'shortcut icon'; 
-      newIcon.type = 'image/png'; 
-      newIcon.href = url; 
-      document.head.appendChild(newIcon);
-
-      const appleIcon = document.createElement('link');
-      appleIcon.rel = 'apple-touch-icon';
-      appleIcon.href = url;
-      document.head.appendChild(appleIcon);
-
+      const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
+      const appleIcon = document.createElement('link'); appleIcon.rel = 'apple-touch-icon'; appleIcon.href = url; document.head.appendChild(appleIcon);
       const appName = appData?.branding?.name || "The Shangri-La";
-      const manifest = {
-        name: appName,
-        short_name: appName,
-        start_url: "/",
-        display: "standalone",
-        background_color: "#ffffff",
-        theme_color: THEME.primary,
-        icons: [
-          { src: url, sizes: "192x192", type: "image/png" },
-          { src: url, sizes: "512x512", type: "image/png" }
-        ]
-      };
+      const manifest = { name: appName, short_name: appName, start_url: "/", display: "standalone", background_color: "#ffffff", theme_color: THEME.primary, icons: [{ src: url, sizes: "192x192", type: "image/png" }, { src: url, sizes: "512x512", type: "image/png" }] };
       const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
       const manifestUrl = URL.createObjectURL(manifestBlob);
-      const manifestLink = document.createElement('link');
-      manifestLink.rel = 'manifest';
-      manifestLink.href = manifestUrl;
-      document.head.appendChild(manifestLink);
+      const manifestLink = document.createElement('link'); manifestLink.rel = 'manifest'; manifestLink.href = manifestUrl; document.head.appendChild(manifestLink);
     };
-
-    if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); }
-    else { updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg"); }
+    if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); } else { updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg"); }
   }, [appData?.branding?.logoUrl, appData?.branding?.name]);
 
   useEffect(() => {
@@ -228,23 +193,15 @@ function App() {
 
     const initData = async () => {
       try {
-        const docRef = doc(db, 'settings', 'appData');
-        const snap = await getDoc(docRef);
-        let loadedData: Partial<AppData> = {};
-        if (snap.exists()) loadedData = snap.data() || {};
-
+        const docRef = doc(db, 'settings', 'appData'); const snap = await getDoc(docRef);
+        let loadedData: Partial<AppData> = {}; if (snap.exists()) loadedData = snap.data() || {};
         const finalCategories = Array.isArray(loadedData.categories) ? loadedData.categories : DEFAULT_CATEGORIES;
         const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
         const finalPaymentMethods = Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS;
         const finalPromotion = loadedData.promotion || DEFAULT_PROMOTION;
-
-        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc'));
-        const tSnap = await getDocs(tQuery);
+        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); const tSnap = await getDocs(tQuery);
         let loadedTherapists: TherapistProfile[] = [];
-
-        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); }
-        else { loadedTherapists = DEFAULT_THERAPISTS; }
-
+        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); } else { loadedTherapists = DEFAULT_THERAPISTS; }
         setAppData({ categories: finalCategories, therapists: loadedTherapists, branding: finalBranding, paymentMethods: finalPaymentMethods, promotion: finalPromotion });
       } catch (err) {
         console.error(err); setDbError(true);
@@ -302,11 +259,10 @@ function App() {
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
         
         {!isStandalone && appMode === 'customer' && (
-           <button onClick={handleDownloadApp} className="mt-4 text-[10px] sm:text-xs font-bold text-white flex items-center justify-center bg-[#D4AF37] px-4 py-2 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
-             <Download className="w-3.5 h-3.5 mr-1.5" /> Download App
+           <button onClick={handleDownloadApp} className="absolute top-4 right-4 sm:top-6 sm:right-6 text-[10px] sm:text-xs font-bold text-white flex items-center bg-[#D4AF37] px-2.5 py-1.5 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
+             <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1" /> Download App
            </button>
         )}
-
         {appMode === 'admin' && loggedInAdmin && (
            <button onClick={() => { setLoggedInAdmin(null); sessionStorage.removeItem('shangrila_admin'); }} className="absolute top-6 right-4 sm:right-6 text-xs font-bold text-red-500 flex items-center bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100"><LogOut className="w-3 h-3 mr-1" /> Logout</button>
         )}
@@ -351,15 +307,11 @@ function CustomerApp({ appData }: { appData: AppData }) {
   });
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
   const [hasNoti, setHasNoti] = useState(false);
-  
   const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
-
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [activeTab]);
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
   useEffect(() => {
     if (!userPhone) return;
@@ -388,41 +340,26 @@ function CustomerApp({ appData }: { appData: AppData }) {
 
   const handleInteraction = () => {
     const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
-    if (audioEl && audioEl.paused) {
-      audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {});
-    }
+    if (audioEl && audioEl.paused) { audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {}); }
   };
 
-  const handleDashboardBook = (t: TherapistProfile) => {
-     setPrefillTherapist(t);
-     setActiveTab('therapists');
-  };
+  const handleDashboardBook = (t: TherapistProfile) => { setPrefillTherapist(t); setActiveTab('therapists'); };
 
   const tabs = [
-    { id: 'book', label: 'Book Now', icon: CalendarPlus },
-    { id: 'therapists', label: 'View Therapists', icon: User },
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 },
-    { id: 'history', label: 'My Bookings', icon: History },
+    { id: 'book', label: 'Book Now', icon: CalendarPlus }, { id: 'therapists', label: 'View Therapists', icon: User },
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, { id: 'history', label: 'My Bookings', icon: History },
     { id: 'profile', label: 'Profile', icon: UserCircle }
   ] as const;
 
   return (
     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
-
       <div className="flex justify-start sm:justify-center items-center space-x-1 md:space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
-            <button
-              key={tab.id} 
-              onClick={() => {
-                 setPrefillTherapist(null);
-                 setActiveTab(tab.id as any);
-              }}
-              className={`relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`}
-              style={{ color: isActive ? THEME.primary : undefined }}
-            >
+            <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
+              className={`relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
               <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
               <span className="text-center">{tab.label}</span>
               {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
@@ -431,7 +368,6 @@ function CustomerApp({ appData }: { appData: AppData }) {
           )
         })}
       </div>
-
       {activeTab === 'book' && <CustomerBookingWizard appData={appData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
       {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={appData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
       {activeTab === 'dashboard' && <CustomerDashboard appData={appData} onBookTherapist={handleDashboardBook} />}
@@ -441,9 +377,6 @@ function CustomerApp({ appData }: { appData: AppData }) {
   );
 }
 
-// ==========================================
-// 1.1 CUSTOMER DASHBOARD (AVAILABILITY)
-// ==========================================
 function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const todayStr = getLocalTodayStr();
@@ -476,10 +409,7 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-                  eIdx = ALL_TIME_SLOTS.length;
-              }
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
               if (sIdx !== -1 && eIdx !== -1) {
                   for (let i = sIdx; i < eIdx; i++) blockedNow.add(ALL_TIME_SLOTS[i]);
               }
@@ -508,54 +438,31 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
           is24hFull = true;
       }
 
-      if (is24hFull) {
-          return { label: 'Fully Booked (Day & Night)', mm: 'နေ့ရောညပါ ပြည့်နေပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
-      }
+      if (is24hFull) { return { label: 'Fully Booked (Day & Night)', mm: 'နေ့ရောညပါ ပြည့်နေပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' }; }
 
       const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
       const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
 
-      let shopSlotsTotal = 0;
-      let shopSlotsBooked = 0;
-      for (let i = 6; i <= 30; i++) {
-          shopSlotsTotal++;
-          if (blockedNow.has(ALL_TIME_SLOTS[i])) shopSlotsBooked++;
-      }
+      let shopSlotsTotal = 0; let shopSlotsBooked = 0;
+      for (let i = 6; i <= 30; i++) { shopSlotsTotal++; if (blockedNow.has(ALL_TIME_SLOTS[i])) shopSlotsBooked++; }
       const isShopFull = shopSlotsBooked === shopSlotsTotal;
 
-      if (isDayFull && !isNightFull) {
-          return { label: 'Day Full / Night Available', mm: 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
-      }
-
-      if (isNightFull && !isDayFull && !isShopFull) {
-          return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
-      }
-
-      if (isShopFull && isNightFull) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
-      }
-
-      if (isShopFull && !isNightFull) {
-          return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
-      }
-
-      if (shopSlotsBooked > 0) {
-          return { label: 'Partially Booked', mm: 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်', color: 'bg-blue-100 text-blue-700 border-blue-200' };
-      }
+      if (isDayFull && !isNightFull) return { label: 'Day Full / Night Available', mm: 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+      if (isNightFull && !isDayFull && !isShopFull) return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
+      if (isShopFull && isNightFull) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+      if (isShopFull && !isNightFull) return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+      if (shopSlotsBooked > 0) return { label: 'Partially Booked', mm: 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်', color: 'bg-blue-100 text-blue-700 border-blue-200' };
 
       return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
   };
 
   const bookingCounts: Record<string, number> = {};
   bookings.forEach(b => {
-     if (b.status !== 'cancelled') {
-         bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1;
-     }
+     if (b.status !== 'cancelled') { bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1; }
   });
 
   const top5Therapists = [...appData.therapists].sort((a, b) => {
-     const countA = bookingCounts[a.name] || 0;
-     const countB = bookingCounts[b.name] || 0;
+     const countA = bookingCounts[a.name] || 0; const countB = bookingCounts[b.name] || 0;
      if (countA !== countB) return countB - countA; 
      return (a.order || 0) - (b.order || 0);
   }).slice(0, 5);
@@ -566,7 +473,6 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
          <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
          <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
        </div>
-       
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {appData.therapists.map(t => {
              const status = getTherapistStatus(t.name);
@@ -631,11 +537,7 @@ function StaffApp({ appData }: { appData: AppData }) {
        const saved = localStorage.getItem('shangrila_staff_profile');
        return saved ? JSON.parse(saved) : null;
    });
-
-   const handleLogout = () => {
-       setLoggedInStaff(null);
-       localStorage.removeItem('shangrila_staff_profile');
-   };
+   const handleLogout = () => { setLoggedInStaff(null); localStorage.removeItem('shangrila_staff_profile'); };
 
    return (
        <div className="max-w-3xl mx-auto">
@@ -643,8 +545,7 @@ function StaffApp({ appData }: { appData: AppData }) {
                <StaffSessionManager appData={appData} loggedInStaff={loggedInStaff} onLogout={handleLogout} />
            ) : (
                <StaffLogin therapists={appData.therapists} onLoginSuccess={(profile) => {
-                   setLoggedInStaff(profile);
-                   localStorage.setItem('shangrila_staff_profile', JSON.stringify(profile));
+                   setLoggedInStaff(profile); localStorage.setItem('shangrila_staff_profile', JSON.stringify(profile));
                }} />
            )}
        </div>
@@ -657,14 +558,9 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
    const [error, setError] = useState('');
 
    const handleLogin = (e: React.FormEvent) => {
-       e.preventDefault();
-       setError('');
+       e.preventDefault(); setError('');
        const staff = therapists.find(t => t.id === therapistId);
-       if (staff && staff.password === password) {
-           onLoginSuccess(staff);
-       } else {
-           setError('Invalid Therapist Selection or Password.');
-       }
+       if (staff && staff.password === password) { onLoginSuccess(staff); } else { setError('Invalid Therapist Selection or Password.'); }
    };
 
    return (
@@ -678,13 +574,9 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
                    <div className="relative">
                        <select required value={therapistId} onChange={e=>setTherapistId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider appearance-none cursor-pointer text-gray-800">
                            <option value="" disabled>-- Select Your Profile --</option>
-                           {therapists.map(t => (
-                               <option key={t.id} value={t.id}>{t.name}</option>
-                           ))}
+                           {therapists.map(t => (<option key={t.id} value={t.id}>{t.name}</option>))}
                        </select>
-                       <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-400">
-                           <ChevronDown className="w-4 h-4" />
-                       </div>
+                       <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-400"><ChevronDown className="w-4 h-4" /></div>
                    </div>
                </div>
                <div>
@@ -710,37 +602,22 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            let foundActive = null;
            snap.forEach((doc) => {
                const b = { id: doc.id, ...doc.data() } as Booking;
-               if (b.therapist === loggedInStaff.name && b.status === 'in_progress') {
-                   foundActive = b;
-               }
+               if (b.therapist === loggedInStaff.name && b.status === 'in_progress') { foundActive = b; }
            });
-           setActiveSession(foundActive);
-           setLoading(false);
+           setActiveSession(foundActive); setLoading(false);
        });
        return () => unsubscribe();
    }, [loggedInStaff.name]);
 
-   const handleClockInSuccess = () => {
-       setShowClockInFlow(false);
-   };
-
    const handleStopSession = async () => {
        if (!activeSession || !activeSession.id) return;
        if (!window.confirm("Are you sure you want to STOP this service now?")) return;
-       
        try {
            const now = Date.now();
            const overtimeMillis = Math.max(0, now - (activeSession.expectedEndTimeMillis || now));
-           await updateDoc(doc(db, 'bookings', activeSession.id), {
-               status: 'completed',
-               actualEndTimeMillis: now,
-               overtimeSeconds: Math.floor(overtimeMillis / 1000)
-           });
+           await updateDoc(doc(db, 'bookings', activeSession.id), { status: 'completed', actualEndTimeMillis: now, overtimeSeconds: Math.floor(overtimeMillis / 1000) });
            setActiveSession(null);
-       } catch (error) {
-           console.error(error);
-           alert("Error stopping session.");
-       }
+       } catch (error) { console.error(error); alert("Error stopping session."); }
    };
 
    if (loading) return <div className="text-center py-20 font-bold text-gray-500">Loading Dashboard...</div>;
@@ -780,7 +657,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                           <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><CalendarPlus className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Clock In</h2>
                           <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
                        </div>
-                       <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} staffClockIn={true} staffClockInSuccess={handleClockInSuccess} preselectedStaff={loggedInStaff.name}/>
+                       <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} staffClockIn={true} staffClockInSuccess={() => setShowClockInFlow(false)} preselectedStaff={loggedInStaff.name}/>
                    </div>
                ) : (
                    <div className="text-center py-16 sm:py-20 border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50 mt-4">
@@ -1043,12 +920,12 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
             {remainingTime !== null && remainingTime > 0 ? (
                 <div className="mb-8">
                     <div className="text-xs font-bold text-gray-400 uppercase mb-2">REMAINING TIME</div>
-                    <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecondsMMSS(remainingTime)}</div>
+                    <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatDuration(remainingTime)}</div>
                 </div>
             ) : (
                 <div className="mb-8">
                     <div className="text-xs font-bold text-red-500 uppercase mb-2 animate-bounce">LATE (OVERTIME)</div>
-                    <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecondsMMSS(overtimeSecs)}</div>
+                    <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatDuration(overtimeSecs)}</div>
                 </div>
             )}
             
@@ -1093,13 +970,13 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
                    {remainingTime !== null && remainingTime > 0 ? (
                        <>
                            <div className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase">REMAINING TIME</div>
-                           <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecondsMMSS(remainingTime)}</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatDuration(remainingTime)}</div>
                            <div className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">Total Service: {session.service.split('(')[1]?.replace(')', '') || '-'}</div>
                        </>
                    ) : (
                        <div className="animate-pulse">
                            <div className="text-[10px] sm:text-xs font-bold text-red-500 uppercase">OVERTIME (အချိန်ပို)</div>
-                           <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecondsMMSS(overtimeSecs)}</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatDuration(overtimeSecs)}</div>
                            <div className="text-[10px] sm:text-xs font-bold text-red-400 mt-0.5">Duration passed expected time.</div>
                        </div>
                    )}
@@ -1109,7 +986,7 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
            <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 border border-gray-100 text-[10px] sm:text-xs text-gray-500">
                <span>Price: <strong className="text-gray-800 text-xs sm:text-sm">{formatPrice(session.totalPrice)}</strong></span>
                <span className="hidden sm:inline">TxID: <strong className="text-gray-800 text-sm tracking-wider">{session.txId}</strong></span>
-               <span>Live: <strong className="text-gray-800 text-xs sm:text-sm">{formatSecondsMMSS(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
+               <span>Live: <strong className="text-gray-800 text-xs sm:text-sm">{formatDuration(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
            </div>
 
            <button onClick={onStop} className="w-full py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg flex items-center justify-center mx-auto hover:bg-red-600 transition text-sm"><Trash2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> Stop Service / End Now</button>
@@ -1413,14 +1290,20 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               if (b.status === 'in_progress' && b.startTimeMillis) {
                   otherStart = b.startTimeMillis;
                   otherEnd = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
-              } else if (b.time && !b.time.includes('to')) {
+              } else if (b.time && b.time !== 'NOW' && !b.time.includes('to')) {
                   const [oy, omo, od] = b.date.split('-');
                   const slotTime = new Date(Number(oy), Number(omo)-1, Number(od));
-                  const [tPart, oampm] = b.time.split(' ');
-                  let [sh, sm] = tPart.split(':').map(Number);
-                  if (oampm === 'PM' && sh < 12) sh += 12;
-                  if (oampm === 'AM' && sh === 12) sh = 0;
-                  slotTime.setHours(sh, sm, 0, 0);
+                  
+                  if (b.time.includes('AM') || b.time.includes('PM')) {
+                      const [tPart, oampm] = b.time.split(' ');
+                      let [sh, sm] = tPart.split(':').map(Number);
+                      if (oampm === 'PM' && sh < 12) sh += 12;
+                      if (oampm === 'AM' && sh === 12) sh = 0;
+                      slotTime.setHours(sh, sm, 0, 0);
+                  } else {
+                      let [sh, sm] = b.time.split(':').map(Number);
+                      slotTime.setHours(sh, sm, 0, 0);
+                  }
 
                   otherStart = slotTime.getTime();
                   let bDur = 60;
@@ -1754,7 +1637,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               )}
               {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
               <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div>
-              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
+              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {staffClockIn && formData.date === todayStr && /^\d{2}:\d{2}$/.test(formData.time) ? `${(Number(formData.time.split(':')[0])%12)||12}:${formData.time.split(':')[1]} ${Number(formData.time.split(':')[0])>=12?'PM':'AM'}` : formData.time}</div>
             </div>
             
             <div className="mt-6 pt-4 border-t-2 border-gray-100">
@@ -1899,7 +1782,7 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
                         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mr-4 mt-1"><Sparkles className="w-5 h-5 text-gray-500"/></div>
                         <div>
                            <div className="font-bold text-gray-800 text-sm sm:text-base">{b.service.split('(')[0]}</div>
-                           <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> {b.time}</div>
+                           <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> Slot: {b.time}</div>
                         </div>
                      </div>
                      <div className="flex flex-col items-end">
@@ -2310,16 +2193,6 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
    };
 
-   const formatSecondsAdmin = (totalSeconds: number | undefined) => {
-       if (totalSeconds === undefined) return '00:00';
-       const isNegative = totalSeconds < 0;
-       const absSecs = Math.abs(totalSeconds);
-       const h = Math.floor(absSecs / 3600);
-       const m = Math.floor((absSecs % 3600) / 60);
-       const s = Math.floor(absSecs % 60);
-       return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-   };
-
    const handleDeleteBooking = async (id: string) => { if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
@@ -2351,7 +2224,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${(b.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(b.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${(b.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatDuration(b.overtimeSeconds)}</div>
                                      <button onClick={() => handleDeleteBooking(b.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
@@ -2376,7 +2249,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${(o.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(o.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${(o.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatDuration(o.overtimeSeconds)}</div>
                                      <button onClick={() => handleDeleteOutpass(o.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
@@ -2813,7 +2686,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         </div>
       </div>
 
-      {/* Manual Therapist Ranking Section (DO NOT REMOVE) */}
+      {/* Manual Therapist Ranking Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <div>
