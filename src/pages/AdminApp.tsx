@@ -198,7 +198,8 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
 }
 
 function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
-   const [view, setView] = useState<'service' | 'outpass'>('service');
+   // Dashboard ကို ပထမဆုံး မြင်ရမယ့် View အဖြစ် သတ်မှတ်လိုက်ပါပြီ
+   const [view, setView] = useState<'dashboard' | 'service' | 'outpass'>('dashboard');
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
 
    useEffect(() => {
@@ -229,18 +230,90 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
    const handleDeleteBooking = async (id: string) => { if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
+   // လက်ရှိ In Service နဲ့ Out Pass ဖြစ်နေတဲ့သူတွေကို သီးသန့်စစ်ထုတ်ခြင်း
+   const activeBookings = bookings.filter(b => b.status === 'in_progress');
+   const activeOutpasses = outpasses.filter(o => o.status === 'out');
+
    return (
        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4">
-              <h2 className="text-xl font-bold flex items-center mb-4 sm:mb-0" style={{ color: THEME.primary }}><BarChart2 className="mr-2 text-[#D4AF37]" /> Staff Reports</h2>
-              <div className="flex space-x-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full sm:w-auto">
-                 <button onClick={() => setView('service')} className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services</button>
-                 <button onClick={() => setView('outpass')} className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Passes</button>
+           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 border-b border-gray-100 pb-4">
+              <h2 className="text-xl font-bold flex items-center mb-4 lg:mb-0" style={{ color: THEME.primary }}><BarChart2 className="mr-2 text-[#D4AF37]" /> Staff Reports</h2>
+              
+              {/* ခလုတ် ၃ ခုပါတဲ့ View Toggle နေရာ */}
+              <div className="flex space-x-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full lg:w-auto overflow-x-auto scrollbar-hide">
+                 <button onClick={() => setView('dashboard')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'dashboard' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Dashboard View</button>
+                 <button onClick={() => setView('service')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services List</button>
+                 <button onClick={() => setView('outpass')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'outpass' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Passes List</button>
               </div>
            </div>
 
-           {view === 'service' ? (
-              <div className="overflow-x-auto">
+           {/* DASHBOARD VIEW အသစ်စတင်ခြင်း */}
+           {view === 'dashboard' && (
+              <div className="space-y-8 animate-fade-in">
+                  
+                  {/* Currently In Service အပိုင်း */}
+                  <div>
+                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
+                      {activeBookings.length === 0 ? (
+                          <p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently in service.</p>
+                      ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {activeBookings.map(b => {
+                                  // Outcall ဖြစ်မဖြစ် Service နာမည်ကိုကြည့်ပြီး စစ်ဆေးခြင်း
+                                  const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
+                                  return (
+                                      <div key={b.id} className={`p-4 rounded-xl border ${isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
+                                          <div className={`absolute top-0 left-0 w-1 h-full ${isOutcall ? 'bg-blue-500' : 'bg-orange-500'} animate-pulse`}></div>
+                                          <div className="flex justify-between items-start mb-2">
+                                              <div className="font-bold text-[#123524] text-base">{b.therapist}</div>
+                                              <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                 {isOutcall ? 'Outcall' : 'In Room'}
+                                              </span>
+                                          </div>
+                                          <div className="text-sm font-semibold text-gray-800 truncate mb-1" title={b.service}>{b.service.split('(')[0]}</div>
+                                          <div className="text-xs text-gray-500 mb-4 flex items-center"><User className="w-3 h-3 mr-1 text-gray-400" />Cust: {b.name}</div>
+                                          <div className={`flex justify-between items-center text-xs border-t pt-3 ${isOutcall ? 'border-blue-200/50' : 'border-orange-200/50'}`}>
+                                              <div className="text-gray-500"><span className="font-bold text-gray-600">Start:</span> {formatMillis(b.startTimeMillis)}</div>
+                                              <div className="text-gray-500"><span className="font-bold text-gray-600">End:</span> <span className={`${isOutcall ? 'text-blue-600' : 'text-orange-600'} font-mono bg-white px-1.5 py-0.5 rounded shadow-sm border ${isOutcall ? 'border-blue-100' : 'border-orange-100'}`}>{formatMillis(b.expectedEndTimeMillis)}</span></div>
+                                          </div>
+                                      </div>
+                                  );
+                              })}
+                          </div>
+                      )}
+                  </div>
+
+                  {/* Currently on Out Pass အပိုင်း */}
+                  <div>
+                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
+                      {activeOutpasses.length === 0 ? (
+                          <p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently on out pass.</p>
+                      ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {activeOutpasses.map(o => (
+                                  <div key={o.id} className="p-4 rounded-xl border bg-purple-50/40 border-purple-200 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
+                                      <div className="absolute top-0 left-0 w-1 h-full bg-purple-500 animate-pulse"></div>
+                                      <div className="flex justify-between items-start mb-2">
+                                          <div className="font-bold text-[#123524] text-base">{o.therapist}</div>
+                                          <span className="text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider bg-purple-100 text-purple-700">Out Pass</span>
+                                      </div>
+                                      <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div>
+                                      <div className="flex justify-between items-center text-xs border-t border-purple-200/50 pt-3">
+                                          <div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div>
+                                          <div className="text-gray-500"><span className="font-bold text-gray-600">Return:</span> <span className="text-purple-600 font-mono bg-white px-1.5 py-0.5 rounded shadow-sm border border-purple-100">{formatMillis(o.expectedInTimeMillis)}</span></div>
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+
+              </div>
+           )}
+
+           {/* SERVICES LIST VIEW (မူလအတိုင်း ဘာမှမပြောင်းလဲပါ) */}
+           {view === 'service' && (
+              <div className="overflow-x-auto animate-fade-in">
                   <table className="w-full text-left border-collapse min-w-[900px]">
                       <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Service & Customer</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Start Time</th><th className="p-3 pb-4">Expected End</th><th className="p-3 pb-4">Actual End</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead>
                       <tbody>
@@ -265,8 +338,11 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                       </tbody>
                   </table>
               </div>
-           ) : (
-              <div className="overflow-x-auto">
+           )}
+
+           {/* OUT PASSES LIST VIEW (မူလအတိုင်း ဘာမှမပြောင်းလဲပါ) */}
+           {view === 'outpass' && (
+              <div className="overflow-x-auto animate-fade-in">
                   <table className="w-full text-left border-collapse min-w-[900px]">
                       <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Out Time</th><th className="p-3 pb-4">Expected Return</th><th className="p-3 pb-4">Actual Return</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead>
                       <tbody>
@@ -406,7 +482,6 @@ function AdminManagementList() {
                 <td className="p-3 font-bold text-gray-800 flex items-center"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</td>
                 <td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td>
                 <td className="p-3 text-right">
-                   {/* ဒီနေရာမှာ စာလုံးအမှား (Glitch) ကို အတိအကျ ပြင်ဆင်ပေးထားပါတယ် */}
                    <button onClick={() => handleDeleteAdmin(a.username)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 font-bold text-[10px] flex items-center ml-auto"><Trash2 className="w-3 h-3 mr-1"/> Delete</button>
                 </td>
               </tr>
