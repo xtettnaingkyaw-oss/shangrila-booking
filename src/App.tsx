@@ -39,7 +39,7 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
 // Loader for Suspense
 const InitialLoader = () => (
   <div className="flex flex-col items-center justify-center min-h-screen text-[#123524] font-bold animate-pulse">
-    Loading Shangri-La...
+    Loading Shangri-La ...
   </div>
 );
 
