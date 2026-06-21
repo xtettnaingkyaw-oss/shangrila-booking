@@ -244,7 +244,7 @@ function App() {
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
         
         {!isStandalone && appMode === 'customer' && (
-           <button onClick={handleDownloadApp} className="mt-4 text-[10px] sm:text-xs font-bold text-white flex items-center justify-center bg-[#D4AF37] px-4 py-2 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
+           <button onClick={handleDownloadApp} className="absolute top-4 right-4 sm:top-6 sm:right-6 text-[10px] sm:text-xs font-bold text-white flex items-center justify-center bg-[#D4AF37] px-4 py-2 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
              <Download className="w-3.5 h-3.5 mr-1.5" /> Download App
            </button>
         )}
@@ -278,8 +278,6 @@ function App() {
     </div>
   );
 }
-
-export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; }
 
 function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
@@ -796,7 +794,7 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
                         {myPasses.filter(p => p.status === 'returned').map(p => (
                             <div key={p.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex justify-between items-center text-xs">
                                 <span className="text-gray-600 font-mono font-semibold">{new Date(p.outTimeMillis).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {p.inTimeMillis ? new Date(p.inTimeMillis).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
-                                {p.overtimeSeconds && p.overtimeSeconds > 0 ? (
+                                {p.overtimeSeconds !== undefined && p.overtimeSeconds > 0 ? (
                                     <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded">Late +{Math.floor(p.overtimeSeconds/60)} mins</span>
                                 ) : (
                                     <span className="text-green-600 font-bold bg-green-50 px-2 py-1 rounded">On Time</span>
@@ -1206,14 +1204,20 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               if (b.status === 'in_progress' && b.startTimeMillis) {
                   otherStart = b.startTimeMillis;
                   otherEnd = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
-              } else if (b.time && !b.time.includes('to')) {
+              } else if (b.time && b.time !== 'NOW' && !b.time.includes('to')) {
                   const [oy, omo, od] = b.date.split('-');
                   const slotTime = new Date(Number(oy), Number(omo)-1, Number(od));
-                  const [tPart, oampm] = b.time.split(' ');
-                  let [sh, sm] = tPart.split(':').map(Number);
-                  if (oampm === 'PM' && sh < 12) sh += 12;
-                  if (oampm === 'AM' && sh === 12) sh = 0;
-                  slotTime.setHours(sh, sm, 0, 0);
+                  
+                  if (b.time.includes('AM') || b.time.includes('PM')) {
+                      const [tPart, oampm] = b.time.split(' ');
+                      let [sh, sm] = tPart.split(':').map(Number);
+                      if (oampm === 'PM' && sh < 12) sh += 12;
+                      if (oampm === 'AM' && sh === 12) sh = 0;
+                      slotTime.setHours(sh, sm, 0, 0);
+                  } else {
+                      let [sh, sm] = b.time.split(':').map(Number);
+                      slotTime.setHours(sh, sm, 0, 0);
+                  }
 
                   otherStart = slotTime.getTime();
                   let bDur = 60;
@@ -1547,7 +1551,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               )}
               {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
               <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div>
-              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
+              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {staffClockIn && formData.date === todayStr && /^\d{2}:\d{2}$/.test(formData.time) ? `${(Number(formData.time.split(':')[0])%12)||12}:${formData.time.split(':')[1]} ${Number(formData.time.split(':')[0])>=12?'PM':'AM'}` : formData.time}</div>
             </div>
             
             <div className="mt-6 pt-4 border-t-2 border-gray-100">
@@ -2011,7 +2015,7 @@ function AdminDashboard({ appData, onSettingsUpdated }: { appData: AppData, onSe
         <button onClick={() => setTab('settings')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>
       </div>
       {tab === 'bookings' && <AdminBookingsList bookings={bookings.filter(b => b.status !== 'in_progress' && b.status !== 'completed')} />}
-      {tab === 'reports' && <AdminStaffHistoryList bookings={bookings.filter(b => b.status === 'in_progress' || b.status === 'completed')} />}
+      {tab === 'reports' && <AdminStaffHistoryList appData={appData} bookings={bookings.filter(b => b.status === 'in_progress' || b.status === 'completed')} />}
       {tab === 'users' && <AdminUsersList />}
       {tab === 'admins' && <AdminManagementList />}
       {tab === 'settings' && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
@@ -2084,8 +2088,8 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
   );
 }
 
-function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
-   const [view, setView] = useState<'service' | 'outpass'>('service');
+function AdminStaffHistoryList({ appData, bookings }: { appData: AppData, bookings: Booking[] }) {
+   const [view, setView] = useState<'dashboard' | 'service' | 'outpass'>('dashboard');
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
 
    useEffect(() => {
@@ -2103,8 +2107,8 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
    };
 
-   const formatSecondsAdmin = (totalSeconds: number | undefined) => {
-       if (totalSeconds === undefined) return '00:00';
+   const formatSecondsAdmin = (totalSeconds: number | undefined | null) => {
+       if (totalSeconds === undefined || totalSeconds === null) return '00:00';
        const isNegative = totalSeconds < 0;
        const absSecs = Math.abs(totalSeconds);
        const h = Math.floor(absSecs / 3600);
@@ -2121,12 +2125,68 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4">
               <h2 className="text-xl font-bold flex items-center mb-4 sm:mb-0" style={{ color: THEME.primary }}><BarChart2 className="mr-2 text-[#D4AF37]" /> Staff Reports</h2>
               <div className="flex space-x-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full sm:w-auto">
-                 <button onClick={() => setView('service')} className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services</button>
-                 <button onClick={() => setView('outpass')} className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Passes</button>
+                 <button onClick={() => setView('dashboard')} className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'dashboard' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Dashboard View</button>
+                 <button onClick={() => setView('service')} className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services List</button>
+                 <button onClick={() => setView('outpass')} className={`flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Passes List</button>
               </div>
            </div>
 
-           {view === 'service' ? (
+           {view === 'dashboard' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                 {appData.therapists.map(t => {
+                     const activeBooking = bookings.find(b => b.therapist === t.name && b.status === 'in_progress');
+                     const activeOutpass = outpasses.find(o => o.therapist === t.name && o.status === 'out');
+
+                     let statusColor = "bg-green-50 border-green-200";
+                     let badgeColor = "bg-green-100 text-green-700";
+                     let badgeText = "AVAILABLE";
+                     let content = <div className="text-sm font-semibold text-gray-500 mt-2 h-16 flex items-center">Currently waiting for customers</div>;
+
+                     if (activeBooking) {
+                         const isOutcall = activeBooking.service.toLowerCase().includes('outcall');
+                         statusColor = isOutcall ? "bg-blue-50 border-blue-200" : "bg-orange-50 border-orange-200";
+                         badgeColor = isOutcall ? "bg-blue-100 text-blue-700 animate-pulse" : "bg-orange-100 text-orange-700 animate-pulse";
+                         badgeText = isOutcall ? "OUTCALL ACTIVE" : "IN SERVICE";
+                         content = (
+                             <div className="mt-2 text-sm h-16 flex flex-col justify-center">
+                                 <div className="font-bold text-gray-800 truncate" title={activeBooking.service.split('(')[0]}>{activeBooking.service.split('(')[0]}</div>
+                                 <div className="text-xs text-gray-600 mt-0.5 truncate">Cust: {activeBooking.name}</div>
+                                 <div className="text-[10px] text-gray-500 mt-1.5 font-mono">
+                                     Start: {formatMillis(activeBooking.startTimeMillis)} &nbsp;|&nbsp; Exp End: {formatMillis(activeBooking.expectedEndTimeMillis)}
+                                 </div>
+                             </div>
+                         );
+                     } else if (activeOutpass) {
+                         statusColor = "bg-purple-50 border-purple-200";
+                         badgeColor = "bg-purple-100 text-purple-700 animate-pulse";
+                         badgeText = "OUT PASS";
+                         content = (
+                             <div className="mt-2 text-sm h-16 flex flex-col justify-center">
+                                 <div className="font-bold text-gray-800 truncate" title={activeOutpass.reason}>Reason: {activeOutpass.reason || '-'}</div>
+                                 <div className="text-[10px] text-gray-500 mt-1.5 font-mono">
+                                     Out Time: {formatMillis(activeOutpass.outTimeMillis)} <br/> 
+                                     Exp Return: {formatMillis(activeOutpass.expectedInTimeMillis)}
+                                 </div>
+                             </div>
+                         );
+                     }
+
+                     return (
+                         <div key={t.id} className={`p-4 rounded-xl border-2 transition-all shadow-sm ${statusColor}`}>
+                             <div className="flex justify-between items-start mb-2">
+                                 <div className="font-bold text-[#123524] truncate flex-1 pr-2">{t.name}</div>
+                                 <span className={`text-[9px] px-2 py-1 rounded font-bold uppercase tracking-wider flex-shrink-0 ${badgeColor}`}>
+                                     {badgeText}
+                                 </span>
+                             </div>
+                             {content}
+                         </div>
+                     );
+                 })}
+              </div>
+           )}
+
+           {view === 'service' && (
               <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse min-w-[900px]">
                       <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Service & Customer</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Start Time</th><th className="p-3 pb-4">Expected End</th><th className="p-3 pb-4">Actual End</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead>
@@ -2152,7 +2212,9 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                       </tbody>
                   </table>
               </div>
-           ) : (
+           )}
+           
+           {view === 'outpass' && (
               <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse min-w-[900px]">
                       <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Out Time</th><th className="p-3 pb-4">Expected Return</th><th className="p-3 pb-4">Actual Return</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead>
