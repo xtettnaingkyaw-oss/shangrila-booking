@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, X, ImageIcon, MapPin, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
 
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 
@@ -37,8 +37,8 @@ const ALL_TIME_SLOTS = ["6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "
 
 const formatPrice = (price: any) => { const num = Number(price); if (isNaN(num)) return '0 Ks'; return num.toLocaleString() + ' Ks'; };
 
-const formatSecondsMMSS = (totalSeconds: number | undefined) => {
-    if (totalSeconds === undefined) return '00:00';
+const formatSecondsMMSS = (totalSeconds: number | undefined | null) => {
+    if (totalSeconds === undefined || totalSeconds === null) return '00:00';
     const isNegative = totalSeconds < 0;
     const absSecs = Math.abs(totalSeconds);
     const m = Math.floor(absSecs / 60);
@@ -138,13 +138,22 @@ function App() {
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
   const [appData, setAppData] = useState<AppData | null>(null);
   const [dbError, setDbError] = useState(false);
+
+  // PWA Install State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
 
   useEffect(() => {
-    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) { setIsStandalone(true); }
-    const handleBeforeInstallPrompt = (e: any) => { e.preventDefault(); setDeferredPrompt(e); };
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsStandalone(true);
+    }
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
@@ -153,24 +162,56 @@ function App() {
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') { setDeferredPrompt(null); setIsStandalone(true); }
-    } else { setShowInstallModal(true); }
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        setIsStandalone(true);
+      }
+    } else {
+      setShowInstallModal(true);
+    }
   };
 
   useEffect(() => {
     document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
+    
     const updateFavicon = (url: string) => {
       const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='manifest']"); 
       existingIcons.forEach(icon => document.head.removeChild(icon));
-      const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
-      const appleIcon = document.createElement('link'); appleIcon.rel = 'apple-touch-icon'; appleIcon.href = url; document.head.appendChild(appleIcon);
+      
+      const newIcon = document.createElement('link'); 
+      newIcon.rel = 'shortcut icon'; 
+      newIcon.type = 'image/png'; 
+      newIcon.href = url; 
+      document.head.appendChild(newIcon);
+
+      const appleIcon = document.createElement('link');
+      appleIcon.rel = 'apple-touch-icon';
+      appleIcon.href = url;
+      document.head.appendChild(appleIcon);
+
       const appName = appData?.branding?.name || "The Shangri-La";
-      const manifest = { name: appName, short_name: appName, start_url: "/", display: "standalone", background_color: "#ffffff", theme_color: THEME.primary, icons: [{ src: url, sizes: "192x192", type: "image/png" }, { src: url, sizes: "512x512", type: "image/png" }] };
+      const manifest = {
+        name: appName,
+        short_name: appName,
+        start_url: "/",
+        display: "standalone",
+        background_color: "#ffffff",
+        theme_color: THEME.primary,
+        icons: [
+          { src: url, sizes: "192x192", type: "image/png" },
+          { src: url, sizes: "512x512", type: "image/png" }
+        ]
+      };
       const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
       const manifestUrl = URL.createObjectURL(manifestBlob);
-      const manifestLink = document.createElement('link'); manifestLink.rel = 'manifest'; manifestLink.href = manifestUrl; document.head.appendChild(manifestLink);
+      const manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = manifestUrl;
+      document.head.appendChild(manifestLink);
     };
-    if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); } else { updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg"); }
+
+    if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); }
+    else { updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg"); }
   }, [appData?.branding?.logoUrl, appData?.branding?.name]);
 
   useEffect(() => {
@@ -180,15 +221,23 @@ function App() {
 
     const initData = async () => {
       try {
-        const docRef = doc(db, 'settings', 'appData'); const snap = await getDoc(docRef);
-        let loadedData: Partial<AppData> = {}; if (snap.exists()) loadedData = snap.data() || {};
+        const docRef = doc(db, 'settings', 'appData');
+        const snap = await getDoc(docRef);
+        let loadedData: Partial<AppData> = {};
+        if (snap.exists()) loadedData = snap.data() || {};
+
         const finalCategories = Array.isArray(loadedData.categories) ? loadedData.categories : DEFAULT_CATEGORIES;
         const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
         const finalPaymentMethods = Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS;
         const finalPromotion = loadedData.promotion || DEFAULT_PROMOTION;
-        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); const tSnap = await getDocs(tQuery);
+
+        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc'));
+        const tSnap = await getDocs(tQuery);
         let loadedTherapists: TherapistProfile[] = [];
-        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); } else { loadedTherapists = DEFAULT_THERAPISTS; }
+
+        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); }
+        else { loadedTherapists = DEFAULT_THERAPISTS; }
+
         setAppData({ categories: finalCategories, therapists: loadedTherapists, branding: finalBranding, paymentMethods: finalPaymentMethods, promotion: finalPromotion });
       } catch (err) {
         console.error(err); setDbError(true);
@@ -255,7 +304,8 @@ function App() {
 
       <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-6">
         {appMode === 'admin' ? (
-          loggedInAdmin ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> : <AdminLogin onLogin={(user) => { setLoggedInAdmin(user); sessionStorage.setItem('shangrila_admin', user); }} />
+          loggedInAdmin ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> 
+                        : <AdminLogin onLogin={(user) => { setLoggedInAdmin(user); sessionStorage.setItem('shangrila_admin', user); }} />
         ) : appMode === 'staff' ? (
           <StaffApp appData={appData} />
         ) : <CustomerApp appData={appData} />}
@@ -713,7 +763,10 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
         const q = query(collection(db, 'outpasses'));
         const unsub = onSnapshot(q, snap => {
             const arr: OutPass[] = [];
-            snap.forEach(d => { const data = d.data() as OutPass; if (data.date === todayStr) arr.push({ id: d.id, ...data }); });
+            snap.forEach(d => {
+                const data = d.data() as OutPass;
+                if (data.date === todayStr) arr.push({ id: d.id, ...data });
+            });
             arr.sort((a,b) => b.outTimeMillis - a.outTimeMillis);
             setOutpasses(arr); setLoading(false);
         });
@@ -794,7 +847,7 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
                         {myPasses.filter(p => p.status === 'returned').map(p => (
                             <div key={p.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex justify-between items-center text-xs">
                                 <span className="text-gray-600 font-mono font-semibold">{new Date(p.outTimeMillis).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {p.inTimeMillis ? new Date(p.inTimeMillis).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
-                                {p.overtimeSeconds !== undefined && p.overtimeSeconds > 0 ? (
+                                {p.overtimeSeconds && p.overtimeSeconds > 0 ? (
                                     <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded">Late +{Math.floor(p.overtimeSeconds/60)} mins</span>
                                 ) : (
                                     <span className="text-green-600 font-bold bg-green-50 px-2 py-1 rounded">On Time</span>
@@ -1598,7 +1651,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             {isStaffMode ? (
               <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
                   <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
-                  <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm and Start Now" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
+                  <p className="text-xs font-semibold text-green-600 mt-2">"{staffClockIn && formData.date === todayStr ? 'Confirm and Start Now' : 'Confirm Booking'}" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။</p>
               </div>
             ) : (
               <>
