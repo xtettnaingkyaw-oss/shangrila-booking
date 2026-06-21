@@ -1,4 +1,3 @@
-// src/App.tsx
 import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
