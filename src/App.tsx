@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, X, ImageIcon, MapPin, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
 
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 
@@ -37,14 +37,13 @@ const ALL_TIME_SLOTS = ["6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "
 
 const formatPrice = (price: any) => { const num = Number(price); if (isNaN(num)) return '0 Ks'; return num.toLocaleString() + ' Ks'; };
 
-const formatDuration = (totalSeconds: number | undefined | null) => {
-    if (totalSeconds === undefined || totalSeconds === null) return '00:00';
+const formatSecondsMMSS = (totalSeconds: number | undefined) => {
+    if (totalSeconds === undefined) return '00:00';
     const isNegative = totalSeconds < 0;
     const absSecs = Math.abs(totalSeconds);
-    const h = Math.floor(absSecs / 3600);
-    const m = Math.floor((absSecs % 3600) / 60);
+    const m = Math.floor(absSecs / 60);
     const s = Math.floor(absSecs % 60);
-    return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${isNegative ? '-' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
 const compressImage = async (file: File, width: number, height: number): Promise<string> => {
@@ -139,20 +138,13 @@ function App() {
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
   const [appData, setAppData] = useState<AppData | null>(null);
   const [dbError, setDbError] = useState(false);
-
-  // PWA Install State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
 
   useEffect(() => {
-    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
-      setIsStandalone(true);
-    }
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) { setIsStandalone(true); }
+    const handleBeforeInstallPrompt = (e: any) => { e.preventDefault(); setDeferredPrompt(e); };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
@@ -161,13 +153,8 @@ function App() {
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setDeferredPrompt(null);
-        setIsStandalone(true);
-      }
-    } else {
-      setShowInstallModal(true);
-    }
+      if (outcome === 'accepted') { setDeferredPrompt(null); setIsStandalone(true); }
+    } else { setShowInstallModal(true); }
   };
 
   useEffect(() => {
@@ -225,9 +212,7 @@ function App() {
                 <button onClick={() => setShowInstallModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X className="w-5 h-5"/></button>
              </div>
              <div className="p-5 max-h-[75vh] overflow-y-auto space-y-4">
-                <div className="text-center text-sm font-bold text-gray-700 mb-4">
-                   အောက်ပါ အဆင့်များအတိုင်း လုပ်ဆောင်ပေးပါ
-                </div>
+                <div className="text-center text-sm font-bold text-gray-700 mb-4">အောက်ပါ အဆင့်များအတိုင်း လုပ်ဆောင်ပေးပါ</div>
                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
                    <p className="text-xs font-bold mb-2">၁။ Browser ၏ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပါ။</p>
                    <img src="IMG-4b261923cff4539f30342daac99711c1-V.jpg" alt="Step 1" className="w-full rounded border border-gray-200" onError={(e) => e.currentTarget.style.display = 'none'} />
@@ -259,8 +244,8 @@ function App() {
         <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
         
         {!isStandalone && appMode === 'customer' && (
-           <button onClick={handleDownloadApp} className="absolute top-4 right-4 sm:top-6 sm:right-6 text-[10px] sm:text-xs font-bold text-white flex items-center bg-[#D4AF37] px-2.5 py-1.5 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
-             <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1" /> Download App
+           <button onClick={handleDownloadApp} className="mt-4 text-[10px] sm:text-xs font-bold text-white flex items-center justify-center bg-[#D4AF37] px-4 py-2 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
+             <Download className="w-3.5 h-3.5 mr-1.5" /> Download App
            </button>
         )}
         {appMode === 'admin' && loggedInAdmin && (
@@ -270,8 +255,7 @@ function App() {
 
       <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-6">
         {appMode === 'admin' ? (
-          loggedInAdmin ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> 
-                        : <AdminLogin onLogin={(user) => { setLoggedInAdmin(user); sessionStorage.setItem('shangrila_admin', user); }} />
+          loggedInAdmin ? <AdminDashboard appData={appData} onSettingsUpdated={setAppData} /> : <AdminLogin onLogin={(user) => { setLoggedInAdmin(user); sessionStorage.setItem('shangrila_admin', user); }} />
         ) : appMode === 'staff' ? (
           <StaffApp appData={appData} />
         ) : <CustomerApp appData={appData} />}
@@ -295,9 +279,8 @@ function App() {
   );
 }
 
-// ==========================================
-// 1. CUSTOMER MAIN APP
-// ==========================================
+export default function Main() { return <ErrorBoundary><App /></ErrorBoundary>; }
+
 function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
      const view = new URLSearchParams(window.location.search).get('view');
@@ -529,9 +512,6 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
   );
 }
 
-// ==========================================
-// 1.2 STAFF APP (JIBBLE-STYLE + OUT PASS)
-// ==========================================
 function StaffApp({ appData }: { appData: AppData }) {
    const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
        const saved = localStorage.getItem('shangrila_staff_profile');
@@ -683,13 +663,10 @@ function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfi
             const arr: Booking[] = [];
             snap.forEach(doc => {
                 const b = { id: doc.id, ...doc.data() } as Booking;
-                if (b.therapist === loggedInStaff.name && b.date === todayStr && (b.status === 'completed' || b.status === 'cancelled')) {
-                    arr.push(b);
-                }
+                if (b.therapist === loggedInStaff.name && b.date === todayStr && (b.status === 'completed' || b.status === 'cancelled')) { arr.push(b); }
             });
             arr.sort((a,b) => (b.actualEndTimeMillis || 0) - (a.actualEndTimeMillis || 0));
-            setHistory(arr);
-            setLoading(false);
+            setHistory(arr); setLoading(false);
         });
         return () => unsub();
     }, [loggedInStaff.name, todayStr]);
@@ -738,13 +715,9 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
         const q = query(collection(db, 'outpasses'));
         const unsub = onSnapshot(q, snap => {
             const arr: OutPass[] = [];
-            snap.forEach(d => {
-                const data = d.data() as OutPass;
-                if (data.date === todayStr) arr.push({ id: d.id, ...data });
-            });
+            snap.forEach(d => { const data = d.data() as OutPass; if (data.date === todayStr) arr.push({ id: d.id, ...data }); });
             arr.sort((a,b) => b.outTimeMillis - a.outTimeMillis);
-            setOutpasses(arr);
-            setLoading(false);
+            setOutpasses(arr); setLoading(false);
         });
         return () => unsub();
     }, [todayStr]);
@@ -757,84 +730,42 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
         if (activePasses.length >= 2) return;
         if (myPasses.length >= 4) return;
         if (!reason.trim()) { setLocError("အကြောင်းပြချက် (Reason) ရေးပေးပါ။"); return; }
-        
-        if (!appData.branding.shopLat || !appData.branding.shopLng) {
-            setLocError("Admin Panel -> Settings တွင် ဆိုင်၏ Location အရင်သတ်မှတ်ပါ။");
-            return;
-        }
+        if (!appData.branding.shopLat || !appData.branding.shopLng) { setLocError("Admin Panel -> Settings တွင် ဆိုင်၏ Location အရင်သတ်မှတ်ပါ။"); return; }
 
-        setLocating(true);
-        setLocError('');
+        setLocating(true); setLocError('');
 
-        if (!navigator.geolocation) {
-            setLocError("ဖုန်းတွင် Location Service မရနိုင်ပါ။");
-            setLocating(false);
-            return;
-        }
+        if (!navigator.geolocation) { setLocError("ဖုန်းတွင် Location Service မရနိုင်ပါ။"); setLocating(false); return; }
 
         navigator.geolocation.getCurrentPosition(async (pos) => {
             const dist = calculateDistanceInMeters(pos.coords.latitude, pos.coords.longitude, appData.branding.shopLat!, appData.branding.shopLng!);
-            if (dist > 15) { 
-                setLocError(`ဆိုင်နှင့် အကွာအဝေး ${Math.round(dist)} မီတာ ရှိနေပါသည်။ (၁၀ မီတာအတွင်းသာ နှိပ်ခွင့်ရှိသည်)`);
-                setLocating(false);
-                return;
-            }
+            if (dist > 15) { setLocError(`ဆိုင်နှင့် အကွာအဝေး ${Math.round(dist)} မီတာ ရှိနေပါသည်။ (၁၀ မီတာအတွင်းသာ နှိပ်ခွင့်ရှိသည်)`); setLocating(false); return; }
 
             const now = Date.now();
-            await addDoc(collection(db, 'outpasses'), {
-                therapist: loggedInStaff.name,
-                date: todayStr,
-                outTimeMillis: now,
-                expectedInTimeMillis: now + 30 * 60 * 1000,
-                status: 'out',
-                reason: reason.trim()
-            });
-            setReason('');
-            setLocating(false);
-        }, (err) => {
-            setLocError("Location (GPS) ဖွင့်ပေးရန် လိုအပ်ပါသည်။");
-            setLocating(false);
-        }, { enableHighAccuracy: true });
+            await addDoc(collection(db, 'outpasses'), { therapist: loggedInStaff.name, date: todayStr, outTimeMillis: now, expectedInTimeMillis: now + 30 * 60 * 1000, status: 'out', reason: reason.trim() });
+            setReason(''); setLocating(false);
+        }, (err) => { setLocError("Location (GPS) ဖွင့်ပေးရန် လိုအပ်ပါသည်။"); setLocating(false); }, { enableHighAccuracy: true });
     };
 
     const handleReturn = async () => {
         if (!myActivePass || !myActivePass.id) return;
-        
-        if (!appData.branding.shopLat || !appData.branding.shopLng) {
-            setLocError("Admin Panel -> Settings တွင် ဆိုင်၏ Location အရင်သတ်မှတ်ပါ။");
-            return;
-        }
+        if (!appData.branding.shopLat || !appData.branding.shopLng) { setLocError("Admin Panel -> Settings တွင် ဆိုင်၏ Location အရင်သတ်မှတ်ပါ။"); return; }
 
-        setLocating(true);
-        setLocError('');
+        setLocating(true); setLocError('');
 
         navigator.geolocation.getCurrentPosition(async (pos) => {
             const dist = calculateDistanceInMeters(pos.coords.latitude, pos.coords.longitude, appData.branding.shopLat!, appData.branding.shopLng!);
-            if (dist > 15) {
-                setLocError(`ဆိုင်နှင့် အကွာအဝေး ${Math.round(dist)} မီတာ ရှိနေပါသည်။ (၁၀ မီတာအတွင်းသာ နှိပ်ခွင့်ရှိသည်)`);
-                setLocating(false);
-                return;
-            }
+            if (dist > 15) { setLocError(`ဆိုင်နှင့် အကွာအဝေး ${Math.round(dist)} မီတာ ရှိနေပါသည်။ (၁၀ မီတာအတွင်းသာ နှိပ်ခွင့်ရှိသည်)`); setLocating(false); return; }
 
             const now = Date.now();
             const overtimeMillis = Math.max(0, now - myActivePass.expectedInTimeMillis);
-            await updateDoc(doc(db, 'outpasses', myActivePass.id), {
-                status: 'returned',
-                inTimeMillis: now,
-                overtimeSeconds: Math.floor(overtimeMillis / 1000)
-            });
+            await updateDoc(doc(db, 'outpasses', myActivePass.id), { status: 'returned', inTimeMillis: now, overtimeSeconds: Math.floor(overtimeMillis / 1000) });
             setLocating(false);
-        }, (err) => {
-            setLocError("Location (GPS) ဖွင့်ပေးရန် လိုအပ်ပါသည်။");
-            setLocating(false);
-        }, { enableHighAccuracy: true });
+        }, (err) => { setLocError("Location (GPS) ဖွင့်ပေးရန် လိုအပ်ပါသည်။"); setLocating(false); }, { enableHighAccuracy: true });
     };
 
     if (loading) return <div className="text-center py-10 text-xs font-bold text-gray-400">Loading...</div>;
 
-    if (myActivePass) {
-        return <OutPassActiveDisplay pass={myActivePass} onReturn={handleReturn} locating={locating} locError={locError} />;
-    }
+    if (myActivePass) { return <OutPassActiveDisplay pass={myActivePass} onReturn={handleReturn} locating={locating} locError={locError} />; }
 
     const canGoOut = myPasses.length < 4 && activePasses.length < 2;
 
@@ -844,17 +775,8 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
             <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-2">Personal Out Pass</h3>
             <p className="text-xs text-gray-500 mb-6">တစ်ရက်လျှင် အများဆုံး ၄ ကြိမ် (၁ ကြိမ်လျှင် မိနစ် ၃၀) ထွက်ခွင့်ရှိပါသည်။<br/><span className="mt-2 inline-block bg-gray-100 px-3 py-1 rounded-full">ယနေ့ထွက်ပြီးသားအကြိမ်ရေ: <strong>{myPasses.length} / 4</strong></span></p>
             
-            {!canGoOut && myPasses.length >= 4 && (
-                <div className="bg-red-50 text-red-600 p-4 rounded-xl font-bold border border-red-100 text-[11px] sm:text-xs mb-6">
-                    ဒီနေ့အတွက် သင်၏ အပြင်ထွက်ခွင့် (၄ ကြိမ်) ပြည့်သွားပါပြီ။
-                </div>
-            )}
-
-            {!canGoOut && myPasses.length < 4 && activePasses.length >= 2 && (
-                <div className="bg-orange-50 text-orange-700 p-4 rounded-xl font-bold border border-orange-100 text-[11px] sm:text-xs mb-6 leading-relaxed">
-                    လက်ရှိတွင် ဝန်ထမ်း ၂ ယောက်<br/>({activePasses.map(p => p.therapist).join(', ')})<br/>အပြင်ထွက်နေပါသည်။ ၎င်းတို့ပြန်လာမှသာ ထွက်ခွင့်ရပါမည်။
-                </div>
-            )}
+            {!canGoOut && myPasses.length >= 4 && (<div className="bg-red-50 text-red-600 p-4 rounded-xl font-bold border border-red-100 text-[11px] sm:text-xs mb-6">ဒီနေ့အတွက် သင်၏ အပြင်ထွက်ခွင့် (၄ ကြိမ်) ပြည့်သွားပါပြီ။</div>)}
+            {!canGoOut && myPasses.length < 4 && activePasses.length >= 2 && (<div className="bg-orange-50 text-orange-700 p-4 rounded-xl font-bold border border-orange-100 text-[11px] sm:text-xs mb-6 leading-relaxed">လက်ရှိတွင် ဝန်ထမ်း ၂ ယောက်<br/>({activePasses.map(p => p.therapist).join(', ')})<br/>အပြင်ထွက်နေပါသည်။ ၎င်းတို့ပြန်လာမှသာ ထွက်ခွင့်ရပါမည်။</div>)}
 
             {canGoOut && (
                 <div className="mb-4 text-left max-w-xs mx-auto">
@@ -862,13 +784,8 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
                    <input type="text" placeholder="ဥပမာ - စျေးဝယ်၊ မုန့်ဝယ်" value={reason} onChange={e=>setReason(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-purple-400 text-xs" />
                 </div>
             )}
-            
             {locError && <div className="text-xs font-bold text-red-500 mb-4">{locError}</div>}
-
-            <button 
-                disabled={!canGoOut || locating} 
-                onClick={handleGoOut} 
-                className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600 text-white rounded-xl font-bold shadow-md w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition text-sm">
+            <button disabled={!canGoOut || locating} onClick={handleGoOut} className="px-6 sm:px-8 py-3 sm:py-4 bg-purple-600 text-white rounded-xl font-bold shadow-md w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-700 transition text-sm">
                 {locating ? 'Checking Location...' : 'Clock Out (Take 30 Mins Pass)'}
             </button>
 
@@ -920,17 +837,16 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
             {remainingTime !== null && remainingTime > 0 ? (
                 <div className="mb-8">
                     <div className="text-xs font-bold text-gray-400 uppercase mb-2">REMAINING TIME</div>
-                    <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatDuration(remainingTime)}</div>
+                    <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecondsMMSS(remainingTime)}</div>
                 </div>
             ) : (
                 <div className="mb-8">
                     <div className="text-xs font-bold text-red-500 uppercase mb-2 animate-bounce">LATE (OVERTIME)</div>
-                    <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatDuration(overtimeSecs)}</div>
+                    <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecondsMMSS(overtimeSecs)}</div>
                 </div>
             )}
             
             {locError && <div className="text-xs font-bold text-red-500 mb-4">{locError}</div>}
-
             <button disabled={locating} onClick={onReturn} className="w-full sm:w-auto sm:px-16 py-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-[#1a4a32] transition border border-[#1a4a32] mx-auto text-sm disabled:opacity-50"><CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> {locating ? 'Checking Location...' : 'Clock In (Return)'}</button>
         </div>
     );
@@ -970,13 +886,13 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
                    {remainingTime !== null && remainingTime > 0 ? (
                        <>
                            <div className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase">REMAINING TIME</div>
-                           <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatDuration(remainingTime)}</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecondsMMSS(remainingTime)}</div>
                            <div className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">Total Service: {session.service.split('(')[1]?.replace(')', '') || '-'}</div>
                        </>
                    ) : (
                        <div className="animate-pulse">
                            <div className="text-[10px] sm:text-xs font-bold text-red-500 uppercase">OVERTIME (အချိန်ပို)</div>
-                           <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatDuration(overtimeSecs)}</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecondsMMSS(overtimeSecs)}</div>
                            <div className="text-[10px] sm:text-xs font-bold text-red-400 mt-0.5">Duration passed expected time.</div>
                        </div>
                    )}
@@ -986,7 +902,7 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
            <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 border border-gray-100 text-[10px] sm:text-xs text-gray-500">
                <span>Price: <strong className="text-gray-800 text-xs sm:text-sm">{formatPrice(session.totalPrice)}</strong></span>
                <span className="hidden sm:inline">TxID: <strong className="text-gray-800 text-sm tracking-wider">{session.txId}</strong></span>
-               <span>Live: <strong className="text-gray-800 text-xs sm:text-sm">{formatDuration(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
+               <span>Live: <strong className="text-gray-800 text-xs sm:text-sm">{formatSecondsMMSS(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
            </div>
 
            <button onClick={onStop} className="w-full py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg flex items-center justify-center mx-auto hover:bg-red-600 transition text-sm"><Trash2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> Stop Service / End Now</button>
@@ -1290,20 +1206,14 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               if (b.status === 'in_progress' && b.startTimeMillis) {
                   otherStart = b.startTimeMillis;
                   otherEnd = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
-              } else if (b.time && b.time !== 'NOW' && !b.time.includes('to')) {
+              } else if (b.time && !b.time.includes('to')) {
                   const [oy, omo, od] = b.date.split('-');
                   const slotTime = new Date(Number(oy), Number(omo)-1, Number(od));
-                  
-                  if (b.time.includes('AM') || b.time.includes('PM')) {
-                      const [tPart, oampm] = b.time.split(' ');
-                      let [sh, sm] = tPart.split(':').map(Number);
-                      if (oampm === 'PM' && sh < 12) sh += 12;
-                      if (oampm === 'AM' && sh === 12) sh = 0;
-                      slotTime.setHours(sh, sm, 0, 0);
-                  } else {
-                      let [sh, sm] = b.time.split(':').map(Number);
-                      slotTime.setHours(sh, sm, 0, 0);
-                  }
+                  const [tPart, oampm] = b.time.split(' ');
+                  let [sh, sm] = tPart.split(':').map(Number);
+                  if (oampm === 'PM' && sh < 12) sh += 12;
+                  if (oampm === 'AM' && sh === 12) sh = 0;
+                  slotTime.setHours(sh, sm, 0, 0);
 
                   otherStart = slotTime.getTime();
                   let bDur = 60;
@@ -1637,7 +1547,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
               )}
               {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
               <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div>
-              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {staffClockIn && formData.date === todayStr && /^\d{2}:\d{2}$/.test(formData.time) ? `${(Number(formData.time.split(':')[0])%12)||12}:${formData.time.split(':')[1]} ${Number(formData.time.split(':')[0])>=12?'PM':'AM'}` : formData.time}</div>
+              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
             </div>
             
             <div className="mt-6 pt-4 border-t-2 border-gray-100">
@@ -1684,7 +1594,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             {isStaffMode ? (
               <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
                   <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
-                  <p className="text-xs font-semibold text-green-600 mt-2">"{staffClockIn && formData.date === todayStr ? 'Confirm and Start Now' : 'Confirm Booking'}" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။</p>
+                  <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm and Start Now" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
               </div>
             ) : (
               <>
@@ -1782,7 +1692,7 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
                         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mr-4 mt-1"><Sparkles className="w-5 h-5 text-gray-500"/></div>
                         <div>
                            <div className="font-bold text-gray-800 text-sm sm:text-base">{b.service.split('(')[0]}</div>
-                           <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> Slot: {b.time}</div>
+                           <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> {b.time}</div>
                         </div>
                      </div>
                      <div className="flex flex-col items-end">
@@ -2193,6 +2103,16 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
    };
 
+   const formatSecondsAdmin = (totalSeconds: number | undefined) => {
+       if (totalSeconds === undefined) return '00:00';
+       const isNegative = totalSeconds < 0;
+       const absSecs = Math.abs(totalSeconds);
+       const h = Math.floor(absSecs / 3600);
+       const m = Math.floor((absSecs % 3600) / 60);
+       const s = Math.floor(absSecs % 60);
+       return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+   };
+
    const handleDeleteBooking = async (id: string) => { if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
@@ -2224,7 +2144,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${(b.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatDuration(b.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${(b.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(b.overtimeSeconds)}</div>
                                      <button onClick={() => handleDeleteBooking(b.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
@@ -2249,7 +2169,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${(o.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatDuration(o.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${(o.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(o.overtimeSeconds)}</div>
                                      <button onClick={() => handleDeleteOutpass(o.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
@@ -2686,7 +2606,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         </div>
       </div>
 
-      {/* Manual Therapist Ranking Section */}
+      {/* Manual Therapist Ranking Section (DO NOT REMOVE) */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <div>
