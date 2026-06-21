@@ -1,4 +1,3 @@
-// src/shared.ts
 import { useState, useEffect } from 'react';
 
 // --- Theme & Constants ---
