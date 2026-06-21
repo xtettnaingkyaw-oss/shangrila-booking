@@ -27,8 +27,8 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
 
 // Loader for Suspense
 const InitialLoader = () => (
-  <div className="flex flex-col items-center justify-center py-20 text-[#123524] font-bold animate-pulse">
-    Loading Modules...
+  <div className="flex flex-col items-center justify-center min-h-screen text-[#123524] font-bold animate-pulse">
+    Loading...
   </div>
 );
 
@@ -89,7 +89,7 @@ function App() {
 
   const handleSettingsUpdated = useCallback((newData: AppData) => { setAppData(newData); }, []);
 
-  if (!appData) return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold">Loading The Shangri-La...</div>;
+  if (!appData) return <InitialLoader />;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
@@ -141,6 +141,7 @@ function App() {
   );
 }
 
+// ဒီနေရာမှာ လိုအပ်နေတဲ့ Main export ကို သေချာ ထည့်ပေးထားပါတယ်
 export default function Main() { 
   return <ErrorBoundary><App /></ErrorBoundary>; 
 }
