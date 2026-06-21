@@ -14,6 +14,11 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      return 'book';
   });
 
+  // Tab ပြောင်းတိုင်း အပေါ်ဆုံးကို Auto Scroll လုပ်ပေးမယ့် Effect
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeTab]);
+
   return (
     <div className="animate-fade-in pb-20">
       {/* Navigation Tabs */}
@@ -49,7 +54,9 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 // ---------------------------------------------------------
 function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData, onBookingSuccess: () => void }) {
   const [step, setStep] = useState(1);
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(appData.categories[0]?.id || null);
+  
+  // Category တွေကို အစကတည်းက ပိတ်ထားရန် 'null' ဟု ပြောင်းပေးထားပါသည်
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   
   // Form State
   const [selectedService, setSelectedService] = useState<MenuItem | null>(null);
@@ -63,6 +70,11 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
   const [customerPhone, setCustomerPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Step ပြောင်းတိုင်း အပေါ်ဆုံးကို Auto Scroll လုပ်ပေးမယ့် Effect
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step]);
 
   // Available times logic
   const availableTimes = useMemo(() => {
@@ -141,7 +153,7 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
         <div className="animate-fade-in">
           <div className="text-center mb-8">
              <h2 className="text-xl font-bold text-[#123524]">Choose Your Service</h2>
-             <p className="text-[11px] font-bold text-[#D4AF37] mt-1">(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p>
+             <p className="text-[11px] font-bold text-[#D4AF37] mt-1">(မိမိရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p>
           </div>
           
           <div className="space-y-4">
@@ -185,7 +197,7 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
         <div className="animate-fade-in">
           <div className="text-center mb-8">
              <h2 className="text-xl font-bold text-[#123524]">Select Your Therapist</h2>
-             <p className="text-[11px] font-bold text-[#D4AF37] mt-1">(ဘိုကင်ရယူလိုသော သင်နှစ်သက်ရာ ဝန်ထမ်းကို ရွေးချယ်ပါ)</p>
+             <p className="text-[11px] font-bold text-[#D4AF37] mt-1">(မိမိနှစ်သက်ရာ ဝန်ထမ်းကို ရွေးချယ်ပါ)</p>
           </div>
 
           <div onClick={() => setSelectedTherapist('Any Available Therapist')} className={`mb-6 p-4 rounded-xl cursor-pointer border-2 transition-all flex items-center justify-center gap-3 ${selectedTherapist === 'Any Available Therapist' ? 'border-[#D4AF37] bg-yellow-50/30 shadow-md' : 'border-gray-200 hover:border-gray-300'}`}>
@@ -258,7 +270,7 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
         <div className="animate-fade-in">
           <div className="text-center mb-8">
              <h2 className="text-xl font-bold text-[#123524]">Confirm Booking</h2>
-             <p className="text-[11px] font-bold text-[#D4AF37] mt-1">(သင်ရွေးချယ်ခဲ့သော ဘိုကင်အချက်အလက်များကို သေချာစစ်ဆေး၍ အတည်ပြုပါ)</p>
+             <p className="text-[11px] font-bold text-[#D4AF37] mt-1">(အချက်အလက်များကို စစ်ဆေး၍ အတည်ပြုပါ)</p>
           </div>
 
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-6 relative overflow-hidden">
