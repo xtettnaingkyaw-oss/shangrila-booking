@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, X, ImageIcon, MapPin, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
 
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 
@@ -44,6 +44,19 @@ const formatSecondsMMSS = (totalSeconds: number | undefined | null) => {
     const m = Math.floor(absSecs / 60);
     const s = Math.floor(absSecs % 60);
     return `${isNegative ? '-' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
+const formatTimeDisplay = (totalSeconds: number | undefined | null) => {
+    if (totalSeconds === undefined || totalSeconds === null) return '00:00';
+    const isNegative = totalSeconds < 0;
+    const absSecs = Math.abs(totalSeconds);
+    const h = Math.floor(absSecs / 3600);
+    const m = Math.floor((absSecs % 3600) / 60);
+    const s = Math.floor(absSecs % 60);
+    const formatted = h > 0 
+       ? `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+       : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${isNegative ? '-' : ''}${formatted}`;
 };
 
 const compressImage = async (file: File, width: number, height: number): Promise<string> => {
@@ -145,15 +158,8 @@ function App() {
   const [showInstallModal, setShowInstallModal] = useState(false);
 
   useEffect(() => {
-    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
-      setIsStandalone(true);
-    }
-
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) { setIsStandalone(true); }
+    const handleBeforeInstallPrompt = (e: any) => { e.preventDefault(); setDeferredPrompt(e); };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
@@ -162,56 +168,24 @@ function App() {
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setDeferredPrompt(null);
-        setIsStandalone(true);
-      }
-    } else {
-      setShowInstallModal(true);
-    }
+      if (outcome === 'accepted') { setDeferredPrompt(null); setIsStandalone(true); }
+    } else { setShowInstallModal(true); }
   };
 
   useEffect(() => {
     document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
-    
     const updateFavicon = (url: string) => {
       const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='manifest']"); 
       existingIcons.forEach(icon => document.head.removeChild(icon));
-      
-      const newIcon = document.createElement('link'); 
-      newIcon.rel = 'shortcut icon'; 
-      newIcon.type = 'image/png'; 
-      newIcon.href = url; 
-      document.head.appendChild(newIcon);
-
-      const appleIcon = document.createElement('link');
-      appleIcon.rel = 'apple-touch-icon';
-      appleIcon.href = url;
-      document.head.appendChild(appleIcon);
-
+      const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
+      const appleIcon = document.createElement('link'); appleIcon.rel = 'apple-touch-icon'; appleIcon.href = url; document.head.appendChild(appleIcon);
       const appName = appData?.branding?.name || "The Shangri-La";
-      const manifest = {
-        name: appName,
-        short_name: appName,
-        start_url: "/",
-        display: "standalone",
-        background_color: "#ffffff",
-        theme_color: THEME.primary,
-        icons: [
-          { src: url, sizes: "192x192", type: "image/png" },
-          { src: url, sizes: "512x512", type: "image/png" }
-        ]
-      };
+      const manifest = { name: appName, short_name: appName, start_url: "/", display: "standalone", background_color: "#ffffff", theme_color: THEME.primary, icons: [{ src: url, sizes: "192x192", type: "image/png" }, { src: url, sizes: "512x512", type: "image/png" }] };
       const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
       const manifestUrl = URL.createObjectURL(manifestBlob);
-      const manifestLink = document.createElement('link');
-      manifestLink.rel = 'manifest';
-      manifestLink.href = manifestUrl;
-      document.head.appendChild(manifestLink);
+      const manifestLink = document.createElement('link'); manifestLink.rel = 'manifest'; manifestLink.href = manifestUrl; document.head.appendChild(manifestLink);
     };
-
-    if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); }
-    else { updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg"); }
+    if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); } else { updateFavicon("https://upload.wikimedia.org/wikipedia/commons/4/41/Shangri-La_Hotels_and_Resorts_logo.svg"); }
   }, [appData?.branding?.logoUrl, appData?.branding?.name]);
 
   useEffect(() => {
@@ -221,23 +195,15 @@ function App() {
 
     const initData = async () => {
       try {
-        const docRef = doc(db, 'settings', 'appData');
-        const snap = await getDoc(docRef);
-        let loadedData: Partial<AppData> = {};
-        if (snap.exists()) loadedData = snap.data() || {};
-
+        const docRef = doc(db, 'settings', 'appData'); const snap = await getDoc(docRef);
+        let loadedData: Partial<AppData> = {}; if (snap.exists()) loadedData = snap.data() || {};
         const finalCategories = Array.isArray(loadedData.categories) ? loadedData.categories : DEFAULT_CATEGORIES;
         const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
         const finalPaymentMethods = Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS;
         const finalPromotion = loadedData.promotion || DEFAULT_PROMOTION;
-
-        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc'));
-        const tSnap = await getDocs(tQuery);
+        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); const tSnap = await getDocs(tQuery);
         let loadedTherapists: TherapistProfile[] = [];
-
-        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); }
-        else { loadedTherapists = DEFAULT_THERAPISTS; }
-
+        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); } else { loadedTherapists = DEFAULT_THERAPISTS; }
         setAppData({ categories: finalCategories, therapists: loadedTherapists, branding: finalBranding, paymentMethods: finalPaymentMethods, promotion: finalPromotion });
       } catch (err) {
         console.error(err); setDbError(true);
@@ -263,17 +229,20 @@ function App() {
              <div className="p-5 max-h-[75vh] overflow-y-auto space-y-4">
                 <div className="text-center text-sm font-bold text-gray-700 mb-4">အောက်ပါ အဆင့်များအတိုင်း လုပ်ဆောင်ပေးပါ</div>
                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
-                   <p className="text-xs font-bold mb-2">၁။ Browser ၏ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပါ။</p>
-                   <img src="IMG-4b261923cff4539f30342daac99711c1-V.jpg" alt="Step 1" className="w-full rounded border border-gray-200" onError={(e) => e.currentTarget.style.display = 'none'} />
-                   <img src="IMG-8abdfebb76fdc5851c1f4d2531b29e34-V.jpg" alt="Step 1b" className="w-full rounded border border-gray-200 mt-2" onError={(e) => e.currentTarget.style.display = 'none'} />
+                   <p className="text-xs font-bold mb-2">၁။ Google Chrome သို့မဟုတ် Safari ဖြင့်ဖွင့်ပါ။</p>
+                   <img src="IMG-4b261923cff4539f30342daac99711c1-V.jpg" alt="Step 1" className="w-full rounded border border-gray-200" onError={(e) => {(e.target as HTMLImageElement).style.display = 'none';}} />
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
-                   <p className="text-xs font-bold mb-2">၂။ "Add to Home Screen" ကို ရွေးချယ်ပါ။</p>
-                   <img src="IMG-da2b6f5c3680c5b5720d615c39ffeceb-V.jpg" alt="Step 2" className="w-full rounded border border-gray-200" onError={(e) => e.currentTarget.style.display = 'none'} />
+                   <p className="text-xs font-bold mb-2">၂။ Browser ၏ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပါ။</p>
+                   <img src="IMG-8abdfebb76fdc5851c1f4d2531b29e34-V.jpg" alt="Step 2" className="w-full rounded border border-gray-200" onError={(e) => {(e.target as HTMLImageElement).style.display = 'none';}} />
                 </div>
                 <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
-                   <p className="text-xs font-bold mb-2">၃။ "Add" ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။</p>
-                   <img src="IMG-1d0fc2218a07a3dbd00e8f759472d424-V.jpg" alt="Step 3" className="w-full rounded border border-gray-200" onError={(e) => e.currentTarget.style.display = 'none'} />
+                   <p className="text-xs font-bold mb-2">၃။ &quot;Add to Home Screen&quot; ကို ရွေးချယ်ပါ။</p>
+                   <img src="IMG-da2b6f5c3680c5b5720d615c39ffeceb-V.jpg" alt="Step 3" className="w-full rounded border border-gray-200" onError={(e) => {(e.target as HTMLImageElement).style.display = 'none';}} />
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
+                   <p className="text-xs font-bold mb-2">၄။ &quot;Add&quot; ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။</p>
+                   <img src="IMG-1d0fc2218a07a3dbd00e8f759472d424-V.jpg" alt="Step 4" className="w-full rounded border border-gray-200" onError={(e) => {(e.target as HTMLImageElement).style.display = 'none';}} />
                 </div>
                 <button onClick={() => setShowInstallModal(false)} className="w-full py-3 bg-[#D4AF37] text-white font-bold rounded-lg mt-4 hover:bg-yellow-600 transition">နားလည်ပါပြီ</button>
              </div>
@@ -290,10 +259,10 @@ function App() {
           )}
           <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'}</h1>
         </div>
-        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
+        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men&apos;s Retreat (Beyond Relaxation)</p>
         
         {!isStandalone && appMode === 'customer' && (
-           <button onClick={handleDownloadApp} className="absolute top-4 right-4 sm:top-6 sm:right-6 text-[10px] sm:text-xs font-bold text-white flex items-center justify-center bg-[#D4AF37] px-4 py-2 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
+           <button onClick={handleDownloadApp} className="mt-4 text-[10px] sm:text-xs font-bold text-white flex items-center justify-center bg-[#D4AF37] px-4 py-2 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
              <Download className="w-3.5 h-3.5 mr-1.5" /> Download App
            </button>
         )}
@@ -313,7 +282,7 @@ function App() {
 
       {appMode !== 'admin' && (
         <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500 px-4">
-          <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'} Men's Retreat</h3>
+          <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'} Men&apos;s Retreat</h3>
           <div className="mb-2 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto">
             <MapPin className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" />
             <span className="text-left sm:text-center leading-relaxed">{appData.branding.address}</span>
@@ -514,7 +483,7 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
              return (
                 <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
                    <div className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
-                       {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
+                       {t.images && t.images.length > 0 ? <img src={t.images[0]} alt="Therapist" className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
                    </div>
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
@@ -543,7 +512,7 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
                             {idx + 1}
                          </div>
                          <div className="w-full aspect-[3/4] bg-gray-100 relative">
-                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
+                             {t.images && t.images.length > 0 ? <img src={t.images[0]} alt="Therapist" className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
                          </div>
                          <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
                              <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
@@ -655,7 +624,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            <div className="flex justify-between items-center mb-6 pb-6 border-b border-gray-100">
                <div className="flex items-center">
                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden mr-3 sm:mr-4 border-2 border-[#123524] shadow-sm flex-shrink-0">
-                       {loggedInStaff.images && loggedInStaff.images[0] ? <img src={loggedInStaff.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 sm:p-3 text-gray-400 bg-gray-100" />}
+                       {loggedInStaff.images && loggedInStaff.images[0] ? <img src={loggedInStaff.images[0]} alt="Therapist" className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 sm:p-3 text-gray-400 bg-gray-100" />}
                    </div>
                    <div>
                        <h2 className="text-xl sm:text-2xl font-bold text-[#123524]">{loggedInStaff.name}</h2>
@@ -847,8 +816,8 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
                         {myPasses.filter(p => p.status === 'returned').map(p => (
                             <div key={p.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex justify-between items-center text-xs">
                                 <span className="text-gray-600 font-mono font-semibold">{new Date(p.outTimeMillis).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {p.inTimeMillis ? new Date(p.inTimeMillis).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
-                                {p.overtimeSeconds && p.overtimeSeconds > 0 ? (
-                                    <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded">Late +{Math.floor(p.overtimeSeconds/60)} mins</span>
+                                {(p.overtimeSeconds || 0) > 0 ? (
+                                    <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded">Late +{Math.floor(p.overtimeSeconds!/60)} mins</span>
                                 ) : (
                                     <span className="text-green-600 font-bold bg-green-50 px-2 py-1 rounded">On Time</span>
                                 )}
@@ -937,13 +906,13 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
                    {remainingTime !== null && remainingTime > 0 ? (
                        <>
                            <div className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase">REMAINING TIME</div>
-                           <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecondsMMSS(remainingTime)}</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatTimeDisplay(remainingTime)}</div>
                            <div className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">Total Service: {session.service.split('(')[1]?.replace(')', '') || '-'}</div>
                        </>
                    ) : (
                        <div className="animate-pulse">
                            <div className="text-[10px] sm:text-xs font-bold text-red-500 uppercase">OVERTIME (အချိန်ပို)</div>
-                           <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecondsMMSS(overtimeSecs)}</div>
+                           <div className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatTimeDisplay(overtimeSecs)}</div>
                            <div className="text-[10px] sm:text-xs font-bold text-red-400 mt-0.5">Duration passed expected time.</div>
                        </div>
                    )}
@@ -953,14 +922,15 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
            <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 border border-gray-100 text-[10px] sm:text-xs text-gray-500">
                <span>Price: <strong className="text-gray-800 text-xs sm:text-sm">{formatPrice(session.totalPrice)}</strong></span>
                <span className="hidden sm:inline">TxID: <strong className="text-gray-800 text-sm tracking-wider">{session.txId}</strong></span>
-               <span>Live: <strong className="text-gray-800 text-xs sm:text-sm">{formatSecondsMMSS(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
+               <span>Live: <strong className="text-gray-800 text-xs sm:text-sm">{formatTimeDisplay(Math.floor((Date.now() - (session.startTimeMillis || Date.now())) / 1000))}</strong></span>
            </div>
 
            <button onClick={onStop} className="w-full py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg flex items-center justify-center mx-auto hover:bg-red-600 transition text-sm"><Trash2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> Stop Service / End Now</button>
        </div>
    );
 }
-
+အပိုင်း (၂) - Admin နှင့် Customer Booking Wizard ပိုင်း
+TypeScript
 // ==========================================
 // 1.3 CUSTOMER BOOKING WIZARD (COMMON COMPONENT)
 // ==========================================
@@ -1468,7 +1438,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
       )}
 
       <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p></div>
-      <div onClick={() => setFormData({ ...formData, therapist: null })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
+      <div onClick={() => setFormData({ ...formData, therapist: null })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We&apos;ll assign the best available therapist for you</div></div></div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         {appData.therapists.map((therapist) => {
@@ -1651,7 +1621,7 @@ function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFir
             {isStaffMode ? (
               <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
                   <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
-                  <p className="text-xs font-semibold text-green-600 mt-2">"{staffClockIn && formData.date === todayStr ? 'Confirm and Start Now' : 'Confirm Booking'}" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။</p>
+                  <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm and Start Now" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
               </div>
             ) : (
               <>
@@ -1749,7 +1719,7 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
                         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mr-4 mt-1"><Sparkles className="w-5 h-5 text-gray-500"/></div>
                         <div>
                            <div className="font-bold text-gray-800 text-sm sm:text-base">{b.service.split('(')[0]}</div>
-                           <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> {b.time}</div>
+                           <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> Slot: {b.time}</div>
                         </div>
                      </div>
                      <div className="flex flex-col items-end">
@@ -1927,7 +1897,7 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string
   );
 }
 
-const XCircleIcon = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+const XCircleIcon = ({className}: {className?: string}) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 
 function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
   if (status === 'in_progress') return <span className="text-orange-600 border border-orange-200 bg-orange-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit animate-pulse"><Droplets className="w-3 h-3 mr-1"/> In Progress</span>;
@@ -1942,7 +1912,10 @@ function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: 
   );
   return <span className="text-yellow-600 border border-yellow-200 bg-yellow-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Pending</span>;
 }
+အပိုင်း (၂) - Admin နှင့် Customer Booking Wizard ပိုင်း
+(အောက်ပါ ကုဒ်များကို အပေါ်က ကုဒ်တွေရဲ့အဆုံးမှာ ဆက်ပြီး Paste ချပေးပါ)
 
+TypeScript
 // ==========================================
 // 2. ADMIN AUTHENTICATION
 // ==========================================
@@ -2154,22 +2127,6 @@ function AdminStaffHistoryList({ appData, bookings }: { appData: AppData, bookin
        return () => unsub();
    }, []);
 
-   const formatMillis = (millis: number | undefined) => {
-       if (!millis) return '-';
-       const date = new Date(millis);
-       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-   };
-
-   const formatSecondsAdmin = (totalSeconds: number | undefined | null) => {
-       if (totalSeconds === undefined || totalSeconds === null) return '00:00';
-       const isNegative = totalSeconds < 0;
-       const absSecs = Math.abs(totalSeconds);
-       const h = Math.floor(absSecs / 3600);
-       const m = Math.floor((absSecs % 3600) / 60);
-       const s = Math.floor(absSecs % 60);
-       return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-   };
-
    const handleDeleteBooking = async (id: string) => { if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
@@ -2257,7 +2214,7 @@ function AdminStaffHistoryList({ appData, bookings }: { appData: AppData, bookin
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${(b.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(b.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${(b.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatTimeDisplay(b.overtimeSeconds)}</div>
                                      <button onClick={() => handleDeleteBooking(b.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
@@ -2284,7 +2241,7 @@ function AdminStaffHistoryList({ appData, bookings }: { appData: AppData, bookin
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${(o.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(o.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${(o.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatTimeDisplay(o.overtimeSeconds)}</div>
                                      <button onClick={() => handleDeleteOutpass(o.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
@@ -2721,7 +2678,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         </div>
       </div>
 
-      {/* Manual Therapist Ranking Section (DO NOT REMOVE) */}
+      {/* Manual Therapist Ranking Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <div>
