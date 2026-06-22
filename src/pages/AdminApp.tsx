@@ -8,7 +8,6 @@ import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, Shi
 // Shared ဖိုင်မှ လိုအပ်သည်များကို လှမ်းယူခြင်း
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
 
-// Shared တွင်မရှိပါက Error မတက်စေရန် Local တွင် Type ကြေညာထားပါသည်
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -135,9 +134,6 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated }: { appData: AppData,
   );
 });
 
-// ==========================================
-// ADMIN SUB-COMPONENTS
-// ==========================================
 function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
   const handleStatusChange = async (id: string, newStatus: string) => {
     let reason = '';
@@ -148,11 +144,8 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
     } else {
       if (!window.confirm('Are you sure you want to change this status?')) return;
     }
-    try {
-      await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason });
-    } catch (e) { alert("Error Update"); }
+    try { await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason }); } catch (e) { alert("Error Update"); }
   };
-
   const handleDelete = async (id: string) => { if (window.confirm('Are you sure you want to delete this booking?')) { await deleteDoc(doc(db, 'bookings', id)); } };
 
   return (
@@ -165,35 +158,17 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
             {bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No pending bookings.</td></tr>)}
             {bookings.map((b) => (
               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                <td className="p-3">
-                  <div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div>
-                  <div className="text-xs text-gray-500">{b.phone || '-'}</div>
-                </td>
-                <td className="p-3">
-                  <div className="font-bold text-sm text-gray-800">{b.service || '-'}</div>
-                  <div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>
-                  {b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}
-                </td>
-                <td className="p-3 text-sm text-gray-700">
-                  <div className="font-semibold">{b.date || '-'}</div>
-                  <div className="text-gray-500 text-xs mt-1">{b.time || '-'}</div>
-                </td>
-                <td className="p-3">
-                  <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div>
-                  <div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div>
-                </td>
+                <td className="p-3"><div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div></td>
+                <td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>{b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}</td>
+                <td className="p-3 text-sm text-gray-700"><div className="font-semibold">{b.date || '-'}</div><div className="text-gray-500 text-xs mt-1">{b.time || '-'}</div></td>
+                <td className="p-3"><div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div></td>
                 <td className="p-3">
                   <select value={b.status} onChange={(e) => handleStatusChange(b.id!, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
-                    <option value="pending">Pending</option>
-                    <option value="payment_checking">Confirming</option>
-                    <option value="approved">Approve</option>
-                    <option value="cancelled">Cancel</option>
+                    <option value="pending">Pending</option><option value="payment_checking">Confirming</option><option value="approved">Approve</option><option value="cancelled">Cancel</option>
                   </select>
                   {b.status === 'cancelled' && b.cancelReason && <div className="text-[9px] text-red-500 mt-1 max-w-[120px] truncate" title={b.cancelReason}>Reason: {b.cancelReason}</div>}
                 </td>
-                <td className="p-3 text-right">
-                  <button onClick={() => handleDelete(b.id!)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"><Trash2 className="w-4 h-4" /></button>
-                </td>
+                <td className="p-3 text-right"><button onClick={() => handleDelete(b.id!)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"><Trash2 className="w-4 h-4" /></button></td>
               </tr>
             ))}
           </tbody>
@@ -614,11 +589,11 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(null);
   };
 
-  // UPLOAD SCREENSHOT FOR INSTALL STEP (High compression to avoid 1MB limit issues)
+  // UPLOAD SCREENSHOT FOR INSTALL STEP (600x1200 Resolution for clarity, optimized for size)
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`);
     try { 
-       const base64 = await compressImage(file, 300, 600); 
+       const base64 = await compressImage(file, 600, 1200); 
        const updated = [...localInstallSteps]; 
        updated[idx].imageUrl = base64; 
        setLocalInstallSteps(updated); 
