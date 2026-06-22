@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
+// ==========================================
+// LOCAL HELPERS & CONSTANTS
+// ==========================================
 const ICON_MAP: Record<string, any> = {
   massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
 };
@@ -94,9 +97,11 @@ export function BookingCard({ b }: { b: Booking }) {
    );
 }
 
+// ==========================================
+// MAIN CUSTOMER APP WRAPPER
+// ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
-     // အမှားပြင်ထားသော နေရာ: new URLSearchParams
      const view = new URLSearchParams(window.location.search).get('view');
      if (view === 'therapists') return 'therapists';
      if (view === 'dashboard') return 'dashboard';
@@ -108,6 +113,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
+  // Auto Scroll
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
   useEffect(() => {
@@ -175,6 +181,9 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   );
 }
 
+// ==========================================
+// CUSTOMER BOOKING WIZARD
+// ==========================================
 export function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
@@ -649,7 +658,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
     <div className="animate-fade-in relative px-2 sm:px-0">
       {viewGallery && (
         <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in">
-          <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
+          <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><XCircleIcon className="w-8 h-8" /></button>
           <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden py-10 px-0 sm:px-10">
             <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="w-full h-full object-contain drop-shadow-2xl" />
             {viewGallery.images.length > 1 && (
@@ -892,7 +901,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
 // ==========================================
 // COMPONENT: TherapistsGallery
 // ==========================================
-function TherapistsGallery({ appData }: { appData: AppData }) {
+export function TherapistsGallery({ appData }: { appData: AppData }) {
   return (
     <div className="max-w-4xl mx-auto px-4 pb-20 animate-fade-in">
       <div className="text-center mb-10">
@@ -920,6 +929,15 @@ function TherapistsGallery({ appData }: { appData: AppData }) {
                  {t.images.length > 1 && <span className="text-[9px] text-[#D4AF37] font-bold tracking-widest uppercase mt-1 block drop-shadow-sm flex items-center justify-center"><ImageIcon className="w-2.5 h-2.5 mr-1"/>{t.images.length} Photos</span>}
               </div>
             </div>
+            {t.images.length > 1 && (
+              <div className="p-3 bg-white grid grid-cols-4 gap-2">
+                {t.images.slice(1, 5).map((img, idx) => (
+                  <div key={idx} className="aspect-square rounded-lg overflow-hidden border border-gray-100 cursor-pointer hover:border-[#D4AF37] transition">
+                    <img src={img} alt={`${t.name} ${idx+2}`} className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -928,9 +946,9 @@ function TherapistsGallery({ appData }: { appData: AppData }) {
 }
 
 // ==========================================
-// COMPONENT: CustomerDashboard & CustomerHistory
+// COMPONENT: CustomerDashboard 
 // ==========================================
-function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
+export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const todayStr = getLocalTodayStr();
 
@@ -1004,6 +1022,17 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
       return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
   };
 
+  const bookingCounts: Record<string, number> = {};
+  bookings.forEach(b => {
+     if (b.status !== 'cancelled') { bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1; }
+  });
+
+  const top5Therapists = [...appData.therapists].sort((a, b) => {
+     const countA = bookingCounts[a.name] || 0; const countB = bookingCounts[b.name] || 0;
+     if (countA !== countB) return countB - countA; 
+     return (a.order || 0) - (b.order || 0);
+  }).slice(0, 5);
+
   return (
     <div className="animate-fade-in px-2 sm:px-0">
        <div className="text-center mb-8">
@@ -1035,11 +1064,41 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
              )
           })}
        </div>
+
+       {top5Therapists.length > 0 && (
+         <div className="mt-14 pt-8 border-t-2 border-gray-100">
+             <div className="text-center mb-6">
+                 <h2 className="text-2xl font-bold flex items-center justify-center" style={{ color: THEME.primary }}><Crown className="w-6 h-6 mr-2 text-yellow-500"/> Our Top 5 Therapists</h2>
+                 <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ)</p>
+             </div>
+             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                 {top5Therapists.map((t, idx) => (
+                     <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
+                         <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">
+                            {idx + 1}
+                         </div>
+                         <div className="w-full aspect-[3/4] bg-gray-100 relative">
+                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
+                         </div>
+                         <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
+                             <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
+                             <button onClick={() => onBookTherapist(t)} className="w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] flex justify-center items-center border border-[#1a4a32]">
+                                 Book Now <ChevronRight className="w-3 h-3 ml-0.5"/>
+                             </button>
+                         </div>
+                     </div>
+                 ))}
+             </div>
+         </div>
+       )}
     </div>
   );
 }
 
-function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
+// ==========================================
+// COMPONENT: CustomerHistory
+// ==========================================
+export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
@@ -1112,7 +1171,10 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
   );
 }
 
-function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
+// ==========================================
+// COMPONENT: CustomerProfile
+// ==========================================
+export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
@@ -1181,7 +1243,10 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
   );
 }
 
-function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string) => void, title: string }) {
+// ==========================================
+// COMPONENT: AuthRequest
+// ==========================================
+export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string) => void, title: string }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [step, setStep] = useState(1);
