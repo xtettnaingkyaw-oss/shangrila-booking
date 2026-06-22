@@ -2,11 +2,57 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound } from 'lucide-react';
-import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice, getLocalTodayStr, ALL_TIME_SLOTS, useCountdown, getSlotsCoveredByInterval } from '../shared';
+import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 const ICON_MAP: Record<string, any> = {
   massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
 };
+
+const ALL_TIME_SLOTS = ["6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM"];
+
+const getLocalTodayStr = () => {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
+function useCountdown(initialMinutes: number, onExpire: () => void) {
+  const [timeLeft, setTimeLeft] = useState(initialMinutes * 60);
+  useEffect(() => {
+    if (timeLeft <= 0) { onExpire(); return; }
+    const intervalId = setInterval(() => { setTimeLeft(t => t - 1); }, 1000);
+    return () => clearInterval(intervalId);
+  }, [timeLeft, onExpire]);
+  const minutes = Math.floor(timeLeft / 60); const seconds = timeLeft % 60;
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: number, dateStr: string): Set<string> {
+    const blocked = new Set<string>();
+    const [y, m, d] = dateStr.split('-');
+    const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
+    const startOfDay = dateObj.setHours(0, 0, 0, 0);
+    const endOfDay = dateObj.setHours(23, 59, 59, 999);
+
+    if (endTimeMillis <= startOfDay || startTimeMillis >= endOfDay) return blocked;
+
+    ALL_TIME_SLOTS.forEach(slot => {
+        if (slot.includes("to")) return; 
+        const slotTime = new Date(Number(y), Number(m) - 1, Number(d));
+        const [time, ampm] = slot.split(' ');
+        let [sh, sm] = time.split(':').map(Number);
+        if (ampm === 'PM' && sh < 12) sh += 12;
+        if (ampm === 'AM' && sh === 12) sh = 0;
+        slotTime.setHours(sh, sm, 0, 0);
+        
+        const slotTimeMillis = slotTime.getTime();
+        const nextSlotTimeMillis = slotTimeMillis + (30 * 60 * 1000); 
+
+        if ((startTimeMillis < nextSlotTimeMillis) && (endTimeMillis > slotTimeMillis)) {
+            blocked.add(slot);
+        }
+    });
+    return blocked;
+}
 
 const XCircleIcon = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 
@@ -50,7 +96,8 @@ export function BookingCard({ b }: { b: Booking }) {
 
 export default function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
-     const view = newSearchParams(window.location.search).get('view');
+     // အမှားပြင်ထားသော နေရာ: new URLSearchParams
+     const view = new URLSearchParams(window.location.search).get('view');
      if (view === 'therapists') return 'therapists';
      if (view === 'dashboard') return 'dashboard';
      return 'book';
@@ -61,7 +108,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
-  // Tab ပြောင်းတိုင်း အပေါ်ဆုံးသို့ Auto Scroll လုပ်ရန်
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
   useEffect(() => {
@@ -129,9 +175,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   );
 }
 
-// ==========================================
-// CUSTOMER BOOKING WIZARD (FULL LOGIC)
-// ==========================================
 export function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
@@ -139,7 +182,6 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
       if (staffClockIn) return isTherapistFirst ? 2 : 1;
       return initialTherapist ? 2 : 1;
   });
-  
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   const [loading, setLoading] = useState(false);
@@ -555,7 +597,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
   );
 
   const renderServiceSelection = (currentStep: number) => (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in px-2 sm:px-0">
       {promoActive && (
           <div className="bg-green-50 border border-green-200 p-4 rounded-xl mb-6 shadow-sm flex items-start animate-fade-in">
              <Sparkles className="w-6 h-6 text-green-600 mr-3 flex-shrink-0 mt-0.5" />
@@ -604,7 +646,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
   );
 
   const renderTherapistSelection = (currentStep: number) => (
-    <div className="animate-fade-in relative">
+    <div className="animate-fade-in relative px-2 sm:px-0">
       {viewGallery && (
         <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in">
           <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
@@ -612,8 +654,8 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
             <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="w-full h-full object-contain drop-shadow-2xl" />
             {viewGallery.images.length > 1 && (
               <>
-                <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 sm:left-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" /></button>
-                <button onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 sm:right-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" /></button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 sm:left-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" /></button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 sm:right-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" /></button>
               </>
             )}
           </div>
@@ -648,7 +690,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
                   <>
                     <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
                     {therapist.images.length > 1 && (
-                      <button onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/90 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1 px-1 rounded flex flex-col items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30 leading-tight">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/90 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1 px-1 rounded flex flex-col items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30 leading-tight">
                         <div className="flex items-center"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</div>
                         <div className="text-[8px] mt-0.5 text-[#D4AF37]/80">(နောက်ထပ်ပုံများကြည့်ရန်)</div>
                       </button>
@@ -660,15 +702,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
               <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
               
               {isTherapistFirst && !isFull && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFormData({ ...formData, therapist: therapist });
-                    handleNextStep(currentStep + 1);
-                  }}
-                  className="mt-3 w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-xs font-bold flex items-center justify-center hover:opacity-90 transition shadow-sm border border-[#1a4a32]"
-                >
+                <button type="button" onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist }); handleNextStep(currentStep + 1); }} className="mt-3 w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-xs font-bold flex items-center justify-center hover:opacity-90 transition shadow-sm border border-[#1a4a32]">
                   ဘိုကင်ယူမည် <ChevronRight className="w-3 h-3 ml-1" />
                 </button>
               )}
@@ -694,7 +728,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
 
       {/* STEP 3: DATE & TIME */}
       {step === 3 && (
-        <div className="animate-fade-in">
+        <div className="animate-fade-in px-2 sm:px-0">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
             <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p>
@@ -730,13 +764,13 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
 
             {availableTimeSlots.length === 0 && formData.date && !(staffClockIn && formData.date === todayStr) && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
           </div>
-          <div className="mt-8 flex justify-between"><button onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button disabled={!formData.date || !formData.time.trim()} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
+          <div className="mt-8 flex justify-between"><button type="button" onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button type="button" disabled={!formData.date || !formData.time.trim()} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
         </div>
       )}
 
       {/* STEP 4: CONFIRM */}
       {step === 4 && (
-        <form onSubmit={handleSubmit} className="animate-fade-in pb-10">
+        <form onSubmit={handleSubmit} className="animate-fade-in pb-10 px-2 sm:px-0">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး အတည်ပြုပေးပါ)</p></div>
           
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
@@ -832,6 +866,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
                   </div>
                 )}
                 
+                {/* Countdown Timer Display */}
                 {selectedPaymentConfig && (
                   <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
                      <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
@@ -854,6 +889,47 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
   );
 }
 
+// ==========================================
+// COMPONENT: TherapistsGallery
+// ==========================================
+function TherapistsGallery({ appData }: { appData: AppData }) {
+  return (
+    <div className="max-w-4xl mx-auto px-4 pb-20 animate-fade-in">
+      <div className="text-center mb-10">
+        <h2 className="text-2xl font-bold text-[#123524] mb-2 font-serif">Our Professionals</h2>
+        <div className="w-16 h-1 bg-[#D4AF37] mx-auto rounded-full mb-4"></div>
+        <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">Experience ultimate relaxation with our certified and highly skilled therapists.</p>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+        {appData.therapists.map((t) => (
+          <div key={t.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 group">
+            <div className="aspect-[3/4] relative overflow-hidden bg-gray-50">
+              {t.images.length > 0 ? (
+                <>
+                  <img src={t.images[0]} alt={t.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-transparent to-transparent opacity-80"></div>
+                </>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
+              )}
+              {/* Badge */}
+              <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
+              
+              <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
+                 <h3 className="font-bold text-white text-lg drop-shadow-md">{t.name}</h3>
+                 {t.images.length > 1 && <span className="text-[9px] text-[#D4AF37] font-bold tracking-widest uppercase mt-1 block drop-shadow-sm flex items-center justify-center"><ImageIcon className="w-2.5 h-2.5 mr-1"/>{t.images.length} Photos</span>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// COMPONENT: CustomerDashboard & CustomerHistory
+// ==========================================
 function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const todayStr = getLocalTodayStr();
@@ -928,17 +1004,8 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
       return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
   };
 
-  const bookingCounts: Record<string, number> = {};
-  bookings.forEach(b => { if (b.status !== 'cancelled') { bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1; } });
-
-  const top5Therapists = [...appData.therapists].sort((a, b) => {
-     const countA = bookingCounts[a.name] || 0; const countB = bookingCounts[b.name] || 0;
-     if (countA !== countB) return countB - countA; 
-     return (a.order || 0) - (b.order || 0);
-  }).slice(0, 5);
-
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in px-2 sm:px-0">
        <div className="text-center mb-8">
          <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
          <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
@@ -968,68 +1035,6 @@ function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onB
              )
           })}
        </div>
-
-       {top5Therapists.length > 0 && (
-         <div className="mt-14 pt-8 border-t-2 border-gray-100">
-             <div className="text-center mb-6">
-                 <h2 className="text-2xl font-bold flex items-center justify-center" style={{ color: THEME.primary }}><Crown className="w-6 h-6 mr-2 text-yellow-500"/> Our Top 5 Therapists</h2>
-                 <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ)</p>
-             </div>
-             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                 {top5Therapists.map((t, idx) => (
-                     <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
-                         <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">{idx + 1}</div>
-                         <div className="w-full aspect-[3/4] bg-gray-100 relative">
-                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
-                         </div>
-                         <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
-                             <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
-                             <button onClick={() => onBookTherapist(t)} className="w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] flex justify-center items-center border border-[#1a4a32]">
-                                 Book Now <ChevronRight className="w-3 h-3 ml-0.5"/>
-                             </button>
-                         </div>
-                     </div>
-                 ))}
-             </div>
-         </div>
-       )}
-    </div>
-  );
-}
-
-function TherapistsGallery({ appData }: { appData: AppData }) {
-  return (
-    <div className="max-w-4xl mx-auto px-4 pb-20 animate-fade-in">
-      <div className="text-center mb-10">
-        <h2 className="text-2xl font-bold text-[#123524] mb-2 font-serif">Our Professionals</h2>
-        <div className="w-16 h-1 bg-[#D4AF37] mx-auto rounded-full mb-4"></div>
-        <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">Experience ultimate relaxation with our certified and highly skilled therapists.</p>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-        {appData.therapists.map((t) => (
-          <div key={t.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 group">
-            <div className="aspect-[3/4] relative overflow-hidden bg-gray-50">
-              {t.images.length > 0 ? (
-                <><img src={t.images[0]} alt={t.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" /><div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-transparent to-transparent opacity-80"></div></>
-              ) : (<div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>)}
-              <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
-              <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
-                 <h3 className="font-bold text-white text-lg drop-shadow-md">{t.name}</h3>
-                 {t.images.length > 1 && <span className="text-[9px] text-[#D4AF37] font-bold tracking-widest uppercase mt-1 block drop-shadow-sm flex items-center justify-center"><ImageIcon className="w-2.5 h-2.5 mr-1"/>{t.images.length} Photos</span>}
-              </div>
-            </div>
-            {t.images.length > 1 && (
-              <div className="p-3 bg-white grid grid-cols-4 gap-2">
-                {t.images.slice(1, 5).map((img, idx) => (
-                  <div key={idx} className="aspect-square rounded-lg overflow-hidden border border-gray-100 cursor-pointer hover:border-[#D4AF37] transition">
-                    <img src={img} alt={`${t.name} ${idx+2}`} className="w-full h-full object-cover" />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1062,7 +1067,7 @@ function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onL
   if (loading) return <div className="text-center py-10 font-bold text-gray-500">Loading Bookings...</div>;
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in px-2 sm:px-0">
       <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Booking History</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်၏ ဘိုကင်မှတ်တမ်းများ)</p></div>
       {bookings.length === 0 ? (
         <div className="bg-white p-10 rounded-2xl shadow-sm border border-gray-100 text-center text-gray-500 font-bold">ဘိုကင်မှတ်တမ်း မရှိသေးပါ။</div>
@@ -1145,7 +1150,7 @@ function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: s
   if (!profile) return <div className="text-center py-10 font-bold text-red-500">User not found. Try logging out.</div>;
 
   return (
-    <div className="animate-fade-in max-w-sm mx-auto">
+    <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0">
       <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>My Profile</h2></div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center mb-6">
@@ -1209,7 +1214,7 @@ function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string
   };
 
   return (
-    <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in">
+    <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in px-4 sm:px-8">
       <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><KeyRound className="w-8 h-8" /></div>
       <h2 className="text-xl font-bold text-gray-800 mb-2">Login Required</h2>
       <p className="text-xs font-bold text-gray-500 mb-6">{title} ကိုကြည့်ရန် လော့ဂ်အင် ဝင်ပေးပါ</p>
