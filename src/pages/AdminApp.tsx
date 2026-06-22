@@ -2,11 +2,14 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from '
 import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
-// Vercel တွင် Error မတက်စေရန် Admin Panel အတွက် လိုအပ်သော Icon များအားလုံးကို တစ်လုံးမကျန် သေချာ Import လုပ်ထားပါသည်
+// Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon များအားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin } from 'lucide-react';
 
 // Shared ဖိုင်မှ လိုအပ်သည်များကို လှမ်းယူခြင်း
-import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, InstallStep, formatPrice, compressImage } from '../shared';
+import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
+
+// Shared တွင်မရှိပါက Error မတက်စေရန် Local တွင် Type ကြေညာထားပါသည်
+export interface InstallStep { id: string; text: string; imageUrl: string; }
 
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
    { id: '1', text: 'Browser ၏ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပါ။', imageUrl: '' },
@@ -507,16 +510,24 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
   const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || {})));
   
-  // DOWNLOAD APP INSTRUCTIONS STATE
-  const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(
-      appData.installSteps && appData.installSteps.length > 0 
-      ? JSON.parse(JSON.stringify(appData.installSteps)) 
-      : JSON.parse(JSON.stringify(DEFAULT_INSTALL_STEPS))
-  );
+  // DOWNLOAD APP INSTRUCTIONS STATE (Direct from Firebase to avoid undefined state issues)
+  const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
 
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchInstallSteps = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'appData'));
+        if (snap.exists() && snap.data().installSteps) {
+          setLocalInstallSteps(snap.data().installSteps);
+        }
+      } catch (e) { console.error(e); }
+    };
+    fetchInstallSteps();
+  }, []);
 
   const handleSaveCategory = async (cIdx: number) => {
     const cat = localCategories[cIdx];
@@ -603,11 +614,11 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(null);
   };
 
-  // UPLOAD SCREENSHOT FOR INSTALL STEP
+  // UPLOAD SCREENSHOT FOR INSTALL STEP (High compression to avoid 1MB limit issues)
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`);
     try { 
-       const base64 = await compressImage(file, 600, 1200); 
+       const base64 = await compressImage(file, 300, 600); 
        const updated = [...localInstallSteps]; 
        updated[idx].imageUrl = base64; 
        setLocalInstallSteps(updated); 
