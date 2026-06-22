@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, Edit, LogOut } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 // ==========================================
-// LOCAL HELPERS
+// LOCAL HELPERS & CONSTANTS
 // ==========================================
 const ICON_MAP: Record<string, any> = {
   massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
@@ -102,18 +102,19 @@ export function BookingCard({ b }: { b: Booking }) {
 // ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
-     const view = new URLSearchParams(window.location.search).get('view');
+     const searchParams = new URLSearchParams(window.location.search);
+     const view = searchParams.get('view');
      if (view === 'therapists') return 'therapists';
      if (view === 'dashboard') return 'dashboard';
      return 'book';
   });
+  
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
   const [hasNoti, setHasNoti] = useState(false);
   const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
-  // Tab ပြောင်းတိုင်း အပေါ်ဆုံးသို့ Auto Scroll လုပ်ရန်
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
   useEffect(() => {
@@ -182,9 +183,29 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 }
 
 // ==========================================
-// CUSTOMER BOOKING WIZARD
+// CUSTOMER BOOKING WIZARD (FULL LOGIC)
 // ==========================================
-export function CustomerBookingWizard({ appData, userPhone, onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff }: { appData: AppData, userPhone: string, onBooked: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string }) {
+export function CustomerBookingWizard({
+    appData, 
+    userPhone = '', 
+    onBooked, 
+    forceTherapistFirst = false, 
+    initialTherapist = null, 
+    isStaffMode = false, 
+    staffClockIn = false, 
+    staffClockInSuccess, 
+    preselectedStaff 
+}: { 
+    appData: AppData, 
+    userPhone?: string, 
+    onBooked?: (phone: string) => void, 
+    forceTherapistFirst?: boolean, 
+    initialTherapist?: TherapistProfile | null, 
+    isStaffMode?: boolean, 
+    staffClockIn?: boolean, 
+    staffClockInSuccess?: () => void, 
+    preselectedStaff?: string 
+}) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
   const [step, setStep] = useState(() => {
@@ -279,7 +300,8 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
     if (!formData.selectedItem) return 0;
     const basePrice = Number(formData.selectedItem.price) || 0;
     const vvipPrice = Number(formData.selectedItem.vvipPrice) || 0;
-    return formData.isVvipUpgrade && vvipPrice > 0 ? vvipPrice : basePrice;
+    // VVIP ပြောင်းထားပြီး VVIP ဈေးသတ်မှတ်ထားတယ်ဆိုရင် VVIP ဈေးကို ယူမယ် (Included မဖြစ်ထားမှသာ)
+    return formData.isVvipUpgrade && vvipPrice > 0 && !formData.selectedItem.vvipIncluded ? vvipPrice : basePrice;
   };
 
   const calculateDiscountAmount = () => {
@@ -574,7 +596,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
            if (staffClockInSuccess) { staffClockInSuccess(); return; }
            if (isStaffMode) {
                setStep(1); setFormData({ name: 'Walk-in Guest', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' }); setSuccessMsg(''); window.scrollTo({ top: 0, behavior: 'smooth' });
-           } else { setSuccessMsg(''); onBooked(formData.phone); }
+           } else { setSuccessMsg(''); if (onBooked) onBooked(formData.phone); }
         }} className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>
            {staffClockIn ? 'Finish' : (isStaffMode ? 'နောက်ထပ် ဘိုကင်တင်မည် (Add Another)' : 'မှတ်တမ်းကြည့်ရန် (View History)')}
         </button>
@@ -641,10 +663,27 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
           </div>
         )
       })}</div>
+      
+      {/* VVIP Toggle Display */}
       <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
-        <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available'))}</div></div></div>
-        {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <button type="button" disabled={!formData.selectedItem?.vvipPrice} onClick={() => setFormData({ ...formData, isVvipUpgrade: !formData.isVvipUpgrade })} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'} ${!formData.selectedItem?.vvipPrice ? 'opacity-50' : ''}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'}`} /></button>}
+        <div className="flex items-center">
+            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
+                <Crown className="w-5 h-5" style={{ color: THEME.gold }} />
+            </div>
+            <div>
+                <div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div>
+                <div className="text-xs text-yellow-600 font-semibold mt-1">
+                    {formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available'))}
+                </div>
+            </div>
+        </div>
+        {formData.selectedItem?.vvipIncluded ? (
+            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span>
+        ) : (
+            <input type="checkbox" checked={formData.isVvipUpgrade} disabled={!formData.selectedItem?.vvipPrice} onChange={(e) => setFormData({ ...formData, isVvipUpgrade: e.target.checked })} className="w-6 h-6 accent-[#D4AF37] cursor-pointer" />
+        )}
       </div>
+
       <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
         {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
         <button type="button" disabled={!formData.selectedItem} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>
@@ -658,7 +697,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
     <div className="animate-fade-in relative px-2 sm:px-0">
       {viewGallery && (
         <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in">
-          <button type="button" onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><XCircleIcon className="w-8 h-8" /></button>
+          <button type="button" onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
           <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden py-10 px-0 sm:px-10">
             <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="w-full h-full object-contain drop-shadow-2xl" />
             {viewGallery.images.length > 1 && (
@@ -792,7 +831,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
                 </div>
                 <div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price)}</div>
               </div>
-              {formData.isVvipUpgrade && (
+              {formData.isVvipUpgrade && !formData.selectedItem?.vvipIncluded && (
                 <div className="flex justify-between items-start pt-2 border-t border-gray-50">
                   <div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div>
                   <div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice((Number(formData.selectedItem?.vvipPrice) || 0) - (Number(formData.selectedItem?.price) || 0))}</div>
@@ -921,7 +960,6 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
               )}
-              {/* Badge */}
               <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
               
               <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
@@ -929,6 +967,15 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
                  {t.images.length > 1 && <span className="text-[9px] text-[#D4AF37] font-bold tracking-widest uppercase mt-1 block drop-shadow-sm flex items-center justify-center"><ImageIcon className="w-2.5 h-2.5 mr-1"/>{t.images.length} Photos</span>}
               </div>
             </div>
+            {t.images.length > 1 && (
+              <div className="p-3 bg-white grid grid-cols-4 gap-2">
+                {t.images.slice(1, 5).map((img, idx) => (
+                  <div key={idx} className="aspect-square rounded-lg overflow-hidden border border-gray-100 cursor-pointer hover:border-[#D4AF37] transition">
+                    <img src={img} alt={`${t.name} ${idx+2}`} className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -965,7 +1012,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 
           if (b.status === 'in_progress' && b.startTimeMillis) {
                isCurrentlyActive = true;
-               // Extract base service name without time duration
                activeServiceName = b.service.split('(')[0].trim();
                const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
                getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blockedNow.add(slot));
