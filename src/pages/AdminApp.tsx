@@ -3,13 +3,10 @@ import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc,
 import { db } from '../firebase';
 
 // Vercel တွင် Error မတက်စေရန် Admin Panel အတွက် လိုအပ်သော Icon များအားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon } from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles } from 'lucide-react';
 
 // Shared ဖိုင်မှ လိုအပ်သည်များကို လှမ်းယူခြင်း
-import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
-
-// Shared တွင် မပါဝင်သေးပါက Error မတက်စေရန် Local တွင် Type ကြေညာထားပါသည်
-export interface InstallStep { id: string; text: string; imageUrl: string; }
+import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, InstallStep, formatPrice, compressImage } from '../shared';
 
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
    { id: '1', text: 'Browser ၏ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပါ။', imageUrl: '' },
@@ -37,7 +34,6 @@ export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppD
         setLoggedInAdmin(user); 
     }} />;
   }
-
   return <AdminDashboard appData={appData} onSettingsUpdated={onSettingsUpdated} />;
 }
 
@@ -62,9 +58,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         if (allAdmins.empty && username === 'admin' && password === 'admin123') {
           await setDoc(doc(db, 'admins', 'admin'), { username: 'admin', password: 'admin123' });
           onLogin('admin');
-        } else {
-          setError('Admin user not found');
-        }
+        } else { setError('Admin user not found'); }
       }
     } catch (e) { setError('Network error'); }
     setLoading(false);
@@ -75,7 +69,6 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
       <div className="w-16 h-16 bg-red-50 rounded-full mx-auto flex items-center justify-center mb-6 text-red-600"><ShieldAlert className="w-8 h-8" /></div>
       <h2 className="text-xl font-bold text-gray-800 mb-2">Admin Portal</h2>
       <p className="text-xs font-bold text-gray-500 mb-6">Restricted Access</p>
-      
       <form onSubmit={handleLogin} className="space-y-4">
         <input required type="text" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
         <input required type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
@@ -152,7 +145,9 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
     } else {
       if (!window.confirm('Are you sure you want to change this status?')) return;
     }
-    try { await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason }); } catch (e) { alert("Error Update"); }
+    try {
+      await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason });
+    } catch (e) { alert("Error Update"); }
   };
 
   const handleDelete = async (id: string) => { if (window.confirm('Are you sure you want to delete this booking?')) { await deleteDoc(doc(db, 'bookings', id)); } };
@@ -505,6 +500,7 @@ function AdminManagementList() {
   );
 }
 
+// Admin Settings
 function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(JSON.parse(JSON.stringify(appData.therapists || [])));
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
