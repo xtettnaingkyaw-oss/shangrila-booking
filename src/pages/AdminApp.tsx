@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Sparkles, Percent, Coffee, Download, ImageIcon, MapPin, Phone } from 'lucide-react';
-import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, InstallStep, formatPrice, compressImage } from '../shared';
+
+// Vercel တွင် Error မတက်စေရန် Admin Panel အတွက် လိုအပ်သော Icon များအားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon } from 'lucide-react';
+
+// Shared ဖိုင်မှ လိုအပ်သည်များကို လှမ်းယူခြင်း
+import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
+
+// Shared တွင် မပါဝင်သေးပါက Error မတက်စေရန် Local တွင် Type ကြေညာထားပါသည်
+export interface InstallStep { id: string; text: string; imageUrl: string; }
 
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
    { id: '1', text: 'Browser ၏ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပါ။', imageUrl: '' },
@@ -10,6 +17,9 @@ const DEFAULT_INSTALL_STEPS: InstallStep[] = [
    { id: '3', text: '"Add" ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။', imageUrl: '' }
 ];
 
+// ==========================================
+// ADMIN APP WRAPPER
+// ==========================================
 export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
 
@@ -27,9 +37,13 @@ export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppD
         setLoggedInAdmin(user); 
     }} />;
   }
+
   return <AdminDashboard appData={appData} onSettingsUpdated={onSettingsUpdated} />;
 }
 
+// ==========================================
+// ADMIN LOGIN
+// ==========================================
 function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -48,7 +62,9 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         if (allAdmins.empty && username === 'admin' && password === 'admin123') {
           await setDoc(doc(db, 'admins', 'admin'), { username: 'admin', password: 'admin123' });
           onLogin('admin');
-        } else { setError('Admin user not found'); }
+        } else {
+          setError('Admin user not found');
+        }
       }
     } catch (e) { setError('Network error'); }
     setLoading(false);
@@ -59,6 +75,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
       <div className="w-16 h-16 bg-red-50 rounded-full mx-auto flex items-center justify-center mb-6 text-red-600"><ShieldAlert className="w-8 h-8" /></div>
       <h2 className="text-xl font-bold text-gray-800 mb-2">Admin Portal</h2>
       <p className="text-xs font-bold text-gray-500 mb-6">Restricted Access</p>
+      
       <form onSubmit={handleLogin} className="space-y-4">
         <input required type="text" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
         <input required type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
@@ -69,6 +86,9 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   );
 }
 
+// ==========================================
+// ADMIN DASHBOARD
+// ==========================================
 const AdminDashboard = memo(({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) => {
   const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'admins' | 'settings'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -119,6 +139,9 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated }: { appData: AppData,
   );
 });
 
+// ==========================================
+// ADMIN SUB-COMPONENTS
+// ==========================================
 function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
   const handleStatusChange = async (id: string, newStatus: string) => {
     let reason = '';
@@ -131,6 +154,7 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
     }
     try { await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason }); } catch (e) { alert("Error Update"); }
   };
+
   const handleDelete = async (id: string) => { if (window.confirm('Are you sure you want to delete this booking?')) { await deleteDoc(doc(db, 'bookings', id)); } };
 
   return (
@@ -143,17 +167,35 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
             {bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No pending bookings.</td></tr>)}
             {bookings.map((b) => (
               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                <td className="p-3"><div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div></td>
-                <td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>{b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}</td>
-                <td className="p-3 text-sm text-gray-700"><div className="font-semibold">{b.date || '-'}</div><div className="text-gray-500 text-xs mt-1">{b.time || '-'}</div></td>
-                <td className="p-3"><div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div></td>
+                <td className="p-3">
+                  <div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div>
+                  <div className="text-xs text-gray-500">{b.phone || '-'}</div>
+                </td>
+                <td className="p-3">
+                  <div className="font-bold text-sm text-gray-800">{b.service || '-'}</div>
+                  <div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>
+                  {b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}
+                </td>
+                <td className="p-3 text-sm text-gray-700">
+                  <div className="font-semibold">{b.date || '-'}</div>
+                  <div className="text-gray-500 text-xs mt-1">{b.time || '-'}</div>
+                </td>
+                <td className="p-3">
+                  <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div>
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div>
+                </td>
                 <td className="p-3">
                   <select value={b.status} onChange={(e) => handleStatusChange(b.id!, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
-                    <option value="pending">Pending</option><option value="payment_checking">Confirming</option><option value="approved">Approve</option><option value="cancelled">Cancel</option>
+                    <option value="pending">Pending</option>
+                    <option value="payment_checking">Confirming</option>
+                    <option value="approved">Approve</option>
+                    <option value="cancelled">Cancel</option>
                   </select>
                   {b.status === 'cancelled' && b.cancelReason && <div className="text-[9px] text-red-500 mt-1 max-w-[120px] truncate" title={b.cancelReason}>Reason: {b.cancelReason}</div>}
                 </td>
-                <td className="p-3 text-right"><button onClick={() => handleDelete(b.id!)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"><Trash2 className="w-4 h-4" /></button></td>
+                <td className="p-3 text-right">
+                  <button onClick={() => handleDelete(b.id!)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"><Trash2 className="w-4 h-4" /></button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -166,22 +208,36 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
 function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
    const [view, setView] = useState<'dashboard' | 'service' | 'outpass'>('dashboard');
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
-   const [now, setNow] = useState(Date.now());
    
-   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 15000); return () => clearInterval(timer); }, []);
+   // Dashboard ကို ၁၅ စက္ကန့်တိုင်း Auto-refresh လုပ်ပေးမည့် Real-time Tick
+   const [now, setNow] = useState(Date.now());
+   useEffect(() => {
+       const timer = setInterval(() => setNow(Date.now()), 15000); 
+       return () => clearInterval(timer);
+   }, []);
+
    useEffect(() => {
        const unsub = onSnapshot(query(collection(db, 'outpasses'), orderBy('outTimeMillis', 'desc')), snap => {
-           const arr: OutPass[] = []; snap.forEach(d => arr.push({id: d.id, ...d.data()} as OutPass)); setOutpasses(arr);
+           const arr: OutPass[] = [];
+           snap.forEach(d => arr.push({id: d.id, ...d.data()} as OutPass));
+           setOutpasses(arr);
        });
        return () => unsub();
    }, []);
 
    const formatMillis = (millis: number | undefined) => {
-       if (!millis) return '-'; const date = new Date(millis); return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+       if (!millis) return '-';
+       const date = new Date(millis);
+       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
    };
+
    const formatSecondsAdmin = (totalSeconds: number | undefined) => {
-       if (totalSeconds === undefined) return '00:00'; const isNegative = totalSeconds < 0; const absSecs = Math.abs(totalSeconds);
-       const h = Math.floor(absSecs / 3600); const m = Math.floor((absSecs % 3600) / 60); const s = Math.floor(absSecs % 60);
+       if (totalSeconds === undefined) return '00:00';
+       const isNegative = totalSeconds < 0;
+       const absSecs = Math.abs(totalSeconds);
+       const h = Math.floor(absSecs / 3600);
+       const m = Math.floor((absSecs % 3600) / 60);
+       const s = Math.floor(absSecs % 60);
        return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
    };
 
@@ -195,6 +251,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 border-b border-gray-100 pb-4">
               <h2 className="text-xl font-bold flex items-center mb-4 lg:mb-0" style={{ color: THEME.primary }}><BarChart2 className="mr-2 text-[#D4AF37]" /> Staff Reports</h2>
+              
               <div className="flex space-x-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full lg:w-auto overflow-x-auto scrollbar-hide">
                  <button onClick={() => setView('dashboard')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'dashboard' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Dashboard View</button>
                  <button onClick={() => setView('service')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services List</button>
@@ -202,8 +259,11 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
               </div>
            </div>
 
+           {/* DASHBOARD VIEW WITH REAL-TIME ALERTS */}
            {view === 'dashboard' && (
               <div className="space-y-8 animate-fade-in">
+                  
+                  {/* Currently In Service */}
                   <div>
                       <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
                       {activeBookings.length === 0 ? (
@@ -213,6 +273,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                               {activeBookings.map(b => {
                                   const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
                                   const isLate = b.expectedEndTimeMillis ? now > b.expectedEndTimeMillis : false;
+
                                   return (
                                       <div key={b.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : (isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200')} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
                                           <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : (isOutcall ? 'bg-blue-500' : 'bg-orange-500')} animate-pulse`}></div>
@@ -226,7 +287,12 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                           <div className="text-xs text-gray-500 mb-4 flex items-center"><User className="w-3 h-3 mr-1 text-gray-400" />Cust: {b.name}</div>
                                           <div className={`flex justify-between items-center text-xs border-t pt-3 ${isLate ? 'border-red-200' : (isOutcall ? 'border-blue-200/50' : 'border-orange-200/50')}`}>
                                               <div className="text-gray-500"><span className="font-bold text-gray-600">Start:</span> {formatMillis(b.startTimeMillis)}</div>
-                                              <div className="text-gray-500"><span className="font-bold text-gray-600">End:</span> <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>{formatMillis(b.expectedEndTimeMillis)}</span></div>
+                                              <div className="text-gray-500">
+                                                  <span className="font-bold text-gray-600">End:</span> 
+                                                  <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>
+                                                      {formatMillis(b.expectedEndTimeMillis)}
+                                                  </span>
+                                              </div>
                                           </div>
                                       </div>
                                   );
@@ -234,6 +300,8 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                           </div>
                       )}
                   </div>
+
+                  {/* Currently on Out Pass */}
                   <div>
                       <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
                       {activeOutpasses.length === 0 ? (
@@ -242,17 +310,25 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                               {activeOutpasses.map(o => {
                                   const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
+
                                   return (
                                       <div key={o.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
                                           <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div>
                                           <div className="flex justify-between items-start mb-2">
                                               <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div>
-                                              <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>{isLate ? 'OVERTIME (LATE)' : 'Out Pass'}</span>
+                                              <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>
+                                                  {isLate ? 'OVERTIME (LATE)' : 'Out Pass'}
+                                              </span>
                                           </div>
                                           <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div>
                                           <div className={`flex justify-between items-center text-xs border-t ${isLate ? 'border-red-200' : 'border-purple-200/50'} pt-3`}>
                                               <div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div>
-                                              <div className="text-gray-500"><span className="font-bold text-gray-600">Return:</span> <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>{formatMillis(o.expectedInTimeMillis)}</span></div>
+                                              <div className="text-gray-500">
+                                                  <span className="font-bold text-gray-600">Return:</span> 
+                                                  <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>
+                                                      {formatMillis(o.expectedInTimeMillis)}
+                                                  </span>
+                                              </div>
                                           </div>
                                       </div>
                                   );
@@ -260,6 +336,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                           </div>
                       )}
                   </div>
+
               </div>
            )}
 
@@ -272,12 +349,18 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                           {bookings.map((b) => (
                               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
                                   <td className="p-3 font-bold text-[#123524]">{b.therapist}</td>
-                                  <td className="p-3"><div className="font-semibold text-gray-800">{b.service.split('(')[0]}</div><div className="text-xs text-gray-500 mt-0.5">Cust: {b.name}</div></td>
+                                  <td className="p-3">
+                                      <div className="font-semibold text-gray-800">{b.service.split('(')[0]}</div>
+                                      <div className="text-xs text-gray-500 mt-0.5">Cust: {b.name}</div>
+                                  </td>
                                   <td className="p-3 text-gray-700 font-semibold">{b.date}</td>
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(b.startTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td>
-                                  <td className="p-3 text-right"><div className={`font-mono font-bold text-base mb-1 ${(b.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(b.overtimeSeconds)}</div><button onClick={() => handleDeleteBooking(b.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button></td>
+                                  <td className="p-3 text-right">
+                                     <div className={`font-mono font-bold text-base mb-1 ${(b.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(b.overtimeSeconds)}</div>
+                                     <button onClick={() => handleDeleteBooking(b.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
+                                  </td>
                               </tr>
                           ))}
                       </tbody>
@@ -293,12 +376,18 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                           {outpasses.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No out pass records found.</td></tr>)}
                           {outpasses.map((o) => (
                               <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
-                                  <td className="p-3"><div className="font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</div><div className="text-[10px] text-gray-500 mt-0.5">Reason: {o.reason || '-'}</div></td>
+                                  <td className="p-3">
+                                      <div className="font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</div>
+                                      <div className="text-[10px] text-gray-500 mt-0.5">Reason: {o.reason || '-'}</div>
+                                  </td>
                                   <td className="p-3 text-gray-700 font-semibold">{o.date}</td>
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(o.outTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td>
-                                  <td className="p-3 text-right"><div className={`font-mono font-bold text-base mb-1 ${(o.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(o.overtimeSeconds)}</div><button onClick={() => handleDeleteOutpass(o.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button></td>
+                                  <td className="p-3 text-right">
+                                     <div className={`font-mono font-bold text-base mb-1 ${(o.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(o.overtimeSeconds)}</div>
+                                     <button onClick={() => handleDeleteOutpass(o.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
+                                  </td>
                               </tr>
                           ))}
                       </tbody>
@@ -419,10 +508,16 @@ function AdminManagementList() {
 function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(JSON.parse(JSON.stringify(appData.therapists || [])));
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
-  const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || DEFAULT_BRANDING)));
-  const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || DEFAULT_PAYMENT_METHODS)));
-  const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || DEFAULT_PROMOTION)));
-  const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(JSON.parse(JSON.stringify(appData.installSteps || DEFAULT_INSTALL_STEPS)));
+  const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
+  const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
+  const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || {})));
+  
+  // DOWNLOAD APP INSTRUCTIONS STATE
+  const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(
+      appData.installSteps && appData.installSteps.length > 0 
+      ? JSON.parse(JSON.stringify(appData.installSteps)) 
+      : JSON.parse(JSON.stringify(DEFAULT_INSTALL_STEPS))
+  );
 
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
@@ -489,6 +584,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setSavingCategory(null);
   };
 
+  // SAVE INSTALL STEPS FUNCTION
   const handleSaveInstallSteps = async () => {
     if (!window.confirm(`Are you sure you want to save Install Instructions?`)) return;
     setSavingCategory('install_steps');
@@ -512,6 +608,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(null);
   };
 
+  // UPLOAD SCREENSHOT FOR INSTALL STEP
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`);
     try { 
@@ -581,6 +678,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
          </div>
       </div>
 
+      {/* ================= NEW: Install Instructions UI ================= */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b border-gray-100">
             <div className="mb-4 sm:mb-0">
