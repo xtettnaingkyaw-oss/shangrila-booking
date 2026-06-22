@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X } from 'lucide-react';
+
+// Vercel တွင် App Crash မဖြစ်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ ထည့်သွင်းထားပါသည်
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, ShieldCheck, ShieldAlert, Save, PlusCircle, Settings, UploadCloud, MapPin, Search, Lock, Coffee, Download } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 // ==========================================
@@ -251,21 +253,48 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
+  // Time Slot Logic (With Real-Time Check for Today)
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
     const serviceName = formData.selectedItem.name.toLowerCase();
     let allowedSlots = ALL_TIME_SLOTS;
 
+    // Filter by service type first
     if (isHotelService) {
-      if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) return ["7:00 AM to 7:00 AM (Next Day)"];
+      if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) allowedSlots = ["7:00 AM to 7:00 AM (Next Day)"];
       else if (serviceName.includes("outcall")) allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
-      else if (serviceName.includes("half day")) return ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
-      else if (serviceName.includes("night")) return ["7:00 PM to 7:00 AM (Next Day)"];
-      else if (serviceName.includes("whole day")) return ["7:00 AM to 7:00 PM"];
+      else if (serviceName.includes("half day")) allowedSlots = ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
+      else if (serviceName.includes("night")) allowedSlots = ["7:00 PM to 7:00 AM (Next Day)"];
+      else if (serviceName.includes("whole day")) allowedSlots = ["7:00 AM to 7:00 PM"];
     } else {
        allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
     }
+
+    // Filter by Real-time if the date is today
+    if (formData.date === todayStr) {
+        const now = new Date();
+        allowedSlots = allowedSlots.filter(slot => {
+            let timeStr = slot;
+            if (slot.includes("to")) timeStr = slot.split(" to ")[0]; // Get the start time of the interval
+            
+            const match = timeStr.match(/(\d+):(\d+)\s+(AM|PM)/i);
+            if (match) {
+                let h = parseInt(match[1]);
+                const m = parseInt(match[2]);
+                const ampm = match[3].toUpperCase();
+                
+                if (ampm === 'PM' && h < 12) h += 12;
+                if (ampm === 'AM' && h === 12) h = 0;
+                
+                const slotTime = new Date();
+                slotTime.setHours(h, m, 0, 0);
+                return slotTime > now; // Only return slots that are in the future
+            }
+            return true; 
+        });
+    }
+
     return allowedSlots;
   };
   const availableTimeSlots = getAvailableTimeSlots();
@@ -300,7 +329,6 @@ export function CustomerBookingWizard({
     if (!formData.selectedItem) return 0;
     const basePrice = Number(formData.selectedItem.price) || 0;
     const vvipPrice = Number(formData.selectedItem.vvipPrice) || 0;
-    // VVIP ပြောင်းထားပြီး VVIP ဈေးသတ်မှတ်ထားတယ်ဆိုရင် VVIP ဈေးကို ယူမယ် (Included မဖြစ်ထားမှသာ)
     return formData.isVvipUpgrade && vvipPrice > 0 && !formData.selectedItem.vvipIncluded ? vvipPrice : basePrice;
   };
 
@@ -384,6 +412,7 @@ export function CustomerBookingWizard({
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
 
+      // Use the newly computed real-time available slots to check availability
       const allowedSlots = formData.selectedItem ? getAvailableTimeSlots() : ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
 
       let hasAvailableSlot = false;
@@ -960,6 +989,7 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
               )}
+              {/* Badge */}
               <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
               
               <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
