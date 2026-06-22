@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Sparkles, Percent, Coffee } from 'lucide-react';
+
+// လိုအပ်မည့် Icon အားလုံးကို ဘာတစ်ခုမှ မကျန်ခဲ့စေရန် သေချာထည့်သွင်းထားပါသည်
+import { Calendar, Clock, CreditCard, CheckCircle, Trash2, User, Phone, ShieldCheck, Activity, Copy, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, Crown, Save, PlusCircle, Settings, UploadCloud, X, ImageIcon, MapPin, Search, LogOut, KeyRound, AlertCircle, History, UserCircle, CalendarPlus, Edit, ShieldAlert, Lock, BarChart2, Coffee, Percent, Download } from 'lucide-react';
 
 // Shared ဖိုင်မှ လိုအပ်သည်များကို လှမ်းယူခြင်း
-import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
+import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, MenuItem, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
 
 // ==========================================
 // ADMIN APP WRAPPER
@@ -77,7 +79,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
 // ==========================================
-// ADMIN DASHBOARD (Optimized with Memo)
+// ADMIN DASHBOARD
 // ==========================================
 const AdminDashboard = memo(({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) => {
   const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'admins' | 'settings'>('bookings');
@@ -198,9 +200,15 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
 }
 
 function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
-   // Dashboard ကို ပထမဆုံး မြင်ရမယ့် View အဖြစ် သတ်မှတ်လိုက်ပါပြီ
    const [view, setView] = useState<'dashboard' | 'service' | 'outpass'>('dashboard');
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
+   
+   // Dashboard ကို ၁၅ စက္ကန့်တိုင်း Auto-refresh လုပ်ပေးမည့် Real-time Tick 
+   const [now, setNow] = useState(Date.now());
+   useEffect(() => {
+       const timer = setInterval(() => setNow(Date.now()), 15000); 
+       return () => clearInterval(timer);
+   }, []);
 
    useEffect(() => {
        const unsub = onSnapshot(query(collection(db, 'outpasses'), orderBy('outTimeMillis', 'desc')), snap => {
@@ -230,7 +238,6 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
    const handleDeleteBooking = async (id: string) => { if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
-   // လက်ရှိ In Service နဲ့ Out Pass ဖြစ်နေတဲ့သူတွေကို သီးသန့်စစ်ထုတ်ခြင်း
    const activeBookings = bookings.filter(b => b.status === 'in_progress');
    const activeOutpasses = outpasses.filter(o => o.status === 'out');
 
@@ -239,7 +246,6 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 border-b border-gray-100 pb-4">
               <h2 className="text-xl font-bold flex items-center mb-4 lg:mb-0" style={{ color: THEME.primary }}><BarChart2 className="mr-2 text-[#D4AF37]" /> Staff Reports</h2>
               
-              {/* ခလုတ် ၃ ခုပါတဲ့ View Toggle နေရာ */}
               <div className="flex space-x-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full lg:w-auto overflow-x-auto scrollbar-hide">
                  <button onClick={() => setView('dashboard')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'dashboard' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Dashboard View</button>
                  <button onClick={() => setView('service')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services List</button>
@@ -247,11 +253,11 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
               </div>
            </div>
 
-           {/* DASHBOARD VIEW အသစ်စတင်ခြင်း */}
+           {/* DASHBOARD VIEW (With Real-Time Overtime Check) */}
            {view === 'dashboard' && (
               <div className="space-y-8 animate-fade-in">
                   
-                  {/* Currently In Service အပိုင်း */}
+                  {/* Currently In Service */}
                   <div>
                       <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
                       {activeBookings.length === 0 ? (
@@ -259,22 +265,29 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                       ) : (
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                               {activeBookings.map(b => {
-                                  // Outcall ဖြစ်မဖြစ် Service နာမည်ကိုကြည့်ပြီး စစ်ဆေးခြင်း
                                   const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
+                                  // Real-time overtime check
+                                  const isLate = b.expectedEndTimeMillis ? now > b.expectedEndTimeMillis : false;
+
                                   return (
-                                      <div key={b.id} className={`p-4 rounded-xl border ${isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
-                                          <div className={`absolute top-0 left-0 w-1 h-full ${isOutcall ? 'bg-blue-500' : 'bg-orange-500'} animate-pulse`}></div>
+                                      <div key={b.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : (isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200')} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
+                                          <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : (isOutcall ? 'bg-blue-500' : 'bg-orange-500')} animate-pulse`}></div>
                                           <div className="flex justify-between items-start mb-2">
-                                              <div className="font-bold text-[#123524] text-base">{b.therapist}</div>
-                                              <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                 {isOutcall ? 'Outcall' : 'In Room'}
+                                              <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{b.therapist}</div>
+                                              <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : (isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>
+                                                 {isLate ? 'OVERTIME (LATE)' : (isOutcall ? 'Outcall' : 'In Room')}
                                               </span>
                                           </div>
                                           <div className="text-sm font-semibold text-gray-800 truncate mb-1" title={b.service}>{b.service.split('(')[0]}</div>
                                           <div className="text-xs text-gray-500 mb-4 flex items-center"><User className="w-3 h-3 mr-1 text-gray-400" />Cust: {b.name}</div>
-                                          <div className={`flex justify-between items-center text-xs border-t pt-3 ${isOutcall ? 'border-blue-200/50' : 'border-orange-200/50'}`}>
+                                          <div className={`flex justify-between items-center text-xs border-t pt-3 ${isLate ? 'border-red-200' : (isOutcall ? 'border-blue-200/50' : 'border-orange-200/50')}`}>
                                               <div className="text-gray-500"><span className="font-bold text-gray-600">Start:</span> {formatMillis(b.startTimeMillis)}</div>
-                                              <div className="text-gray-500"><span className="font-bold text-gray-600">End:</span> <span className={`${isOutcall ? 'text-blue-600' : 'text-orange-600'} font-mono bg-white px-1.5 py-0.5 rounded shadow-sm border ${isOutcall ? 'border-blue-100' : 'border-orange-100'}`}>{formatMillis(b.expectedEndTimeMillis)}</span></div>
+                                              <div className="text-gray-500">
+                                                  <span className="font-bold text-gray-600">End:</span> 
+                                                  <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>
+                                                      {formatMillis(b.expectedEndTimeMillis)}
+                                                  </span>
+                                              </div>
                                           </div>
                                       </div>
                                   );
@@ -283,27 +296,39 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                       )}
                   </div>
 
-                  {/* Currently on Out Pass အပိုင်း */}
+                  {/* Currently on Out Pass */}
                   <div>
                       <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
                       {activeOutpasses.length === 0 ? (
                           <p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently on out pass.</p>
                       ) : (
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {activeOutpasses.map(o => (
-                                  <div key={o.id} className="p-4 rounded-xl border bg-purple-50/40 border-purple-200 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
-                                      <div className="absolute top-0 left-0 w-1 h-full bg-purple-500 animate-pulse"></div>
-                                      <div className="flex justify-between items-start mb-2">
-                                          <div className="font-bold text-[#123524] text-base">{o.therapist}</div>
-                                          <span className="text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider bg-purple-100 text-purple-700">Out Pass</span>
+                              {activeOutpasses.map(o => {
+                                  // Real-time overtime check
+                                  const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
+
+                                  return (
+                                      <div key={o.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
+                                          <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div>
+                                          <div className="flex justify-between items-start mb-2">
+                                              <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div>
+                                              <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>
+                                                  {isLate ? 'OVERTIME (LATE)' : 'Out Pass'}
+                                              </span>
+                                          </div>
+                                          <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div>
+                                          <div className={`flex justify-between items-center text-xs border-t ${isLate ? 'border-red-200' : 'border-purple-200/50'} pt-3`}>
+                                              <div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div>
+                                              <div className="text-gray-500">
+                                                  <span className="font-bold text-gray-600">Return:</span> 
+                                                  <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>
+                                                      {formatMillis(o.expectedInTimeMillis)}
+                                                  </span>
+                                              </div>
+                                          </div>
                                       </div>
-                                      <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div>
-                                      <div className="flex justify-between items-center text-xs border-t border-purple-200/50 pt-3">
-                                          <div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div>
-                                          <div className="text-gray-500"><span className="font-bold text-gray-600">Return:</span> <span className="text-purple-600 font-mono bg-white px-1.5 py-0.5 rounded shadow-sm border border-purple-100">{formatMillis(o.expectedInTimeMillis)}</span></div>
-                                      </div>
-                                  </div>
-                              ))}
+                                  );
+                              })}
                           </div>
                       )}
                   </div>
@@ -311,7 +336,6 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
               </div>
            )}
 
-           {/* SERVICES LIST VIEW (မူလအတိုင်း ဘာမှမပြောင်းလဲပါ) */}
            {view === 'service' && (
               <div className="overflow-x-auto animate-fade-in">
                   <table className="w-full text-left border-collapse min-w-[900px]">
@@ -340,7 +364,6 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
               </div>
            )}
 
-           {/* OUT PASSES LIST VIEW (မူလအတိုင်း ဘာမှမပြောင်းလဲပါ) */}
            {view === 'outpass' && (
               <div className="overflow-x-auto animate-fade-in">
                   <table className="w-full text-left border-collapse min-w-[900px]">
@@ -473,22 +496,7 @@ function AdminManagementList() {
         <button type="submit" className="w-full sm:w-auto px-4 py-2 bg-[#123524] text-white rounded font-bold flex items-center justify-center"><PlusCircle className="w-4 h-4 mr-1"/> Add Admin</button>
       </form>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[600px]">
-          <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead>
-          <tbody>
-            {admins.map((a, idx) => (
-              <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                <td className="p-3 font-bold text-gray-800 flex items-center"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</td>
-                <td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td>
-                <td className="p-3 text-right">
-                   <button onClick={() => handleDeleteAdmin(a.username)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 font-bold text-[10px] flex items-center ml-auto"><Trash2 className="w-3 h-3 mr-1"/> Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-bold text-gray-800 flex items-center"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.username)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 font-bold text-[10px] flex items-center ml-auto"><Trash2 className="w-3 h-3 mr-1"/> Delete</button></td></tr>))}</tbody></table></div>
     </div>
   );
 }
