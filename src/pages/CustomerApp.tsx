@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, Edit, LogOut } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 // ==========================================
-// LOCAL HELPERS & CONSTANTS
+// LOCAL HELPERS
 // ==========================================
 const ICON_MAP: Record<string, any> = {
   massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
@@ -113,7 +113,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
-  // Auto Scroll
+  // Tab ပြောင်းတိုင်း အပေါ်ဆုံးသို့ Auto Scroll လုပ်ရန်
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
   useEffect(() => {
@@ -646,8 +646,8 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
         {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <button type="button" disabled={!formData.selectedItem?.vvipPrice} onClick={() => setFormData({ ...formData, isVvipUpgrade: !formData.isVvipUpgrade })} className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${formData.isVvipUpgrade ? 'bg-green-600' : 'bg-gray-300'} ${!formData.selectedItem?.vvipPrice ? 'opacity-50' : ''}`}><div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform ${formData.isVvipUpgrade ? 'translate-x-6' : 'translate-x-0'}`} /></button>}
       </div>
       <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
-        {currentStep === 2 && <button onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-        <button disabled={!formData.selectedItem} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>
+        {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
+        <button type="button" disabled={!formData.selectedItem} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>
           {isTherapistFirst && currentStep === 2 ? 'CONTINUE TO DATE & TIME' : 'CONTINUE TO THERAPIST'} <ChevronRight className="w-5 h-5 ml-2" />
         </button>
       </div>
@@ -658,7 +658,7 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
     <div className="animate-fade-in relative px-2 sm:px-0">
       {viewGallery && (
         <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in">
-          <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><XCircleIcon className="w-8 h-8" /></button>
+          <button type="button" onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><XCircleIcon className="w-8 h-8" /></button>
           <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden py-10 px-0 sm:px-10">
             <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="w-full h-full object-contain drop-shadow-2xl" />
             {viewGallery.images.length > 1 && (
@@ -720,8 +720,8 @@ export function CustomerBookingWizard({ appData, userPhone, onBooked, forceThera
         })}
       </div>
       <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
-         {currentStep === 2 && <button onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-         <button disabled={formData.therapist === undefined} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center`} style={{ backgroundColor: THEME.primary }}>
+         {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
+         <button type="button" disabled={formData.therapist === undefined} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center`} style={{ backgroundColor: THEME.primary }}>
            {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
          </button>
       </div>
@@ -929,15 +929,6 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
                  {t.images.length > 1 && <span className="text-[9px] text-[#D4AF37] font-bold tracking-widest uppercase mt-1 block drop-shadow-sm flex items-center justify-center"><ImageIcon className="w-2.5 h-2.5 mr-1"/>{t.images.length} Photos</span>}
               </div>
             </div>
-            {t.images.length > 1 && (
-              <div className="p-3 bg-white grid grid-cols-4 gap-2">
-                {t.images.slice(1, 5).map((img, idx) => (
-                  <div key={idx} className="aspect-square rounded-lg overflow-hidden border border-gray-100 cursor-pointer hover:border-[#D4AF37] transition">
-                    <img src={img} alt={`${t.name} ${idx+2}`} className="w-full h-full object-cover" />
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         ))}
       </div>
@@ -965,6 +956,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   const getTherapistStatus = (tName: string) => {
       let blockedNow = new Set<string>();
       let isCurrentlyActive = false;
+      let activeServiceName = '';
       
       bookings.forEach(b => {
           if (b.status === 'cancelled' || b.status === 'completed') return;
@@ -973,6 +965,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 
           if (b.status === 'in_progress' && b.startTimeMillis) {
                isCurrentlyActive = true;
+               // Extract base service name without time duration
+               activeServiceName = b.service.split('(')[0].trim();
                const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
                getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blockedNow.add(slot));
           } else if (b.time && b.time.includes("to")) {
@@ -998,7 +992,14 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           }
       });
 
-      if (isCurrentlyActive) return { label: 'In Service (Active)', mm: 'ဝန်ဆောင်မှုပေးနေပါသည်', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+      if (isCurrentlyActive) {
+          return { 
+              label: 'In Service (Active)', 
+              mm: 'ဝန်ဆောင်မှုပေးနေပါသည်', 
+              color: 'bg-orange-100 text-orange-700 border-orange-200',
+              activeService: activeServiceName
+          };
+      }
 
       let is24hFull = false;
       if (blockedNow.has("7:00 AM to 7:00 AM (Next Day)")) { is24hFull = true; } 
@@ -1054,7 +1055,13 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
                        <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
-                          {status.label} <br/> <span className="font-semibold opacity-90">{status.mm}</span>
+                          {status.label}
+                          {status.activeService && (
+                              <span className="block mt-0.5 text-orange-900 border-t border-orange-200/60 pt-0.5">
+                                 {status.activeService}
+                              </span>
+                          )}
+                          <span className="font-semibold opacity-90 block mt-0.5">{status.mm}</span>
                        </div>
                    </div>
                    <button onClick={() => onBookTherapist(t)} className="ml-2 px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold whitespace-nowrap shadow-sm hover:bg-[#1a4a32] flex items-center border border-[#1a4a32]">
