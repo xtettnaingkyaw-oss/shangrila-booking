@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useMemo, memo } from 'react';
-import { collection, addDoc, getDocs, query, onSnapshot, orderBy } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, addDoc, getDocs, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, formatPrice, getLocalTodayStr, ALL_TIME_SLOTS } from '../shared';
 
 const ICON_MAP: Record<string, any> = { massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors };
 
+// ==========================================
+// MAIN CUSTOMER APP WRAPPER
+// ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
      const view = new URLSearchParams(window.location.search).get('view');
@@ -14,7 +17,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      return 'book';
   });
 
-  // Tab ပြောင်းတိုင်း အပေါ်ဆုံးကို Auto Scroll လုပ်ပေးမယ့် Effect
+  // Tab ကူးပြောင်းတိုင်း အပေါ်ဆုံးသို့ Auto Scroll လုပ်ရန်
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [activeTab]);
@@ -49,16 +52,16 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   );
 }
 
-// ---------------------------------------------------------
+// ==========================================
 // COMPONENT: CustomerBookingWizard
-// ---------------------------------------------------------
+// ==========================================
 function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData, onBookingSuccess: () => void }) {
   const [step, setStep] = useState(1);
   
-  // Category တွေကို အစကတည်းက ပိတ်ထားရန် 'null' ဟု ပြောင်းပေးထားပါသည်
+  // Category များကို အစကတည်းက ပိတ်ထားရန် null သုံးထားပါသည်
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [isVvip, setIsVvip] = useState(false); // VVIP Room Selection
   
-  // Form State
   const [selectedService, setSelectedService] = useState<MenuItem | null>(null);
   const [selectedTherapist, setSelectedTherapist] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(getLocalTodayStr());
@@ -71,12 +74,11 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
   
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Step ပြောင်းတိုင်း အပေါ်ဆုံးကို Auto Scroll လုပ်ပေးမယ့် Effect
+  // Step ပြောင်းတိုင်း အပေါ်ဆုံးသို့ Auto Scroll လုပ်ရန်
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [step]);
 
-  // Available times logic
   const availableTimes = useMemo(() => {
       if (selectedDate !== getLocalTodayStr()) return ALL_TIME_SLOTS;
       const now = new Date();
@@ -93,6 +95,12 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
 
   const calculateTotal = () => {
     let price = selectedService?.price || 0;
+    
+    // VVIP Price Logic
+    if (isVvip && selectedService?.vvipPrice && !selectedService?.vvipIncluded) {
+       price = selectedService.vvipPrice;
+    }
+
     if (appData.promotion?.isActive) {
        const isHotel = selectedService?.name.toLowerCase().includes('outcall') || selectedService?.name.toLowerCase().includes('hotel');
        const discount = isHotel ? appData.promotion.hotelDiscountPercent : appData.promotion.otherDiscountPercent;
@@ -113,7 +121,7 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
       const b: Booking = {
         name: customerName,
         phone: customerPhone,
-        service: `${selectedService.name} (${selectedService.duration})`,
+        service: `${selectedService.name} (${selectedService.duration}) ${isVvip ? '- VVIP' : ''}`,
         therapist: selectedTherapist,
         date: selectedDate,
         time: selectedTime,
@@ -134,7 +142,7 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto px-2 sm:px-0">
       {/* STEPS INDICATOR */}
       <div className="flex justify-between items-center mb-10 px-4 sm:px-12 relative">
         <div className="absolute top-1/2 left-10 right-10 h-0.5 bg-gray-200 -z-10 -translate-y-1/2"></div>
@@ -155,7 +163,7 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
              <h2 className="text-xl font-bold text-[#123524]">Choose Your Service</h2>
              <p className="text-[11px] font-bold text-[#D4AF37] mt-1">(မိမိရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p>
           </div>
-          
+
           <div className="space-y-4">
             {appData.categories.map((cat) => {
               const Icon = ICON_MAP[cat.id] || Sparkles;
@@ -163,7 +171,7 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
               return (
                 <div key={cat.id} className={`bg-white rounded-2xl border transition-all duration-300 ${isExpanded ? 'border-[#D4AF37] shadow-md' : 'border-gray-200 shadow-sm hover:border-[#D4AF37]/50'}`}>
                   <button onClick={() => setExpandedCategory(isExpanded ? null : cat.id)} className="w-full p-4 flex items-center justify-between font-bold text-gray-800 outline-none">
-                    <div className="flex items-center"><Icon className={`w-5 h-5 mr-3 ${isExpanded ? 'text-[#D4AF37]' : 'text-gray-400'}`} /> {cat.title}</div>
+                    <div className="flex items-center"><Icon className={`w-5 h-5 mr-3 ${isExpanded ? 'text-[#D4AF37]' : 'text-[#D4AF37]/60'}`} /> {cat.title}</div>
                     {isExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                   </button>
                   {isExpanded && (
@@ -175,7 +183,9 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
                             <div className="text-xs text-gray-500 mt-1 flex items-center"><Clock className="w-3 h-3 mr-1" /> {item.duration}</div>
                           </div>
                           <div className="text-right">
-                            <div className="font-bold text-[#123524] text-sm sm:text-base">{formatPrice(item.price)}</div>
+                            <div className="font-bold text-[#123524] text-sm sm:text-base">
+                               {isVvip && item.vvipPrice && !item.vvipIncluded ? formatPrice(item.vvipPrice) : formatPrice(item.price)}
+                            </div>
                             {item.vvipIncluded && <div className="text-[10px] text-[#D4AF37] font-bold mt-1 tracking-wider uppercase">VVIP Free</div>}
                           </div>
                         </div>
@@ -185,6 +195,16 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
                 </div>
               );
             })}
+
+            {/* VVIP Master Room Switch */}
+            <div className="mt-4 p-4 bg-[#fff9ea] rounded-2xl border border-[#D4AF37] flex justify-between items-center shadow-sm">
+               <div>
+                  <div className="flex items-center text-[#D4AF37] font-bold text-sm sm:text-base mb-1"><Crown className="w-5 h-5 mr-2"/> VVIP Master Room</div>
+                  <div className="text-[10px] text-yellow-700 font-semibold">Select a service</div>
+               </div>
+               <input type="checkbox" checked={isVvip} onChange={(e) => setIsVvip(e.target.checked)} className="w-8 h-8 sm:w-10 sm:h-10 accent-[#D4AF37] cursor-pointer" />
+            </div>
+
           </div>
           <button disabled={!selectedService} onClick={() => setStep(2)} className="w-full mt-8 py-4 bg-[#123524] text-white rounded-xl font-bold shadow-lg hover:bg-green-900 transition flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
             CONTINUE TO THERAPIST <ChevronRight className="w-5 h-5 ml-2" />
@@ -201,21 +221,25 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
           </div>
 
           <div onClick={() => setSelectedTherapist('Any Available Therapist')} className={`mb-6 p-4 rounded-xl cursor-pointer border-2 transition-all flex items-center justify-center gap-3 ${selectedTherapist === 'Any Available Therapist' ? 'border-[#D4AF37] bg-yellow-50/30 shadow-md' : 'border-gray-200 hover:border-gray-300'}`}>
-            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400"><User className="w-5 h-5" /></div>
-            <div className="text-left"><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">We'll assign the best available</div></div>
+            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-[#D4AF37]"><User className="w-5 h-5" /></div>
+            <div className="text-left"><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">We'll assign the best available therapist for you</div></div>
           </div>
+          
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {appData.therapists.map((t) => (
               <div key={t.id} onClick={() => setSelectedTherapist(t.name)} className={`relative rounded-2xl overflow-hidden cursor-pointer border-4 transition-all duration-300 group ${selectedTherapist === t.name ? 'border-[#D4AF37] shadow-xl scale-105 z-10' : 'border-transparent shadow-sm hover:shadow-md'}`}>
                 <div className="aspect-[3/4] bg-gray-100 relative">
                   {t.images[0] ? <img src={t.images[0]} alt={t.name} className="w-full h-full object-cover transition duration-700 group-hover:scale-110" /> : <div className="w-full h-full flex flex-col items-center justify-center text-gray-300"><ImageIcon className="w-8 h-8 mb-2 opacity-50"/> <span className="text-[10px] font-bold uppercase tracking-widest">No Photo</span></div>}
                   <div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-[#123524]/20 to-transparent"></div>
+                  
+                  {/* Circle Badge with Therapist ID/Order */}
+                  <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
                 </div>
                 <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 text-center">
                   <div className="font-bold text-white text-sm sm:text-base tracking-wide drop-shadow-md">{t.name}</div>
                   {t.images.length > 1 && <div className="text-[9px] text-[#D4AF37] mt-1 font-bold tracking-widest uppercase flex justify-center items-center"><ImageIcon className="w-2.5 h-2.5 mr-1"/> See {t.images.length} photos</div>}
                 </div>
-                {selectedTherapist === t.name && <div className="absolute top-3 right-3 bg-[#D4AF37] text-white p-1 rounded-full shadow-lg"><Check className="w-4 h-4" /></div>}
+                {selectedTherapist === t.name && <div className="absolute top-2 right-2 bg-[#D4AF37] text-white p-1 rounded-full shadow-lg"><Check className="w-4 h-4" /></div>}
               </div>
             ))}
           </div>
@@ -277,7 +301,7 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
             <div className="absolute top-0 left-0 w-1 h-full bg-[#D4AF37]"></div>
             <h3 className="font-bold text-gray-800 border-b border-gray-100 pb-3 mb-4 flex items-center"><CheckCircle className="w-5 h-5 mr-2 text-[#D4AF37]" /> Summary</h3>
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Service:</span> <span className="font-bold text-gray-800 text-right">{selectedService?.name} <br/><span className="text-xs text-[#D4AF37]">({selectedService?.duration})</span></span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Service:</span> <span className="font-bold text-gray-800 text-right">{selectedService?.name} {isVvip ? <span className="text-[#D4AF37] ml-1">(VVIP)</span> : ''} <br/><span className="text-xs text-[#D4AF37]">({selectedService?.duration})</span></span></div>
               <div className="flex justify-between"><span className="text-gray-500">Therapist:</span> <span className="font-bold text-gray-800">{selectedTherapist}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Date:</span> <span className="font-bold text-gray-800">{selectedDate}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Time:</span> <span className="font-bold text-[#123524] bg-green-50 px-2 py-0.5 rounded">{selectedTime}</span></div>
@@ -287,7 +311,9 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
                   <span className="font-bold text-gray-600">Total Price:</span>
                   <div className="text-right">
                      {appData.promotion?.isActive && (
-                         <div className="text-[10px] text-green-600 font-bold uppercase tracking-wider mb-1 line-through opacity-60">{formatPrice(selectedService?.price)}</div>
+                         <div className="text-[10px] text-green-600 font-bold uppercase tracking-wider mb-1 line-through opacity-60">
+                           {formatPrice(isVvip && selectedService?.vvipPrice && !selectedService?.vvipIncluded ? selectedService?.vvipPrice : selectedService?.price)}
+                         </div>
                      )}
                      <span className="text-xl font-bold text-[#123524]">{formatPrice(calculateTotal())}</span>
                   </div>
@@ -335,9 +361,9 @@ function CustomerBookingWizard({ appData, onBookingSuccess }: { appData: AppData
   );
 }
 
-// ---------------------------------------------------------
+// ==========================================
 // COMPONENT: TherapistsGallery
-// ---------------------------------------------------------
+// ==========================================
 function TherapistsGallery({ appData }: { appData: AppData }) {
   return (
     <div className="max-w-4xl mx-auto px-4 pb-20 animate-fade-in">
@@ -358,6 +384,9 @@ function TherapistsGallery({ appData }: { appData: AppData }) {
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
               )}
+              {/* Badge */}
+              <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
+              
               <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
                  <h3 className="font-bold text-white text-lg drop-shadow-md">{t.name}</h3>
                  {t.images.length > 1 && <span className="text-[9px] text-[#D4AF37] font-bold tracking-widest uppercase mt-1 block drop-shadow-sm flex items-center justify-center"><ImageIcon className="w-2.5 h-2.5 mr-1"/>{t.images.length} Photos</span>}
@@ -379,9 +408,9 @@ function TherapistsGallery({ appData }: { appData: AppData }) {
   );
 }
 
-// ---------------------------------------------------------
+// ==========================================
 // COMPONENT: CustomerDashboard & CustomerHistory (Shared logic)
-// ---------------------------------------------------------
+// ==========================================
 function BookingCard({ b }: { b: Booking }) {
    const statusColor = { pending: 'bg-yellow-100 text-yellow-700 border-yellow-200', payment_checking: 'bg-blue-100 text-blue-700 border-blue-200', approved: 'bg-green-100 text-green-700 border-green-200', in_progress: 'bg-orange-100 text-orange-700 border-orange-200', completed: 'bg-gray-100 text-gray-600 border-gray-200', cancelled: 'bg-red-100 text-red-700 border-red-200' }[b.status];
    return (
@@ -423,7 +452,7 @@ function CustomerDashboard() {
   if (!phone) return <div className="text-center py-20 text-gray-500 font-bold animate-fade-in"><UserCircle className="w-12 h-12 mx-auto mb-3 text-gray-300"/>No active session. Please make a booking first.</div>;
   
   return (
-    <div className="max-w-2xl mx-auto animate-fade-in">
+    <div className="max-w-2xl mx-auto animate-fade-in px-4 sm:px-0">
       <div className="flex items-center justify-between mb-6 px-2"><h2 className="text-xl font-bold text-[#123524] flex items-center"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> Active Bookings</h2><span className="bg-[#123524] text-white px-3 py-1 rounded-full text-xs font-bold">{bookings.length}</span></div>
       {bookings.length === 0 ? (
          <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 text-center"><CalendarPlus className="w-12 h-12 text-gray-200 mx-auto mb-4"/><h3 className="font-bold text-gray-600 mb-1">No Active Bookings</h3><p className="text-xs text-gray-400">You don't have any upcoming appointments.</p></div>
@@ -451,7 +480,7 @@ function CustomerHistory() {
   if (!phone) return <div className="text-center py-20 text-gray-500 font-bold animate-fade-in"><History className="w-12 h-12 mx-auto mb-3 text-gray-300"/>No history available.</div>;
   
   return (
-    <div className="max-w-2xl mx-auto animate-fade-in">
+    <div className="max-w-2xl mx-auto animate-fade-in px-4 sm:px-0">
       <div className="flex items-center justify-between mb-6 px-2"><h2 className="text-xl font-bold text-[#123524] flex items-center"><History className="w-5 h-5 mr-2 text-gray-400" /> Booking History</h2><span className="bg-gray-200 text-gray-600 px-3 py-1 rounded-full text-xs font-bold">{bookings.length}</span></div>
       {bookings.length === 0 ? (
          <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 text-center"><History className="w-12 h-12 text-gray-200 mx-auto mb-4"/><h3 className="font-bold text-gray-600 mb-1">No History Yet</h3><p className="text-xs text-gray-400">Your past bookings will appear here.</p></div>
@@ -467,7 +496,7 @@ function CustomerProfile() {
   const phone = localStorage.getItem('shangrila_user_phone') || 'No Phone Registered';
   
   return (
-    <div className="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-sm border border-gray-100 text-center animate-fade-in mt-10">
+    <div className="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-sm border border-gray-100 text-center animate-fade-in mt-10 mx-4 sm:mx-auto">
       <div className="w-20 h-20 bg-gray-50 rounded-full mx-auto flex items-center justify-center border-4 border-white shadow-md mb-4 -mt-16"><UserCircle className="w-10 h-10 text-[#D4AF37]"/></div>
       <h2 className="text-xl font-bold text-[#123524] mb-1">{name}</h2>
       <p className="text-sm font-mono text-gray-500 bg-gray-50 inline-block px-4 py-1.5 rounded-full border border-gray-200">{phone}</p>
