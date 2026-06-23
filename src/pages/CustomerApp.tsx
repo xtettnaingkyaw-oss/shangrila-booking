@@ -748,14 +748,14 @@ export function CustomerBookingWizard({
           return (
             <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
               {isFull && (
-                <div className="absolute inset-0 z-20 bg-black/10 flex items-center justify-center">
+                <div className="absolute inset-0 z-20 bg-white/50 backdrop-blur-[2px] flex items-center justify-center">
                   <div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500">
                     <div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div>
                     <div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div>
                   </div>
                 </div>
               )}
-              <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-80 grayscale-[30%]' : ''}`}>
+              <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-40 grayscale' : ''}`}>
                 {hasImage ? (
                   <>
                     <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
@@ -768,8 +768,8 @@ export function CustomerBookingWizard({
                   </>
                 ) : (<div className="flex flex-col items-center opacity-40"><User className="w-12 h-12 text-[#123524]" /></div>)}
               </div>
-              <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-600' : 'text-gray-800'}`}>{therapist.name}</div>
-              <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-400' : 'text-gray-500'}`}>Professional Therapist</div>
+              <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-400' : 'text-gray-800'}`}>{therapist.name}</div>
+              <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
               
               {isTherapistFirst && !isFull && (
                 <button type="button" onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist }); handleNextStep(currentStep + 1); }} className="mt-3 w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-xs font-bold flex items-center justify-center hover:opacity-90 transition shadow-sm border border-[#1a4a32]">
@@ -1069,7 +1069,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       if (isCurrentlyActive) {
           return { 
               label: 'In Service (Active)', 
-              mm: `${activeServiceName} ဝန်ဆောင်မှုပေးနေပါသည်`, 
+              mm: `${activeServiceName} ဘိုကင်ယူထားပါသည်`, 
               color: 'bg-orange-100 text-orange-700 border-orange-200'
           };
       }
@@ -1154,8 +1154,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 
              return (
                 <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
-                   <div className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
-                       {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
+                   <div className={`w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
+                       {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
                    </div>
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
@@ -1189,7 +1189,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                             {idx + 1}
                          </div>
                          <div className="w-full aspect-[3/4] bg-gray-100 relative">
-                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
+                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
                          </div>
                          <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
                              <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
