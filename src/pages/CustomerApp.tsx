@@ -1,24 +1,35 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import React, { useState, useEffect, Suspense, lazy, useRef, useMemo, useCallback } from 'react';
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { db } from './firebase';
 
-// Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
+// Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon များအားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, ShieldCheck, ShieldAlert, Save, PlusCircle, Settings, UploadCloud, MapPin, Search, Lock, Coffee, Download } from 'lucide-react';
-import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
+import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, AdminProfile, OutPass, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep, formatPrice, compressImage } from './shared';
 
 // ==========================================
-// LOCAL HELPERS & CONSTANTS
+// DEFAULT SETTINGS & CONSTANTS
 // ==========================================
-const ICON_MAP: Record<string, any> = {
-  massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
+const DEFAULT_BRANDING: AppBranding = {
+  logoUrl: '', name: "The Shangri-La", address: "33th(B) St, Between 65th & 65th(A) Sts, Mandalay",
+  phone1: "09-458884517", phone2: "09-770072190", copyright: "© 2026 The Shangri-La Men's Retreat."
 };
+const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [{ id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' }];
+const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i, password: '' }));
+const DEFAULT_PROMOTION: PromotionSettings = { isActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' };
+const DEFAULT_CATEGORIES: MenuCategory[] = [
+  { id: 'massage', title: 'Massage', items: [{ id: 'm1', name: 'Traditional Massage', price: 25000, duration: '60 Mins' }] },
+  { id: 'hotel', title: 'Hotel & Home Services', items: [{ id: 'h1', name: 'Part Time Outcall Service', price: 70000, duration: '100 Mins' }] }
+];
+const DEFAULT_INSTALL_STEPS: InstallStep[] = [
+   { id: '1', text: 'Browser ၏ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပါ။', imageUrl: '' },
+   { id: '2', text: '"Add to Home Screen" ကို ရွေးချယ်ပါ။', imageUrl: '' },
+   { id: '3', text: '"Add" ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။', imageUrl: '' }
+];
 
+const ICON_MAP: Record<string, any> = { massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors };
 const ALL_TIME_SLOTS = ["6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM"];
 
-const getLocalTodayStr = () => {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-};
+const getLocalTodayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
 function useCountdown(initialMinutes: number, onExpire: () => void) {
   const [timeLeft, setTimeLeft] = useState(initialMinutes * 60);
@@ -33,31 +44,27 @@ function useCountdown(initialMinutes: number, onExpire: () => void) {
 
 function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: number, dateStr: string): Set<string> {
     const blocked = new Set<string>();
-    const [y, m, d] = dateStr.split('-');
-    const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
-    const startOfDay = dateObj.setHours(0, 0, 0, 0);
-    const endOfDay = dateObj.setHours(23, 59, 59, 999);
-
+    const [y, m, d] = dateStr.split('-'); const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
+    const startOfDay = dateObj.setHours(0, 0, 0, 0); const endOfDay = dateObj.setHours(23, 59, 59, 999);
     if (endTimeMillis <= startOfDay || startTimeMillis >= endOfDay) return blocked;
-
     ALL_TIME_SLOTS.forEach(slot => {
         if (slot.includes("to")) return; 
         const slotTime = new Date(Number(y), Number(m) - 1, Number(d));
-        const [time, ampm] = slot.split(' ');
-        let [sh, sm] = time.split(':').map(Number);
-        if (ampm === 'PM' && sh < 12) sh += 12;
-        if (ampm === 'AM' && sh === 12) sh = 0;
+        const [time, ampm] = slot.split(' '); let [sh, sm] = time.split(':').map(Number);
+        if (ampm === 'PM' && sh < 12) sh += 12; if (ampm === 'AM' && sh === 12) sh = 0;
         slotTime.setHours(sh, sm, 0, 0);
-        
-        const slotTimeMillis = slotTime.getTime();
-        const nextSlotTimeMillis = slotTimeMillis + (30 * 60 * 1000); 
-
-        if ((startTimeMillis < nextSlotTimeMillis) && (endTimeMillis > slotTimeMillis)) {
-            blocked.add(slot);
-        }
+        const slotTimeMillis = slotTime.getTime(); const nextSlotTimeMillis = slotTimeMillis + (30 * 60 * 1000); 
+        if ((startTimeMillis < nextSlotTimeMillis) && (endTimeMillis > slotTimeMillis)) { blocked.add(slot); }
     });
     return blocked;
 }
+
+const calculateDistanceInMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371e3; const p1 = lat1 * Math.PI / 180; const p2 = lat2 * Math.PI / 180;
+  const dp = (lat2 - lat1) * Math.PI / 180; const dl = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); return R * c;
+};
 
 const XCircleIcon = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 
@@ -66,43 +73,191 @@ export function StatusBadge({ status, cancelReason }: { status: string, cancelRe
   if (status === 'completed') return <span className="text-gray-600 border border-gray-200 bg-gray-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><CheckCircle className="w-3 h-3 mr-1"/> Completed</span>;
   if (status === 'payment_checking') return <span className="text-blue-600 border border-blue-200 bg-blue-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Confirming</span>;
   if (status === 'approved') return <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><CheckCircle className="w-3 h-3 mr-1"/> Confirmed</span>;
-  if (status === 'cancelled') return (
-    <div className="flex flex-col items-end">
-      <span className="text-red-500 border border-red-200 bg-red-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><XCircleIcon className="w-3 h-3 mr-1"/> Cancelled</span>
-      {cancelReason && <span className="text-[10px] text-red-400 mt-1 max-w-[200px] text-right leading-tight text-xs">Reason: {cancelReason}</span>}
-    </div>
-  );
+  if (status === 'cancelled') return (<div className="flex flex-col items-end"><span className="text-red-500 border border-red-200 bg-red-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><XCircleIcon className="w-3 h-3 mr-1"/> Cancelled</span>{cancelReason && <span className="text-[10px] text-red-400 mt-1 max-w-[200px] text-right leading-tight text-xs">Reason: {cancelReason}</span>}</div>);
   return <span className="text-yellow-600 border border-yellow-200 bg-yellow-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Pending</span>;
 }
 
-export function BookingCard({ b }: { b: Booking }) {
-   const statusColor = { pending: 'bg-yellow-100 text-yellow-700 border-yellow-200', payment_checking: 'bg-blue-100 text-blue-700 border-blue-200', approved: 'bg-green-100 text-green-700 border-green-200', in_progress: 'bg-orange-100 text-orange-700 border-orange-200', completed: 'bg-gray-100 text-gray-600 border-gray-200', cancelled: 'bg-red-100 text-red-700 border-red-200' }[b.status];
-   return (
-     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:border-[#D4AF37]/50 transition-all duration-300 relative overflow-hidden group">
-       <div className={`absolute top-0 left-0 w-1.5 h-full ${b.status === 'in_progress' ? 'bg-orange-500 animate-pulse' : b.status === 'approved' ? 'bg-green-500' : 'bg-gray-200'}`}></div>
-       <div className="flex justify-between items-start mb-3">
-         <div>
-           <div className="font-bold text-gray-800 text-base">{b.service.split('(')[0]}</div>
-           <div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1 text-[#D4AF37]"/> {b.therapist}</div>
-         </div>
-         <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider ${statusColor}`}>{b.status.replace('_', ' ')}</span>
-       </div>
-       <div className="grid grid-cols-2 gap-3 mb-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
-         <div><div className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Date</div><div className="font-semibold text-sm text-gray-700 flex items-center"><Calendar className="w-3 h-3 mr-1 text-[#123524]"/>{b.date}</div></div>
-         <div><div className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Time</div><div className="font-semibold text-sm text-[#123524] flex items-center"><Clock className="w-3 h-3 mr-1 text-[#D4AF37]"/>{b.time}</div></div>
-       </div>
-       <div className="flex justify-between items-end pt-3 border-t border-gray-100">
-         <div className="text-[10px] text-gray-400 font-mono">ID: {b.id?.slice(-6).toUpperCase()}</div>
-         <div className="font-bold text-[#123524] text-lg">{formatPrice(b.totalPrice)}</div>
-       </div>
-     </div>
-   );
+// ==========================================
+// ERROR BOUNDARY
+// ==========================================
+class ErrorBoundary extends React.Component<{ children: any }, { hasError: boolean, error: any }> {
+  constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-red-50 flex items-center justify-center p-10 text-center">
+          <div><h1 className="text-3xl font-bold text-red-600 mb-4">App Crashed ⚠️</h1><p className="text-gray-700 font-mono text-sm bg-white p-4 rounded shadow">{this.state.error?.toString()}</p><button onClick={() => window.location.reload()} className="mt-6 px-6 py-3 bg-[#123524] text-white rounded-lg font-bold">Reload App</button></div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // ==========================================
-// MAIN CUSTOMER APP WRAPPER
+// MAIN APP WRAPPER (ENTRY POINT)
 // ==========================================
-export default function CustomerApp({ appData }: { appData: AppData }) {
+function MainApp() {
+  const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff'>('customer');
+  const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
+  const [appData, setAppData] = useState<AppData | null>(null);
+  const [dbError, setDbError] = useState(false);
+  
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) { setIsStandalone(true); }
+    const handleBeforeInstallPrompt = (e: any) => { e.preventDefault(); setDeferredPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleDownloadApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') { setDeferredPrompt(null); setIsStandalone(true); }
+    } else { 
+      setShowInstallModal(true); 
+    }
+  };
+
+  useEffect(() => {
+    document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
+    const updateFavicon = (url: string) => {
+      const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='manifest']"); 
+      existingIcons.forEach(icon => document.head.removeChild(icon));
+      const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
+      const appleIcon = document.createElement('link'); appleIcon.rel = 'apple-touch-icon'; appleIcon.href = url; document.head.appendChild(appleIcon);
+    };
+    if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); }
+  }, [appData?.branding?.logoUrl, appData?.branding?.name]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get('mode') === 'admin') setAppMode('admin');
+    else if (searchParams.get('mode') === 'staff') setAppMode('staff');
+
+    const initData = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'appData'); const snap = await getDoc(docRef);
+        let loadedData: Partial<AppData> = {}; if (snap.exists()) loadedData = snap.data() || {};
+        
+        const finalCategories = Array.isArray(loadedData.categories) ? loadedData.categories : DEFAULT_CATEGORIES;
+        const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
+        const finalPaymentMethods = Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS;
+        const finalPromotion = loadedData.promotion || DEFAULT_PROMOTION;
+        const finalInstallSteps = loadedData.installSteps || DEFAULT_INSTALL_STEPS;
+        
+        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); const tSnap = await getDocs(tQuery);
+        let loadedTherapists: TherapistProfile[] = [];
+        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); } else { loadedTherapists = DEFAULT_THERAPISTS; }
+        
+        setAppData({ categories: finalCategories, therapists: loadedTherapists, branding: finalBranding, paymentMethods: finalPaymentMethods, promotion: finalPromotion, installSteps: finalInstallSteps });
+      } catch (err) {
+        console.error(err); setDbError(true);
+        setAppData({ categories: DEFAULT_CATEGORIES, therapists: DEFAULT_THERAPISTS, branding: DEFAULT_BRANDING, paymentMethods: DEFAULT_PAYMENT_METHODS, promotion: DEFAULT_PROMOTION, installSteps: DEFAULT_INSTALL_STEPS });
+      }
+    };
+    initData();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+       const sessionAdmin = sessionStorage.getItem('shangrila_admin');
+       if (sessionAdmin !== loggedInAdmin) setLoggedInAdmin(sessionAdmin);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [loggedInAdmin]);
+
+  if (!appData) { return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold">Loading The Shangri-La...</div>; }
+
+  const stepsToShow = appData.installSteps && appData.installSteps.length > 0 ? appData.installSteps : DEFAULT_INSTALL_STEPS;
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
+      {dbError && <div className="bg-red-500 text-white text-xs text-center py-1">Database Loading Warning. Showing Default Data.</div>}
+      
+      {showInstallModal && (
+        <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden animate-fade-in shadow-2xl">
+             <div className="p-4 bg-[#123524] flex justify-between items-center text-white">
+                <h3 className="font-bold flex items-center"><Download className="w-4 h-4 mr-2"/> Install App</h3>
+                <button onClick={() => setShowInstallModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X className="w-5 h-5"/></button>
+             </div>
+             <div className="p-5 max-h-[75vh] overflow-y-auto space-y-4">
+                <div className="text-center text-sm font-bold text-gray-700 mb-4">အောက်ပါ အဆင့်များအတိုင်း လုပ်ဆောင်ပေးပါ</div>
+                {stepsToShow.map((step, idx) => (
+                   <div key={step.id || idx} className="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
+                      <p className="text-xs font-bold mb-2 leading-relaxed text-gray-800">{idx + 1}။ {step.text}</p>
+                      {step.imageUrl && <img src={step.imageUrl} alt={`Step ${idx + 1}`} className="w-full rounded border border-gray-200" />}
+                   </div>
+                ))}
+                <button onClick={() => setShowInstallModal(false)} className="w-full py-3 bg-[#D4AF37] text-white font-bold rounded-lg mt-4 hover:bg-yellow-600 transition shadow-md">နားလည်ပါပြီ</button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      <header className="bg-white shadow-sm py-6 px-4 text-center border-b border-gray-200 flex flex-col items-center justify-center relative">
+        <div className="flex items-center justify-center mb-1">
+          {appData.branding.logoUrl && (
+            <div className="w-12 h-12 rounded-full overflow-hidden mr-3 border-2 shadow-sm flex-shrink-0" style={{ borderColor: THEME.gold }}>
+              <img src={appData.branding.logoUrl} alt="Logo" className="w-full h-full object-cover bg-white" />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold tracking-wider" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'}</h1>
+        </div>
+        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
+        
+        {!isStandalone && appMode === 'customer' && (
+           <button onClick={handleDownloadApp} className="mt-4 text-[10px] sm:text-xs font-bold text-white flex items-center justify-center bg-[#D4AF37] px-4 py-2 rounded-full hover:bg-yellow-600 transition shadow-sm border border-yellow-600">
+             <Download className="w-3.5 h-3.5 mr-1.5" /> Download App
+           </button>
+        )}
+        {appMode === 'admin' && loggedInAdmin && (
+           <button onClick={() => { setLoggedInAdmin(null); sessionStorage.removeItem('shangrila_admin'); }} className="absolute top-6 right-4 sm:right-6 text-xs font-bold text-red-500 flex items-center bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100"><LogOut className="w-3 h-3 mr-1" /> Logout</button>
+        )}
+      </header>
+
+      <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-6">
+        <Suspense fallback={<div className="text-center py-20 font-bold text-gray-500">Loading Components...</div>}>
+            {appMode === 'admin' ? (
+              <AdminApp appData={appData} onSettingsUpdated={setAppData} />
+            ) : appMode === 'staff' ? (
+              <StaffApp appData={appData} />
+            ) : <CustomerApp appData={appData} />}
+        </Suspense>
+      </main>
+
+      {appMode !== 'admin' && (
+        <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500 px-4">
+          <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'} Men's Retreat</h3>
+          <div className="mb-2 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto">
+            <MapPin className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" />
+            <span className="text-left sm:text-center leading-relaxed">{appData.branding.address}</span>
+          </div>
+          <div className="mb-4 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto">
+            <Phone className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" />
+            <span className="text-left sm:text-center leading-relaxed">{appData.branding.phone1} &nbsp;|&nbsp; {appData.branding.phone2}</span>
+          </div>
+          <p className="text-xs text-gray-400 mt-4">{appData.branding.copyright}</p>
+        </footer>
+      )}
+    </div>
+  );
+}
+
+export default function App() { return <ErrorBoundary><MainApp /></ErrorBoundary>; }
+
+// ==========================================
+// CUSTOMER APP
+// ==========================================
+function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
      const searchParams = new URLSearchParams(window.location.search);
      const view = searchParams.get('view');
@@ -110,7 +265,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      if (view === 'dashboard') return 'dashboard';
      return 'book';
   });
-  
   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
   const [hasNoti, setHasNoti] = useState(false);
   const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
@@ -184,29 +338,10 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   );
 }
 
-// ==========================================
-// CUSTOMER BOOKING WIZARD (FULL LOGIC)
-// ==========================================
 export function CustomerBookingWizard({
-    appData, 
-    userPhone = '', 
-    onBooked, 
-    forceTherapistFirst = false, 
-    initialTherapist = null, 
-    isStaffMode = false, 
-    staffClockIn = false, 
-    staffClockInSuccess, 
-    preselectedStaff 
+    appData, userPhone = '', onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff 
 }: { 
-    appData: AppData, 
-    userPhone?: string, 
-    onBooked?: (phone: string) => void, 
-    forceTherapistFirst?: boolean, 
-    initialTherapist?: TherapistProfile | null, 
-    isStaffMode?: boolean, 
-    staffClockIn?: boolean, 
-    staffClockInSuccess?: () => void, 
-    preselectedStaff?: string 
+    appData: AppData, userPhone?: string, onBooked?: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string 
 }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
@@ -253,7 +388,6 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // Time Slot Logic (With Real-Time Check for Today)
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
@@ -315,9 +449,7 @@ export function CustomerBookingWizard({
   };
 
   const promoActive = checkPromoActive();
-  const discountPercent = promoActive 
-      ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) 
-      : 0;
+  const discountPercent = promoActive ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) : 0;
 
   const calculateSubTotal = () => {
     if (!formData.selectedItem) return 0;
@@ -325,28 +457,18 @@ export function CustomerBookingWizard({
     const vvipPrice = Number(formData.selectedItem.vvipPrice) || 0;
     return formData.isVvipUpgrade && vvipPrice > 0 && !formData.selectedItem.vvipIncluded ? vvipPrice : basePrice;
   };
-
-  const calculateDiscountAmount = () => {
-      return (calculateSubTotal() * discountPercent) / 100;
-  };
-
-  const calculateTotal = () => {
-      return calculateSubTotal() - calculateDiscountAmount();
-  };
+  const calculateDiscountAmount = () => (calculateSubTotal() * discountPercent) / 100;
+  const calculateTotal = () => calculateSubTotal() - calculateDiscountAmount();
 
   const handleCopy = (text: string) => {
     if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); alert('Copied!'); }
     else { alert("Copying manually required: " + text); }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => { setFormData({ ...formData, [e.target.name]: e.target.value }); };
   const handleNextStep = (nextStep: number) => {
     setStep(nextStep);
-    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
-    else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
   };
 
   const handleCountdownExpire = () => {
@@ -373,14 +495,8 @@ export function CustomerBookingWizard({
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-                  eIdx = ALL_TIME_SLOTS.length; 
-              }
-
-              if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) blocked.add(ALL_TIME_SLOTS[i]);
-              }
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
+              if (sIdx !== -1 && eIdx !== -1) { for (let i = sIdx; i < eIdx; i++) blocked.add(ALL_TIME_SLOTS[i]); }
               blocked.add(b.time); 
           } else if (b.time) {
               const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
@@ -388,10 +504,7 @@ export function CustomerBookingWizard({
                   let slotsToBlock = 2; 
                   const match = b.service.match(/(\d+)\s*Mins/i);
                   if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
-                  
-                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
-                      if (ALL_TIME_SLOTS[i]) blocked.add(ALL_TIME_SLOTS[i]);
-                  }
+                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) { if (ALL_TIME_SLOTS[i]) blocked.add(ALL_TIME_SLOTS[i]); }
               }
           }
       });
@@ -407,31 +520,24 @@ export function CustomerBookingWizard({
       }
 
       const allowedSlots = formData.selectedItem ? getAvailableTimeSlots() : ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
-
       let hasAvailableSlot = false;
+
       for (const t of allowedSlots) {
           if (t.includes("to")) {
               const [start, endRaw] = t.split(" to ");
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-                  eIdx = ALL_TIME_SLOTS.length;
-              }
-
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
               let overlap = false;
               if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) {
-                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; }
-                  }
+                  for (let i = sIdx; i < eIdx; i++) { if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; } }
               }
               if (blockedNow.has(t)) overlap = true;
               if (!overlap) { hasAvailableSlot = true; break; }
           } else {
               const sIdx = ALL_TIME_SLOTS.indexOf(t);
               if (sIdx === -1) continue;
-
               let overlap = false;
               for (let i = 0; i < neededSlots; i++) {
                   if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { overlap = true; break; }
@@ -451,15 +557,9 @@ export function CustomerBookingWizard({
           const end = endRaw.replace(" (Next Day)", "");
           const sIdx = ALL_TIME_SLOTS.indexOf(start);
           let eIdx = ALL_TIME_SLOTS.indexOf(end);
-          
-          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-              eIdx = ALL_TIME_SLOTS.length;
-          }
-
+          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
           if (sIdx !== -1 && eIdx !== -1) {
-              for (let i = sIdx; i < eIdx; i++) {
-                  if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false;
-              }
+              for (let i = sIdx; i < eIdx; i++) { if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false; }
           }
           return true;
       }
@@ -535,13 +635,9 @@ export function CustomerBookingWizard({
                   const bMatch = b.service.match(/(\d+)\s*Mins/i);
                   if (bMatch) bDur = parseInt(bMatch[1]);
                   otherEnd = otherStart + bDur * 60000;
-              } else {
-                  return; 
-              }
+              } else { return; }
 
-              if (fluidStartTimeMillis < otherEnd && expectedEndTimeMillis > otherStart) {
-                  isOverlap = true;
-              }
+              if (fluidStartTimeMillis < otherEnd && expectedEndTimeMillis > otherStart) { isOverlap = true; }
           });
 
       } else {
@@ -553,9 +649,7 @@ export function CustomerBookingWizard({
               if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
 
               if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) {
-                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; }
-                  }
+                  for (let i = sIdx; i < eIdx; i++) { if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; } }
               }
               if (blockedNow.has(formData.time)) isOverlap = true;
           } else {
@@ -569,19 +663,13 @@ export function CustomerBookingWizard({
           }
       }
 
-      if (isOverlap) {
-         alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။");
-         setLoading(false); return;
-      }
+      if (isOverlap) { alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။"); setLoading(false); return; }
 
       if (formData.phone && formData.phone.trim() !== '') {
         const userRef = doc(db, 'users', formData.phone);
         const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          await setDoc(userRef, { phone: formData.phone, name: formData.name, password: '', createdAt: Date.now() });
-        } else if (!userSnap.data().name) {
-          await updateDoc(userRef, { name: formData.name });
-        }
+        if (!userSnap.exists()) { await setDoc(userRef, { phone: formData.phone, name: formData.name, password: '', createdAt: Date.now() }); } 
+        else if (!userSnap.data().name) { await updateDoc(userRef, { name: formData.name }); }
       }
 
       const dataToSave = {
@@ -597,10 +685,7 @@ export function CustomerBookingWizard({
         status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
         createdAt: Date.now(),
         specialRequest: formData.specialRequest,
-        ...(isStaffImmediate && {
-           startTimeMillis: fluidStartTimeMillis,
-           expectedEndTimeMillis: expectedEndTimeMillis
-        })
+        ...(isStaffImmediate && { startTimeMillis: fluidStartTimeMillis, expectedEndTimeMillis: expectedEndTimeMillis })
       };
       await addDoc(collection(db, 'bookings'), dataToSave);
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
@@ -686,7 +771,6 @@ export function CustomerBookingWizard({
         )
       })}</div>
       
-      {/* VVIP Toggle Display */}
       <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
         <div className="flex items-center">
             <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
@@ -1004,6 +1088,13 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   const [bookings, setBookings] = useState<Booking[]>([]);
   const todayStr = getLocalTodayStr();
 
+  // Find all service names in Hotel & Home Services category
+  const hotelServiceNames = useMemo(() => {
+      const hotelCat = appData.categories.find(c => c.id === 'hotel');
+      if (!hotelCat) return [];
+      return hotelCat.items.map(i => i.name.toLowerCase());
+  }, [appData.categories]);
+
   useEffect(() => {
     const q = query(collection(db, 'bookings'));
     const unsub = onSnapshot(q, (snap) => {
@@ -1019,6 +1110,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       let isCurrentlyActive = false;
       let activeServiceName = '';
       let upcomingServices: string[] = [];
+      let hasUpcomingOutcall = false;
+      let hasUpcomingShop = false;
       
       const currentHour = new Date().getHours();
       const isPast6PM = currentHour >= 18;
@@ -1029,6 +1122,10 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (b.therapist !== tName) return;
 
           const cleanServiceName = b.service.split('(')[0].trim();
+          const lowerName = cleanServiceName.toLowerCase();
+          
+          // Check if the service is an outcall/hotel service based on category matching OR naming
+          const isOutcallSvc = hotelServiceNames.some(name => lowerName.includes(name)) || lowerName.includes('outcall') || lowerName.includes('hotel') || lowerName.includes('home') || lowerName.includes('night') || lowerName.includes('half day');
 
           if (b.status === 'in_progress' && b.startTimeMillis) {
                isCurrentlyActive = true;
@@ -1039,6 +1136,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                if (!upcomingServices.includes(cleanServiceName)) {
                    upcomingServices.push(cleanServiceName);
                }
+               if (isOutcallSvc) hasUpcomingOutcall = true;
+               else hasUpcomingShop = true;
 
                if (b.time && b.time.includes("to")) {
                    const [start, endRaw] = b.time.split(" to ");
@@ -1064,14 +1163,14 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           }
       });
 
-      const serviceNamesText = upcomingServices.join(', ');
+      const finalServiceName = isCurrentlyActive ? activeServiceName : upcomingServices.join(', ');
 
       if (isCurrentlyActive) {
           return { 
               label: 'In Service (Active)', 
               mm: 'ဝန်ဆောင်မှုပေးနေပါသည်', 
               color: 'bg-orange-100 text-orange-700 border-orange-200',
-              activeService: activeServiceName
+              activeService: finalServiceName
           };
       }
 
@@ -1083,7 +1182,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
 
       if (is24hFull || (isNightFull && isPast6PM)) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
       }
 
       let shopSlotsTotal = 0; let shopSlotsBooked = 0;
@@ -1091,27 +1190,29 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isShopFull = shopSlotsBooked === shopSlotsTotal;
 
       if (isDayFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
-          return { label: 'Day Full / Night Available', mm: serviceNamesText ? `${serviceNamesText} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: '' };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: finalServiceName };
+          return { label: 'Day Full / Night Available', mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: finalServiceName };
       }
 
       if (isNightFull && !isDayFull && !isShopFull) {
-          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
-          return { label: 'Night Full / Day Available', mm: serviceNamesText ? `${serviceNamesText} ဘိုကင်ယူထားပါသည်။ နေ့ခင်းပိုင်းအချိန်များ ဘိုကင်ရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', activeService: '' };
+          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
+          return { label: 'Night Full / Day Available', mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ နေ့ခင်းပိုင်းအချိန်များ ဘိုကင်ရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', activeService: finalServiceName };
       }
 
       if (isShopFull && isNightFull) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
       }
 
       if (isShopFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
-          return { label: 'Shop Full / Night Available', mm: serviceNamesText ? `${serviceNamesText} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: '' };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: finalServiceName };
+          return { label: 'Shop Full / Night Available', mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: finalServiceName };
       }
       
-      if (shopSlotsBooked > 0 || upcomingServices.length > 0) { 
-          let mmText = serviceNamesText ? `${serviceNamesText} ဘိုကင်ယူထားပါသည်` : 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်';
-          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: '' }; 
+      if (shopSlotsBooked > 0 || hasUpcomingOutcall || hasUpcomingShop) { 
+          let mmText = finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်` : 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်';
+          if (hasUpcomingOutcall && hasUpcomingShop) mmText = 'ဆိုင်ချိန် နှင့် Outcall ဘိုကင်ရှိပါသည်';
+
+          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: finalServiceName }; 
       }
 
       return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
@@ -1149,13 +1250,15 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
                        <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
-                          {status.label}
-                          {status.label === 'In Service (Active)' && status.activeService && (
-                              <span className="block mt-0.5 pt-0.5 border-t border-current opacity-80">
+                          <span className="block pb-0.5">{status.label}</span>
+                          {status.activeService && (
+                              <span className="block mt-0.5 text-current opacity-90 leading-snug">
                                  {status.activeService}
                               </span>
                           )}
-                          <span className="font-semibold opacity-90 block mt-0.5">{status.mm}</span>
+                          <span className="font-semibold block mt-1 pt-1 border-t opacity-80" style={{ borderTopColor: 'currentColor' }}>
+                             {status.mm}
+                          </span>
                        </div>
                    </div>
                    <button onClick={() => onBookTherapist(t)} className="ml-2 px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold whitespace-nowrap shadow-sm hover:bg-[#1a4a32] flex items-center border border-[#1a4a32]">
