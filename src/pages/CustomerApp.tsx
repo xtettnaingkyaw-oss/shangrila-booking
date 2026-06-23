@@ -185,42 +185,21 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 }
 
 // ==========================================
-// CUSTOMER BOOKING WIZARD (FULL LOGIC)
+// CUSTOMER BOOKING WIZARD
 // ==========================================
 export function CustomerBookingWizard({
-    appData, 
-    userPhone = '', 
-    onBooked, 
-    forceTherapistFirst = false, 
-    initialTherapist = null, 
-    isStaffMode = false, 
-    staffClockIn = false, 
-    staffClockInSuccess, 
-    preselectedStaff 
+    appData, userPhone = '', onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff 
 }: { 
-    appData: AppData, 
-    userPhone?: string, 
-    onBooked?: (phone: string) => void, 
-    forceTherapistFirst?: boolean, 
-    initialTherapist?: TherapistProfile | null, 
-    isStaffMode?: boolean, 
-    staffClockIn?: boolean, 
-    staffClockInSuccess?: () => void, 
-    preselectedStaff?: string 
+    appData: AppData, userPhone?: string, onBooked?: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string 
 }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
-  
-  const [step, setStep] = useState(() => {
-      if (staffClockIn) return isTherapistFirst ? 2 : 1;
-      return initialTherapist ? 2 : 1;
-  });
+  const [step, setStep] = useState(() => { if (staffClockIn) return isTherapistFirst ? 2 : 1; return initialTherapist ? 2 : 1; });
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
-  
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const todayStr = getLocalTodayStr();
@@ -253,7 +232,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // Time Slot Logic (With Real-Time Check for Today)
+  // Real-time Time Slot Validation
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
@@ -315,9 +294,7 @@ export function CustomerBookingWizard({
   };
 
   const promoActive = checkPromoActive();
-  const discountPercent = promoActive 
-      ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) 
-      : 0;
+  const discountPercent = promoActive ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) : 0;
 
   const calculateSubTotal = () => {
     if (!formData.selectedItem) return 0;
@@ -325,28 +302,18 @@ export function CustomerBookingWizard({
     const vvipPrice = Number(formData.selectedItem.vvipPrice) || 0;
     return formData.isVvipUpgrade && vvipPrice > 0 && !formData.selectedItem.vvipIncluded ? vvipPrice : basePrice;
   };
-
-  const calculateDiscountAmount = () => {
-      return (calculateSubTotal() * discountPercent) / 100;
-  };
-
-  const calculateTotal = () => {
-      return calculateSubTotal() - calculateDiscountAmount();
-  };
+  const calculateDiscountAmount = () => (calculateSubTotal() * discountPercent) / 100;
+  const calculateTotal = () => calculateSubTotal() - calculateDiscountAmount();
 
   const handleCopy = (text: string) => {
     if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); alert('Copied!'); }
     else { alert("Copying manually required: " + text); }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => { setFormData({ ...formData, [e.target.name]: e.target.value }); };
   const handleNextStep = (nextStep: number) => {
     setStep(nextStep);
-    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
-    else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
   };
 
   const handleCountdownExpire = () => {
@@ -373,14 +340,8 @@ export function CustomerBookingWizard({
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-                  eIdx = ALL_TIME_SLOTS.length; 
-              }
-
-              if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) blocked.add(ALL_TIME_SLOTS[i]);
-              }
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
+              if (sIdx !== -1 && eIdx !== -1) { for (let i = sIdx; i < eIdx; i++) blocked.add(ALL_TIME_SLOTS[i]); }
               blocked.add(b.time); 
           } else if (b.time) {
               const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
@@ -388,10 +349,7 @@ export function CustomerBookingWizard({
                   let slotsToBlock = 2; 
                   const match = b.service.match(/(\d+)\s*Mins/i);
                   if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
-                  
-                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
-                      if (ALL_TIME_SLOTS[i]) blocked.add(ALL_TIME_SLOTS[i]);
-                  }
+                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) { if (ALL_TIME_SLOTS[i]) blocked.add(ALL_TIME_SLOTS[i]); }
               }
           }
       });
@@ -407,31 +365,24 @@ export function CustomerBookingWizard({
       }
 
       const allowedSlots = formData.selectedItem ? getAvailableTimeSlots() : ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
-
       let hasAvailableSlot = false;
+
       for (const t of allowedSlots) {
           if (t.includes("to")) {
               const [start, endRaw] = t.split(" to ");
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-                  eIdx = ALL_TIME_SLOTS.length;
-              }
-
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
               let overlap = false;
               if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) {
-                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; }
-                  }
+                  for (let i = sIdx; i < eIdx; i++) { if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; } }
               }
               if (blockedNow.has(t)) overlap = true;
               if (!overlap) { hasAvailableSlot = true; break; }
           } else {
               const sIdx = ALL_TIME_SLOTS.indexOf(t);
               if (sIdx === -1) continue;
-
               let overlap = false;
               for (let i = 0; i < neededSlots; i++) {
                   if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { overlap = true; break; }
@@ -451,15 +402,9 @@ export function CustomerBookingWizard({
           const end = endRaw.replace(" (Next Day)", "");
           const sIdx = ALL_TIME_SLOTS.indexOf(start);
           let eIdx = ALL_TIME_SLOTS.indexOf(end);
-          
-          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-              eIdx = ALL_TIME_SLOTS.length;
-          }
-
+          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
           if (sIdx !== -1 && eIdx !== -1) {
-              for (let i = sIdx; i < eIdx; i++) {
-                  if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false;
-              }
+              for (let i = sIdx; i < eIdx; i++) { if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false; }
           }
           return true;
       }
@@ -535,13 +480,9 @@ export function CustomerBookingWizard({
                   const bMatch = b.service.match(/(\d+)\s*Mins/i);
                   if (bMatch) bDur = parseInt(bMatch[1]);
                   otherEnd = otherStart + bDur * 60000;
-              } else {
-                  return; 
-              }
+              } else { return; }
 
-              if (fluidStartTimeMillis < otherEnd && expectedEndTimeMillis > otherStart) {
-                  isOverlap = true;
-              }
+              if (fluidStartTimeMillis < otherEnd && expectedEndTimeMillis > otherStart) { isOverlap = true; }
           });
 
       } else {
@@ -553,9 +494,7 @@ export function CustomerBookingWizard({
               if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
 
               if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) {
-                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; }
-                  }
+                  for (let i = sIdx; i < eIdx; i++) { if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; } }
               }
               if (blockedNow.has(formData.time)) isOverlap = true;
           } else {
@@ -569,19 +508,13 @@ export function CustomerBookingWizard({
           }
       }
 
-      if (isOverlap) {
-         alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။");
-         setLoading(false); return;
-      }
+      if (isOverlap) { alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။"); setLoading(false); return; }
 
       if (formData.phone && formData.phone.trim() !== '') {
         const userRef = doc(db, 'users', formData.phone);
         const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          await setDoc(userRef, { phone: formData.phone, name: formData.name, password: '', createdAt: Date.now() });
-        } else if (!userSnap.data().name) {
-          await updateDoc(userRef, { name: formData.name });
-        }
+        if (!userSnap.exists()) { await setDoc(userRef, { phone: formData.phone, name: formData.name, password: '', createdAt: Date.now() }); } 
+        else if (!userSnap.data().name) { await updateDoc(userRef, { name: formData.name }); }
       }
 
       const dataToSave = {
@@ -597,10 +530,7 @@ export function CustomerBookingWizard({
         status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
         createdAt: Date.now(),
         specialRequest: formData.specialRequest,
-        ...(isStaffImmediate && {
-           startTimeMillis: fluidStartTimeMillis,
-           expectedEndTimeMillis: expectedEndTimeMillis
-        })
+        ...(isStaffImmediate && { startTimeMillis: fluidStartTimeMillis, expectedEndTimeMillis: expectedEndTimeMillis })
       };
       await addDoc(collection(db, 'bookings'), dataToSave);
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
@@ -758,7 +688,7 @@ export function CustomerBookingWizard({
               <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-40 grayscale' : ''}`}>
                 {hasImage ? (
                   <>
-                    <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover" />
+                    <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover object-top" />
                     {therapist.images.length > 1 && (
                       <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/90 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1 px-1 rounded flex flex-col items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30 leading-tight">
                         <div className="flex items-center"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</div>
@@ -771,9 +701,9 @@ export function CustomerBookingWizard({
               <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-400' : 'text-gray-800'}`}>{therapist.name}</div>
               <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
               
-              {isTherapistFirst && !isFull && (
-                <button type="button" onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist }); handleNextStep(currentStep + 1); }} className="mt-3 w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-xs font-bold flex items-center justify-center hover:opacity-90 transition shadow-sm border border-[#1a4a32]">
-                  ဘိုကင်ယူမည် <ChevronRight className="w-3 h-3 ml-1" />
+              {isTherapistFirst && (
+                <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                  {isFull ? 'Full' : <>ဘိုကင်ယူမည် <ChevronRight className="w-3 h-3 ml-1" /></>}
                 </button>
               )}
             </div>
@@ -1069,8 +999,9 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       if (isCurrentlyActive) {
           return { 
               label: 'In Service (Active)', 
-              mm: `${activeServiceName} ဘိုကင်ယူထားပါသည်`, 
-              color: 'bg-orange-100 text-orange-700 border-orange-200'
+              mm: finalServiceName ? `${finalServiceName} ဝန်ဆောင်မှုပေးနေပါသည်` : 'ဝန်ဆောင်မှုပေးနေပါသည်', 
+              color: 'bg-orange-100 text-orange-700 border-orange-200',
+              activeService: activeServiceName
           };
       }
 
@@ -1082,7 +1013,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
 
       if (is24hFull || (isNightFull && isPast6PM)) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
       }
 
       let shopSlotsTotal = 0; let shopSlotsBooked = 0;
@@ -1090,42 +1021,45 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isShopFull = shopSlotsBooked === shopSlotsTotal;
 
       if (isDayFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
           return { 
               label: 'Day Full / Night Available', 
               mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', 
-              color: 'bg-orange-100 text-orange-700 border-orange-200' 
+              color: 'bg-orange-100 text-orange-700 border-orange-200',
+              activeService: ''
           };
       }
 
       if (isNightFull && !isDayFull && !isShopFull) {
-          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
           return { 
               label: 'Night Full / Day Available', 
               mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ နေ့ခင်းပိုင်းအချိန်များ ဘိုကင်ရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', 
-              color: 'bg-yellow-100 text-yellow-700 border-yellow-200' 
+              color: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+              activeService: ''
           };
       }
 
       if (isShopFull && isNightFull) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
       }
 
       if (isShopFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
           return { 
               label: 'Shop Full / Night Available', 
               mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', 
-              color: 'bg-orange-100 text-orange-700 border-orange-200' 
+              color: 'bg-orange-100 text-orange-700 border-orange-200',
+              activeService: ''
           };
       }
       
       if (shopSlotsBooked > 0 || upcomingServices.length > 0) { 
           let mmText = finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်` : 'အချိန်တချို့ ယူထားပါတယ်';
-          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200' }; 
+          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: '' }; 
       }
 
-      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
+      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
   };
 
   const bookingCounts: Record<string, number> = {};
@@ -1154,7 +1088,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 
              return (
                 <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
-                   <div className={`w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale' : 'border-orange-200'}`}>
+                   <div className={`w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border object-cover ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200' : 'border-orange-200'}`}>
                        {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
                    </div>
                    <div className="flex-1">
@@ -1163,13 +1097,18 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                           <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>
                              {status.label}
                           </span>
+                          {status.activeService && (
+                              <span className="block mb-1 text-current opacity-90 leading-snug">
+                                 {status.activeService}
+                              </span>
+                          )}
                           <span className="font-semibold block opacity-90 leading-snug">
                              {status.mm}
                           </span>
                        </div>
                    </div>
-                   <button onClick={() => onBookTherapist(t)} className="ml-2 px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold whitespace-nowrap shadow-sm hover:bg-[#1a4a32] flex items-center border border-[#1a4a32]">
-                       Book Now
+                   <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`ml-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center border ${isFullyBooked ? 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                       {isFullyBooked ? 'Full' : 'Book Now'}
                    </button>
                 </div>
              )
@@ -1183,22 +1122,27 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                  <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ)</p>
              </div>
              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                 {top5Therapists.map((t, idx) => (
-                     <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
-                         <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">
-                            {idx + 1}
+                 {top5Therapists.map((t, idx) => {
+                     const status = getTherapistStatus(t.name);
+                     const isFullyBooked = status.label.includes('Fully Booked');
+
+                     return (
+                         <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
+                             <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">
+                                {idx + 1}
+                             </div>
+                             <div className="w-full aspect-[3/4] bg-gray-100 relative">
+                                 {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
+                             </div>
+                             <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
+                                 <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
+                                 <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border ${isFullyBooked ? 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                                     {isFullyBooked ? 'Full' : <>Book Now <ChevronRight className="w-3 h-3 ml-0.5"/></>}
+                                 </button>
+                             </div>
                          </div>
-                         <div className="w-full aspect-[3/4] bg-gray-100 relative">
-                             {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
-                         </div>
-                         <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
-                             <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
-                             <button onClick={() => onBookTherapist(t)} className="w-full bg-[#123524] text-[#D4AF37] py-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] flex justify-center items-center border border-[#1a4a32]">
-                                 Book Now <ChevronRight className="w-3 h-3 ml-0.5"/>
-                             </button>
-                         </div>
-                     </div>
-                 ))}
+                     );
+                 })}
              </div>
          </div>
        )}
