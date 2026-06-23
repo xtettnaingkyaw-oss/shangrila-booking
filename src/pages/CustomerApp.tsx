@@ -686,7 +686,6 @@ export function CustomerBookingWizard({
         )
       })}</div>
       
-      {/* VVIP Toggle Display */}
       <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
         <div className="flex items-center">
             <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
@@ -982,7 +981,6 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
               )}
-              {/* Badge */}
               <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
               
               <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
@@ -1019,6 +1017,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       let isCurrentlyActive = false;
       let activeServiceName = '';
       let upcomingServices: string[] = [];
+      let hasUpcomingOutcall = false;
+      let hasUpcomingShop = false;
       
       bookings.forEach(b => {
           if (b.status === 'cancelled' || b.status === 'completed') return;
@@ -1026,6 +1026,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (b.therapist !== tName) return;
 
           const cleanServiceName = b.service.split('(')[0].trim();
+          const isOutcallSvc = cleanServiceName.toLowerCase().includes('outcall') || cleanServiceName.toLowerCase().includes('hotel') || cleanServiceName.toLowerCase().includes('home') || cleanServiceName.toLowerCase().includes('night');
 
           if (b.status === 'in_progress' && b.startTimeMillis) {
                isCurrentlyActive = true;
@@ -1036,6 +1037,9 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                if (!upcomingServices.includes(cleanServiceName)) {
                    upcomingServices.push(cleanServiceName);
                }
+               if (isOutcallSvc) hasUpcomingOutcall = true;
+               else hasUpcomingShop = true;
+
                if (b.time && b.time.includes("to")) {
                    const [start, endRaw] = b.time.split(" to ");
                    const end = endRaw.replace(" (Next Day)", "");
@@ -1088,7 +1092,14 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       if (isNightFull && !isDayFull && !isShopFull) return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', activeService: finalServiceName };
       if (isShopFull && isNightFull) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
       if (isShopFull && !isNightFull) return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: finalServiceName };
-      if (shopSlotsBooked > 0) return { label: 'Partially Booked', mm: 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်', color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: finalServiceName };
+      
+      if (shopSlotsBooked > 0 || hasUpcomingOutcall || hasUpcomingShop) { 
+          let mmText = 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်';
+          if (hasUpcomingOutcall && !hasUpcomingShop) mmText = 'Outcall ဘိုကင်ယူထားပါတယ်';
+          else if (hasUpcomingOutcall && hasUpcomingShop) mmText = 'ဆိုင်ချိန် နှင့် Outcall ဘိုကင်ရှိပါသည်';
+
+          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: finalServiceName }; 
+      }
 
       return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
   };
