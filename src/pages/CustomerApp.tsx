@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-// Vercel တွင် App Crash မဖြစ်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ ထည့်သွင်းထားပါသည်
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2 } from 'lucide-react';
+// Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, ShieldCheck, ShieldAlert, Save, PlusCircle, Settings, UploadCloud, MapPin, Search, Lock, Coffee, Download } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 // ==========================================
@@ -185,7 +185,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 }
 
 // ==========================================
-// CUSTOMER BOOKING WIZARD
+// CUSTOMER BOOKING WIZARD (FULL LOGIC)
 // ==========================================
 export function CustomerBookingWizard({
     appData, 
@@ -1149,13 +1149,15 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
                        <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
-                          <span className="block pb-0.5">{status.label}</span>
+                          <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>
+                             {status.label}
+                          </span>
                           {status.activeService && (
-                              <span className="block mt-0.5 text-current opacity-90 leading-snug">
+                              <span className="block mb-1 text-current opacity-90 leading-snug">
                                  {status.activeService}
                               </span>
                           )}
-                          <span className="font-semibold block mt-1 pt-1 border-t opacity-80" style={{ borderTopColor: 'currentColor' }}>
+                          <span className="font-semibold block opacity-80">
                              {status.mm}
                           </span>
                        </div>
