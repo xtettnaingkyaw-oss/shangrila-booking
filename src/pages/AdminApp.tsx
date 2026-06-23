@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from '
 import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
-// Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon များအားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin } from 'lucide-react';
+// Vercel တွင် Error မတက်စေရန် Admin Panel အတွက် လိုအပ်သော Icon များအားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone } from 'lucide-react';
 
 // Shared ဖိုင်မှ လိုအပ်သည်များကို လှမ်းယူခြင်း
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
 
+// Shared တွင် InstallStep မရှိခဲ့ပါက Error မတက်စေရန် Local တွင် Type ကြေညာထားပါသည်
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -134,6 +135,9 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated }: { appData: AppData,
   );
 });
 
+// ==========================================
+// ADMIN SUB-COMPONENTS
+// ==========================================
 function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
   const handleStatusChange = async (id: string, newStatus: string) => {
     let reason = '';
@@ -160,7 +164,18 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                 <td className="p-3"><div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div></td>
                 <td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>{b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}</td>
-                <td className="p-3 text-sm text-gray-700"><div className="font-semibold">{b.date || '-'}</div><div className="text-gray-500 text-xs mt-1">{b.time || '-'}</div></td>
+                
+                {/* ဤနေရာတွင် Customer ဘိုကင်တင်သည့်အချိန်ကို အတိအကျ ထည့်သွင်းထားပါသည် */}
+                <td className="p-3 text-sm text-gray-700">
+                  <div className="font-semibold text-[#123524]">{b.date || '-'}</div>
+                  <div className="text-gray-600 text-xs mt-1">{b.time || '-'}</div>
+                  {b.createdAt && (
+                     <div className="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded mt-1.5 inline-block">
+                        Booked: {new Date(b.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                     </div>
+                  )}
+                </td>
+
                 <td className="p-3"><div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div></td>
                 <td className="p-3">
                   <select value={b.status} onChange={(e) => handleStatusChange(b.id!, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
@@ -589,11 +604,11 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(null);
   };
 
-  // UPLOAD SCREENSHOT FOR INSTALL STEP (600x1200 Resolution for clarity, optimized for size)
+  // UPLOAD SCREENSHOT FOR INSTALL STEP (High compression to avoid 1MB limit issues)
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`);
     try { 
-       const base64 = await compressImage(file, 600, 1200); 
+       const base64 = await compressImage(file, 300, 600); 
        const updated = [...localInstallSteps]; 
        updated[idx].imageUrl = base64; 
        setLocalInstallSteps(updated); 
