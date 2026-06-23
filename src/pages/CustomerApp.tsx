@@ -228,6 +228,7 @@ export function CustomerBookingWizard({
   const [successMsg, setSuccessMsg] = useState('');
   
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
+  const stepContainerRef = useRef<HTMLDivElement>(null);
   const todayStr = getLocalTodayStr();
 
   useEffect(() => {
@@ -634,7 +635,7 @@ export function CustomerBookingWizard({
     : [{ num: 1, label: 'SERVICE', icon: Sparkles }, { num: 2, label: 'THERAPIST', icon: User }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard }];
 
   const renderStepper = () => (
-    <div className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
+    <div ref={stepContainerRef} className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
       {steps.map((s, idx) => {
         const isCompleted = step > s.num; const isActive = step === s.num;
         return (
@@ -1072,8 +1073,9 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       if (isCurrentlyActive) {
           return { 
               label: 'In Service (Active)', 
-              mm: `${activeServiceName} ဘိုကင်ယူထားပါသည်`, 
-              color: 'bg-orange-100 text-orange-700 border-orange-200'
+              mm: finalServiceName ? `${finalServiceName} ဝန်ဆောင်မှုပေးနေပါသည်` : 'ဝန်ဆောင်မှုပေးနေပါသည်', 
+              color: 'bg-orange-100 text-orange-700 border-orange-200',
+              activeService: activeServiceName
           };
       }
 
@@ -1085,7 +1087,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
 
       if (is24hFull || (isNightFull && isPast6PM)) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
       }
 
       let shopSlotsTotal = 0; let shopSlotsBooked = 0;
@@ -1093,42 +1095,45 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isShopFull = shopSlotsBooked === shopSlotsTotal;
 
       if (isDayFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
           return { 
               label: 'Day Full / Night Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ ညပိုင်းရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', 
-              color: 'bg-orange-100 text-orange-700 border-orange-200' 
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', 
+              color: 'bg-orange-100 text-orange-700 border-orange-200',
+              activeService: ''
           };
       }
 
       if (isNightFull && !isDayFull && !isShopFull) {
-          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
           return { 
               label: 'Night Full / Day Available', 
               mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ နေ့ခင်းပိုင်းအချိန်များ ဘိုကင်ရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', 
-              color: 'bg-yellow-100 text-yellow-700 border-yellow-200' 
+              color: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+              activeService: ''
           };
       }
 
       if (isShopFull && isNightFull) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
       }
 
       if (isShopFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
           return { 
               label: 'Shop Full / Night Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ ညပိုင်းရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', 
-              color: 'bg-orange-100 text-orange-700 border-orange-200' 
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', 
+              color: 'bg-orange-100 text-orange-700 border-orange-200',
+              activeService: ''
           };
       }
       
       if (shopSlotsBooked > 0 || upcomingServices.length > 0) { 
           let mmText = finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်` : 'အချိန်တချို့ ယူထားပါတယ်';
-          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200' }; 
+          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: '' }; 
       }
 
-      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
+      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
   };
 
   const bookingCounts: Record<string, number> = {};
@@ -1166,12 +1171,17 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                           <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>
                              {status.label}
                           </span>
+                          {status.activeService && (
+                              <span className="block mb-1 text-current opacity-90 leading-snug">
+                                 {status.activeService}
+                              </span>
+                          )}
                           <span className="font-semibold block opacity-90 leading-snug">
                              {status.mm}
                           </span>
                        </div>
                    </div>
-                   <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`ml-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm border transition-all ${isFullyBooked ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                   <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`ml-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center border transition-all ${isFullyBooked ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                        Book Now
                    </button>
                 </div>
@@ -1200,7 +1210,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                              </div>
                              <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
                                  <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
-                                 <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border ${isFullyBooked ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                                 <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                                      Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}
                                  </button>
                              </div>
