@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-// Vercel တွင် App Crash မဖြစ်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ ထည့်သွင်းထားပါသည်
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, ShieldCheck, ShieldAlert, Save, PlusCircle, Settings, UploadCloud, MapPin, Search, Lock, Coffee, Download } from 'lucide-react';
+// Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2 } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 // ==========================================
@@ -686,6 +686,7 @@ export function CustomerBookingWizard({
         )
       })}</div>
       
+      {/* VVIP Toggle Display */}
       <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
         <div className="flex items-center">
             <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
@@ -981,6 +982,7 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
               )}
+              {/* Badge */}
               <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
               
               <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
@@ -1019,6 +1021,9 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       let upcomingServices: string[] = [];
       let hasUpcomingOutcall = false;
       let hasUpcomingShop = false;
+      
+      const currentHour = new Date().getHours();
+      const isPast6PM = currentHour >= 18;
       
       bookings.forEach(b => {
           if (b.status === 'cancelled' || b.status === 'completed') return;
@@ -1079,19 +1084,35 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       if (blockedNow.has("7:00 AM to 7:00 AM (Next Day)")) { is24hFull = true; } 
       else if (blockedNow.has("7:00 AM to 7:00 PM") && blockedNow.has("7:00 PM to 7:00 AM (Next Day)")) { is24hFull = true; }
 
-      if (is24hFull) return { label: 'Fully Booked (Day & Night)', mm: 'နေ့ရောညပါ ပြည့်နေပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
-
       const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
       const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
+
+      if (is24hFull || (isNightFull && isPast6PM)) {
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
+      }
 
       let shopSlotsTotal = 0; let shopSlotsBooked = 0;
       for (let i = 6; i <= 30; i++) { shopSlotsTotal++; if (blockedNow.has(ALL_TIME_SLOTS[i])) shopSlotsBooked++; }
       const isShopFull = shopSlotsBooked === shopSlotsTotal;
 
-      if (isDayFull && !isNightFull) return { label: 'Day Full / Night Available', mm: 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: finalServiceName };
-      if (isNightFull && !isDayFull && !isShopFull) return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', activeService: finalServiceName };
-      if (isShopFull && isNightFull) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
-      if (isShopFull && !isNightFull) return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: finalServiceName };
+      if (isDayFull && !isNightFull) {
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: finalServiceName };
+          return { label: 'Day Full / Night Available', mm: 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: finalServiceName };
+      }
+
+      if (isNightFull && !isDayFull && !isShopFull) {
+          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
+          return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', activeService: finalServiceName };
+      }
+
+      if (isShopFull && isNightFull) {
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
+      }
+
+      if (isShopFull && !isNightFull) {
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: finalServiceName };
+          return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: finalServiceName };
+      }
       
       if (shopSlotsBooked > 0 || hasUpcomingOutcall || hasUpcomingShop) { 
           let mmText = 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်';
