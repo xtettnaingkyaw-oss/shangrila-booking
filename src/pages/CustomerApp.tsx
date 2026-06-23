@@ -232,7 +232,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // Real-time Time Slot Validation
+  // Time Slot Logic (With Real-Time Check for Today)
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
@@ -994,12 +994,12 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           }
       });
 
-      const finalServiceName = isCurrentlyActive ? activeServiceName : upcomingServices.join(', ');
+      const finalServiceName = upcomingServices.join(', ');
 
       if (isCurrentlyActive) {
           return { 
               label: 'In Service (Active)', 
-              mm: finalServiceName ? `${finalServiceName} ဝန်ဆောင်မှုပေးနေပါသည်` : 'ဝန်ဆောင်မှုပေးနေပါသည်', 
+              mm: `${activeServiceName} ဝန်ဆောင်မှုပေးနေပါသည်`, 
               color: 'bg-orange-100 text-orange-700 border-orange-200'
           };
       }
@@ -1023,7 +1023,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
           return { 
               label: 'Day Full / Night Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ ညပိုင်းရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', 
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', 
               color: 'bg-orange-100 text-orange-700 border-orange-200' 
           };
       }
@@ -1032,7 +1032,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
           return { 
               label: 'Night Full / Day Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ နေ့ခင်းပိုင်းရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', 
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ နေ့ခင်းပိုင်းအချိန်များ ဘိုကင်ရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', 
               color: 'bg-yellow-100 text-yellow-700 border-yellow-200' 
           };
       }
@@ -1045,7 +1045,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
           return { 
               label: 'Shop Full / Night Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ ညပိုင်းရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', 
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', 
               color: 'bg-orange-100 text-orange-700 border-orange-200' 
           };
       }
@@ -1090,9 +1090,12 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
                        <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
+                          {/* English Status Text */}
                           <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>
                              {status.label}
                           </span>
+                          
+                          {/* Myanmar Service Text ONLY (No double service name) */}
                           <span className="font-semibold block opacity-90 leading-snug">
                              {status.mm}
                           </span>
