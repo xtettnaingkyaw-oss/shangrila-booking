@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc,
 import { db } from '../firebase';
 
 // Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2 } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, ShieldCheck, ShieldAlert, Save, PlusCircle, Settings, UploadCloud, MapPin, Search, Lock, Coffee, Download } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 // ==========================================
@@ -1019,8 +1019,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       let isCurrentlyActive = false;
       let activeServiceName = '';
       let upcomingServices: string[] = [];
-      let hasUpcomingOutcall = false;
-      let hasUpcomingShop = false;
       
       const currentHour = new Date().getHours();
       const isPast6PM = currentHour >= 18;
@@ -1031,7 +1029,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (b.therapist !== tName) return;
 
           const cleanServiceName = b.service.split('(')[0].trim();
-          const isOutcallSvc = cleanServiceName.toLowerCase().includes('outcall') || cleanServiceName.toLowerCase().includes('hotel') || cleanServiceName.toLowerCase().includes('home') || cleanServiceName.toLowerCase().includes('night');
 
           if (b.status === 'in_progress' && b.startTimeMillis) {
                isCurrentlyActive = true;
@@ -1042,8 +1039,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                if (!upcomingServices.includes(cleanServiceName)) {
                    upcomingServices.push(cleanServiceName);
                }
-               if (isOutcallSvc) hasUpcomingOutcall = true;
-               else hasUpcomingShop = true;
 
                if (b.time && b.time.includes("to")) {
                    const [start, endRaw] = b.time.split(" to ");
@@ -1069,14 +1064,14 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           }
       });
 
-      const finalServiceName = isCurrentlyActive ? activeServiceName : upcomingServices.join(', ');
+      const serviceNamesText = upcomingServices.join(', ');
 
       if (isCurrentlyActive) {
           return { 
               label: 'In Service (Active)', 
               mm: 'ဝန်ဆောင်မှုပေးနေပါသည်', 
               color: 'bg-orange-100 text-orange-700 border-orange-200',
-              activeService: finalServiceName
+              activeService: activeServiceName
           };
       }
 
@@ -1088,7 +1083,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
 
       if (is24hFull || (isNightFull && isPast6PM)) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
       }
 
       let shopSlotsTotal = 0; let shopSlotsBooked = 0;
@@ -1096,30 +1091,27 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isShopFull = shopSlotsBooked === shopSlotsTotal;
 
       if (isDayFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: finalServiceName };
-          return { label: 'Day Full / Night Available', mm: 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: finalServiceName };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
+          return { label: 'Day Full / Night Available', mm: serviceNamesText ? `${serviceNamesText} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: '' };
       }
 
       if (isNightFull && !isDayFull && !isShopFull) {
-          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
-          return { label: 'Night Full / Day Available', mm: 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', activeService: finalServiceName };
+          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
+          return { label: 'Night Full / Day Available', mm: serviceNamesText ? `${serviceNamesText} ဘိုကင်ယူထားပါသည်။ နေ့ခင်းပိုင်းအချိန်များ ဘိုကင်ရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', activeService: '' };
       }
 
       if (isShopFull && isNightFull) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: finalServiceName };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
       }
 
       if (isShopFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: finalServiceName };
-          return { label: 'Shop Full / Night Available', mm: 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: finalServiceName };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
+          return { label: 'Shop Full / Night Available', mm: serviceNamesText ? `${serviceNamesText} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: '' };
       }
       
-      if (shopSlotsBooked > 0 || hasUpcomingOutcall || hasUpcomingShop) { 
-          let mmText = 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်';
-          if (hasUpcomingOutcall && !hasUpcomingShop) mmText = 'Outcall ဘိုကင်ယူထားပါတယ်';
-          else if (hasUpcomingOutcall && hasUpcomingShop) mmText = 'ဆိုင်ချိန် နှင့် Outcall ဘိုကင်ရှိပါသည်';
-
-          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: finalServiceName }; 
+      if (shopSlotsBooked > 0 || upcomingServices.length > 0) { 
+          let mmText = serviceNamesText ? `${serviceNamesText} ဘိုကင်ယူထားပါသည်` : 'ဆိုင်ချိန်တချို့ ယူထားပါတယ်';
+          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: '' }; 
       }
 
       return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
@@ -1158,8 +1150,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
                        <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
                           {status.label}
-                          {status.activeService && (
-                              <span className={`block mt-0.5 pt-0.5 border-t ${isAvailable ? '' : 'border-current opacity-80'}`}>
+                          {status.label === 'In Service (Active)' && status.activeService && (
+                              <span className="block mt-0.5 pt-0.5 border-t border-current opacity-80">
                                  {status.activeService}
                               </span>
                           )}
