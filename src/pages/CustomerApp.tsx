@@ -185,21 +185,42 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 }
 
 // ==========================================
-// CUSTOMER BOOKING WIZARD
+// CUSTOMER BOOKING WIZARD (FULL LOGIC)
 // ==========================================
 export function CustomerBookingWizard({
-    appData, userPhone = '', onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff 
+    appData, 
+    userPhone = '', 
+    onBooked, 
+    forceTherapistFirst = false, 
+    initialTherapist = null, 
+    isStaffMode = false, 
+    staffClockIn = false, 
+    staffClockInSuccess, 
+    preselectedStaff 
 }: { 
-    appData: AppData, userPhone?: string, onBooked?: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string 
+    appData: AppData, 
+    userPhone?: string, 
+    onBooked?: (phone: string) => void, 
+    forceTherapistFirst?: boolean, 
+    initialTherapist?: TherapistProfile | null, 
+    isStaffMode?: boolean, 
+    staffClockIn?: boolean, 
+    staffClockInSuccess?: () => void, 
+    preselectedStaff?: string 
 }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
-  const [step, setStep] = useState(() => { if (staffClockIn) return isTherapistFirst ? 2 : 1; return initialTherapist ? 2 : 1; });
+  
+  const [step, setStep] = useState(() => {
+      if (staffClockIn) return isTherapistFirst ? 2 : 1;
+      return initialTherapist ? 2 : 1;
+  });
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
+  
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const todayStr = getLocalTodayStr();
@@ -232,7 +253,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // Real-time Time Slot Validation
+  // Time Slot Logic (With Real-Time Check for Today)
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
@@ -294,7 +315,9 @@ export function CustomerBookingWizard({
   };
 
   const promoActive = checkPromoActive();
-  const discountPercent = promoActive ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) : 0;
+  const discountPercent = promoActive 
+      ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) 
+      : 0;
 
   const calculateSubTotal = () => {
     if (!formData.selectedItem) return 0;
@@ -302,18 +325,28 @@ export function CustomerBookingWizard({
     const vvipPrice = Number(formData.selectedItem.vvipPrice) || 0;
     return formData.isVvipUpgrade && vvipPrice > 0 && !formData.selectedItem.vvipIncluded ? vvipPrice : basePrice;
   };
-  const calculateDiscountAmount = () => (calculateSubTotal() * discountPercent) / 100;
-  const calculateTotal = () => calculateSubTotal() - calculateDiscountAmount();
+
+  const calculateDiscountAmount = () => {
+      return (calculateSubTotal() * discountPercent) / 100;
+  };
+
+  const calculateTotal = () => {
+      return calculateSubTotal() - calculateDiscountAmount();
+  };
 
   const handleCopy = (text: string) => {
     if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); alert('Copied!'); }
     else { alert("Copying manually required: " + text); }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => { setFormData({ ...formData, [e.target.name]: e.target.value }); };
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
   const handleNextStep = (nextStep: number) => {
     setStep(nextStep);
-    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
+    else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
   };
 
   const handleCountdownExpire = () => {
@@ -340,8 +373,14 @@ export function CustomerBookingWizard({
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
-              if (sIdx !== -1 && eIdx !== -1) { for (let i = sIdx; i < eIdx; i++) blocked.add(ALL_TIME_SLOTS[i]); }
+              
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+                  eIdx = ALL_TIME_SLOTS.length; 
+              }
+
+              if (sIdx !== -1 && eIdx !== -1) {
+                  for (let i = sIdx; i < eIdx; i++) blocked.add(ALL_TIME_SLOTS[i]);
+              }
               blocked.add(b.time); 
           } else if (b.time) {
               const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
@@ -349,7 +388,10 @@ export function CustomerBookingWizard({
                   let slotsToBlock = 2; 
                   const match = b.service.match(/(\d+)\s*Mins/i);
                   if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
-                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) { if (ALL_TIME_SLOTS[i]) blocked.add(ALL_TIME_SLOTS[i]); }
+                  
+                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
+                      if (ALL_TIME_SLOTS[i]) blocked.add(ALL_TIME_SLOTS[i]);
+                  }
               }
           }
       });
@@ -365,24 +407,31 @@ export function CustomerBookingWizard({
       }
 
       const allowedSlots = formData.selectedItem ? getAvailableTimeSlots() : ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
-      let hasAvailableSlot = false;
 
+      let hasAvailableSlot = false;
       for (const t of allowedSlots) {
           if (t.includes("to")) {
               const [start, endRaw] = t.split(" to ");
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
+              
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+                  eIdx = ALL_TIME_SLOTS.length;
+              }
+
               let overlap = false;
               if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) { if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; } }
+                  for (let i = sIdx; i < eIdx; i++) {
+                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; }
+                  }
               }
               if (blockedNow.has(t)) overlap = true;
               if (!overlap) { hasAvailableSlot = true; break; }
           } else {
               const sIdx = ALL_TIME_SLOTS.indexOf(t);
               if (sIdx === -1) continue;
+
               let overlap = false;
               for (let i = 0; i < neededSlots; i++) {
                   if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { overlap = true; break; }
@@ -402,9 +451,15 @@ export function CustomerBookingWizard({
           const end = endRaw.replace(" (Next Day)", "");
           const sIdx = ALL_TIME_SLOTS.indexOf(start);
           let eIdx = ALL_TIME_SLOTS.indexOf(end);
-          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
+          
+          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+              eIdx = ALL_TIME_SLOTS.length;
+          }
+
           if (sIdx !== -1 && eIdx !== -1) {
-              for (let i = sIdx; i < eIdx; i++) { if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false; }
+              for (let i = sIdx; i < eIdx; i++) {
+                  if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false;
+              }
           }
           return true;
       }
@@ -480,9 +535,13 @@ export function CustomerBookingWizard({
                   const bMatch = b.service.match(/(\d+)\s*Mins/i);
                   if (bMatch) bDur = parseInt(bMatch[1]);
                   otherEnd = otherStart + bDur * 60000;
-              } else { return; }
+              } else {
+                  return; 
+              }
 
-              if (fluidStartTimeMillis < otherEnd && expectedEndTimeMillis > otherStart) { isOverlap = true; }
+              if (fluidStartTimeMillis < otherEnd && expectedEndTimeMillis > otherStart) {
+                  isOverlap = true;
+              }
           });
 
       } else {
@@ -494,7 +553,9 @@ export function CustomerBookingWizard({
               if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
 
               if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) { if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; } }
+                  for (let i = sIdx; i < eIdx; i++) {
+                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { isOverlap = true; break; }
+                  }
               }
               if (blockedNow.has(formData.time)) isOverlap = true;
           } else {
@@ -508,13 +569,19 @@ export function CustomerBookingWizard({
           }
       }
 
-      if (isOverlap) { alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။"); setLoading(false); return; }
+      if (isOverlap) {
+         alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။");
+         setLoading(false); return;
+      }
 
       if (formData.phone && formData.phone.trim() !== '') {
         const userRef = doc(db, 'users', formData.phone);
         const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) { await setDoc(userRef, { phone: formData.phone, name: formData.name, password: '', createdAt: Date.now() }); } 
-        else if (!userSnap.data().name) { await updateDoc(userRef, { name: formData.name }); }
+        if (!userSnap.exists()) {
+          await setDoc(userRef, { phone: formData.phone, name: formData.name, password: '', createdAt: Date.now() });
+        } else if (!userSnap.data().name) {
+          await updateDoc(userRef, { name: formData.name });
+        }
       }
 
       const dataToSave = {
@@ -530,7 +597,10 @@ export function CustomerBookingWizard({
         status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
         createdAt: Date.now(),
         specialRequest: formData.specialRequest,
-        ...(isStaffImmediate && { startTimeMillis: fluidStartTimeMillis, expectedEndTimeMillis: expectedEndTimeMillis })
+        ...(isStaffImmediate && {
+           startTimeMillis: fluidStartTimeMillis,
+           expectedEndTimeMillis: expectedEndTimeMillis
+        })
       };
       await addDoc(collection(db, 'bookings'), dataToSave);
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
@@ -678,14 +748,14 @@ export function CustomerBookingWizard({
           return (
             <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
               {isFull && (
-                <div className="absolute inset-0 z-20 bg-white/50 backdrop-blur-[2px] flex items-center justify-center">
+                <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                   <div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500">
                     <div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div>
                     <div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div>
                   </div>
                 </div>
               )}
-              <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-40 grayscale' : ''}`}>
+              <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'}`}>
                 {hasImage ? (
                   <>
                     <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover object-top" />
@@ -696,10 +766,10 @@ export function CustomerBookingWizard({
                       </button>
                     )}
                   </>
-                ) : (<div className="flex flex-col items-center opacity-40"><User className="w-12 h-12 text-[#123524]" /></div>)}
+                ) : (<div className="flex flex-col items-center"><User className="w-12 h-12 text-[#123524]" /></div>)}
               </div>
-              <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-400' : 'text-gray-800'}`}>{therapist.name}</div>
-              <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
+              <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-600' : 'text-gray-800'}`}>{therapist.name}</div>
+              <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-400' : 'text-gray-500'}`}>Professional Therapist</div>
               
               {isTherapistFirst && (
                 <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-gray-200 text-gray-500 border-gray-300 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
@@ -999,9 +1069,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       if (isCurrentlyActive) {
           return { 
               label: 'In Service (Active)', 
-              mm: finalServiceName ? `${finalServiceName} ဝန်ဆောင်မှုပေးနေပါသည်` : 'ဝန်ဆောင်မှုပေးနေပါသည်', 
-              color: 'bg-orange-100 text-orange-700 border-orange-200',
-              activeService: activeServiceName
+              mm: `${activeServiceName} ဘိုကင်ယူထားပါသည်`, 
+              color: 'bg-orange-100 text-orange-700 border-orange-200'
           };
       }
 
@@ -1013,7 +1082,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
 
       if (is24hFull || (isNightFull && isPast6PM)) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
       }
 
       let shopSlotsTotal = 0; let shopSlotsBooked = 0;
@@ -1021,45 +1090,42 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isShopFull = shopSlotsBooked === shopSlotsTotal;
 
       if (isDayFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
           return { 
               label: 'Day Full / Night Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', 
-              color: 'bg-orange-100 text-orange-700 border-orange-200',
-              activeService: ''
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ ညပိုင်းရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', 
+              color: 'bg-orange-100 text-orange-700 border-orange-200' 
           };
       }
 
       if (isNightFull && !isDayFull && !isShopFull) {
-          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
+          if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
           return { 
               label: 'Night Full / Day Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ နေ့ခင်းပိုင်းအချိန်များ ဘိုကင်ရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', 
-              color: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-              activeService: ''
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ နေ့ခင်းပိုင်းရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', 
+              color: 'bg-yellow-100 text-yellow-700 border-yellow-200' 
           };
       }
 
       if (isShopFull && isNightFull) {
-          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
+          return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200' };
       }
 
       if (isShopFull && !isNightFull) {
-          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
+          if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
           return { 
               label: 'Shop Full / Night Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', 
-              color: 'bg-orange-100 text-orange-700 border-orange-200',
-              activeService: ''
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ ညပိုင်းရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', 
+              color: 'bg-orange-100 text-orange-700 border-orange-200' 
           };
       }
       
       if (shopSlotsBooked > 0 || upcomingServices.length > 0) { 
           let mmText = finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်` : 'အချိန်တချို့ ယူထားပါတယ်';
-          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: '' }; 
+          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200' }; 
       }
 
-      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
+      return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200' };
   };
 
   const bookingCounts: Record<string, number> = {};
@@ -1097,11 +1163,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                           <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>
                              {status.label}
                           </span>
-                          {status.activeService && (
-                              <span className="block mb-1 text-current opacity-90 leading-snug">
-                                 {status.activeService}
-                              </span>
-                          )}
                           <span className="font-semibold block opacity-90 leading-snug">
                              {status.mm}
                           </span>
