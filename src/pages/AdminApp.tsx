@@ -164,8 +164,6 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                 <td className="p-3"><div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div></td>
                 <td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>{b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}</td>
-                
-                {/* ဤနေရာတွင် Customer ဘိုကင်တင်သည့်အချိန်ကို အတိအကျ ထည့်သွင်းထားပါသည် */}
                 <td className="p-3 text-sm text-gray-700">
                   <div className="font-semibold text-[#123524]">{b.date || '-'}</div>
                   <div className="text-gray-600 text-xs mt-1">{b.time || '-'}</div>
@@ -175,7 +173,6 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
                      </div>
                   )}
                 </td>
-
                 <td className="p-3"><div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div></td>
                 <td className="p-3">
                   <select value={b.status} onChange={(e) => handleStatusChange(b.id!, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
@@ -197,7 +194,6 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
    const [view, setView] = useState<'dashboard' | 'service' | 'outpass'>('dashboard');
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
    
-   // Dashboard ကို ၁၅ စက္ကန့်တိုင်း Auto-refresh လုပ်ပေးမည့် Real-time Tick
    const [now, setNow] = useState(Date.now());
    useEffect(() => {
        const timer = setInterval(() => setNow(Date.now()), 15000); 
@@ -247,7 +243,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
               </div>
            </div>
 
-           {/* DASHBOARD VIEW WITH REAL-TIME ALERTS */}
+           {/* DASHBOARD VIEW WITH LATE TIME DISPLAY */}
            {view === 'dashboard' && (
               <div className="space-y-8 animate-fade-in">
                   
@@ -261,6 +257,12 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                               {activeBookings.map(b => {
                                   const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
                                   const isLate = b.expectedEndTimeMillis ? now > b.expectedEndTimeMillis : false;
+                                  
+                                  let lateText = 'OVERTIME (LATE)';
+                                  if (isLate && b.expectedEndTimeMillis) {
+                                       const lateSecs = Math.floor((now - b.expectedEndTimeMillis) / 1000);
+                                       lateText = `LATE: +${formatSecondsAdmin(lateSecs)}`;
+                                  }
 
                                   return (
                                       <div key={b.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : (isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200')} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
@@ -268,7 +270,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                           <div className="flex justify-between items-start mb-2">
                                               <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{b.therapist}</div>
                                               <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : (isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>
-                                                 {isLate ? 'OVERTIME (LATE)' : (isOutcall ? 'Outcall' : 'In Room')}
+                                                 {isLate ? lateText : (isOutcall ? 'Outcall' : 'In Room')}
                                               </span>
                                           </div>
                                           <div className="text-sm font-semibold text-gray-800 truncate mb-1" title={b.service}>{b.service.split('(')[0]}</div>
@@ -298,6 +300,12 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                               {activeOutpasses.map(o => {
                                   const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
+                                  
+                                  let lateText = 'OVERTIME (LATE)';
+                                  if (isLate && o.expectedInTimeMillis) {
+                                       const lateSecs = Math.floor((now - o.expectedInTimeMillis) / 1000);
+                                       lateText = `LATE: +${formatSecondsAdmin(lateSecs)}`;
+                                  }
 
                                   return (
                                       <div key={o.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
@@ -305,7 +313,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                           <div className="flex justify-between items-start mb-2">
                                               <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div>
                                               <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>
-                                                  {isLate ? 'OVERTIME (LATE)' : 'Out Pass'}
+                                                  {isLate ? lateText : 'Out Pass'}
                                               </span>
                                           </div>
                                           <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div>
@@ -493,14 +501,15 @@ function AdminManagementList() {
   );
 }
 
+// Admin Settings
 function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(JSON.parse(JSON.stringify(appData.therapists || [])));
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
-  const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
-  const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
-  const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || {})));
+  const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || DEFAULT_BRANDING)));
+  const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || DEFAULT_PAYMENT_METHODS)));
+  const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || DEFAULT_PROMOTION)));
   
-  // DOWNLOAD APP INSTRUCTIONS STATE (Direct from Firebase to avoid undefined state issues)
+  // DOWNLOAD APP INSTRUCTIONS STATE
   const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
 
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
@@ -580,7 +589,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setSavingCategory(null);
   };
 
-  // SAVE INSTALL STEPS FUNCTION
   const handleSaveInstallSteps = async () => {
     if (!window.confirm(`Are you sure you want to save Install Instructions?`)) return;
     setSavingCategory('install_steps');
@@ -604,7 +612,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setUploadingImage(null);
   };
 
-  // UPLOAD SCREENSHOT FOR INSTALL STEP (High compression to avoid 1MB limit issues)
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`);
     try { 
@@ -618,7 +625,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
   const updateTherapistField = (tIdx: number, field: keyof TherapistProfile, val: any) => { const updated = [...localTherapists]; updated[tIdx] = { ...updated[tIdx], [field]: val }; setLocalTherapists(updated); };
-  const removeTherapist = (tIdx: number) => { if (!window.confirm("Are you sure?")) return; const t = localTherapists[tIdx]; if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]); const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated); };
+  const removeTherapist = (tIdx: number) => { if (!window.confirm("Are you sure you want to delete this therapist?")) return; const t = localTherapists[tIdx]; if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]); const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated); };
   const moveTherapistUp = (tIdx: number) => { if (tIdx === 0) return; const updated = [...localTherapists]; const temp = updated[tIdx - 1]; updated[tIdx - 1] = updated[tIdx]; updated[tIdx] = temp; setLocalTherapists(updated); };
   const moveTherapistDown = (tIdx: number) => { if (tIdx === localTherapists.length - 1) return; const updated = [...localTherapists]; const temp = updated[tIdx + 1]; updated[tIdx + 1] = updated[tIdx]; updated[tIdx] = temp; setLocalTherapists(updated); };
   const handleImageUpload = async (tIdx: number, files: FileList | null) => { if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('Max 5 photos allowed.'); return; } setUploadingImage(therapist.id); const newUrls: string[] = []; try { for (let i = 0; i < files.length; i++) { const base64 = await compressImage(files[i], 900, 1200); newUrls.push(base64); } const updated = [...localTherapists]; updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; setLocalTherapists(updated); } catch (err) { alert("Upload error."); } setUploadingImage(null); };
@@ -674,7 +681,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
          </div>
       </div>
 
-      {/* ================= NEW: Install Instructions UI ================= */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b border-gray-100">
             <div className="mb-4 sm:mb-0">
@@ -789,7 +795,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                 Get Current GPS
              </button>
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">Staff will only be able to Clock Out/In within 15 meters of this exact location. Make sure you are physically at the shop when setting this.</p>
+          <p className="text-[10px] text-gray-400 mt-2">Staff will only be able to Clock Out/In within 50 meters of this exact location. Make sure you are physically at the shop when setting this.</p>
         </div>
       </div>
 
@@ -843,6 +849,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         </div>
       </div>
 
+      {/* Manual Therapist Ranking Section (DO NOT REMOVE) */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <div>
