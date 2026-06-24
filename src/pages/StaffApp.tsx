@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { LogOut, User, Clock, CheckCircle, Activity, Coffee, Play } from 'lucide-react';
+import { LogOut, User, Clock, CheckCircle, Activity, Coffee, Play, Sparkles, ChevronLeft } from 'lucide-react';
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 import { CustomerBookingWizard } from './CustomerApp';
 
@@ -21,73 +21,87 @@ const getLocalTodayStr = () => {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 };
 
+const formatSecondsMMSS = (totalSeconds: number | undefined) => {
+    if (totalSeconds === undefined) return '00:00';
+    const isNegative = totalSeconds < 0;
+    const absSecs = Math.abs(totalSeconds);
+    const m = Math.floor(absSecs / 60);
+    const s = Math.floor(absSecs % 60);
+    return `${isNegative ? '-' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
 export default function StaffApp({ appData }: { appData: AppData }) {
-  const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(null);
+  const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
+     const saved = localStorage.getItem('shangrila_staff_profile');
+     return saved ? JSON.parse(saved) : null;
+  });
 
-  useEffect(() => {
-     const storedId = localStorage.getItem('shangrila_staff_id');
-     if (storedId) {
-         const found = appData.therapists.find(t => t.id === storedId);
-         if (found) setLoggedInStaff(found);
-     }
-  }, [appData.therapists]);
-
-  const handleLogin = (staff: TherapistProfile) => {
-     setLoggedInStaff(staff);
-     localStorage.setItem('shangrila_staff_id', staff.id!);
+  const handleLogout = () => {
+     setLoggedInStaff(null);
+     localStorage.removeItem('shangrila_staff_profile');
   };
 
-  if (!loggedInStaff) return <StaffLogin therapists={appData.therapists} onLogin={handleLogin} />;
-  return <StaffDashboard appData={appData} staff={loggedInStaff} onLogout={() => { setLoggedInStaff(null); localStorage.removeItem('shangrila_staff_id'); }} />;
+  return (
+    <div className="max-w-3xl mx-auto">
+      {loggedInStaff ? (
+         <StaffSessionManager appData={appData} loggedInStaff={loggedInStaff} onLogout={handleLogout} />
+      ) : (
+         <StaffLogin therapists={appData.therapists} onLoginSuccess={(profile) => {
+             setLoggedInStaff(profile);
+             localStorage.setItem('shangrila_staff_profile', JSON.stringify(profile));
+         }} />
+      )}
+    </div>
+  );
 }
 
-function StaffLogin({ therapists, onLogin }: { therapists: TherapistProfile[], onLogin: (s: TherapistProfile) => void }) {
-  const [selectedId, setSelectedId] = useState('');
+function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfile[], onLoginSuccess: (p: TherapistProfile) => void }) {
+  const [therapistId, setTherapistId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    const t = therapists.find(x => x.id === selectedId);
-    if (!t) { setError("ဝန်ထမ်း ID ရွေးချယ်ပါ။"); return; }
-    if (t.password && t.password !== password) { setError("စကားဝှက် မှားယွင်းနေပါသည်။"); return; }
-    onLogin(t);
+    setError('');
+    const staff = therapists.find(t => t.id === therapistId);
+    if (staff && staff.password === password) {
+       onLoginSuccess(staff);
+    } else {
+       setError('Invalid Therapist Selection or Password.');
+    }
   };
 
   return (
-    <div className="animate-fade-in p-4 mt-6">
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center">
-        <div className="w-16 h-16 bg-[#123524]/10 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><User className="w-8 h-8" /></div>
-        <h2 className="text-xl font-bold text-gray-800 mb-2">Staff Portal</h2>
-        <p className="text-xs font-bold text-gray-500 mb-6">ဝန်ထမ်းအဖြစ် လော့ဂ်အင် ဝင်ပါ</p>
-        
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div className="text-left">
-              <label className="block text-xs font-bold text-gray-500 mb-1">Select Your Name</label>
-              <select required value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-gray-700">
-                  <option value="" disabled>-- ရွေးချယ်ပါ --</option>
-                  {therapists.map(t => <option key={t.id} value={t.id}>{t.name} (ID: {t.id})</option>)}
-              </select>
-          </div>
-          {selectedId && therapists.find(x=>x.id===selectedId)?.password && (
-              <div className="text-left animate-fade-in">
-                  <label className="block text-xs font-bold text-gray-500 mb-1">Password</label>
-                  <input required type="password" placeholder="Enter Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold tracking-widest text-center" />
-              </div>
-          )}
-          {error && <div className="text-xs font-bold text-red-500">{error}</div>}
-          <button type="submit" className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-[#1a4a32] transition">Enter Portal</button>
-        </form>
-      </div>
+    <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 max-w-sm mx-auto text-center mt-10 animate-fade-in">
+      <div className="w-16 h-16 bg-gray-50 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><User className="w-8 h-8" /></div>
+      <h2 className="text-xl font-bold text-gray-800 mb-2">Staff Portal Login</h2>
+      <p className="text-xs font-bold text-gray-500 mb-6">Secure Access Only</p>
+      
+      <form onSubmit={handleLogin} className="space-y-4">
+        <div>
+           <label className="block text-left text-xs font-bold text-gray-500 mb-1">Select Therapist</label>
+           <select required value={therapistId} onChange={e=>setTherapistId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider text-gray-800">
+               <option value="" disabled>-- Select Your Profile --</option>
+               {therapists.map(t => (<option key={t.id} value={t.id}>{t.name}</option>))}
+           </select>
+        </div>
+        <div>
+           <label className="block text-left text-xs font-bold text-gray-500 mb-1">Password</label>
+           <input required type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
+        </div>
+        {error && <div className="text-xs font-bold text-red-500">{error}</div>}
+        <button type="submit" className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-[#1a4a32] transition flex items-center justify-center">Verify and Login</button>
+      </form>
     </div>
   );
 }
 
-function StaffDashboard({ appData, staff, onLogout }: { appData: AppData, staff: TherapistProfile, onLogout: () => void }) {
+function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: AppData, loggedInStaff: TherapistProfile, onLogout: () => void }) {
    const [myBookings, setMyBookings] = useState<Booking[]>([]);
    const [myOutpasses, setMyOutpasses] = useState<OutPass[]>([]);
    const [loading, setLoading] = useState(false);
    const [showWalkinModal, setShowWalkinModal] = useState(false);
+   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass'>('service');
 
    useEffect(() => {
        const bq = query(collection(db, 'bookings'));
@@ -95,7 +109,7 @@ function StaffDashboard({ appData, staff, onLogout }: { appData: AppData, staff:
            const arr: Booking[] = [];
            snap.forEach(d => {
                const b = {id: d.id, ...d.data()} as Booking;
-               if (b.therapist === staff.name) arr.push(b);
+               if (b.therapist === loggedInStaff.name) arr.push(b);
            });
            arr.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
            setMyBookings(arr);
@@ -106,14 +120,14 @@ function StaffDashboard({ appData, staff, onLogout }: { appData: AppData, staff:
            const arr: OutPass[] = [];
            snap.forEach(d => {
                const o = {id: d.id, ...d.data()} as OutPass;
-               if (o.therapist === staff.name) arr.push(o);
+               if (o.therapist === loggedInStaff.name) arr.push(o);
            });
            arr.sort((a,b) => (b.outTimeMillis || 0) - (a.outTimeMillis || 0));
            setMyOutpasses(arr);
        });
 
        return () => { unsubB(); unsubO(); };
-   }, [staff.name]);
+   }, [loggedInStaff.name]);
 
    const activeBooking = myBookings.find(b => b.status === 'in_progress');
    const activeOutpass = myOutpasses.find(o => o.status === 'out');
@@ -184,7 +198,7 @@ function StaffDashboard({ appData, staff, onLogout }: { appData: AppData, staff:
            const outTime = Date.now();
            const expectedIn = outTime + ((hours * 60 + mins) * 60000);
            await addDoc(collection(db, 'outpasses'), {
-               therapist: staff.name,
+               therapist: loggedInStaff.name,
                date: getLocalTodayStr(),
                outTimeMillis: outTime,
                expectedInTimeMillis: expectedIn,
@@ -220,148 +234,118 @@ function StaffDashboard({ appData, staff, onLogout }: { appData: AppData, staff:
        setLoading(false);
    };
 
-   if (showWalkinModal) {
-      return (
-         <div className="animate-fade-in pb-10">
-            <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-               <h3 className="font-bold text-lg text-[#123524]">Start Walk-in Service</h3>
-               <button onClick={() => setShowWalkinModal(false)} className="text-gray-500 bg-gray-100 px-4 py-2 rounded-lg font-bold text-xs hover:bg-gray-200">Cancel</button>
-            </div>
-            <CustomerBookingWizard 
-               appData={appData} 
-               isStaffMode={true} 
-               staffClockIn={true} 
-               preselectedStaff={staff.name}
-               staffClockInSuccess={() => { setShowWalkinModal(false); }} 
-            />
-         </div>
-      );
-   }
-
    const formatMillis = (millis: number | undefined) => {
        if (!millis) return '-'; const date = new Date(millis); return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
    };
 
    return (
        <div className="animate-fade-in pb-20">
-           <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6">
+           <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 mt-4">
                <div className="flex items-center">
                    <div className="w-12 h-12 rounded-full overflow-hidden mr-3 bg-gray-100 border border-gray-200 flex-shrink-0">
-                       {staff.images && staff.images[0] ? <img src={staff.images[0]} className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-2 text-gray-400" />}
+                       {loggedInStaff.images && loggedInStaff.images[0] ? <img src={loggedInStaff.images[0]} className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-2 text-gray-400" />}
                    </div>
                    <div>
-                       <div className="font-bold text-gray-800">{staff.name}</div>
-                       <div className="text-[10px] text-gray-500">Staff Portal (ID: {staff.id})</div>
+                       <div className="font-bold text-gray-800">{loggedInStaff.name}</div>
+                       <div className="text-[10px] text-gray-500">Staff Portal (ID: {loggedInStaff.id})</div>
                    </div>
                </div>
                <button onClick={onLogout} className="bg-red-50 text-red-600 px-3 py-1.5 rounded text-xs font-bold border border-red-100 flex items-center hover:bg-red-100"><LogOut className="w-3 h-3 mr-1" /> Exit</button>
            </div>
 
-           {/* ========================================================= */}
-           {/* ORIGINAL SIMPLE UI ACTIONS */}
-           {/* ========================================================= */}
-           {activeBooking ? (
-               <div className="bg-white border border-orange-200 p-6 rounded-xl shadow-sm text-center mb-6">
-                  <h3 className="font-bold text-orange-600 text-lg mb-2">You are currently in a service</h3>
-                  <p className="text-gray-700 font-bold mb-4">{activeBooking.service}</p>
-                  <p className="text-xs text-gray-500 mb-6">Expected End Time: {formatMillis(activeBooking.expectedEndTimeMillis)}</p>
-                  <button disabled={loading} onClick={handleFinishService} className="bg-orange-600 text-white px-8 py-3 rounded-lg font-bold shadow-md hover:bg-orange-700 transition">
-                      {loading ? 'Processing...' : 'Finish Service (Check Out)'}
-                  </button>
-                  <p className="text-[10px] text-orange-500 mt-3 font-semibold">မှတ်ချက်: ဆိုင်ဧရိယာအတွင်းသို့ရောက်မှသာ Finish နှိပ်နိုင်ပါမည်။</p>
-               </div>
-           ) : activeOutpass ? (
-               <div className="bg-white border border-purple-200 p-6 rounded-xl shadow-sm text-center mb-6">
-                  <h3 className="font-bold text-purple-600 text-lg mb-2">You are currently on Out Pass</h3>
-                  <p className="text-gray-700 font-bold mb-4">Reason: {activeOutpass.reason || '-'}</p>
-                  <p className="text-xs text-gray-500 mb-6">Must Return By: {formatMillis(activeOutpass.expectedInTimeMillis)}</p>
-                  <button disabled={loading} onClick={handleReturnFromOutPass} className="bg-purple-600 text-white px-8 py-3 rounded-lg font-bold shadow-md hover:bg-purple-700 transition">
-                      {loading ? 'Processing...' : 'Return to Shop (Check In)'}
-                  </button>
-                  <p className="text-[10px] text-purple-500 mt-3 font-semibold">မှတ်ချက်: ဆိုင်ဧရိယာအတွင်းသို့ရောက်မှသာ Return နှိပ်နိုင်ပါမည်။</p>
-               </div>
-           ) : (
-               <div className="grid md:grid-cols-2 gap-6 mb-6">
-                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-center">
-                       <h3 className="font-bold text-gray-800 mb-4 flex items-center"><Play className="w-5 h-5 mr-2 text-[#D4AF37]"/> Walk-in Service</h3>
-                       <p className="text-xs text-gray-500 mb-6 leading-relaxed">ဧည့်သည် ဆိုင်သို့ရောက်ရှိလာပါက ဤနေရာမှ ဝင်ရောက်ပြီး Service ရွေးချယ်ကာ ချက်ချင်းစတင်နိုင်ပါသည်။</p>
-                       <button onClick={() => setShowWalkinModal(true)} className="w-full bg-[#123524] text-[#D4AF37] py-3 rounded-lg font-bold shadow-md hover:bg-[#1a4a32] transition border border-[#1a4a32]">
-                           Start Walk-in Service
-                       </button>
-                   </div>
-                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                       <h3 className="font-bold text-gray-800 mb-4 flex items-center"><Coffee className="w-5 h-5 mr-2 text-[#D4AF37]"/> Request Out Pass</h3>
-                       <form onSubmit={handleOutPassSubmit} className="space-y-4">
-                           <div className="grid grid-cols-2 gap-4">
-                               <div><label className="text-xs font-bold text-gray-500 mb-1 block">Hours</label><input type="number" name="hours" min="0" max="24" defaultValue="0" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
-                               <div><label className="text-xs font-bold text-gray-500 mb-1 block">Minutes</label><input type="number" name="mins" min="0" max="59" defaultValue="30" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
-                           </div>
-                           <div><input type="text" name="reason" placeholder="Reason (Optional)" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
-                           <button type="submit" disabled={loading} className="w-full bg-gray-100 text-gray-700 py-3 rounded-lg font-bold border border-gray-300 hover:bg-gray-200 transition">
-                               {loading ? 'Processing...' : 'Submit Out Pass'}
-                           </button>
-                       </form>
-                   </div>
-               </div>
+           <div className="flex space-x-1 sm:space-x-2 mb-6 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
+               <button onClick={() => setStaffTab('service')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'service' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Service</button>
+               <button onClick={() => setStaffTab('history')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'history' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>History</button>
+               <button onClick={() => setStaffTab('outpass')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Pass</button>
+           </div>
+
+           {staffTab === 'history' && (
+              <div className="animate-fade-in">
+                 <h3 className="font-bold text-gray-800 mb-4 text-sm">Today's Completed Services</h3>
+                 {myBookings.filter(b => b.date === getLocalTodayStr() && (b.status === 'completed' || b.status === 'cancelled')).map(b => (
+                     <div key={b.id} className="p-4 bg-white border border-gray-100 rounded-xl mb-3 shadow-sm">
+                        <div className="flex justify-between items-start mb-2">
+                           <span className="font-bold text-sm text-[#123524]">{b.service.split('(')[0]}</span>
+                           <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${b.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{b.status}</span>
+                        </div>
+                        <div className="text-xs text-gray-500">Slot: {b.time} | Cust: {b.name}</div>
+                     </div>
+                 ))}
+              </div>
            )}
 
-           {/* ========================================================= */}
-           {/* TODAY'S RECORDS */}
-           {/* ========================================================= */}
-           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-               <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
-                   <h3 className="font-bold text-gray-800">My Today's Records</h3>
-                   <span className="text-[10px] font-bold bg-[#123524] text-white px-2 py-1 rounded">{getLocalTodayStr()}</span>
-               </div>
-               
-               <div className="p-4 space-y-4">
-                  {/* Service Records */}
-                  <div>
-                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Service Log</h4>
-                      {myBookings.filter(b => b.date === getLocalTodayStr() && b.status !== 'cancelled').length === 0 ? (
-                          <div className="text-[10px] text-gray-400 bg-gray-50 p-3 rounded text-center border border-dashed">No services yet for today.</div>
-                      ) : (
-                          <div className="space-y-2">
-                             {myBookings.filter(b => b.date === getLocalTodayStr() && b.status !== 'cancelled').map(b => (
-                                 <div key={b.id} className="bg-white border border-gray-200 p-3 rounded-lg flex justify-between items-center hover:border-gray-300 transition">
-                                     <div>
-                                         <div className="font-bold text-sm text-[#123524]">{b.service.split('(')[0]}</div>
-                                         <div className="text-[10px] text-gray-500 mt-1">Start: <span className="font-mono text-gray-700 font-bold">{formatMillis(b.startTimeMillis)}</span> | End: <span className="font-mono text-gray-700 font-bold">{b.status === 'in_progress' ? 'Running' : formatMillis(b.actualEndTimeMillis)}</span></div>
-                                     </div>
-                                     <div>
-                                         {b.status === 'in_progress' ? <span className="bg-orange-100 text-orange-600 text-[9px] font-bold px-2 py-1 rounded animate-pulse">ACTIVE</span> : <span className="bg-gray-100 text-gray-600 text-[9px] font-bold px-2 py-1 rounded">DONE</span>}
-                                     </div>
-                                 </div>
-                             ))}
-                          </div>
-                      )}
-                  </div>
+           {staffTab === 'outpass' && (
+              <div className="animate-fade-in">
+                 <h3 className="font-bold text-gray-800 mb-4 text-sm">Today's Out Passes</h3>
+                 {myOutpasses.filter(o => o.date === getLocalTodayStr()).map(o => (
+                     <div key={o.id} className="p-4 bg-white border border-gray-100 rounded-xl mb-3 shadow-sm flex justify-between items-center">
+                        <div>
+                           <div className="font-bold text-sm text-purple-800">{o.reason || 'Out Pass'}</div>
+                           <div className="text-xs text-gray-500 mt-1">{formatMillis(o.outTimeMillis)} - {o.inTimeMillis ? formatMillis(o.inTimeMillis) : 'Now'}</div>
+                        </div>
+                        <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${o.status === 'returned' ? 'bg-gray-100 text-gray-600' : 'bg-purple-100 text-purple-600'}`}>{o.status}</span>
+                     </div>
+                 ))}
+              </div>
+           )}
 
-                  <hr className="border-gray-100"/>
-
-                  {/* Outpass Records */}
-                  <div>
-                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Out Pass Log</h4>
-                      {myOutpasses.filter(o => o.date === getLocalTodayStr()).length === 0 ? (
-                          <div className="text-[10px] text-gray-400 bg-gray-50 p-3 rounded text-center border border-dashed">No out passes today.</div>
-                      ) : (
-                          <div className="space-y-2">
-                             {myOutpasses.filter(o => o.date === getLocalTodayStr()).map(o => (
-                                 <div key={o.id} className="bg-white border border-gray-200 p-3 rounded-lg flex justify-between items-center hover:border-gray-300 transition">
-                                     <div>
-                                         <div className="font-bold text-sm text-purple-800">{o.reason || 'Out Pass'}</div>
-                                         <div className="text-[10px] text-gray-500 mt-1">Out: <span className="font-mono text-gray-700 font-bold">{formatMillis(o.outTimeMillis)}</span> | In: <span className="font-mono text-gray-700 font-bold">{o.status === 'out' ? 'Not yet' : formatMillis(o.inTimeMillis)}</span></div>
-                                     </div>
-                                     <div>
-                                         {o.status === 'out' ? <span className="bg-purple-100 text-purple-600 text-[9px] font-bold px-2 py-1 rounded animate-pulse">OUT</span> : <span className="bg-gray-100 text-gray-600 text-[9px] font-bold px-2 py-1 rounded">RETURNED</span>}
-                                     </div>
-                                 </div>
-                             ))}
-                          </div>
-                      )}
-                  </div>
-               </div>
-           </div>
+           {staffTab === 'service' && (
+               <>
+               {showWalkinModal ? (
+                   <div className="animate-fade-in pb-10">
+                      <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                         <h3 className="font-bold text-lg text-[#123524]">Start Walk-in Service</h3>
+                         <button onClick={() => setShowWalkinModal(false)} className="text-gray-500 bg-gray-100 px-4 py-2 rounded-lg font-bold text-xs hover:bg-gray-200">Cancel</button>
+                      </div>
+                      <CustomerBookingWizard appData={appData} isStaffMode={true} staffClockIn={true} preselectedStaff={loggedInStaff.name} staffClockInSuccess={() => setShowWalkinModal(false)} />
+                   </div>
+               ) : activeBooking ? (
+                   <div className="bg-white border border-orange-200 p-6 rounded-xl shadow-sm text-center mb-6 animate-fade-in">
+                      <h3 className="font-bold text-orange-600 text-lg mb-2">You are currently in a service</h3>
+                      <p className="text-gray-700 font-bold mb-4">{activeBooking.service}</p>
+                      <p className="text-xs text-gray-500 mb-6">Expected End Time: {formatMillis(activeBooking.expectedEndTimeMillis)}</p>
+                      <button disabled={loading} onClick={handleFinishService} className="bg-orange-600 text-white px-8 py-3 rounded-lg font-bold shadow-md hover:bg-orange-700 transition w-full">
+                          {loading ? 'Processing...' : 'Finish Service (Check Out)'}
+                      </button>
+                      <p className="text-[10px] text-orange-500 mt-3 font-semibold">မှတ်ချက်: ဆိုင်ဧရိယာအတွင်းသို့ရောက်မှသာ Finish နှိပ်နိုင်ပါမည်။</p>
+                   </div>
+               ) : activeOutpass ? (
+                   <div className="bg-white border border-purple-200 p-6 rounded-xl shadow-sm text-center mb-6 animate-fade-in">
+                      <h3 className="font-bold text-purple-600 text-lg mb-2">You are currently on Out Pass</h3>
+                      <p className="text-gray-700 font-bold mb-4">Reason: {activeOutpass.reason || '-'}</p>
+                      <p className="text-xs text-gray-500 mb-6">Must Return By: {formatMillis(activeOutpass.expectedInTimeMillis)}</p>
+                      <button disabled={loading} onClick={handleReturnFromOutPass} className="bg-purple-600 text-white px-8 py-3 rounded-lg font-bold shadow-md hover:bg-purple-700 transition w-full">
+                          {loading ? 'Processing...' : 'Return to Shop (Check In)'}
+                      </button>
+                      <p className="text-[10px] text-purple-500 mt-3 font-semibold">မှတ်ချက်: ဆိုင်ဧရိယာအတွင်းသို့ရောက်မှသာ Return နှိပ်နိုင်ပါမည်။</p>
+                   </div>
+               ) : (
+                   <div className="grid md:grid-cols-2 gap-6 mb-6 animate-fade-in">
+                       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-center text-center hover:shadow-md transition cursor-pointer" onClick={() => setShowWalkinModal(true)}>
+                           <div className="w-14 h-14 bg-green-50 text-green-600 rounded-full flex items-center justify-center mb-3 mx-auto shadow-inner"><Play className="w-6 h-6 ml-1" /></div>
+                           <h3 className="font-bold text-gray-800 mb-2">Start Walk-in Service</h3>
+                           <p className="text-xs text-gray-500 mb-6 leading-relaxed">ဧည့်သည် ဆိုင်သို့ရောက်ရှိလာပါက ဤနေရာမှ ဝင်ရောက်ပြီး Service ရွေးချယ်ကာ ချက်ချင်းစတင်နိုင်ပါသည်။</p>
+                           <button className="w-full bg-[#123524] text-[#D4AF37] py-3 rounded-lg font-bold shadow-sm hover:bg-[#1a4a32] transition border border-[#1a4a32]">
+                               Start Walk-in Service
+                           </button>
+                       </div>
+                       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                           <h3 className="font-bold text-gray-800 mb-4 flex items-center"><Coffee className="w-5 h-5 mr-2 text-[#D4AF37]"/> Request Out Pass</h3>
+                           <form onSubmit={handleOutPassSubmit} className="space-y-4">
+                               <div className="grid grid-cols-2 gap-4">
+                                   <div><label className="text-xs font-bold text-gray-500 mb-1 block">Hours</label><input type="number" name="hours" min="0" max="24" defaultValue="0" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
+                                   <div><label className="text-xs font-bold text-gray-500 mb-1 block">Minutes</label><input type="number" name="mins" min="0" max="59" defaultValue="30" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
+                               </div>
+                               <div><input type="text" name="reason" placeholder="Reason (Optional)" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
+                               <button type="submit" disabled={loading} className="w-full bg-gray-100 text-gray-700 py-3 rounded-lg font-bold border border-gray-300 hover:bg-gray-200 transition">
+                                   {loading ? 'Processing...' : 'Submit Out Pass'}
+                               </button>
+                           </form>
+                       </div>
+                   </div>
+               )}
+               </>
+           )}
        </div>
    );
 }
