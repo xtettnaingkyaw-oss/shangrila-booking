@@ -342,7 +342,15 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                       <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Service & Customer</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Start Time</th><th className="p-3 pb-4">Expected End</th><th className="p-3 pb-4">Actual End</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead>
                       <tbody>
                           {bookings.length === 0 && (<tr><td colSpan={7} className="p-10 text-center text-gray-400">No service records found.</td></tr>)}
-                          {bookings.map((b) => (
+                          {bookings.map((b) => {
+                              let currentOvertime = b.overtimeSeconds || 0;
+                              let isLate = currentOvertime > 0;
+                              if (b.status === 'in_progress' && b.expectedEndTimeMillis && now > b.expectedEndTimeMillis) {
+                                  currentOvertime = Math.floor((now - b.expectedEndTimeMillis) / 1000);
+                                  isLate = true;
+                              }
+
+                              return (
                               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
                                   <td className="p-3 font-bold text-[#123524]">{b.therapist}</td>
                                   <td className="p-3">
@@ -354,11 +362,14 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${(b.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(b.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>
+                                        {isLate && b.status === 'in_progress' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}
+                                     </div>
                                      <button onClick={() => handleDeleteBooking(b.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
-                          ))}
+                              );
+                          })}
                       </tbody>
                   </table>
               </div>
@@ -370,7 +381,15 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                       <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Out Time</th><th className="p-3 pb-4">Expected Return</th><th className="p-3 pb-4">Actual Return</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead>
                       <tbody>
                           {outpasses.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No out pass records found.</td></tr>)}
-                          {outpasses.map((o) => (
+                          {outpasses.map((o) => {
+                              let currentOvertime = o.overtimeSeconds || 0;
+                              let isLate = currentOvertime > 0;
+                              if (o.status === 'out' && o.expectedInTimeMillis && now > o.expectedInTimeMillis) {
+                                  currentOvertime = Math.floor((now - o.expectedInTimeMillis) / 1000);
+                                  isLate = true;
+                              }
+
+                              return (
                               <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
                                   <td className="p-3">
                                       <div className="font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</div>
@@ -381,11 +400,14 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                   <td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td>
                                   <td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td>
                                   <td className="p-3 text-right">
-                                     <div className={`font-mono font-bold text-base mb-1 ${(o.overtimeSeconds || 0) > 0 ? 'text-red-600' : 'text-gray-400'}`}>{formatSecondsAdmin(o.overtimeSeconds)}</div>
+                                     <div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>
+                                        {isLate && o.status === 'out' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}
+                                     </div>
                                      <button onClick={() => handleDeleteOutpass(o.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
                                   </td>
                               </tr>
-                          ))}
+                              );
+                          })}
                       </tbody>
                   </table>
               </div>
@@ -505,9 +527,9 @@ function AdminManagementList() {
 function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(JSON.parse(JSON.stringify(appData.therapists || [])));
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
-  const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || DEFAULT_BRANDING)));
-  const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || DEFAULT_PAYMENT_METHODS)));
-  const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || DEFAULT_PROMOTION)));
+  const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
+  const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
+  const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
   
   // DOWNLOAD APP INSTRUCTIONS STATE
   const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
