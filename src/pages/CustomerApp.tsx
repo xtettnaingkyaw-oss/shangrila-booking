@@ -215,7 +215,6 @@ export function CustomerBookingWizard({
       return initialTherapist ? 2 : 1;
   });
 
-  // STEP ပြောင်းတိုင်း အပေါ်ဆုံးကို Auto Scroll ဆွဲတင်ပေးမည့် စနစ်
   useEffect(() => {
      window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [step]);
@@ -351,6 +350,8 @@ export function CustomerBookingWizard({
 
   const handleNextStep = (nextStep: number) => {
     setStep(nextStep);
+    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
+    else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
   };
 
   const handleCountdownExpire = () => {
@@ -402,6 +403,159 @@ export function CustomerBookingWizard({
       return blocked;
   };
 
+  // ROOM CAPACITY CHECK LOGIC (VIP = 3, Normal = 2, Total = 5)
+  const getRoomUsageMap = (selectedDate: string) => {
+      const usage = new Map<string, { vip: number, normal: number }>();
+      ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
+
+      allBookings.forEach(b => {
+          if (b.status === 'cancelled' || b.status === 'completed') return;
+          if (b.date !== selectedDate) return;
+          
+          const serviceLower = b.service.toLowerCase();
+          const isBookingOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
+          if (isBookingOutcall) return; // Outcall များသည် ဆိုင်ခန်းများကို အသုံးမပြုပါ
+
+          const isVip = serviceLower.includes('vvip');
+          let coveredSlots: string[] = [];
+
+          if (b.status === 'in_progress' && b.startTimeMillis) {
+              const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
+              const slotsSet = getSlotsCoveredByInterval(b.startTimeMillis, end, b.date);
+              coveredSlots = Array.from(slotsSet);
+          } else if (b.time && b.time.includes("to")) {
+              const [start, endRaw] = b.time.split(" to ");
+              const end = endRaw.replace(" (Next Day)", "");
+              const sIdx = ALL_TIME_SLOTS.indexOf(start);
+              let eIdx = ALL_TIME_SLOTS.indexOf(end);
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) eIdx = ALL_TIME_SLOTS.length;
+              if (sIdx !== -1 && eIdx !== -1) {
+                  for (let i = sIdx; i < eIdx; i++) coveredSlots.push(ALL_TIME_SLOTS[i]);
+              }
+              coveredSlots.push(b.time);
+          } else if (b.time) {
+              const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
+              if (sIdx !== -1) {
+                  let slotsToBlock = 2;
+                  const match = b.service.match(/(\d+)\s*Mins/i);
+                  if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
+                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
+                      if (ALL_TIME_SLOTS[i]) coveredSlots.push(ALL_TIME_SLOTS[i]);
+                  }
+              }
+          }
+
+          coveredSlots.forEach(slot => {
+              const current = usage.get(slot);
+              if (current) {
+                  if (isVip) current.vip += 1;
+                  else current.normal += 1;
+                  usage.set(slot, current);
+              }
+          });
+      });
+      return usage;
+  };
+
+  const checkSlotState = (t: string) => {
+      let neededSlots = 2;
+      if (formData.selectedItem) {
+          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+      }
+
+      // 1. Therapist Available?
+      const tBlocked = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
+      let therapistFree = true;
+      const sIdx = ALL_TIME_SLOTS.indexOf(t);
+      
+      if (t.includes("to")) {
+          if (tBlocked.has(t)) therapistFree = false;
+      } else {
+          for (let i = 0; i < neededSlots; i++) {
+              if (!ALL_TIME_SLOTS[sIdx + i] || tBlocked.has(ALL_TIME_SLOTS[sIdx + i])) { therapistFree = false; break; }
+          }
+      }
+      if (!therapistFree) return { available: false, reason: 'therapist' };
+
+      // 2. Room Available?
+      const serviceLower = formData.selectedItem?.name.toLowerCase() || '';
+      const isCurrentOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
+      
+      if (!isCurrentOutcall) {
+          const roomUsage = getRoomUsageMap(formData.date);
+          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
+          let roomFree = true;
+          
+          if (!t.includes("to")) {
+              for (let i = 0; i < neededSlots; i++) {
+                  const slotName = ALL_TIME_SLOTS[sIdx + i];
+                  if (!slotName) { roomFree = false; break; } 
+                  const usage = roomUsage.get(slotName) || { vip: 0, normal: 0 };
+                  const totalUsed = usage.vip + usage.normal;
+                  
+                  if (isUserVip) {
+                      if (usage.vip >= 3 || totalUsed >= 5) { roomFree = false; break; }
+                  } else {
+                      if (usage.normal >= 2 || totalUsed >= 5) { roomFree = false; break; }
+                  }
+              }
+          }
+          if (!roomFree) return { available: false, reason: 'room' };
+      }
+
+      return { available: true, reason: '' };
+  };
+
+  const handleTimeSlotClick = (t: string, state: { available: boolean, reason: string }) => {
+      if (!formData.date) return;
+      
+      if (state.reason === 'therapist') {
+          alert("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
+          return;
+      }
+      
+      if (state.reason === 'room') {
+          const roomUsage = getRoomUsageMap(formData.date);
+          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
+          let neededSlots = 2;
+          if (formData.selectedItem) {
+              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+              if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+          }
+          const sIdx = ALL_TIME_SLOTS.indexOf(t);
+          let nextAvailable = '';
+          
+          for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
+              let durationFree = true;
+              for(let j=0; j < neededSlots; j++) {
+                  const subSlot = ALL_TIME_SLOTS[i+j];
+                  if(!subSlot) { durationFree = false; break; }
+                  const subUsage = roomUsage.get(subSlot) || { vip: 0, normal: 0 };
+                  const subTotal = subUsage.vip + subUsage.normal;
+                  
+                  if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
+                  if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
+              }
+              if (durationFree) {
+                  nextAvailable = ALL_TIME_SLOTS[i];
+                  break;
+              }
+          }
+
+          if (nextAvailable) {
+              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
+          } else {
+              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
+          }
+          return;
+      }
+
+      if (state.available) {
+          setFormData({ ...formData, time: t });
+      }
+  };
+
   const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
       const blockedNow = getBlockedSlots(allBookings, tName, dateToCheck);
       let neededSlots = 2; 
@@ -419,23 +573,16 @@ export function CustomerBookingWizard({
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-                  eIdx = ALL_TIME_SLOTS.length;
-              }
-
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
               let overlap = false;
               if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) {
-                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; }
-                  }
+                  for (let i = sIdx; i < eIdx; i++) { if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; } }
               }
               if (blockedNow.has(t)) overlap = true;
               if (!overlap) { hasAvailableSlot = true; break; }
           } else {
               const sIdx = ALL_TIME_SLOTS.indexOf(t);
               if (sIdx === -1) continue;
-
               let overlap = false;
               for (let i = 0; i < neededSlots; i++) {
                   if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { overlap = true; break; }
@@ -444,40 +591,6 @@ export function CustomerBookingWizard({
           }
       }
       return !hasAvailableSlot;
-  };
-
-  const blockedSlots = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
-
-  const isSlotAvailable = (t: string) => {
-      if (blockedSlots.has(t)) return false;
-      if (t.includes("to")) {
-          const [start, endRaw] = t.split(" to ");
-          const end = endRaw.replace(" (Next Day)", "");
-          const sIdx = ALL_TIME_SLOTS.indexOf(start);
-          let eIdx = ALL_TIME_SLOTS.indexOf(end);
-          
-          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
-              eIdx = ALL_TIME_SLOTS.length;
-          }
-
-          if (sIdx !== -1 && eIdx !== -1) {
-              for (let i = sIdx; i < eIdx; i++) {
-                  if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false;
-              }
-          }
-          return true;
-      }
-      const sIdx = ALL_TIME_SLOTS.indexOf(t);
-      if (sIdx === -1) return true;
-      let neededSlots = 2;
-      if (formData.selectedItem) {
-          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
-          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-      }
-      for (let i = 0; i < neededSlots; i++) {
-          if (!ALL_TIME_SLOTS[sIdx + i] || blockedSlots.has(ALL_TIME_SLOTS[sIdx + i])) return false;
-      }
-      return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -635,7 +748,7 @@ export function CustomerBookingWizard({
     : [{ num: 1, label: 'SERVICE', icon: Sparkles }, { num: 2, label: 'THERAPIST', icon: User }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard }];
 
   const renderStepper = () => (
-    <div className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
+    <div ref={stepContainerRef} className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
       {steps.map((s, idx) => {
         const isCompleted = step > s.num; const isActive = step === s.num;
         return (
@@ -827,9 +940,22 @@ export function CustomerBookingWizard({
                     <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
                     <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
                         {availableTimeSlots.map(t => {
-                            const isAvailable = isSlotAvailable(t);
+                            const state = checkSlotState(t);
                             return (
-                                <button key={t} type="button" disabled={!formData.date || !isAvailable} onClick={() => setFormData({ ...formData, time: t })} className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${formData.time === t ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : !isAvailable ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 cursor-not-allowed line-through' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'}`}>{t}</button>
+                                <button 
+                                    key={t} 
+                                    type="button" 
+                                    onClick={() => handleTimeSlotClick(t, state)} 
+                                    className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${
+                                        formData.time === t 
+                                        ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' 
+                                        : !state.available 
+                                            ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-50 line-through' 
+                                            : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'
+                                    }`}
+                                >
+                                    {t}
+                                </button>
                             )
                         })}
                     </div>
