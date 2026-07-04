@@ -215,6 +215,7 @@ export function CustomerBookingWizard({
       return initialTherapist ? 2 : 1;
   });
 
+  // STEP ပြောင်းတိုင်း အပေါ်ဆုံးကို Auto Scroll ဆွဲတင်ပေးမည့် စနစ်
   useEffect(() => {
      window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [step]);
@@ -258,7 +259,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // VIP=3, Normal=2 Room Logic Helper
+  // VIP=3, Normal=2 Room Logic Helper (FIXED INDEX BUG)
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -314,9 +315,59 @@ export function CustomerBookingWizard({
       return usage;
   };
 
-  const roomUsageMap = useMemo(() => getRoomUsageMap(formData.date, allBookings), [allBookings, formData.date]);
+  const roomUsageMap = useMemo(() => getRoomUsageMap(formData.date || todayStr, allBookings), [allBookings, formData.date, todayStr]);
 
-  // Check individual slot availability
+  // လက်ရှိအချိန် (Current Time) အတွက် အခန်းပြည့်မပြည့် စစ်ဆေးခြင်း (Service Tab တွင် VVIP ပိတ်ရန်အတွက်)
+  const currentRoomUsage = useMemo(() => {
+      let vip = 0;
+      let normal = 0;
+      const now = Date.now();
+      
+      allBookings.forEach(b => {
+          if (b.status === 'cancelled' || b.status === 'completed') return;
+          if (b.date !== todayStr) return; // ယနေ့အတွက်သာ
+          
+          const serviceLower = b.service.toLowerCase();
+          if (serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home')) return;
+          const isVip = serviceLower.includes('vvip');
+          
+          let isCurrentlyUsing = false;
+          
+          if (b.status === 'in_progress' && b.startTimeMillis) {
+              const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
+              if (now >= b.startTimeMillis && now <= end) isCurrentlyUsing = true;
+          } else if (b.time && !b.time.includes('to')) {
+              const [tPart, ampm] = b.time.split(' ');
+              if (tPart && ampm) {
+                  let [sh, sm] = tPart.split(':').map(Number);
+                  if (ampm === 'PM' && sh < 12) sh += 12;
+                  if (ampm === 'AM' && sh === 12) sh = 0;
+                  const slotStart = new Date();
+                  slotStart.setHours(sh, sm, 0, 0);
+                  
+                  let dur = 60;
+                  const match = b.service.match(/(\d+)\s*Mins/i);
+                  if (match) dur = parseInt(match[1]);
+                  const slotEnd = new Date(slotStart.getTime() + dur * 60000);
+                  
+                  if (now >= slotStart.getTime() && now < slotEnd.getTime()) {
+                      isCurrentlyUsing = true;
+                  }
+              }
+          }
+          
+          if (isCurrentlyUsing) {
+              if (isVip) vip++;
+              else normal++;
+          }
+      });
+      return { vip, normal, total: vip + normal };
+  }, [allBookings, todayStr]);
+
+  const isVipCurrentlyFull = currentRoomUsage.vip >= 3 || currentRoomUsage.total >= 5;
+  const disableVvipToggle = !formData.selectedItem?.vvipPrice || isVipCurrentlyFull;
+
+  // Check individual slot room availability
   const checkSlotState = (t: string) => {
       let neededSlots = 2;
       if (formData.selectedItem) {
@@ -366,6 +417,61 @@ export function CustomerBookingWizard({
       }
 
       return { available: true, reason: '' };
+  };
+
+  const handleTimeSlotClick = (t: string, state: { available: boolean, reason: string }) => {
+      if (!formData.date) return;
+      
+      if (state.reason === 'therapist') {
+          alert("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
+          return;
+      }
+      
+      if (state.reason === 'room') {
+          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
+          let neededSlots = 2;
+          if (formData.selectedItem) {
+              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+              if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+          }
+          const sIdx = ALL_TIME_SLOTS.indexOf(t);
+          let nextAvailable = '';
+          
+          for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
+              let durationFree = true;
+              for(let j=0; j < neededSlots; j++) {
+                  const subSlot = ALL_TIME_SLOTS[i+j];
+                  if(!subSlot) { durationFree = false; break; }
+                  const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 };
+                  const subTotal = subUsage.vip + subUsage.normal;
+                  
+                  if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
+                  if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
+              }
+              if (durationFree) {
+                  const tBlocked = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
+                  let therapistFree = true;
+                  for (let k = 0; k < neededSlots; k++) {
+                      if (tBlocked.has(ALL_TIME_SLOTS[i + k])) { therapistFree = false; break; }
+                  }
+                  if (therapistFree) {
+                      nextAvailable = ALL_TIME_SLOTS[i];
+                      break;
+                  }
+              }
+          }
+
+          if (nextAvailable) {
+              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
+          } else {
+              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
+          }
+          return;
+      }
+
+      if (state.available) {
+          setFormData({ ...formData, time: t });
+      }
   };
 
   // Time Slot Logic (With Real-Time Check for Today)
@@ -803,14 +909,22 @@ export function CustomerBookingWizard({
             <div>
                 <div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div>
                 <div className="text-xs text-yellow-600 font-semibold mt-1">
-                    {formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available'))}
+                    {formData.selectedItem?.vvipIncluded 
+                        ? '✅ Included (Free)' 
+                        : (!formData.selectedItem 
+                            ? 'Select a service' 
+                            : (isVipCurrentlyFull 
+                                ? '🚫 လတ်တလော VIP အခန်းပြည့်နေပါသည်' 
+                                : (formData.selectedItem.vvipPrice 
+                                    ? 'Upgrade for extra comfort' 
+                                    : 'Not available')))}
                 </div>
             </div>
         </div>
         {formData.selectedItem?.vvipIncluded ? (
             <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span>
         ) : (
-            <input type="checkbox" checked={formData.isVvipUpgrade} disabled={!formData.selectedItem?.vvipPrice} onChange={(e) => setFormData({ ...formData, isVvipUpgrade: e.target.checked, time: '' })} className="w-6 h-6 accent-[#D4AF37] cursor-pointer" />
+            <input type="checkbox" checked={formData.isVvipUpgrade} disabled={disableVvipToggle} onChange={(e) => setFormData({ ...formData, isVvipUpgrade: e.target.checked, time: '' })} className="w-6 h-6 accent-[#D4AF37] cursor-pointer disabled:opacity-50" />
         )}
       </div>
 
@@ -842,7 +956,7 @@ export function CustomerBookingWizard({
       )}
 
       <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p></div>
-      <div onClick={() => setFormData({ ...formData, therapist: null })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
+      <div onClick={() => setFormData({ ...formData, therapist: null, time: '' })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         {appData.therapists.map((therapist) => {
@@ -854,7 +968,7 @@ export function CustomerBookingWizard({
           const fullTextMm = checkDate === todayStr ? "(ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ)" : "(ဘိုကင်ပြည့်သွားပါပြီ)";
 
           return (
-            <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
+            <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist, time: '' })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
               {isFull && (
                 <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                   <div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500">
@@ -880,7 +994,7 @@ export function CustomerBookingWizard({
               <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
               
               {isTherapistFirst && (
-                <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/60 text-white border-red-500/60 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist, time: '' }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                   Book Now {!isFull && <ChevronRight className="w-3 h-3 ml-1" />}
                 </button>
               )}
@@ -931,7 +1045,6 @@ export function CustomerBookingWizard({
                     <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
                     <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
                         {availableTimeSlots.map(t => {
-                            const isAvailable = isSlotAvailable(t);
                             const state = checkSlotState(t);
                             return (
                                 <button 
@@ -942,8 +1055,8 @@ export function CustomerBookingWizard({
                                    className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${
                                        formData.time === t 
                                        ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' 
-                                       : (!isAvailable || !state.available) 
-                                           ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through' 
+                                       : (!state.available) 
+                                           ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through cursor-not-allowed' 
                                            : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'
                                    }`}
                                 >
