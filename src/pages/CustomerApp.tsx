@@ -421,59 +421,6 @@ export function CustomerBookingWizard({
   const isVipCurrentlyFull = currentRoomUsage.vip >= 3 || currentRoomUsage.total >= 5;
   const disableVvipToggle = !formData.selectedItem?.vvipPrice || isVipCurrentlyFull;
 
-  // Time Slot Logic (With Real-Time Check for Today & Night Booking Logic)
-  const getAvailableTimeSlots = (targetDateOverride?: string) => {
-    let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
-
-    if (formData.selectedItem) {
-        const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
-        const serviceName = formData.selectedItem.name.toLowerCase();
-        const isNightService = serviceName.includes("night");
-
-        if (isHotelService) {
-          if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) {
-              allowedSlots = ["7:00 AM to 7:00 AM (Next Day)"];
-          } else if (serviceName.includes("outcall")) {
-              allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
-          } else if (serviceName.includes("half day")) {
-              allowedSlots = ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
-          } else if (isNightService) {
-              allowedSlots = [
-                  "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"
-              ];
-          } else if (serviceName.includes("whole day")) {
-              allowedSlots = ["7:00 AM to 7:00 PM"];
-          }
-        }
-    }
-
-    const targetDate = targetDateOverride || formData.date || todayStr;
-
-    if (targetDate === todayStr) {
-        const now = new Date();
-        allowedSlots = allowedSlots.filter(slot => {
-            let timeStr = slot;
-            if (slot.includes("to")) timeStr = slot.split(" to ")[0].trim(); 
-            const match = timeStr.match(/(\d+):(\d+)\s+(AM|PM)/i);
-            if (match) {
-                let h = parseInt(match[1]);
-                const m = parseInt(match[2]);
-                const ampm = match[3].toUpperCase();
-                if (ampm === 'PM' && h < 12) h += 12;
-                if (ampm === 'AM' && h === 12) h = 0;
-                const slotTime = new Date();
-                slotTime.setHours(h, m, 0, 0);
-                return slotTime > now; 
-            }
-            return true; 
-        });
-    }
-    return allowedSlots;
-  };
-
-  const availableTimeSlots = getAvailableTimeSlots();
-  const isSelectedNightService = formData.selectedItem?.name.toLowerCase().includes("night");
-
   const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
       const blocked = new Set<string>();
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
@@ -597,6 +544,59 @@ export function CustomerBookingWizard({
       }
   };
 
+  // Time Slot Logic (With Real-Time Check for Today & Night Booking Logic)
+  const getAvailableTimeSlots = (targetDateOverride?: string) => {
+    let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+
+    if (formData.selectedItem) {
+        const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
+        const serviceName = formData.selectedItem.name.toLowerCase();
+        const isNightService = serviceName.includes("night");
+
+        if (isHotelService) {
+          if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) {
+              allowedSlots = ["7:00 AM to 7:00 AM (Next Day)"];
+          } else if (serviceName.includes("outcall")) {
+              allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
+          } else if (serviceName.includes("half day")) {
+              allowedSlots = ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
+          } else if (isNightService) {
+              allowedSlots = [
+                  "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"
+              ];
+          } else if (serviceName.includes("whole day")) {
+              allowedSlots = ["7:00 AM to 7:00 PM"];
+          }
+        }
+    }
+
+    const targetDate = targetDateOverride || formData.date || todayStr;
+
+    if (targetDate === todayStr) {
+        const now = new Date();
+        allowedSlots = allowedSlots.filter(slot => {
+            let timeStr = slot;
+            if (slot.includes("to")) timeStr = slot.split(" to ")[0].trim(); 
+            const match = timeStr.match(/(\d+):(\d+)\s+(AM|PM)/i);
+            if (match) {
+                let h = parseInt(match[1]);
+                const m = parseInt(match[2]);
+                const ampm = match[3].toUpperCase();
+                if (ampm === 'PM' && h < 12) h += 12;
+                if (ampm === 'AM' && h === 12) h = 0;
+                const slotTime = new Date();
+                slotTime.setHours(h, m, 0, 0);
+                return slotTime > now; 
+            }
+            return true; 
+        });
+    }
+    return allowedSlots;
+  };
+
+  const availableTimeSlots = getAvailableTimeSlots();
+  const isSelectedNightService = formData.selectedItem?.name.toLowerCase().includes("night");
+
   const getMinMaxDates = () => {
     const d = new Date(); 
     const minDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -629,6 +629,8 @@ export function CustomerBookingWizard({
       return true;
   };
 
+  const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id) || false;
+
   const checkPromoActive = () => {
       const promo = appData.promotion;
       if (!promo?.isActive) return false;
@@ -643,6 +645,7 @@ export function CustomerBookingWizard({
   const discountPercent = promoActive 
       ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) 
       : 0;
+  // RESTORED isHotelService definition above
 
   const calculateSubTotal = () => {
     if (!formData.selectedItem) return 0;
@@ -667,6 +670,17 @@ export function CustomerBookingWizard({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
+
+  const handleNextStep = (nextStep: number) => {
+    setStep(nextStep);
+  };
+
+  const handleCountdownExpire = () => {
+     if (isStaffMode) return;
+     setAlertMessage("ငွေပေးချေရန် သတ်မှတ်ချိန် (၁၅) မိနစ် ကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ ဘိုကင် အသစ်ပြန်လည်တင်ပေးပါ။");
+     setStep(1); setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+  };
+  const formattedCountdown = useCountdown(isStaffMode ? 0 : 15, handleCountdownExpire);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -740,7 +754,8 @@ export function CustomerBookingWizard({
           const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           
-          const coveredSlots = getSlotsFromTimeText(formData.time, neededSlots);
+          const actualTestStr = formData.time.includes("to") ? `${formData.time.split(' to ')[0].trim()} to ${formData.time.split(' to ')[1]}` : formData.time;
+          const coveredSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
           const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
           for (const slot of coveredSlots) {
               if (blockedNow.has(slot)) { isOverlap = true; break; }
@@ -754,7 +769,7 @@ export function CustomerBookingWizard({
 
       // Final Room Check before submit
       const isCurrentOutcall = formData.selectedItem?.name.toLowerCase().includes('outcall') || formData.selectedItem?.name.toLowerCase().includes('hotel') || formData.selectedItem?.name.toLowerCase().includes('home');
-      if (!isCurrentOutcall) {
+      if (!isCurrentOutcall && !formData.time.includes("to")) {
           const freshRoomUsage = getRoomUsageMap(formData.date, freshBookings);
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
           let neededSlots = 2;
@@ -762,11 +777,11 @@ export function CustomerBookingWizard({
               const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
-          
-          const coveredSlots = getSlotsFromTimeText(formData.time, neededSlots);
+          const sIdx = ALL_TIME_SLOTS.indexOf(formData.time);
           let isRoomOverlap = false;
-          
-          for (const slotName of coveredSlots) {
+          for (let i = 0; i < neededSlots; i++) {
+              const slotName = ALL_TIME_SLOTS[sIdx + i];
+              if (!slotName) { isRoomOverlap = true; break; }
               const usage = freshRoomUsage.get(slotName) || { vip: 0, normal: 0 };
               const totalUsed = usage.vip + usage.normal;
               if (isUserVip) {
@@ -1479,7 +1494,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
               }
               blockedNow.add(b.time); 
           } else if (b.time) {
-              const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
+              const sIdx = ALL_TIME_SLOTS.indexOf(b.time.trim());
               if (sIdx !== -1) {
                   let slotsToBlock = 2; 
                   const match = b.service.match(/(\d+)\s*Mins/i);
@@ -1619,7 +1634,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                        <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                            Book Now
                        </button>
-                       <button onClick={() => setViewingDetails(t)} className={`px-2 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all ${isFullyBooked ? 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200' : 'bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200'}`}>
+                       <button onClick={() => setViewingDetails(t)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200">
                            <Clock className="w-3 h-3 mr-1" /> အချိန်ဇယား
                        </button>
                    </div>
@@ -1653,7 +1668,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                                      <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                                          Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}
                                      </button>
-                                     <button onClick={() => setViewingDetails(t)} className={`w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200' : 'bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200'}`}>
+                                     <button onClick={() => setViewingDetails(t)} className="w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200">
                                          <Clock className="w-3 h-3 mr-1"/> အချိန်ဇယား
                                      </button>
                                  </div>
