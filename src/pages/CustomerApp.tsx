@@ -267,6 +267,7 @@ export function CustomerBookingWizard({
       return initialTherapist ? 2 : 1;
   });
 
+  // STEP ပြောင်းတိုင်း အပေါ်ဆုံးကို Auto Scroll ဆွဲတင်ပေးမည့် စနစ်
   useEffect(() => {
      window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [step]);
@@ -546,7 +547,7 @@ export function CustomerBookingWizard({
 
   // Time Slot Logic (With Real-Time Check for Today & Night Booking Logic)
   const getAvailableTimeSlots = (targetDateOverride?: string) => {
-    let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+    let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("11:00 PM") + 1);
 
     if (formData.selectedItem) {
         const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
@@ -567,6 +568,8 @@ export function CustomerBookingWizard({
           } else if (serviceName.includes("whole day")) {
               allowedSlots = ["7:00 AM to 7:00 PM"];
           }
+        } else {
+           allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
         }
     }
 
@@ -645,7 +648,6 @@ export function CustomerBookingWizard({
   const discountPercent = promoActive 
       ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) 
       : 0;
-  // RESTORED isHotelService definition above
 
   const calculateSubTotal = () => {
     if (!formData.selectedItem) return 0;
@@ -717,7 +719,15 @@ export function CustomerBookingWizard({
           startDateTime.setHours(h, m, 0, 0);
           
           fluidStartTimeMillis = startDateTime.getTime();
-          expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000);
+          
+          if (formData.selectedItem && formData.selectedItem.name.toLowerCase().includes("night")) {
+              const nextDay = new Date(startDateTime);
+              nextDay.setDate(nextDay.getDate() + 1);
+              nextDay.setHours(8, 0, 0, 0);
+              expectedEndTimeMillis = nextDay.getTime();
+          } else {
+              expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000);
+          }
 
           freshBookings.forEach(b => {
               if (b.therapist !== formData.therapist?.name || b.status === 'cancelled' || b.status === 'completed' || b.date !== formData.date) return;
@@ -777,7 +787,7 @@ export function CustomerBookingWizard({
               const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
-          const sIdx = ALL_TIME_SLOTS.indexOf(formData.time);
+          const sIdx = ALL_TIME_SLOTS.indexOf(formData.time.split(' to ')[0].trim());
           let isRoomOverlap = false;
           for (let i = 0; i < neededSlots; i++) {
               const slotName = ALL_TIME_SLOTS[sIdx + i];
@@ -1083,11 +1093,12 @@ export function CustomerBookingWizard({
                                                if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
                                            }
                                            const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
-                                           const sIdx = ALL_TIME_SLOTS.indexOf(t);
+                                           const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
                                            let nextAvailable = '';
                                            
                                            for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
                                                let durationFree = true;
+                                               const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
                                                for(let j=0; j < neededSlots; j++) {
                                                    const subSlot = ALL_TIME_SLOTS[i+j];
                                                    if(!subSlot) { durationFree = false; break; }
@@ -1096,16 +1107,16 @@ export function CustomerBookingWizard({
                                                    if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
                                                    if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
                                                }
+                                               if (durationFree && formData.therapist) {
+                                                   const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
+                                                   const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
+                                                   for (const slot of testSlots) {
+                                                       if (tBlocked.has(slot)) { durationFree = false; break; }
+                                                   }
+                                               }
                                                if (durationFree) {
-                                                   const tBlocked = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
-                                                   let therapistFree = true;
-                                                   for (let k = 0; k < neededSlots; k++) {
-                                                       if (tBlocked.has(ALL_TIME_SLOTS[i + k])) { therapistFree = false; break; }
-                                                   }
-                                                   if (therapistFree) {
-                                                       nextAvailable = ALL_TIME_SLOTS[i];
-                                                       break;
-                                                   }
+                                                   nextAvailable = ALL_TIME_SLOTS[i];
+                                                   break;
                                                }
                                            }
 
@@ -1409,9 +1420,16 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       return merged.map(b => {
           let endTime = getNextSlotTime(b.endSlot);
           if (b.state === 'Booked') {
-             const matchingNB = tBookings.find(bk => bk.service.split('(')[0].trim() === b.service && bk.time && bk.time.includes("Next Day"));
+             const matchingNB = tBookings.find(bk => bk.service.split('(')[0].trim() === b.service);
              if (matchingNB) {
-                 endTime = "8:00 AM (Next Day)";
+                 if (matchingNB.time && matchingNB.time.includes("Next Day")) {
+                     endTime = "8:00 AM (Next Day)";
+                 } else if (matchingNB.status === 'in_progress' && matchingNB.expectedEndTimeMillis) {
+                     const endD = new Date(matchingNB.expectedEndTimeMillis);
+                     if (endD.getHours() === 8 && endD.getDate() !== new Date().getDate()) {
+                         endTime = "8:00 AM (Next Day)";
+                     }
+                 }
              }
           }
           return { ...b, endTime };
@@ -1474,6 +1492,11 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (b.status === 'in_progress') {
                isCurrentlyActive = true;
                activeServiceName = cleanServiceName;
+               // in_progress should also check for Night Booking
+               if (b.expectedEndTimeMillis) {
+                   const eD = new Date(b.expectedEndTimeMillis);
+                   if (eD.getHours() === 8 && eD.getDate() !== new Date().getDate()) hasNightBooking = true;
+               }
           } else {
                if (!upcomingServices.includes(cleanServiceName)) {
                    upcomingServices.push(cleanServiceName);
@@ -1528,7 +1551,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 
       let futureSlotsTotal = 0;
       let futureSlotsBooked = 0;
-      const endLimitIdx = ALL_TIME_SLOTS.indexOf("9:00 PM");
+      const endLimitIdx = ALL_TIME_SLOTS.indexOf("11:00 PM"); // Check until 11 PM
       for (let i = 0; i <= endLimitIdx; i++) {
           const slot = ALL_TIME_SLOTS[i];
           const [timePart, ampm] = slot.split(' ');
