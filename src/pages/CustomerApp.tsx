@@ -100,6 +100,29 @@ export function BookingCard({ b }: { b: Booking }) {
 }
 
 // ==========================================
+// CUSTOM ALERT MODAL
+// ==========================================
+export function CustomAlert({ message, title = "Shangrila Online Booking System", onClose }: { message: string, title?: string, onClose: () => void }) {
+  if (!message) return null;
+  return (
+    <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden transform transition-all">
+        <div className="bg-[#123524] p-4 flex items-center justify-between">
+          <h3 className="text-[#D4AF37] font-bold text-sm flex items-center"><AlertCircle className="w-4 h-4 mr-2" /> {title}</h3>
+          <button onClick={onClose} className="text-white hover:text-red-400 transition"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-6 text-center">
+          <p className="text-gray-700 text-sm font-semibold leading-relaxed mb-6">{message}</p>
+          <button onClick={onClose} className="w-full py-3 bg-[#D4AF37] text-white rounded-lg font-bold shadow-md hover:bg-yellow-600 transition">
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
 // MAIN CUSTOMER APP WRAPPER
 // ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
@@ -226,6 +249,9 @@ export function CustomerBookingWizard({
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
+  
+  // Custom Alert State
+  const [alertMessage, setAlertMessage] = useState('');
   
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const stepContainerRef = useRef<HTMLDivElement>(null);
@@ -423,7 +449,7 @@ export function CustomerBookingWizard({
       if (!formData.date) return;
       
       if (state.reason === 'therapist') {
-          alert("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
+          setAlertMessage("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
           return;
       }
       
@@ -462,9 +488,9 @@ export function CustomerBookingWizard({
           }
 
           if (nextAvailable) {
-              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
+              setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
           } else {
-              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
+              setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
           }
           return;
       }
@@ -556,8 +582,8 @@ export function CustomerBookingWizard({
   };
 
   const handleCopy = (text: string) => {
-    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); alert('Copied!'); }
-    else { alert("Copying manually required: " + text); }
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); setAlertMessage('Copied!'); }
+    else { setAlertMessage("Copying manually required: " + text); }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -570,7 +596,7 @@ export function CustomerBookingWizard({
 
   const handleCountdownExpire = () => {
      if (isStaffMode) return;
-     alert("ငွေပေးချေရန် သတ်မှတ်ချိန် (၁၅) မိနစ် ကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ ဘိုကင် အသစ်ပြန်လည်တင်ပေးပါ။");
+     setAlertMessage("ငွေပေးချေရန် သတ်မှတ်ချိန် (၁၅) မိနစ် ကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ ဘိုကင် အသစ်ပြန်လည်တင်ပေးပါ။");
      setStep(1); setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   };
   const formattedCountdown = useCountdown(isStaffMode ? 0 : 15, handleCountdownExpire);
@@ -663,7 +689,7 @@ export function CustomerBookingWizard({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isStaffMode && formData.txId.length !== 6) { alert("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
+    if (!isStaffMode && formData.txId.length !== 6) { setAlertMessage("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
     setLoading(true);
     
     try {
@@ -755,7 +781,7 @@ export function CustomerBookingWizard({
       }
 
       if (isOverlap) {
-         alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။");
+         setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။");
          setLoading(false); return;
       }
 
@@ -783,7 +809,7 @@ export function CustomerBookingWizard({
               }
           }
           if (isRoomOverlap) {
-              alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်တွင် အခန်းပြည့်သွားပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
+              setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်တွင် အခန်းပြည့်သွားပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
               setLoading(false); return;
           }
       }
@@ -818,7 +844,7 @@ export function CustomerBookingWizard({
       };
       await addDoc(collection(db, 'bookings'), dataToSave);
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
-    } catch (error) { console.error(error); alert("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
+    } catch (error) { console.error(error); setAlertMessage("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
     setLoading(false);
   };
 
@@ -1013,6 +1039,9 @@ export function CustomerBookingWizard({
 
   return (
     <div>
+      {/* GLOBAL CUSTOM ALERT */}
+      <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
+
       {renderStepper()}
 
       {step === 1 && (isTherapistFirst ? renderTherapistSelection(1) : renderServiceSelection(1))}
@@ -1598,6 +1627,7 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({ name: '', password: '' });
   const [saving, setSaving] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
 
   useEffect(() => {
     if (!userPhone) return;
@@ -1620,8 +1650,8 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
       await updateDoc(doc(db, 'users', userPhone), { name: formData.name, password: formData.password });
       setProfile({ ...profile!, name: formData.name, password: formData.password });
       setEditMode(false);
-      alert("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
-    } catch (e) { alert("Error updating profile."); }
+      setAlertMessage("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
+    } catch (e) { setAlertMessage("Error updating profile."); }
     setSaving(false);
   };
 
@@ -1631,6 +1661,8 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
 
   return (
     <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0">
+      <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
+      
       <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>My Profile</h2></div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center mb-6">
