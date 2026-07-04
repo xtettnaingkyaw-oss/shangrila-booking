@@ -635,7 +635,7 @@ export function CustomerBookingWizard({
     : [{ num: 1, label: 'SERVICE', icon: Sparkles }, { num: 2, label: 'THERAPIST', icon: User }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard }];
 
   const renderStepper = () => (
-    <div ref={stepContainerRef} className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
+    <div className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
       {steps.map((s, idx) => {
         const isCompleted = step > s.num; const isActive = step === s.num;
         return (
@@ -1008,6 +1008,13 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   const [bookings, setBookings] = useState<Booking[]>([]);
   const todayStr = getLocalTodayStr();
 
+  // Dashboard Auto-Refresh for current time
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+     const timer = setInterval(() => setNow(new Date()), 60000); // 1 minute
+     return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     const q = query(collection(db, 'bookings'));
     const unsub = onSnapshot(q, (snap) => {
@@ -1024,7 +1031,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       let activeServiceName = '';
       let upcomingServices: string[] = [];
       
-      const currentHour = new Date().getHours();
+      const currentHour = now.getHours();
       const isPast6PM = currentHour >= 18;
       
       bookings.forEach(b => {
@@ -1040,6 +1047,41 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
                getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blockedNow.add(slot));
           } else {
+               // Filter past bookings using the exact parsed time
+               let isPast = false;
+               if (b.time && b.time.includes("to")) {
+                   const endStr = b.time.split(" to ")[1];
+                   if (endStr) {
+                       const cleanEnd = endStr.replace(" (Next Day)", "");
+                       const [tPart, ampm] = cleanEnd.split(' ');
+                       if (tPart && ampm) {
+                           let [eh, em] = tPart.split(':').map(Number);
+                           if (ampm === 'PM' && eh < 12) eh += 12;
+                           if (ampm === 'AM' && eh === 12) eh = 0;
+                           const bEnd = new Date();
+                           bEnd.setHours(eh, em, 0, 0);
+                           if (endStr.includes("Next Day")) bEnd.setDate(bEnd.getDate() + 1);
+                           if (bEnd <= now) isPast = true;
+                       }
+                   }
+               } else if (b.time) {
+                   const [tPart, ampm] = b.time.split(' ');
+                   if (tPart && ampm) {
+                       let [sh, sm] = tPart.split(':').map(Number);
+                       if (ampm === 'PM' && sh < 12) sh += 12;
+                       if (ampm === 'AM' && sh === 12) sh = 0;
+                       const bEnd = new Date();
+                       bEnd.setHours(sh, sm, 0, 0);
+                       let durationMins = 60;
+                       const match = b.service.match(/(\d+)\s*Mins/i);
+                       if (match) durationMins = parseInt(match[1]);
+                       bEnd.setMinutes(bEnd.getMinutes() + durationMins);
+                       if (bEnd <= now) isPast = true;
+                   }
+               }
+
+               if (isPast) return; // Ignore past slots
+
                if (!upcomingServices.includes(cleanServiceName)) {
                    upcomingServices.push(cleanServiceName);
                }
@@ -1073,7 +1115,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       if (isCurrentlyActive) {
           return { 
               label: 'In Service (Active)', 
-              mm: finalServiceName ? `${finalServiceName} ဝန်ဆောင်မှုပေးနေပါသည်` : 'ဝန်ဆောင်မှုပေးနေပါသည်', 
+              mm: 'ဝန်ဆောင်မှုပေးနေပါသည်', 
               color: 'bg-orange-100 text-orange-700 border-orange-200',
               activeService: activeServiceName
           };
@@ -1083,22 +1125,37 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       if (blockedNow.has("7:00 AM to 7:00 AM (Next Day)")) { is24hFull = true; } 
       else if (blockedNow.has("7:00 AM to 7:00 PM") && blockedNow.has("7:00 PM to 7:00 AM (Next Day)")) { is24hFull = true; }
 
-      const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
-      const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
-
-      if (is24hFull || (isNightFull && isPast6PM)) {
+      if (is24hFull || (blockedNow.has("7:00 PM to 7:00 AM (Next Day)") && isPast6PM)) {
           return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
       }
 
-      let shopSlotsTotal = 0; let shopSlotsBooked = 0;
-      for (let i = 6; i <= 30; i++) { shopSlotsTotal++; if (blockedNow.has(ALL_TIME_SLOTS[i])) shopSlotsBooked++; }
-      const isShopFull = shopSlotsBooked === shopSlotsTotal;
+      const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
+      const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
+
+      // Count remaining available slots for the day
+      let futureSlotsTotal = 0;
+      let futureSlotsBooked = 0;
+      for (let i = 6; i <= 30; i++) {
+          const slot = ALL_TIME_SLOTS[i];
+          const [timePart, ampm] = slot.split(' ');
+          let [h, m] = timePart.split(':').map(Number);
+          if (ampm === 'PM' && h < 12) h += 12;
+          if (ampm === 'AM' && h === 12) h = 0;
+          const slotTime = new Date();
+          slotTime.setHours(h, m, 0, 0);
+
+          if (slotTime > now) {
+              futureSlotsTotal++;
+              if (blockedNow.has(slot)) futureSlotsBooked++;
+          }
+      }
+      const isShopFull = futureSlotsTotal > 0 ? futureSlotsBooked === futureSlotsTotal : true;
 
       if (isDayFull && !isNightFull) {
           if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
           return { 
               label: 'Day Full / Night Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', 
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ ညပိုင်းရပါသေးသည်။` : 'နေ့ပိုင်းပြည့်၊ ညပိုင်းရပါသေးတယ်', 
               color: 'bg-orange-100 text-orange-700 border-orange-200',
               activeService: ''
           };
@@ -1122,13 +1179,13 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (isPast6PM) return { label: 'Available', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
           return { 
               label: 'Shop Full / Night Available', 
-              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ Night Booking ရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', 
+              mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ ညပိုင်းရပါသေးသည်။` : 'ဆိုင်ချိန်ပြည့်၊ ညပိုင်းရပါသေးတယ်', 
               color: 'bg-orange-100 text-orange-700 border-orange-200',
               activeService: ''
           };
       }
       
-      if (shopSlotsBooked > 0 || upcomingServices.length > 0) { 
+      if (futureSlotsBooked > 0 || upcomingServices.length > 0) { 
           let mmText = finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်` : 'အချိန်တချို့ ယူထားပါတယ်';
           return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: '' }; 
       }
@@ -1168,11 +1225,11 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
                        <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
-                          <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>
+                          <span className={`block ${status.activeService ? 'pb-1 mb-1 border-b' : ''}`} style={{ borderColor: 'currentColor', opacity: 0.85 }}>
                              {status.label}
                           </span>
                           {status.activeService && (
-                              <span className="block mb-1 text-current opacity-90 leading-snug">
+                              <span className="block pb-1 mb-1 border-b text-current opacity-90 leading-snug" style={{ borderColor: 'currentColor' }}>
                                  {status.activeService}
                               </span>
                           )}
@@ -1181,7 +1238,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                           </span>
                        </div>
                    </div>
-                   <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`ml-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center border transition-all ${isFullyBooked ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                   <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`ml-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                        Book Now
                    </button>
                 </div>
@@ -1210,7 +1267,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                              </div>
                              <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
                                  <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
-                                 <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                                 <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                                      Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}
                                  </button>
                              </div>
