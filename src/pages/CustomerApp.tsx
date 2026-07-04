@@ -60,6 +60,36 @@ function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: numbe
     return blocked;
 }
 
+// ဤ Function သည် အချိန် Text (e.g. "9:00 AM" or "9:00 AM to 11:00 AM") မှ Slots များကို ဖြတ်ထုတ်ပေးပါသည်
+export function getSlotsFromTimeText(t: string, neededSlotsByDuration: number): string[] {
+    if (!t) return [];
+    if (t.includes("to")) {
+        const [start, endRaw] = t.split(" to ");
+        const end = endRaw.replace(" (Next Day)", "");
+        const sIdx = ALL_TIME_SLOTS.indexOf(start.trim());
+        let eIdx = ALL_TIME_SLOTS.indexOf(end.trim());
+        if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+            eIdx = ALL_TIME_SLOTS.length;
+        }
+        const slots = [];
+        if (sIdx !== -1) {
+            for (let i = sIdx; i < eIdx; i++) {
+                if (ALL_TIME_SLOTS[i]) slots.push(ALL_TIME_SLOTS[i]);
+            }
+        }
+        return slots;
+    } else {
+        const sIdx = ALL_TIME_SLOTS.indexOf(t.trim());
+        const slots = [];
+        if (sIdx !== -1) {
+            for (let i = 0; i < neededSlotsByDuration; i++) {
+                if (ALL_TIME_SLOTS[sIdx + i]) slots.push(ALL_TIME_SLOTS[sIdx + i]);
+            }
+        }
+        return slots;
+    }
+}
+
 // Master Helper: Booking တစ်ခုရဲ့ အသုံးပြုသွားတဲ့ Time Slots တွေကို အတိအကျ တွက်ထုတ်ပေးမည့် Function
 export function getBookingCoveredSlots(b: Booking): string[] {
     const serviceLower = b.service.toLowerCase();
@@ -338,7 +368,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // VIP=3, Normal=2 Room Logic Helper (Global Function ကို အသုံးပြုသည်)
+  // VIP=3, Normal=2 Room Logic Helper
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -1062,7 +1092,50 @@ export function CustomerBookingWizard({
                                    key={t} 
                                    type="button" 
                                    disabled={!formData.date} 
-                                   onClick={() => handleTimeSlotClick(t, state)} 
+                                   onClick={() => {
+                                       if (!state.available) {
+                                           let neededSlots = 2;
+                                           if (formData.selectedItem) {
+                                               const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+                                               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+                                           }
+                                           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
+                                           const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
+                                           let nextAvailable = '';
+                                           
+                                           for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
+                                               let durationFree = true;
+                                               const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
+                                               for(let j=0; j < neededSlots; j++) {
+                                                   const subSlot = ALL_TIME_SLOTS[i+j];
+                                                   if(!subSlot) { durationFree = false; break; }
+                                                   const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 };
+                                                   const subTotal = subUsage.vip + subUsage.normal;
+                                                   if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
+                                                   if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
+                                               }
+                                               if (durationFree && formData.therapist) {
+                                                   const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
+                                                   const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
+                                                   for (const slot of testSlots) {
+                                                       if (tBlocked.has(slot)) { durationFree = false; break; }
+                                                   }
+                                               }
+                                               if (durationFree) {
+                                                   nextAvailable = ALL_TIME_SLOTS[i];
+                                                   break;
+                                               }
+                                           }
+
+                                           if (nextAvailable) {
+                                               setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
+                                           } else {
+                                               setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
+                                           }
+                                           return;
+                                       }
+                                       handleTimeSlotClick(t, state);
+                                   }} 
                                    className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${
                                        formData.time === t || (isSelectedNightService && formData.time.includes(displayTime))
                                        ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' 
@@ -1328,8 +1401,19 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 
       return merged.map(b => {
           let endTime = getNextSlotTime(b.endSlot);
-          if (b.state === 'Booked' && b.service.toLowerCase().includes("night")) {
-              endTime = "8:00 AM (Next Day)";
+          if (b.state === 'Booked') {
+             // Find matching booking to determine exact end time
+             const matchingNB = tBookings.find(bk => bk.service.split('(')[0].trim() === b.service);
+             if (matchingNB) {
+                 if (matchingNB.time && matchingNB.time.includes("Next Day")) {
+                     endTime = "8:00 AM (Next Day)";
+                 } else if (matchingNB.status === 'in_progress' && matchingNB.expectedEndTimeMillis) {
+                     const endD = new Date(matchingNB.expectedEndTimeMillis);
+                     if (endD.getHours() === 8 && endD.getDate() !== new Date().getDate()) {
+                         endTime = "8:00 AM (Next Day)";
+                     }
+                 }
+             }
           }
           return { ...b, endTime };
       });
@@ -1360,7 +1444,9 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (b.status === 'in_progress') {
                isCurrentlyActive = true;
                activeServiceName = cleanServiceName;
-               if (isNight) hasNightBooking = true;
+               if (isNight || (b.expectedEndTimeMillis && new Date(b.expectedEndTimeMillis).getHours() === 8 && new Date(b.expectedEndTimeMillis).getDate() !== new Date().getDate())) {
+                   hasNightBooking = true;
+               }
           } else {
                if (coveredSlots.some(slot => {
                    const [tPart, ampm] = slot.split(' ');
@@ -1541,7 +1627,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                                      <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                                          Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}
                                      </button>
-                                     <button onClick={() => setViewingDetails(t)} className="w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200">
+                                     <button onClick={() => setViewingDetails(t)} className={`w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200' : 'bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200'}`}>
                                          <Clock className="w-3 h-3 mr-1"/> အချိန်ဇယား
                                      </button>
                                  </div>
