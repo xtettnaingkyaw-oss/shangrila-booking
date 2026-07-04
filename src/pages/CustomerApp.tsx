@@ -258,7 +258,95 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // Time Slot Logic (With Real-Time Check for Today)
+  // VIP=3, Normal=2 Room Logic Helper
+  const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
+      const usage = new Map<string, { vip: number, normal: number }>();
+      ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
+
+      bookingsArray.forEach(b => {
+          if (b.status === 'cancelled' || b.status === 'completed') return;
+          if (b.date !== selectedDate) return;
+          
+          const serviceLower = b.service.toLowerCase();
+          const isBookingOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
+          if (isBookingOutcall) return; 
+
+          const isVip = serviceLower.includes('vvip');
+          let coveredSlots: string[] = [];
+
+          if (b.status === 'in_progress' && b.startTimeMillis) {
+              const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
+              const slotsSet = getSlotsCoveredByInterval(b.startTimeMillis, end, b.date);
+              coveredSlots = Array.from(slotsSet);
+          } else if (b.time && b.time.includes("to")) {
+              const [start, endRaw] = b.time.split(" to ");
+              const end = endRaw.replace(" (Next Day)", "");
+              const sIdx = ALL_TIME_SLOTS.indexOf(start);
+              let eIdx = ALL_TIME_SLOTS.indexOf(end);
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) eIdx = ALL_TIME_SLOTS.length;
+              if (sIdx !== -1 && eIdx !== -1) {
+                  for (let i = sIdx; i < eIdx; i++) coveredSlots.push(ALL_TIME_SLOTS[i]);
+              }
+              coveredSlots.push(b.time);
+          } else if (b.time) {
+              const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
+              if (sIdx !== -1) {
+                  let slotsToBlock = 2;
+                  const match = b.service.match(/(\d+)\s*Mins/i);
+                  if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
+                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
+                      if (ALL_TIME_SLOTS[sIdx + i]) coveredSlots.push(ALL_TIME_SLOTS[sIdx + i]);
+                  }
+              }
+          }
+
+          coveredSlots.forEach(slot => {
+              const current = usage.get(slot);
+              if (current) {
+                  if (isVip) current.vip += 1;
+                  else current.normal += 1;
+                  usage.set(slot, current);
+              }
+          });
+      });
+      return usage;
+  };
+
+  const roomUsageMap = useMemo(() => getRoomUsageMap(formData.date, allBookings), [allBookings, formData.date]);
+
+  // Check individual slot room availability
+  const checkSlotState = (t: string) => {
+      let neededSlots = 2;
+      if (formData.selectedItem) {
+          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+      }
+
+      const serviceLower = formData.selectedItem?.name.toLowerCase() || '';
+      const isCurrentOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
+      
+      if (!isCurrentOutcall && !t.includes("to")) {
+          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
+          const sIdx = ALL_TIME_SLOTS.indexOf(t);
+          
+          for (let i = 0; i < neededSlots; i++) {
+              const slotName = ALL_TIME_SLOTS[sIdx + i];
+              if (!slotName) return { available: false, reason: 'room' }; 
+              
+              const usage = roomUsageMap.get(slotName) || { vip: 0, normal: 0 };
+              const totalUsed = usage.vip + usage.normal;
+              
+              if (isUserVip) {
+                  if (usage.vip >= 3 || totalUsed >= 5) return { available: false, reason: 'room' };
+              } else {
+                  if (usage.normal >= 2 || totalUsed >= 5) return { available: false, reason: 'room' };
+              }
+          }
+      }
+      return { available: true, reason: '' };
+  };
+
+  // Time Slot Logic
   const getAvailableTimeSlots = () => {
     if (!formData.selectedItem) return [];
     const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
@@ -350,8 +438,6 @@ export function CustomerBookingWizard({
 
   const handleNextStep = (nextStep: number) => {
     setStep(nextStep);
-    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
-    else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
   };
 
   const handleCountdownExpire = () => {
@@ -403,159 +489,6 @@ export function CustomerBookingWizard({
       return blocked;
   };
 
-  // ROOM CAPACITY CHECK LOGIC (VIP = 3, Normal = 2, Total = 5)
-  const getRoomUsageMap = (selectedDate: string) => {
-      const usage = new Map<string, { vip: number, normal: number }>();
-      ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
-
-      allBookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed') return;
-          if (b.date !== selectedDate) return;
-          
-          const serviceLower = b.service.toLowerCase();
-          const isBookingOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
-          if (isBookingOutcall) return; // Outcall များသည် ဆိုင်ခန်းများကို အသုံးမပြုပါ
-
-          const isVip = serviceLower.includes('vvip');
-          let coveredSlots: string[] = [];
-
-          if (b.status === 'in_progress' && b.startTimeMillis) {
-              const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
-              const slotsSet = getSlotsCoveredByInterval(b.startTimeMillis, end, b.date);
-              coveredSlots = Array.from(slotsSet);
-          } else if (b.time && b.time.includes("to")) {
-              const [start, endRaw] = b.time.split(" to ");
-              const end = endRaw.replace(" (Next Day)", "");
-              const sIdx = ALL_TIME_SLOTS.indexOf(start);
-              let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) eIdx = ALL_TIME_SLOTS.length;
-              if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) coveredSlots.push(ALL_TIME_SLOTS[i]);
-              }
-              coveredSlots.push(b.time);
-          } else if (b.time) {
-              const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
-              if (sIdx !== -1) {
-                  let slotsToBlock = 2;
-                  const match = b.service.match(/(\d+)\s*Mins/i);
-                  if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
-                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
-                      if (ALL_TIME_SLOTS[i]) coveredSlots.push(ALL_TIME_SLOTS[i]);
-                  }
-              }
-          }
-
-          coveredSlots.forEach(slot => {
-              const current = usage.get(slot);
-              if (current) {
-                  if (isVip) current.vip += 1;
-                  else current.normal += 1;
-                  usage.set(slot, current);
-              }
-          });
-      });
-      return usage;
-  };
-
-  const checkSlotState = (t: string) => {
-      let neededSlots = 2;
-      if (formData.selectedItem) {
-          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
-          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-      }
-
-      // 1. Therapist Available?
-      const tBlocked = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
-      let therapistFree = true;
-      const sIdx = ALL_TIME_SLOTS.indexOf(t);
-      
-      if (t.includes("to")) {
-          if (tBlocked.has(t)) therapistFree = false;
-      } else {
-          for (let i = 0; i < neededSlots; i++) {
-              if (!ALL_TIME_SLOTS[sIdx + i] || tBlocked.has(ALL_TIME_SLOTS[sIdx + i])) { therapistFree = false; break; }
-          }
-      }
-      if (!therapistFree) return { available: false, reason: 'therapist' };
-
-      // 2. Room Available?
-      const serviceLower = formData.selectedItem?.name.toLowerCase() || '';
-      const isCurrentOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
-      
-      if (!isCurrentOutcall) {
-          const roomUsage = getRoomUsageMap(formData.date);
-          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
-          let roomFree = true;
-          
-          if (!t.includes("to")) {
-              for (let i = 0; i < neededSlots; i++) {
-                  const slotName = ALL_TIME_SLOTS[sIdx + i];
-                  if (!slotName) { roomFree = false; break; } 
-                  const usage = roomUsage.get(slotName) || { vip: 0, normal: 0 };
-                  const totalUsed = usage.vip + usage.normal;
-                  
-                  if (isUserVip) {
-                      if (usage.vip >= 3 || totalUsed >= 5) { roomFree = false; break; }
-                  } else {
-                      if (usage.normal >= 2 || totalUsed >= 5) { roomFree = false; break; }
-                  }
-              }
-          }
-          if (!roomFree) return { available: false, reason: 'room' };
-      }
-
-      return { available: true, reason: '' };
-  };
-
-  const handleTimeSlotClick = (t: string, state: { available: boolean, reason: string }) => {
-      if (!formData.date) return;
-      
-      if (state.reason === 'therapist') {
-          alert("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
-          return;
-      }
-      
-      if (state.reason === 'room') {
-          const roomUsage = getRoomUsageMap(formData.date);
-          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
-          let neededSlots = 2;
-          if (formData.selectedItem) {
-              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
-              if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-          }
-          const sIdx = ALL_TIME_SLOTS.indexOf(t);
-          let nextAvailable = '';
-          
-          for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
-              let durationFree = true;
-              for(let j=0; j < neededSlots; j++) {
-                  const subSlot = ALL_TIME_SLOTS[i+j];
-                  if(!subSlot) { durationFree = false; break; }
-                  const subUsage = roomUsage.get(subSlot) || { vip: 0, normal: 0 };
-                  const subTotal = subUsage.vip + subUsage.normal;
-                  
-                  if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
-                  if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
-              }
-              if (durationFree) {
-                  nextAvailable = ALL_TIME_SLOTS[i];
-                  break;
-              }
-          }
-
-          if (nextAvailable) {
-              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
-          } else {
-              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
-          }
-          return;
-      }
-
-      if (state.available) {
-          setFormData({ ...formData, time: t });
-      }
-  };
-
   const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
       const blockedNow = getBlockedSlots(allBookings, tName, dateToCheck);
       let neededSlots = 2; 
@@ -573,16 +506,23 @@ export function CustomerBookingWizard({
               const end = endRaw.replace(" (Next Day)", "");
               const sIdx = ALL_TIME_SLOTS.indexOf(start);
               let eIdx = ALL_TIME_SLOTS.indexOf(end);
-              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) { eIdx = ALL_TIME_SLOTS.length; }
+              
+              if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+                  eIdx = ALL_TIME_SLOTS.length;
+              }
+
               let overlap = false;
               if (sIdx !== -1 && eIdx !== -1) {
-                  for (let i = sIdx; i < eIdx; i++) { if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; } }
+                  for (let i = sIdx; i < eIdx; i++) {
+                      if (blockedNow.has(ALL_TIME_SLOTS[i])) { overlap = true; break; }
+                  }
               }
               if (blockedNow.has(t)) overlap = true;
               if (!overlap) { hasAvailableSlot = true; break; }
           } else {
               const sIdx = ALL_TIME_SLOTS.indexOf(t);
               if (sIdx === -1) continue;
+
               let overlap = false;
               for (let i = 0; i < neededSlots; i++) {
                   if (!ALL_TIME_SLOTS[sIdx + i] || blockedNow.has(ALL_TIME_SLOTS[sIdx + i])) { overlap = true; break; }
@@ -591,6 +531,40 @@ export function CustomerBookingWizard({
           }
       }
       return !hasAvailableSlot;
+  };
+
+  const blockedSlots = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
+
+  const isSlotAvailable = (t: string) => {
+      if (blockedSlots.has(t)) return false;
+      if (t.includes("to")) {
+          const [start, endRaw] = t.split(" to ");
+          const end = endRaw.replace(" (Next Day)", "");
+          const sIdx = ALL_TIME_SLOTS.indexOf(start);
+          let eIdx = ALL_TIME_SLOTS.indexOf(end);
+          
+          if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+              eIdx = ALL_TIME_SLOTS.length;
+          }
+
+          if (sIdx !== -1 && eIdx !== -1) {
+              for (let i = sIdx; i < eIdx; i++) {
+                  if (blockedSlots.has(ALL_TIME_SLOTS[i])) return false;
+              }
+          }
+          return true;
+      }
+      const sIdx = ALL_TIME_SLOTS.indexOf(t);
+      if (sIdx === -1) return true;
+      let neededSlots = 2;
+      if (formData.selectedItem) {
+          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+      }
+      for (let i = 0; i < neededSlots; i++) {
+          if (!ALL_TIME_SLOTS[sIdx + i] || blockedSlots.has(ALL_TIME_SLOTS[sIdx + i])) return false;
+      }
+      return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -689,6 +663,35 @@ export function CustomerBookingWizard({
       if (isOverlap) {
          alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။");
          setLoading(false); return;
+      }
+
+      // Check Room Availability again upon submitting
+      const isCurrentOutcall = formData.selectedItem?.name.toLowerCase().includes('outcall') || formData.selectedItem?.name.toLowerCase().includes('hotel') || formData.selectedItem?.name.toLowerCase().includes('home');
+      if (!isCurrentOutcall && !formData.time.includes("to")) {
+          const freshRoomUsage = getRoomUsageMap(formData.date, freshBookings);
+          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
+          let neededSlots = 2;
+          if (formData.selectedItem) {
+              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+              if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+          }
+          const sIdx = ALL_TIME_SLOTS.indexOf(formData.time);
+          let isRoomOverlap = false;
+          for (let i = 0; i < neededSlots; i++) {
+              const slotName = ALL_TIME_SLOTS[sIdx + i];
+              if (!slotName) { isRoomOverlap = true; break; }
+              const usage = freshRoomUsage.get(slotName) || { vip: 0, normal: 0 };
+              const totalUsed = usage.vip + usage.normal;
+              if (isUserVip) {
+                  if (usage.vip >= 3 || totalUsed >= 5) { isRoomOverlap = true; break; }
+              } else {
+                  if (usage.normal >= 2 || totalUsed >= 5) { isRoomOverlap = true; break; }
+              }
+          }
+          if (isRoomOverlap) {
+              alert("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်တွင် အခန်းပြည့်သွားပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
+              setLoading(false); return;
+          }
       }
 
       if (formData.phone && formData.phone.trim() !== '') {
@@ -793,7 +796,7 @@ export function CustomerBookingWizard({
             </div>
             {activeCategory === category.id && (
               <div className="p-2 border-t border-gray-100 bg-gray-50/50">{category.items.map(s => (
-                <div key={s.id} onClick={() => setFormData({ ...formData, selectedItem: s, isVvipUpgrade: false })} className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${formData.selectedItem?.id === s.id ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
+                <div key={s.id} onClick={() => setFormData({ ...formData, selectedItem: s, isVvipUpgrade: false, time: '' })} className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${formData.selectedItem?.id === s.id ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
                   <div><div className="font-bold text-gray-800 text-sm">{s.name}</div>{s.duration && <div className="text-xs text-gray-500 mt-1">{s.duration}</div>}</div>
                   <div className="font-bold text-sm" style={{ color: THEME.primary }}>{formatPrice(s.price)}</div>
                 </div>
@@ -819,7 +822,7 @@ export function CustomerBookingWizard({
         {formData.selectedItem?.vvipIncluded ? (
             <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span>
         ) : (
-            <input type="checkbox" checked={formData.isVvipUpgrade} disabled={!formData.selectedItem?.vvipPrice} onChange={(e) => setFormData({ ...formData, isVvipUpgrade: e.target.checked })} className="w-6 h-6 accent-[#D4AF37] cursor-pointer" />
+            <input type="checkbox" checked={formData.isVvipUpgrade} disabled={!formData.selectedItem?.vvipPrice} onChange={(e) => setFormData({ ...formData, isVvipUpgrade: e.target.checked, time: '' })} className="w-6 h-6 accent-[#D4AF37] cursor-pointer" />
         )}
       </div>
 
@@ -886,7 +889,7 @@ export function CustomerBookingWizard({
                 ) : (<div className="flex flex-col items-center"><User className="w-12 h-12 text-[#123524]" /></div>)}
               </div>
               <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-600' : 'text-gray-800'}`}>{therapist.name}</div>
-              <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-400' : 'text-gray-500'}`}>Professional Therapist</div>
+              <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
               
               {isTherapistFirst && (
                 <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
@@ -940,21 +943,69 @@ export function CustomerBookingWizard({
                     <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
                     <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
                         {availableTimeSlots.map(t => {
+                            const isAvailable = isSlotAvailable(t);
                             const state = checkSlotState(t);
                             return (
                                 <button 
-                                    key={t} 
-                                    type="button" 
-                                    onClick={() => handleTimeSlotClick(t, state)} 
-                                    className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${
-                                        formData.time === t 
-                                        ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' 
-                                        : !state.available 
-                                            ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-50 line-through' 
-                                            : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'
-                                    }`}
+                                   key={t} 
+                                   type="button" 
+                                   disabled={!formData.date} 
+                                   onClick={() => {
+                                       if (!isAvailable) {
+                                           alert("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
+                                           return;
+                                       }
+                                       if (!state.available) {
+                                           let neededSlots = 2;
+                                           if (formData.selectedItem) {
+                                               const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+                                               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+                                           }
+                                           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
+                                           const sIdx = ALL_TIME_SLOTS.indexOf(t);
+                                           let nextAvailable = '';
+                                           
+                                           for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
+                                               let durationFree = true;
+                                               for(let j=0; j < neededSlots; j++) {
+                                                   const subSlot = ALL_TIME_SLOTS[i+j];
+                                                   if(!subSlot) { durationFree = false; break; }
+                                                   const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 };
+                                                   const subTotal = subUsage.vip + subUsage.normal;
+                                                   if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
+                                                   if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
+                                               }
+                                               if (durationFree) {
+                                                   const tBlocked = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
+                                                   let therapistFree = true;
+                                                   for (let k = 0; k < neededSlots; k++) {
+                                                       if (tBlocked.has(ALL_TIME_SLOTS[i + k])) { therapistFree = false; break; }
+                                                   }
+                                                   if (therapistFree) {
+                                                       nextAvailable = ALL_TIME_SLOTS[i];
+                                                       break;
+                                                   }
+                                               }
+                                           }
+
+                                           if (nextAvailable) {
+                                               alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
+                                           } else {
+                                               alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
+                                           }
+                                           return;
+                                       }
+                                       setFormData({ ...formData, time: t });
+                                   }} 
+                                   className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${
+                                       formData.time === t 
+                                       ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' 
+                                       : (!isAvailable || !state.available) 
+                                           ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through' 
+                                           : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'
+                                   }`}
                                 >
-                                    {t}
+                                   {t}
                                 </button>
                             )
                         })}
