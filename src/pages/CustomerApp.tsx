@@ -285,7 +285,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // VIP=3, Normal=2 Room Logic Helper
+  // VIP=3, Normal=2 Room Logic Helper (FIXED INDEX BUG)
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -1652,15 +1652,15 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                              {status.mm}
                           </span>
                        </div>
-                       
-                       <button onClick={() => setViewingDetails(t)} className="mt-2 text-[10px] font-bold flex items-center transition opacity-80 hover:opacity-100 hover:underline" style={{ color: THEME.primary }}>
-                           <Clock className="w-3 h-3 mr-1" /> ဒီနေ့အချိန်ဇယား အသေးစိတ်ကြည့်ရန်
-                       </button>
-
                    </div>
-                   <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`ml-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
-                       Book Now
-                   </button>
+                   <div className="flex flex-col space-y-2 ml-2 flex-shrink-0">
+                       <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                           Book Now
+                       </button>
+                       <button onClick={() => setViewingDetails(t)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200">
+                           <Clock className="w-3 h-3 mr-1" /> အချိန်ဇယားကြည့်ရန်
+                       </button>
+                   </div>
                 </div>
              )
           })}
@@ -1687,9 +1687,14 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                              </div>
                              <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
                                  <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
-                                 <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
-                                     Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}
-                                 </button>
+                                 <div className="flex flex-col space-y-2 mt-auto">
+                                     <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                                         Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}
+                                     </button>
+                                     <button onClick={() => setViewingDetails(t)} className="w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200">
+                                         <Clock className="w-3 h-3 mr-1"/> အချိန်ဇယားကြည့်ရန်
+                                     </button>
+                                 </div>
                              </div>
                          </div>
                      );
