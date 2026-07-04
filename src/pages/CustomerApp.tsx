@@ -13,7 +13,6 @@ const ICON_MAP: Record<string, any> = {
   massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
 };
 
-// ည ၁၁ နာရီအထိ Night Booking အတွက် Time Slots များကို တိုးမြှင့်ထားပါသည်
 const ALL_TIME_SLOTS = ["6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"];
 
 const getLocalTodayStr = () => {
@@ -268,7 +267,6 @@ export function CustomerBookingWizard({
       return initialTherapist ? 2 : 1;
   });
 
-  // STEP ပြောင်းတိုင်း အပေါ်ဆုံးကို Auto Scroll ဆွဲတင်ပေးမည့် စနစ်
   useEffect(() => {
      window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [step]);
@@ -423,6 +421,59 @@ export function CustomerBookingWizard({
   const isVipCurrentlyFull = currentRoomUsage.vip >= 3 || currentRoomUsage.total >= 5;
   const disableVvipToggle = !formData.selectedItem?.vvipPrice || isVipCurrentlyFull;
 
+  // Time Slot Logic (With Real-Time Check for Today & Night Booking Logic)
+  const getAvailableTimeSlots = (targetDateOverride?: string) => {
+    let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+
+    if (formData.selectedItem) {
+        const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
+        const serviceName = formData.selectedItem.name.toLowerCase();
+        const isNightService = serviceName.includes("night");
+
+        if (isHotelService) {
+          if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) {
+              allowedSlots = ["7:00 AM to 7:00 AM (Next Day)"];
+          } else if (serviceName.includes("outcall")) {
+              allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
+          } else if (serviceName.includes("half day")) {
+              allowedSlots = ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
+          } else if (isNightService) {
+              allowedSlots = [
+                  "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"
+              ];
+          } else if (serviceName.includes("whole day")) {
+              allowedSlots = ["7:00 AM to 7:00 PM"];
+          }
+        }
+    }
+
+    const targetDate = targetDateOverride || formData.date || todayStr;
+
+    if (targetDate === todayStr) {
+        const now = new Date();
+        allowedSlots = allowedSlots.filter(slot => {
+            let timeStr = slot;
+            if (slot.includes("to")) timeStr = slot.split(" to ")[0].trim(); 
+            const match = timeStr.match(/(\d+):(\d+)\s+(AM|PM)/i);
+            if (match) {
+                let h = parseInt(match[1]);
+                const m = parseInt(match[2]);
+                const ampm = match[3].toUpperCase();
+                if (ampm === 'PM' && h < 12) h += 12;
+                if (ampm === 'AM' && h === 12) h = 0;
+                const slotTime = new Date();
+                slotTime.setHours(h, m, 0, 0);
+                return slotTime > now; 
+            }
+            return true; 
+        });
+    }
+    return allowedSlots;
+  };
+
+  const availableTimeSlots = getAvailableTimeSlots();
+  const isSelectedNightService = formData.selectedItem?.name.toLowerCase().includes("night");
+
   const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
       const blocked = new Set<string>();
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
@@ -453,7 +504,8 @@ export function CustomerBookingWizard({
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
 
-      const coveredSlotsForT = getSlotsFromTimeText(t, neededSlots);
+      const actualTestStr = t.includes("to") ? `${t.split(' to ')[0].trim()} to ${t.split(' to ')[1]}` : t;
+      const coveredSlotsForT = getSlotsFromTimeText(actualTestStr, neededSlots);
       if (coveredSlotsForT.length === 0) return { available: false, reason: 'invalid' };
 
       // 1. Therapist Available?
@@ -545,55 +597,6 @@ export function CustomerBookingWizard({
       }
   };
 
-  // Time Slot Logic (With Real-Time Check for Today & Night Booking Logic)
-  const getAvailableTimeSlots = () => {
-    if (!formData.selectedItem) return [];
-    const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
-    const serviceName = formData.selectedItem.name.toLowerCase();
-    const isNightService = serviceName.includes("night");
-
-    let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
-
-    if (isHotelService) {
-      if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) {
-          allowedSlots = ["7:00 AM to 7:00 AM (Next Day)"];
-      } else if (serviceName.includes("outcall")) {
-          allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
-      } else if (serviceName.includes("half day")) {
-          allowedSlots = ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
-      } else if (isNightService) {
-          allowedSlots = [
-              "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"
-          ];
-      } else if (serviceName.includes("whole day")) {
-          allowedSlots = ["7:00 AM to 7:00 PM"];
-      }
-    }
-
-    if (formData.date === todayStr) {
-        const now = new Date();
-        allowedSlots = allowedSlots.filter(slot => {
-            let timeStr = slot;
-            if (slot.includes("to")) timeStr = slot.split(" to ")[0].trim(); 
-            const match = timeStr.match(/(\d+):(\d+)\s+(AM|PM)/i);
-            if (match) {
-                let h = parseInt(match[1]);
-                const m = parseInt(match[2]);
-                const ampm = match[3].toUpperCase();
-                if (ampm === 'PM' && h < 12) h += 12;
-                if (ampm === 'AM' && h === 12) h = 0;
-                const slotTime = new Date();
-                slotTime.setHours(h, m, 0, 0);
-                return slotTime > now; 
-            }
-            return true; 
-        });
-    }
-    return allowedSlots;
-  };
-  const availableTimeSlots = getAvailableTimeSlots();
-  const isSelectedNightService = formData.selectedItem?.name.toLowerCase().includes("night");
-
   const getMinMaxDates = () => {
     const d = new Date(); 
     const minDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -602,6 +605,29 @@ export function CustomerBookingWizard({
     return { minDateStr, maxDateStr };
   }
   const { minDateStr, maxDateStr } = getMinMaxDates();
+
+  const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
+      const allowedSlots = getAvailableTimeSlots(dateToCheck);
+      
+      let neededSlots = 2; 
+      if (formData.selectedItem) {
+          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+      }
+
+      const tBlocked = getBlockedSlots(allBookings, tName, dateToCheck);
+      
+      for (const t of allowedSlots) {
+           const actualTestStr = t.includes("to") ? `${t.split(' to ')[0].trim()} to ${t.split(' to ')[1]}` : t;
+           const covered = getSlotsFromTimeText(actualTestStr, neededSlots);
+           let overlap = false;
+           for (const slot of covered) {
+                if (tBlocked.has(slot)) { overlap = true; break; }
+           }
+           if (!overlap) return false; 
+      }
+      return true;
+  };
 
   const checkPromoActive = () => {
       const promo = appData.promotion;
@@ -614,7 +640,6 @@ export function CustomerBookingWizard({
   };
 
   const promoActive = checkPromoActive();
-  const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id) || false;
   const discountPercent = promoActive 
       ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) 
       : 0;
@@ -641,39 +666,6 @@ export function CustomerBookingWizard({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleNextStep = (nextStep: number) => {
-    setStep(nextStep);
-  };
-
-  const handleCountdownExpire = () => {
-     if (isStaffMode) return;
-     setAlertMessage("ငွေပေးချေရန် သတ်မှတ်ချိန် (၁၅) မိနစ် ကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ ဘိုကင် အသစ်ပြန်လည်တင်ပေးပါ။");
-     setStep(1); setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
-  };
-  const formattedCountdown = useCountdown(isStaffMode ? 0 : 15, handleCountdownExpire);
-
-  const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
-      const allowedSlots = formData.selectedItem ? getAvailableTimeSlots() : ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
-      
-      let neededSlots = 2; 
-      if (formData.selectedItem) {
-          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
-          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-      }
-
-      const tBlocked = getBlockedSlots(allBookings, tName, dateToCheck);
-      
-      for (const t of allowedSlots) {
-           const covered = getSlotsFromTimeText(t, neededSlots);
-           let overlap = false;
-           for (const slot of covered) {
-                if (tBlocked.has(slot)) { overlap = true; break; }
-           }
-           if (!overlap) return false; 
-      }
-      return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1499,7 +1491,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           }
       });
 
-      const finalServiceName = upcomingServices.join('၊ '); // Multiple bookings separated
+      const finalServiceName = upcomingServices.join('၊ '); 
 
       if (isCurrentlyActive) {
           return { 
@@ -1519,7 +1511,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: '' }; 
       }
 
-      // 9 PM အထိသာ စစ်ဆေးပြီး ဘိုကင်အားလုံး ပြည့်မပြည့် စစ်ဆေးခြင်း
       let futureSlotsTotal = 0;
       let futureSlotsBooked = 0;
       const endLimitIdx = ALL_TIME_SLOTS.indexOf("9:00 PM");
@@ -1628,7 +1619,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                        <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                            Book Now
                        </button>
-                       <button onClick={() => setViewingDetails(t)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200">
+                       <button onClick={() => setViewingDetails(t)} className={`px-2 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all ${isFullyBooked ? 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200' : 'bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200'}`}>
                            <Clock className="w-3 h-3 mr-1" /> အချိန်ဇယား
                        </button>
                    </div>
@@ -1662,7 +1653,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                                      <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                                          Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}
                                      </button>
-                                     <button onClick={() => setViewingDetails(t)} className="w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200">
+                                     <button onClick={() => setViewingDetails(t)} className={`w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200' : 'bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200'}`}>
                                          <Clock className="w-3 h-3 mr-1"/> အချိန်ဇယား
                                      </button>
                                  </div>
