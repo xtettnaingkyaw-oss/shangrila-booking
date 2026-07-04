@@ -215,7 +215,6 @@ export function CustomerBookingWizard({
       return initialTherapist ? 2 : 1;
   });
 
-  // STEP ပြောင်းတိုင်း အပေါ်ဆုံးကို Auto Scroll ဆွဲတင်ပေးမည့် စနစ်
   useEffect(() => {
      window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [step]);
@@ -259,7 +258,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // VIP=3, Normal=2 Room Logic Helper (FIXED INDEX BUG)
+  // VIP=3, Normal=2 Room Logic Helper
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -297,8 +296,8 @@ export function CustomerBookingWizard({
                   let slotsToBlock = 2;
                   const match = b.service.match(/(\d+)\s*Mins/i);
                   if (match) slotsToBlock = Math.ceil(parseInt(match[1]) / 30);
-                  for (let i = sIdx; i < sIdx + slotsToBlock; i++) {
-                      if (ALL_TIME_SLOTS[i]) coveredSlots.push(ALL_TIME_SLOTS[i]); // Fixed Index Bug Here
+                  for (let i = 0; i < slotsToBlock; i++) {
+                      if (ALL_TIME_SLOTS[sIdx + i]) coveredSlots.push(ALL_TIME_SLOTS[sIdx + i]); 
                   }
               }
           }
@@ -317,7 +316,7 @@ export function CustomerBookingWizard({
 
   const roomUsageMap = useMemo(() => getRoomUsageMap(formData.date, allBookings), [allBookings, formData.date]);
 
-  // Check individual slot room availability
+  // Check individual slot availability
   const checkSlotState = (t: string) => {
       let neededSlots = 2;
       if (formData.selectedItem) {
@@ -325,19 +324,22 @@ export function CustomerBookingWizard({
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
 
-      // 1. Therapist Available?
-      const tBlocked = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
-      let therapistFree = true;
       const sIdx = ALL_TIME_SLOTS.indexOf(t);
-      
-      if (t.includes("to")) {
-          if (tBlocked.has(t)) therapistFree = false;
-      } else {
-          for (let i = 0; i < neededSlots; i++) {
-              if (!ALL_TIME_SLOTS[sIdx + i] || tBlocked.has(ALL_TIME_SLOTS[sIdx + i])) { therapistFree = false; break; }
+      if (sIdx === -1) return { available: false, reason: 'invalid' };
+
+      // 1. Therapist Available?
+      if (formData.therapist) {
+          const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
+          let therapistFree = true;
+          if (t.includes("to")) {
+              if (tBlocked.has(t)) therapistFree = false;
+          } else {
+              for (let i = 0; i < neededSlots; i++) {
+                  if (!ALL_TIME_SLOTS[sIdx + i] || tBlocked.has(ALL_TIME_SLOTS[sIdx + i])) { therapistFree = false; break; }
+              }
           }
+          if (!therapistFree) return { available: false, reason: 'therapist' };
       }
-      if (!therapistFree) return { available: false, reason: 'therapist' };
 
       // 2. Room Available? (VIP = 3, Normal = 2)
       const serviceLower = formData.selectedItem?.name.toLowerCase() || '';
@@ -364,61 +366,6 @@ export function CustomerBookingWizard({
       }
 
       return { available: true, reason: '' };
-  };
-
-  const handleTimeSlotClick = (t: string, state: { available: boolean, reason: string }) => {
-      if (!formData.date) return;
-      
-      if (state.reason === 'therapist') {
-          alert("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
-          return;
-      }
-      
-      if (state.reason === 'room') {
-          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
-          let neededSlots = 2;
-          if (formData.selectedItem) {
-              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
-              if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-          }
-          const sIdx = ALL_TIME_SLOTS.indexOf(t);
-          let nextAvailable = '';
-          
-          for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
-              let durationFree = true;
-              for(let j=0; j < neededSlots; j++) {
-                  const subSlot = ALL_TIME_SLOTS[i+j];
-                  if(!subSlot) { durationFree = false; break; }
-                  const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 };
-                  const subTotal = subUsage.vip + subUsage.normal;
-                  
-                  if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
-                  if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
-              }
-              if (durationFree) {
-                  const tBlocked = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
-                  let therapistFree = true;
-                  for (let k = 0; k < neededSlots; k++) {
-                      if (tBlocked.has(ALL_TIME_SLOTS[i + k])) { therapistFree = false; break; }
-                  }
-                  if (therapistFree) {
-                      nextAvailable = ALL_TIME_SLOTS[i];
-                      break;
-                  }
-              }
-          }
-
-          if (nextAvailable) {
-              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
-          } else {
-              alert(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
-          }
-          return;
-      }
-
-      if (state.available) {
-          setFormData({ ...formData, time: t });
-      }
   };
 
   // Time Slot Logic (With Real-Time Check for Today)
@@ -513,8 +460,6 @@ export function CustomerBookingWizard({
 
   const handleNextStep = (nextStep: number) => {
     setStep(nextStep);
-    if (stepContainerRef.current) { stepContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
-    else { window.scrollTo({ top: 0, behavior: 'smooth' }); }
   };
 
   const handleCountdownExpire = () => {
@@ -935,7 +880,7 @@ export function CustomerBookingWizard({
               <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
               
               {isTherapistFirst && (
-                <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/60 text-white border-red-500/60 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                   Book Now {!isFull && <ChevronRight className="w-3 h-3 ml-1" />}
                 </button>
               )}
