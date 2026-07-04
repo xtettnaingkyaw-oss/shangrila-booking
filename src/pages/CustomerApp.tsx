@@ -285,7 +285,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // VIP=3, Normal=2 Room Logic Helper (FIXED INDEX BUG)
+  // VIP=3, Normal=2 Room Logic Helper
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -1074,17 +1074,64 @@ export function CustomerBookingWizard({
                     <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
                     <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
                         {availableTimeSlots.map(t => {
+                            const isAvailable = isSlotAvailable(t);
                             const state = checkSlotState(t);
                             return (
                                 <button 
                                    key={t} 
                                    type="button" 
                                    disabled={!formData.date} 
-                                   onClick={() => handleTimeSlotClick(t, state)} 
+                                   onClick={() => {
+                                       if (!isAvailable) {
+                                           setAlertMessage("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
+                                           return;
+                                       }
+                                       if (!state.available) {
+                                           let neededSlots = 2;
+                                           if (formData.selectedItem) {
+                                               const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+                                               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+                                           }
+                                           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
+                                           const sIdx = ALL_TIME_SLOTS.indexOf(t);
+                                           let nextAvailable = '';
+                                           
+                                           for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
+                                               let durationFree = true;
+                                               for(let j=0; j < neededSlots; j++) {
+                                                   const subSlot = ALL_TIME_SLOTS[i+j];
+                                                   if(!subSlot) { durationFree = false; break; }
+                                                   const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 };
+                                                   const subTotal = subUsage.vip + subUsage.normal;
+                                                   if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
+                                                   if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
+                                               }
+                                               if (durationFree) {
+                                                   const tBlocked = getBlockedSlots(allBookings, formData.therapist?.name || '', formData.date);
+                                                   let therapistFree = true;
+                                                   for (let k = 0; k < neededSlots; k++) {
+                                                       if (tBlocked.has(ALL_TIME_SLOTS[i + k])) { therapistFree = false; break; }
+                                                   }
+                                                   if (therapistFree) {
+                                                       nextAvailable = ALL_TIME_SLOTS[i];
+                                                       break;
+                                                   }
+                                               }
+                                           }
+
+                                           if (nextAvailable) {
+                                               setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
+                                           } else {
+                                               setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
+                                           }
+                                           return;
+                                       }
+                                       setFormData({ ...formData, time: t });
+                                   }} 
                                    className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${
                                        formData.time === t 
                                        ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' 
-                                       : (!state.available) 
+                                       : (!isAvailable || !state.available) 
                                            ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through cursor-not-allowed' 
                                            : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'
                                    }`}
@@ -1267,6 +1314,7 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
 // ==========================================
 export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [viewingDetails, setViewingDetails] = useState<TherapistProfile | null>(null);
   const todayStr = getLocalTodayStr();
 
   // Dashboard Auto-Refresh for current time
@@ -1285,6 +1333,82 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
     });
     return () => unsub();
   }, []);
+
+  const getNextSlotTime = (slot: string) => {
+      const idx = ALL_TIME_SLOTS.indexOf(slot);
+      if (idx !== -1 && idx < ALL_TIME_SLOTS.length - 1) return ALL_TIME_SLOTS[idx + 1];
+      if (idx === ALL_TIME_SLOTS.length - 1) return "9:30 PM";
+      return slot;
+  };
+
+  const generateTimeline = (therapistName: string) => {
+      const tBookings = bookings.filter(b => b.therapist === therapistName && b.date === todayStr && b.status !== 'cancelled' && b.status !== 'completed');
+      const coveredMap = new Map<string, { service: string, status: string }>();
+
+      tBookings.forEach(b => {
+           const cleanServiceName = b.service.split('(')[0].trim();
+           if (b.status === 'in_progress' && b.startTimeMillis) {
+               const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
+               getSlotsCoveredByInterval(b.startTimeMillis, end, b.date).forEach(slot => {
+                   coveredMap.set(slot, { service: cleanServiceName, status: 'Booked' });
+               });
+           } else if (b.time && b.time.includes("to")) {
+               const [start, endRaw] = b.time.split(" to ");
+               const end = endRaw.replace(" (Next Day)", "");
+               const sIdx = ALL_TIME_SLOTS.indexOf(start);
+               let eIdx = ALL_TIME_SLOTS.indexOf(end);
+               if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) eIdx = ALL_TIME_SLOTS.length;
+               if (sIdx !== -1 && eIdx !== -1) {
+                   for (let i = sIdx; i < eIdx; i++) {
+                       if (ALL_TIME_SLOTS[i]) coveredMap.set(ALL_TIME_SLOTS[i], { service: cleanServiceName, status: 'Booked' });
+                   }
+               }
+               coveredMap.set(b.time, { service: cleanServiceName, status: 'Booked' });
+           } else if (b.time) {
+               const sIdx = ALL_TIME_SLOTS.indexOf(b.time);
+               if (sIdx !== -1) {
+                   let neededSlots = 2;
+                   const match = b.service.match(/(\d+)\s*Mins/i);
+                   if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+                   for (let i = 0; i < neededSlots; i++) {
+                       if (ALL_TIME_SLOTS[sIdx + i]) coveredMap.set(ALL_TIME_SLOTS[sIdx + i], { service: cleanServiceName, status: 'Booked' });
+                   }
+               }
+           }
+      });
+
+      const rawSlots = ALL_TIME_SLOTS.map(slot => {
+          const covered = coveredMap.get(slot);
+          if (covered) return { slot, state: 'Booked', service: covered.service };
+
+          const [tPart, ampm] = slot.split(' ');
+          let [h, m] = tPart.split(':').map(Number);
+          if (ampm === 'PM' && h < 12) h += 12;
+          if (ampm === 'AM' && h === 12) h = 0;
+          const slotTime = new Date();
+          slotTime.setHours(h, m, 0, 0);
+
+          if (slotTime <= now) return { slot, state: 'Past', service: '' };
+          return { slot, state: 'Available', service: '' };
+      });
+
+      const merged = [];
+      if (rawSlots.length === 0) return [];
+      let currentBlock = { startSlot: rawSlots[0].slot, endSlot: rawSlots[0].slot, state: rawSlots[0].state, service: rawSlots[0].service };
+
+      for (let i = 1; i < rawSlots.length; i++) {
+          const curr = rawSlots[i];
+          if (curr.state === currentBlock.state && curr.service === currentBlock.service) {
+              currentBlock.endSlot = curr.slot;
+          } else {
+              merged.push(currentBlock);
+              currentBlock = { startSlot: curr.slot, endSlot: curr.slot, state: curr.state, service: curr.service };
+          }
+      }
+      merged.push(currentBlock);
+
+      return merged;
+  };
 
   const getTherapistStatus = (tName: string) => {
       let blockedNow = new Set<string>();
@@ -1308,7 +1432,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
                getSlotsCoveredByInterval(b.startTimeMillis!, end, b.date).forEach(slot => blockedNow.add(slot));
           } else {
-               // Filter past bookings using the exact parsed time
                let isPast = false;
                if (b.time && b.time.includes("to")) {
                    const endStr = b.time.split(" to ")[1];
@@ -1341,7 +1464,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    }
                }
 
-               if (isPast) return; // Ignore past slots
+               if (isPast) return; 
 
                if (!upcomingServices.includes(cleanServiceName)) {
                    upcomingServices.push(cleanServiceName);
@@ -1393,7 +1516,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const isNightFull = blockedNow.has("7:00 PM to 7:00 AM (Next Day)");
       const isDayFull = blockedNow.has("7:00 AM to 7:00 PM");
 
-      // Count remaining available slots for the day
       let futureSlotsTotal = 0;
       let futureSlotsBooked = 0;
       for (let i = 6; i <= 30; i++) {
@@ -1466,7 +1588,39 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   }).slice(0, 5);
 
   return (
-    <div className="animate-fade-in px-2 sm:px-0">
+    <div className="animate-fade-in px-2 sm:px-0 relative">
+       {/* SCHEDULE DETAILED VIEW MODAL */}
+       {viewingDetails && (
+           <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingDetails(null)}>
+               <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                   <div className="bg-[#123524] p-4 flex items-center justify-between">
+                       <div className="flex items-center">
+                           {viewingDetails.images[0] ? <img src={viewingDetails.images[0]} className="w-10 h-10 rounded-full object-cover mr-3 border border-[#D4AF37]"/> : <User className="w-10 h-10 rounded-full p-2 bg-gray-100 text-gray-400 mr-3"/>}
+                           <div>
+                               <h3 className="text-[#D4AF37] font-bold text-sm tracking-wide">{viewingDetails.name}'s Schedule</h3>
+                               <p className="text-[10px] text-gray-300 font-semibold mt-0.5">Today ({getLocalTodayStr()})</p>
+                           </div>
+                       </div>
+                       <button onClick={() => setViewingDetails(null)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-5 h-5"/></button>
+                   </div>
+                   <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-2">
+                       {generateTimeline(viewingDetails.name).map((block, idx) => (
+                            <div key={idx} className={`p-3 rounded-xl border flex items-center justify-between shadow-sm transition-colors ${block.state === 'Available' ? 'bg-green-50 border-green-200' : block.state === 'Booked' ? 'bg-blue-50 border-blue-200' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
+                                <div className="text-xs font-mono font-bold text-gray-700 w-[45%]">
+                                    {block.startSlot} - {getNextSlotTime(block.endSlot)}
+                                </div>
+                                <div className="w-[55%] flex justify-end">
+                                    {block.state === 'Available' && <span className="text-green-700 font-bold text-[10px] uppercase flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> အားပါသည် (Available)</span>}
+                                    {block.state === 'Booked' && <span className="text-blue-700 font-bold text-[10px] uppercase leading-tight flex items-center text-right"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse"></span> {block.service}</span>}
+                                    {block.state === 'Past' && <span className="text-gray-500 font-bold text-[10px] uppercase flex items-center"><Clock className="w-3 h-3 mr-1"/> ကျော်လွန်သွားပါပြီ</span>}
+                                </div>
+                            </div>
+                       ))}
+                   </div>
+               </div>
+           </div>
+       )}
+
        <div className="text-center mb-8">
          <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
          <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
@@ -1498,6 +1652,11 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                              {status.mm}
                           </span>
                        </div>
+                       
+                       <button onClick={() => setViewingDetails(t)} className="mt-2 text-[10px] font-bold flex items-center transition opacity-80 hover:opacity-100 hover:underline" style={{ color: THEME.primary }}>
+                           <Clock className="w-3 h-3 mr-1" /> ဒီနေ့အချိန်ဇယား အသေးစိတ်ကြည့်ရန်
+                       </button>
+
                    </div>
                    <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`ml-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                        Book Now
