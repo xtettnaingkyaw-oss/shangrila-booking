@@ -368,7 +368,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // VIP=3, Normal=2 Room Logic Helper (Global Function ကို အသုံးပြုသည်)
+  // VIP=3, Normal=2 Room Logic Helper (Room အတွက် Buffer ထည့်မတွက်ပါ)
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -382,7 +382,7 @@ export function CustomerBookingWizard({
           if (isBookingOutcall) return; 
 
           const isVip = serviceLower.includes('vvip');
-          const coveredSlots = getBookingCoveredSlots(b);
+          const coveredSlots = getBookingCoveredSlots(b); // Get actual slots without buffer
 
           coveredSlots.forEach(slot => {
               const current = usage.get(slot);
@@ -420,14 +420,38 @@ export function CustomerBookingWizard({
       
       allBookings.forEach(b => {
           if (b.status === 'cancelled' || b.status === 'completed') return;
-          if (b.date !== todayStr) return;
+          if (b.date !== todayStr) return; // ယနေ့အတွက်သာ
           
           const serviceLower = b.service.toLowerCase();
           if (serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home')) return;
           const isVip = serviceLower.includes('vvip');
           
-          const coveredSlots = getBookingCoveredSlots(b);
-          if (currentSlot && coveredSlots.includes(currentSlot)) {
+          let isCurrentlyUsing = false;
+          
+          if (b.status === 'in_progress' && b.startTimeMillis) {
+              const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
+              if (now >= b.startTimeMillis && now <= end) isCurrentlyUsing = true;
+          } else if (b.time && !b.time.includes('to')) {
+              const [tPart, ampm] = b.time.split(' ');
+              if (tPart && ampm) {
+                  let [sh, sm] = tPart.split(':').map(Number);
+                  if (ampm === 'PM' && sh < 12) sh += 12;
+                  if (ampm === 'AM' && sh === 12) sh = 0;
+                  const slotStart = new Date();
+                  slotStart.setHours(sh, sm, 0, 0);
+                  
+                  let dur = 60;
+                  const match = b.service.match(/(\d+)\s*Mins/i);
+                  if (match) dur = parseInt(match[1]);
+                  const slotEnd = new Date(slotStart.getTime() + dur * 60000);
+                  
+                  if (now >= slotStart.getTime() && now < slotEnd.getTime()) {
+                      isCurrentlyUsing = true;
+                  }
+              }
+          }
+          
+          if (isCurrentlyUsing) {
               if (isVip) vip++;
               else normal++;
           }
@@ -438,6 +462,7 @@ export function CustomerBookingWizard({
   const isVipCurrentlyFull = currentRoomUsage.vip >= 3 || currentRoomUsage.total >= 5;
   const disableVvipToggle = !formData.selectedItem?.vvipPrice || isVipCurrentlyFull;
 
+  // ဤနေရာတွင် ဝန်ထမ်းအတွက် "နာရီဝက် (1 Slot)" Buffer Time ကို ထည့်သွင်းတွက်ချက်ပါသည်
   const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
       const blocked = new Set<string>();
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
@@ -447,7 +472,19 @@ export function CustomerBookingWizard({
           if (b.date !== selectedDate) return;
           if (b.therapist !== selectedTherapistName) return;
 
-          getBookingCoveredSlots(b).forEach(slot => blocked.add(slot));
+          const coveredSlots = getBookingCoveredSlots(b);
+          if (coveredSlots.length > 0) {
+              // 1. အမှန်တကယ် အသုံးပြုမည့် Service အချိန်များကို Block လုပ်မည်
+              coveredSlots.forEach(slot => blocked.add(slot));
+              
+              // 2. ဘိုကင်မတိုင်မီ "ရှေ့နာရီဝက် (30 mins buffer)" ကို Block လုပ်မည်
+              const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
+              if (firstIdx > 0) blocked.add(ALL_TIME_SLOTS[firstIdx - 1]);
+              
+              // 3. ဘိုကင်အပြီး "နောက်နာရီဝက် (30 mins buffer)" ကို Block လုပ်မည်
+              const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
+              if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blocked.add(ALL_TIME_SLOTS[lastIdx + 1]);
+          }
       });
       return blocked;
   };
@@ -471,7 +508,7 @@ export function CustomerBookingWizard({
           }
       }
 
-      // 2. Room Available? (VIP = 3, Normal = 2)
+      // 2. Room Available? (VIP = 3, Normal = 2) - Buffer မပါဝင်ပါ
       const serviceLower = formData.selectedItem?.name.toLowerCase() || '';
       const isCurrentOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
       
@@ -736,35 +773,11 @@ export function CustomerBookingWizard({
               expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000);
           }
 
-          freshBookings.forEach(b => {
-              if (b.therapist !== formData.therapist?.name || b.status === 'cancelled' || b.status === 'completed' || b.date !== formData.date) return;
-              
-              let otherStart = 0, otherEnd = 0;
-              if (b.status === 'in_progress' && b.startTimeMillis) {
-                  otherStart = b.startTimeMillis;
-                  otherEnd = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
-              } else if (b.time && !b.time.includes('to')) {
-                  const [oy, omo, od] = b.date.split('-');
-                  const slotTime = new Date(Number(oy), Number(omo)-1, Number(od));
-                  const [tPart, oampm] = b.time.split(' ');
-                  let [sh, sm] = tPart.split(':').map(Number);
-                  if (oampm === 'PM' && sh < 12) sh += 12;
-                  if (oampm === 'AM' && sh === 12) sh = 0;
-                  slotTime.setHours(sh, sm, 0, 0);
-
-                  otherStart = slotTime.getTime();
-                  let bDur = 60;
-                  const bMatch = b.service.match(/(\d+)\s*Mins/i);
-                  if (bMatch) bDur = parseInt(bMatch[1]);
-                  otherEnd = otherStart + bDur * 60000;
-              } else {
-                  return; 
-              }
-
-              if (fluidStartTimeMillis < otherEnd && expectedEndTimeMillis > otherStart) {
-                  isOverlap = true;
-              }
-          });
+          const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
+          const coveredForImmediate = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date));
+          for (const slot of coveredForImmediate) {
+              if (blockedNow.has(slot)) { isOverlap = true; break; }
+          }
 
       } else {
           let neededSlots = 2; 
@@ -1364,14 +1377,27 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 
       tBookings.forEach(b => {
            const cleanServiceName = b.service.split('(')[0].trim();
-           getBookingCoveredSlots(b).forEach(slot => {
+           const coveredSlots = getBookingCoveredSlots(b);
+           
+           coveredSlots.forEach(slot => {
                coveredMap.set(slot, { service: cleanServiceName, status: 'Booked' });
            });
+           
+           if (coveredSlots.length > 0) {
+               const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
+               if (firstIdx > 0 && !coveredMap.has(ALL_TIME_SLOTS[firstIdx - 1])) {
+                   coveredMap.set(ALL_TIME_SLOTS[firstIdx - 1], { service: 'နားချိန် (Rest)', status: 'Buffer' });
+               }
+               const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
+               if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1 && !coveredMap.has(ALL_TIME_SLOTS[lastIdx + 1])) {
+                   coveredMap.set(ALL_TIME_SLOTS[lastIdx + 1], { service: 'နားချိန် (Rest)', status: 'Buffer' });
+               }
+           }
       });
 
       const rawSlots = ALL_TIME_SLOTS.map(slot => {
           const covered = coveredMap.get(slot);
-          if (covered) return { slot, state: 'Booked', service: covered.service };
+          if (covered) return { slot, state: covered.status, service: covered.service };
 
           const [tPart, ampm] = slot.split(' ');
           let [h, m] = tPart.split(':').map(Number);
@@ -1402,7 +1428,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       return merged.map(b => {
           let endTime = getNextSlotTime(b.endSlot);
           if (b.state === 'Booked') {
-             // Find matching booking to determine exact end time
              const matchingNB = tBookings.find(bk => bk.service.split('(')[0].trim() === b.service);
              if (matchingNB) {
                  if (matchingNB.time && matchingNB.time.includes("Next Day")) {
@@ -1439,7 +1464,14 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           const isNight = serviceLower.includes('night') || serviceLower.includes('24 hour') || serviceLower.includes('day and night');
 
           const coveredSlots = getBookingCoveredSlots(b);
-          coveredSlots.forEach(slot => blockedNow.add(slot));
+          
+          if (coveredSlots.length > 0) {
+              coveredSlots.forEach(slot => blockedNow.add(slot));
+              const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
+              if (firstIdx > 0) blockedNow.add(ALL_TIME_SLOTS[firstIdx - 1]);
+              const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
+              if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blockedNow.add(ALL_TIME_SLOTS[lastIdx + 1]);
+          }
 
           if (b.status === 'in_progress') {
                isCurrentlyActive = true;
@@ -1541,13 +1573,14 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    </div>
                    <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-2">
                        {generateTimeline(viewingDetails.name).map((block, idx) => (
-                            <div key={idx} className={`p-3 rounded-xl border flex items-center justify-between shadow-sm transition-colors ${block.state === 'Available' ? 'bg-green-50 border-green-200' : block.state === 'Booked' ? 'bg-blue-50 border-blue-200' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
+                            <div key={idx} className={`p-3 rounded-xl border flex items-center justify-between shadow-sm transition-colors ${block.state === 'Available' ? 'bg-green-50 border-green-200' : block.state === 'Booked' ? 'bg-blue-50 border-blue-200' : block.state === 'Buffer' ? 'bg-orange-50 border-orange-200' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
                                 <div className="text-xs font-mono font-bold text-gray-700 w-[45%]">
                                     {block.startSlot} - {block.endTime}
                                 </div>
                                 <div className="w-[55%] flex justify-end">
                                     {block.state === 'Available' && <span className="text-green-700 font-bold text-[10px] uppercase flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> အားပါသည်</span>}
                                     {block.state === 'Booked' && <span className="text-blue-700 font-bold text-[10px] uppercase leading-tight flex items-center text-right"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse"></span> {block.service}</span>}
+                                    {block.state === 'Buffer' && <span className="text-orange-600 font-bold text-[10px] uppercase leading-tight flex items-center text-right"><Clock className="w-3 h-3 mr-1"/> {block.service}</span>}
                                     {block.state === 'Past' && <span className="text-gray-500 font-bold text-[10px] uppercase flex items-center"><Clock className="w-3 h-3 mr-1"/> ကျော်လွန်သွားပါပြီ</span>}
                                 </div>
                             </div>
