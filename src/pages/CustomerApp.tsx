@@ -1131,7 +1131,7 @@ export function CustomerBookingWizard({
       </div>
       
       <div className={`mt-8 flex flex-col gap-4`}>
-         {(!formData.date || formData.date === todayStr) && currentStep === 1 && (
+         {(!formData.date || formData.date === todayStr) && (
              <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-center shadow-sm w-full animate-fade-in">
                  <p className="text-sm font-bold text-gray-700 mb-3 leading-relaxed">
                      ဒီနေ့အတွက် ဘိုကင်ယူနိုင်သည့်အချိန်ကျော်လွန်သွားပါပြီ (သို့) ဝန်ထမ်းများအားလုံး ပြည့်နေပါသလား?
