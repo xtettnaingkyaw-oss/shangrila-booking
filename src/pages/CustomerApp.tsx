@@ -21,6 +21,44 @@ const getLocalTodayStr = () => {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 };
 
+export const getTomorrowStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
+// ဝန်ဆောင်မှုကြာချိန်ရှည်လျားသော Service များအတွက် Helper
+export const getFixedServiceDetails = (serviceName: string | undefined | null) => {
+    if (!serviceName) return null;
+    const name = serviceName.toLowerCase();
+    if (name.includes("half day")) return { start: "6:00 AM", end: "12:00 PM", nextDay: false };
+    if (name.includes("whole day")) return { start: "7:00 AM", end: "7:00 PM", nextDay: false };
+    if (name.includes("whole night")) return { start: "8:00 PM", end: "8:00 AM", nextDay: true };
+    if (name.includes("day & night") || name.includes("24hr") || name.includes("24 hr")) return { start: "7:00 AM", end: "7:00 AM", nextDay: true };
+    return null;
+};
+
+export const calculateTimeDiff = (startStr: string, endStr: string, isNextDay: boolean) => {
+    const getMins = (tStr: string) => {
+        const match = tStr.match(/(\d+):(\d+)\s+(AM|PM)/i);
+        if(!match) return 0;
+        let h = parseInt(match[1]);
+        const m = parseInt(match[2]);
+        if(match[3].toUpperCase() === 'PM' && h < 12) h += 12;
+        if(match[3].toUpperCase() === 'AM' && h === 12) h = 0;
+        return h * 60 + m;
+    };
+    let startMins = getMins(startStr);
+    let endMins = getMins(endStr);
+    if (isNextDay) endMins += 24 * 60;
+    if (endMins < startMins) endMins += 24 * 60; 
+    const diff = endMins - startMins;
+    const hrs = Math.floor(diff / 60);
+    const mins = diff % 60;
+    if (hrs === 0) return `${mins} မိနစ်`;
+    return `${hrs} နာရီ ${mins > 0 ? mins + ' မိနစ်' : ''}`;
+};
+
 function useCountdown(initialMinutes: number, onExpire: () => void) {
   const [timeLeft, setTimeLeft] = useState(initialMinutes * 60);
   useEffect(() => {
@@ -467,7 +505,14 @@ export function CustomerBookingWizard({
 
   const checkSlotState = (t: string) => {
       let neededSlots = 2;
-      if (formData.selectedItem) {
+      const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
+
+      if (fixedDetails) {
+          const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
+          let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
+          if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
+          neededSlots = Math.max(1, endIdx - startIdx);
+      } else if (formData.selectedItem) {
           const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
@@ -515,27 +560,37 @@ export function CustomerBookingWizard({
       if (state.reason === 'room') {
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
           let neededSlots = 2;
-          if (formData.selectedItem) {
+          const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
+
+          if (fixedDetails) {
+              const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
+              let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
+              if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
+              neededSlots = Math.max(1, endIdx - startIdx);
+          } else if (formData.selectedItem) {
               const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
+
           const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
           let nextAvailable = '';
           
           for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
               let durationFree = true;
-              
               const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
-              const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
               
-              for (const slot of testSlots) {
-                  const usage = roomUsageMap.get(slot) || { vip: 0, normal: 0 };
-                  const totalUsed = usage.vip + usage.normal;
-                  if (isUserVip && (usage.vip >= 3 || totalUsed >= 5)) durationFree = false;
-                  if (!isUserVip && (usage.normal >= 2 || totalUsed >= 5)) durationFree = false;
+              for(let j=0; j < neededSlots; j++) {
+                  const subSlot = ALL_TIME_SLOTS[i+j];
+                  if(!subSlot) { durationFree = false; break; }
+                  const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 };
+                  const subTotal = subUsage.vip + subUsage.normal;
+                  if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
+                  if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
               }
+
               if (durationFree && formData.therapist) {
                   const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
+                  const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
                   for (const slot of testSlots) {
                       if (tBlocked.has(slot)) { durationFree = false; break; }
                   }
@@ -556,8 +611,10 @@ export function CustomerBookingWizard({
       }
 
       if (state.available) {
-          const serviceLower = formData.selectedItem?.name.toLowerCase() || '';
-          if (serviceLower.includes("night")) {
+          const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
+          if (fixedDetails) {
+              setFormData({ ...formData, time: `${t} to ${fixedDetails.end}${fixedDetails.nextDay ? ' (Next Day)' : ''}` });
+          } else if (formData.selectedItem?.name.toLowerCase().includes("night")) {
               setFormData({ ...formData, time: `${t} to 8:00 AM (Next Day)` });
           } else {
               setFormData({ ...formData, time: t });
@@ -570,26 +627,29 @@ export function CustomerBookingWizard({
     let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("11:00 PM") + 1);
 
     if (formData.selectedItem) {
-        const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
-        const serviceName = formData.selectedItem.name.toLowerCase();
-        const isNightService = serviceName.includes("night");
-
-        if (isHotelService) {
-          if (serviceName.includes("day & night") || serviceName.includes("day and night") || serviceName.includes("24 hour")) {
-              allowedSlots = ["7:00 AM to 7:00 AM (Next Day)"];
-          } else if (serviceName.includes("outcall")) {
-              allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
-          } else if (serviceName.includes("half day")) {
-              allowedSlots = ["6:00 AM to 12:00 PM", "12:00 PM to 6:00 PM"];
-          } else if (isNightService) {
-              allowedSlots = [
-                  "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"
-              ];
-          } else if (serviceName.includes("whole day")) {
-              allowedSlots = ["7:00 AM to 7:00 PM"];
-          }
+        const fixedDetails = getFixedServiceDetails(formData.selectedItem.name);
+        
+        if (fixedDetails) {
+            let startIndex = ALL_TIME_SLOTS.indexOf(fixedDetails.start);
+            let endIndex = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
+            if (fixedDetails.nextDay || endIndex === -1) endIndex = ALL_TIME_SLOTS.length;
+            allowedSlots = ALL_TIME_SLOTS.slice(Math.max(0, startIndex), endIndex);
         } else {
-           allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+            const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
+            const serviceName = formData.selectedItem.name.toLowerCase();
+            const isNightService = serviceName.includes("night");
+
+            if (isHotelService) {
+              if (serviceName.includes("outcall")) {
+                  allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
+              } else if (isNightService) {
+                  allowedSlots = [
+                      "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"
+                  ];
+              }
+            } else {
+               allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+            }
         }
     }
 
@@ -619,6 +679,7 @@ export function CustomerBookingWizard({
 
   const availableTimeSlots = getAvailableTimeSlots();
   const isSelectedNightService = formData.selectedItem?.name.toLowerCase().includes("night");
+  const currentFixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
 
   const getMinMaxDates = () => {
     const d = new Date(); 
@@ -633,7 +694,12 @@ export function CustomerBookingWizard({
       const allowedSlots = getAvailableTimeSlots(dateToCheck);
       
       let neededSlots = 2; 
-      if (formData.selectedItem) {
+      const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
+
+      if (fixedDetails) {
+          // If fixed duration, checking just 1 slot to see if entirely blocked is sufficient
+          neededSlots = 1; 
+      } else if (formData.selectedItem) {
           const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
@@ -723,7 +789,9 @@ export function CustomerBookingWizard({
       let durationMins = 60;
       let finalTimeStr = formData.time;
 
-      if (formData.selectedItem) {
+      const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
+
+      if (formData.selectedItem && !fixedDetails) {
          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
          if (match) durationMins = parseInt(match[1]);
       }
@@ -737,10 +805,24 @@ export function CustomerBookingWizard({
           const [y, mo, d] = formData.date.split('-');
           const startDateTime = new Date(Number(y), Number(mo)-1, Number(d));
           startDateTime.setHours(h, m, 0, 0);
-          
           fluidStartTimeMillis = startDateTime.getTime();
           
-          if (formData.selectedItem && formData.selectedItem.name.toLowerCase().includes("night")) {
+          if (fixedDetails) {
+              finalTimeStr = `${finalTimeStr} to ${fixedDetails.end}${fixedDetails.nextDay ? ' (Next Day)' : ''}`;
+              
+              const [endHStr, endMStr] = fixedDetails.end.split(' ')[0].split(':');
+              const endAmPm = fixedDetails.end.split(' ')[1];
+              let endH = parseInt(endHStr);
+              if(endAmPm === 'PM' && endH < 12) endH += 12;
+              if(endAmPm === 'AM' && endH === 12) endH = 0;
+              
+              const endDateTime = new Date(startDateTime);
+              endDateTime.setHours(endH, parseInt(endMStr), 0, 0);
+              if (fixedDetails.nextDay || endDateTime < startDateTime) {
+                  endDateTime.setDate(endDateTime.getDate() + 1);
+              }
+              expectedEndTimeMillis = endDateTime.getTime();
+          } else if (formData.selectedItem && formData.selectedItem.name.toLowerCase().includes("night")) {
               const nextDay = new Date(startDateTime);
               nextDay.setDate(nextDay.getDate() + 1);
               nextDay.setHours(8, 0, 0, 0);
@@ -757,8 +839,15 @@ export function CustomerBookingWizard({
 
       } else {
           let neededSlots = 2; 
-          const match = formData.selectedItem?.duration.match(/(\d+)\s*Mins/i);
-          if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+          if (fixedDetails) {
+              const startIdx = ALL_TIME_SLOTS.indexOf(formData.time.split(' to ')[0].trim());
+              let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
+              if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
+              neededSlots = Math.max(1, endIdx - startIdx);
+          } else if (formData.selectedItem) {
+              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+              if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
+          }
           
           const actualTestStr = formData.time.includes("to") ? `${formData.time.split(' to ')[0].trim()} to ${formData.time.split(' to ')[1]}` : formData.time;
           const coveredSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
@@ -778,8 +867,14 @@ export function CustomerBookingWizard({
       if (!isCurrentOutcall) {
           const freshRoomUsage = getRoomUsageMap(formData.date, freshBookings);
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
+          
           let neededSlots = 2;
-          if (formData.selectedItem) {
+          if (fixedDetails) {
+              const startIdx = ALL_TIME_SLOTS.indexOf(formData.time.split(' to ')[0].trim());
+              let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
+              if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
+              neededSlots = Math.max(1, endIdx - startIdx);
+          } else if (formData.selectedItem) {
               const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
@@ -1034,11 +1129,35 @@ export function CustomerBookingWizard({
           )
         })}
       </div>
-      <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
-         {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-         <button type="button" disabled={formData.therapist === undefined} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center`} style={{ backgroundColor: THEME.primary }}>
-           {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
-         </button>
+      
+      <div className={`mt-8 flex flex-col gap-4`}>
+         {(!formData.date || formData.date === todayStr) && currentStep === 1 && (
+             <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-center shadow-sm w-full animate-fade-in">
+                 <p className="text-sm font-bold text-gray-700 mb-3 leading-relaxed">
+                     ဒီနေ့အတွက် ဘိုကင်ယူနိုင်သည့်အချိန်ကျော်လွန်သွားပါပြီ (သို့) ဝန်ထမ်းများအားလုံး ပြည့်နေပါသလား?
+                 </p>
+                 <button 
+                     type="button" 
+                     onClick={(e) => {
+                         e.stopPropagation();
+                         const tomorrowStr = getTomorrowStr();
+                         setFormData({ ...formData, therapist: null, date: tomorrowStr, time: '' });
+                         setAlertMessage(`ရွေးချယ်မည့်ရက်အား မနက်ဖြန် (${tomorrowStr}) သို့ ပြောင်းလဲလိုက်ပါသည်။ ဝန်ထမ်းကို ဆက်လက်ရွေးချယ်ပါ။`);
+                         window.scrollTo({ top: 0, behavior: 'smooth' });
+                     }}
+                     className="inline-flex items-center px-6 py-3 bg-[#123524] text-[#D4AF37] font-bold text-sm rounded-lg hover:bg-[#1a4a32] shadow-md transition"
+                 >
+                     <CalendarPlus className="w-5 h-5 mr-2" /> နောက်ရက်အတွက် ဘိုကင်ကြိုယူရန် နှိပ်ပါ
+                 </button>
+             </div>
+         )}
+
+         <div className={`flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} w-full`}>
+            {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
+            <button type="button" disabled={formData.therapist === undefined} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center w-full sm:w-auto justify-center`} style={{ backgroundColor: THEME.primary }}>
+              {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
+            </button>
+         </div>
       </div>
     </div>
   );
@@ -1091,10 +1210,18 @@ export function CustomerBookingWizard({
                                    onClick={() => {
                                        if (!state.available) {
                                            let neededSlots = 2;
-                                           if (formData.selectedItem) {
+                                           const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
+
+                                           if (fixedDetails) {
+                                               const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
+                                               let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
+                                               if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
+                                               neededSlots = Math.max(1, endIdx - startIdx);
+                                           } else if (formData.selectedItem) {
                                                const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
                                                if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
                                            }
+
                                            const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
                                            const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
                                            let nextAvailable = '';
@@ -1102,6 +1229,7 @@ export function CustomerBookingWizard({
                                            for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
                                                let durationFree = true;
                                                const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
+                                               
                                                for(let j=0; j < neededSlots; j++) {
                                                    const subSlot = ALL_TIME_SLOTS[i+j];
                                                    if(!subSlot) { durationFree = false; break; }
@@ -1133,7 +1261,7 @@ export function CustomerBookingWizard({
                                        handleTimeSlotClick(t, state);
                                    }} 
                                    className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${
-                                       formData.time === t || (isSelectedNightService && formData.time.includes(displayTime))
+                                       formData.time === t || formData.time.startsWith(`${displayTime} to`)
                                        ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' 
                                        : (!state.available) 
                                            ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through cursor-not-allowed' 
@@ -1146,7 +1274,24 @@ export function CustomerBookingWizard({
                         })}
                     </div>
                     
-                    {isSelectedNightService && (
+                    {formData.time && currentFixedDetails && (
+                        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm animate-fade-in text-center">
+                            <p className="text-sm text-green-800 font-bold mb-1 flex items-center justify-center">
+                                <Clock className="w-4 h-4 mr-2" /> ဝန်ဆောင်မှု ရရှိမည့် အချိန်
+                            </p>
+                            <p className="text-lg text-green-700 font-bold tracking-wide">
+                                {formData.time.split(' to ')[0].trim()} မှ {currentFixedDetails.end}{currentFixedDetails.nextDay ? ' (နောက်ရက်)' : ''} အထိ
+                            </p>
+                            <p className="text-xs text-green-600 font-semibold mt-1">
+                                (စုစုပေါင်း ကြာချိန် - {calculateTimeDiff(formData.time.split(' to ')[0].trim(), currentFixedDetails.end, currentFixedDetails.nextDay)})
+                            </p>
+                            <p className="text-[10px] text-green-600/80 mt-2 border-t border-green-200/50 pt-2">
+                                * အချိန်ကျော်လွန်ပြီးမှ ဘိုကင်ယူပါက ပြီးဆုံးမည့်အချိန်ထိသာ ဝန်ဆောင်မှုရရှိပါမည်။
+                            </p>
+                        </div>
+                    )}
+                    
+                    {!currentFixedDetails && isSelectedNightService && (
                         <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-[11px] sm:text-xs font-bold text-center flex items-center justify-center animate-fade-in shadow-sm">
                             <Clock className="w-4 h-4 mr-2"/> ဝန်ဆောင်မှုသည် နောက်ရက် မနက် ၈:၀၀ နာရီတွင် ပြီးဆုံးပါမည်။
                         </div>
