@@ -214,8 +214,8 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin }: { ap
         )}
       </div>
 
-      {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} />}
-      {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} />}
+      {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
+      {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} />}
       {tab === 'users' && hasAccess('users') && <AdminUsersList />}
       {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
@@ -226,7 +226,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin }: { ap
 // ==========================================
 // ADMIN SUB-COMPONENTS
 // ==========================================
-function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
+function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
   const handleStatusChange = async (id: string, newStatus: string) => {
     let reason = '';
     if (newStatus === 'cancelled') {
@@ -238,7 +238,16 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
     }
     try { await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason }); } catch (e) { alert("Error Update"); }
   };
-  const handleDelete = async (id: string) => { if (window.confirm('Are you sure you want to delete this booking?')) { await deleteDoc(doc(db, 'bookings', id)); } };
+  
+  const handleDelete = async (id: string) => { 
+      if (adminRole !== 'super_admin') {
+          alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။');
+          return;
+      }
+      if (window.confirm('Are you sure you want to delete this booking?')) { 
+          await deleteDoc(doc(db, 'bookings', id)); 
+      } 
+  };
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -268,7 +277,15 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
                   </select>
                   {b.status === 'cancelled' && b.cancelReason && <div className="text-[9px] text-red-500 mt-1 max-w-[120px] truncate" title={b.cancelReason}>Reason: {b.cancelReason}</div>}
                 </td>
-                <td className="p-3 text-right"><button onClick={() => handleDelete(b.id!)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"><Trash2 className="w-4 h-4" /></button></td>
+                <td className="p-3 text-right">
+                    <button 
+                        onClick={() => handleDelete(b.id!)} 
+                        disabled={adminRole !== 'super_admin'}
+                        title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete Booking'}
+                        className={`p-2 rounded-lg transition ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`}>
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -278,7 +295,7 @@ function AdminBookingsList({ bookings }: { bookings: Booking[] }) {
   );
 }
 
-function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
+function AdminStaffHistoryList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
    const [view, setView] = useState<'dashboard' | 'service' | 'outpass'>('dashboard');
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
    
@@ -313,8 +330,14 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
        return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
    };
 
-   const handleDeleteBooking = async (id: string) => { if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
-   const handleDeleteOutpass = async (id: string) => { if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
+   const handleDeleteBooking = async (id: string) => { 
+       if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
+       if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); 
+   };
+   const handleDeleteOutpass = async (id: string) => { 
+       if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
+       if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); 
+   };
 
    const activeBookings = bookings.filter(b => b.status === 'in_progress');
    const activeOutpasses = outpasses.filter(o => o.status === 'out');
@@ -453,7 +476,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                      <div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>
                                         {isLate && b.status === 'in_progress' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}
                                      </div>
-                                     <button onClick={() => handleDeleteBooking(b.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
+                                     <button onClick={() => handleDeleteBooking(b.id!)} disabled={adminRole !== 'super_admin'} className={`text-xs font-bold px-2 py-1 rounded transition ${adminRole === 'super_admin' ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-gray-300 bg-gray-100 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}>Delete</button>
                                   </td>
                               </tr>
                               );
@@ -491,7 +514,7 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
                                      <div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>
                                         {isLate && o.status === 'out' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}
                                      </div>
-                                     <button onClick={() => handleDeleteOutpass(o.id!)} className="text-red-500 hover:text-red-700 text-xs font-bold bg-red-50 px-2 py-1 rounded">Delete</button>
+                                     <button onClick={() => handleDeleteOutpass(o.id!)} disabled={adminRole !== 'super_admin'} className={`text-xs font-bold px-2 py-1 rounded transition ${adminRole === 'super_admin' ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-gray-300 bg-gray-100 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}>Delete</button>
                                   </td>
                               </tr>
                               );
