@@ -50,6 +50,7 @@ export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppD
     }} />;
   }
 
+  // အပေါ်ထောင့်မှ အပိုဖြစ်နေသော Logout ကို ဤနေရာမှ လုံးဝ ဖယ်ရှားလိုက်ပါပြီ
   return (
       <AdminDashboard 
          appData={appData} 
