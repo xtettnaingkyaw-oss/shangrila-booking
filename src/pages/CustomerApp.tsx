@@ -368,7 +368,7 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // VIP=3, Normal=2 Room Logic Helper (Room အတွက် Buffer ထည့်မတွက်ပါ)
+  // VIP=3, Normal=2 Room Logic Helper (Global Function ကို အသုံးပြုသည် - Buffer မပါဝင်ပါ)
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -426,32 +426,8 @@ export function CustomerBookingWizard({
           if (serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home')) return;
           const isVip = serviceLower.includes('vvip');
           
-          let isCurrentlyUsing = false;
-          
-          if (b.status === 'in_progress' && b.startTimeMillis) {
-              const end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
-              if (now >= b.startTimeMillis && now <= end) isCurrentlyUsing = true;
-          } else if (b.time && !b.time.includes('to')) {
-              const [tPart, ampm] = b.time.split(' ');
-              if (tPart && ampm) {
-                  let [sh, sm] = tPart.split(':').map(Number);
-                  if (ampm === 'PM' && sh < 12) sh += 12;
-                  if (ampm === 'AM' && sh === 12) sh = 0;
-                  const slotStart = new Date();
-                  slotStart.setHours(sh, sm, 0, 0);
-                  
-                  let dur = 60;
-                  const match = b.service.match(/(\d+)\s*Mins/i);
-                  if (match) dur = parseInt(match[1]);
-                  const slotEnd = new Date(slotStart.getTime() + dur * 60000);
-                  
-                  if (now >= slotStart.getTime() && now < slotEnd.getTime()) {
-                      isCurrentlyUsing = true;
-                  }
-              }
-          }
-          
-          if (isCurrentlyUsing) {
+          const coveredSlots = getBookingCoveredSlots(b);
+          if (currentSlot && coveredSlots.includes(currentSlot)) {
               if (isVip) vip++;
               else normal++;
           }
@@ -799,7 +775,7 @@ export function CustomerBookingWizard({
 
       // Final Room Check before submit
       const isCurrentOutcall = formData.selectedItem?.name.toLowerCase().includes('outcall') || formData.selectedItem?.name.toLowerCase().includes('hotel') || formData.selectedItem?.name.toLowerCase().includes('home');
-      if (!isCurrentOutcall && !formData.time.includes("to")) {
+      if (!isCurrentOutcall) {
           const freshRoomUsage = getRoomUsageMap(formData.date, freshBookings);
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
           let neededSlots = 2;
@@ -807,11 +783,18 @@ export function CustomerBookingWizard({
               const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
-          const sIdx = ALL_TIME_SLOTS.indexOf(formData.time.split(' to ')[0].trim());
+          
+          let coveredSlotsToCheck: string[] = [];
+          if (isStaffImmediate) {
+              coveredSlotsToCheck = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date));
+          } else {
+              const actualTestStr = formData.time.includes("to") ? `${formData.time.split(' to ')[0].trim()} to ${formData.time.split(' to ')[1]}` : formData.time;
+              coveredSlotsToCheck = getSlotsFromTimeText(actualTestStr, neededSlots);
+          }
+
           let isRoomOverlap = false;
-          for (let i = 0; i < neededSlots; i++) {
-              const slotName = ALL_TIME_SLOTS[sIdx + i];
-              if (!slotName) { isRoomOverlap = true; break; }
+          
+          for (const slotName of coveredSlotsToCheck) {
               const usage = freshRoomUsage.get(slotName) || { vip: 0, normal: 0 };
               const totalUsed = usage.vip + usage.normal;
               if (isUserVip) {
@@ -1428,6 +1411,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       return merged.map(b => {
           let endTime = getNextSlotTime(b.endSlot);
           if (b.state === 'Booked') {
+             // Find matching booking to determine exact end time
              const matchingNB = tBookings.find(bk => bk.service.split('(')[0].trim() === b.service);
              if (matchingNB) {
                  if (matchingNB.time && matchingNB.time.includes("Next Day")) {
@@ -1468,9 +1452,9 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (coveredSlots.length > 0) {
               coveredSlots.forEach(slot => blockedNow.add(slot));
               const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
-              if (firstIdx > 0) blockedNow.add(ALL_TIME_SLOTS[firstIdx - 1]);
+              if (firstIdx > 0) blockedNow.add(ALL_TIME_SLOTS[firstIdx - 1]); // Add Front Buffer
               const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
-              if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blockedNow.add(ALL_TIME_SLOTS[lastIdx + 1]);
+              if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blockedNow.add(ALL_TIME_SLOTS[lastIdx + 1]); // Add Back Buffer
           }
 
           if (b.status === 'in_progress') {
