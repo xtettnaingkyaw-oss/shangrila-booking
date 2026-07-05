@@ -51,15 +51,12 @@ export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppD
   }
 
   return (
-      <div className="relative">
-          {/* Logout Button in Top Right */}
-          <div className="absolute top-2 right-2 sm:top-6 sm:right-6 z-50">
-              <button onClick={handleLogout} className="flex items-center text-[10px] sm:text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 transition px-3 py-1.5 rounded-full border border-red-200 shadow-sm">
-                  <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /> Logout
-              </button>
-          </div>
-          <AdminDashboard appData={appData} onSettingsUpdated={onSettingsUpdated} loggedInAdmin={loggedInAdmin} />
-      </div>
+      <AdminDashboard 
+         appData={appData} 
+         onSettingsUpdated={onSettingsUpdated} 
+         loggedInAdmin={loggedInAdmin} 
+         onLogout={handleLogout} 
+      />
   );
 }
 
@@ -114,7 +111,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 // ==========================================
 // ADMIN DASHBOARD
 // ==========================================
-const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string }) => {
+const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
   const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'admins' | 'settings'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -184,8 +181,8 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin }: { ap
     <div className="animate-fade-in" onClick={handleInteraction}>
       <audio id="admin-alert-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto" loop />
       
-      {/* Dynamic Tab Navigation Based on Permissions */}
-      <div className="flex flex-wrap justify-center gap-2 mb-6 scrollbar-hide overflow-x-auto p-1 mt-6 sm:mt-0 px-4 sm:px-0">
+      {/* Dynamic Tab Navigation Based on Permissions + Single Logout Button */}
+      <div className="flex flex-wrap justify-center items-center gap-2 mb-6 scrollbar-hide overflow-x-auto p-1 mt-6 sm:mt-0 px-4 sm:px-0">
         {hasAccess('bookings') && (
             <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
               <CalendarPlus className="w-4 h-4 mr-2" /> Bookings
@@ -212,6 +209,11 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin }: { ap
                 <Settings className="w-4 h-4 mr-2" /> Settings
             </button>
         )}
+
+        {/* Single Integrated Logout Button */}
+        <button onClick={onLogout} className="px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm sm:ml-2">
+            <LogOut className="w-4 h-4 mr-2" /> Logout
+        </button>
       </div>
 
       {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
