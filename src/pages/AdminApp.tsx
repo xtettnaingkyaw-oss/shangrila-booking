@@ -3,7 +3,7 @@ import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc,
 import { db } from '../firebase';
 
 // Vercel တွင် Error မတက်စေရန် Admin Panel အတွက် လိုအပ်သော Icon များအားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone } from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut } from 'lucide-react';
 
 // Shared ဖိုင်မှ လိုအပ်သည်များကို လှမ်းယူခြင်း
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
@@ -16,6 +16,12 @@ const DEFAULT_INSTALL_STEPS: InstallStep[] = [
    { id: '2', text: '"Add to Home Screen" ကို ရွေးချယ်ပါ။', imageUrl: '' },
    { id: '3', text: '"Add" ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။', imageUrl: '' }
 ];
+
+// Admin Role သတ်မှတ်ရန် Local Interface Extension
+interface LocalAdminProfile extends AdminProfile {
+    role?: 'super_admin' | 'custom';
+    permissions?: string[];
+}
 
 // ==========================================
 // ADMIN APP WRAPPER
@@ -31,13 +37,30 @@ export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppD
     return () => clearInterval(interval);
   }, [loggedInAdmin]);
 
+  const handleLogout = () => {
+      if (!window.confirm("Are you sure you want to log out?")) return;
+      sessionStorage.removeItem('shangrila_admin');
+      setLoggedInAdmin(null);
+  };
+
   if (!loggedInAdmin) {
     return <AdminLogin onLogin={(user) => { 
         sessionStorage.setItem('shangrila_admin', user); 
         setLoggedInAdmin(user); 
     }} />;
   }
-  return <AdminDashboard appData={appData} onSettingsUpdated={onSettingsUpdated} />;
+
+  return (
+      <div className="relative">
+          {/* Logout Button in Top Right */}
+          <div className="absolute top-2 right-2 sm:top-6 sm:right-6 z-50">
+              <button onClick={handleLogout} className="flex items-center text-[10px] sm:text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 transition px-3 py-1.5 rounded-full border border-red-200 shadow-sm">
+                  <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-1" /> Logout
+              </button>
+          </div>
+          <AdminDashboard appData={appData} onSettingsUpdated={onSettingsUpdated} loggedInAdmin={loggedInAdmin} />
+      </div>
+  );
 }
 
 // ==========================================
@@ -59,7 +82,13 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
       } else {
         const allAdmins = await getDocs(collection(db, 'admins'));
         if (allAdmins.empty && username === 'admin' && password === 'admin123') {
-          await setDoc(doc(db, 'admins', 'admin'), { username: 'admin', password: 'admin123' });
+          // Default Super Admin ဖန်တီးခြင်း
+          await setDoc(doc(db, 'admins', 'admin'), { 
+              username: 'admin', 
+              password: 'admin123',
+              role: 'super_admin',
+              permissions: ['bookings', 'reports', 'users', 'admins', 'settings']
+          });
           onLogin('admin');
         } else { setError('Admin user not found'); }
       }
@@ -85,11 +114,42 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 // ==========================================
 // ADMIN DASHBOARD
 // ==========================================
-const AdminDashboard = memo(({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) => {
+const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string }) => {
   const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'admins' | 'settings'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
+  
+  // Role & Permissions State
+  const [adminRole, setAdminRole] = useState<'super_admin' | 'custom'>('super_admin');
+  const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
+  const [roleLoaded, setRoleLoaded] = useState(false);
+
   const isFirstLoad = useRef(true);
+
+  // Admin Role Data ရယူခြင်း
+  useEffect(() => {
+      const fetchRole = async () => {
+          try {
+              const snap = await getDoc(doc(db, 'admins', loggedInAdmin));
+              if (snap.exists()) {
+                  const data = snap.data() as LocalAdminProfile;
+                  // Role မရှိသေးသော Account အဟောင်းများအား Super Admin ဟု သတ်မှတ်မည်
+                  const r = data.role || 'super_admin'; 
+                  const p = data.permissions || ['bookings', 'reports', 'users', 'admins', 'settings'];
+                  
+                  setAdminRole(r);
+                  setAdminPermissions(p);
+
+                  // ဝင်ခွင့်မရှိသော Tab တွင် ရောက်နေပါက ပထမဆုံး ဝင်ခွင့်ရှိသော Tab သို့ အလိုအလျောက် ပြောင်းပေးမည်
+                  if (r !== 'super_admin' && !p.includes(tab) && p.length > 0) {
+                      setTab(p[0] as any);
+                  }
+              }
+          } catch (e) { console.error("Error fetching admin role", e); }
+          setRoleLoaded(true);
+      };
+      fetchRole();
+  }, [loggedInAdmin, tab]);
 
   useEffect(() => {
     const q = query(collection(db, 'bookings'));
@@ -110,27 +170,55 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated }: { appData: AppData,
 
   const handleInteraction = useCallback(() => { const audioEl = document.getElementById('admin-alert-sound') as HTMLAudioElement; if (audioEl && audioEl.paused) { audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {}); } }, []);
 
+  const hasAccess = useCallback((tabId: string) => {
+      if (adminRole === 'super_admin') return true;
+      return adminPermissions.includes(tabId);
+  }, [adminRole, adminPermissions]);
+
   const pendingBookings = useMemo(() => bookings.filter(b => b.status !== 'in_progress' && b.status !== 'completed'), [bookings]);
   const historyBookings = useMemo(() => bookings.filter(b => b.status === 'in_progress' || b.status === 'completed'), [bookings]);
+
+  if (!roleLoaded) return <div className="p-10 text-center text-gray-500 font-bold mt-10">Loading Admin Privileges...</div>;
 
   return (
     <div className="animate-fade-in" onClick={handleInteraction}>
       <audio id="admin-alert-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto" loop />
-      <div className="flex flex-wrap justify-center gap-2 mb-6 scrollbar-hide overflow-x-auto p-1">
-        <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-          <CalendarPlus className="w-4 h-4 mr-2" /> Bookings
-          {pendingCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{pendingCount}</span>}
-        </button>
-        <button onClick={() => setTab('reports')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'reports' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><BarChart2 className="w-4 h-4 mr-2" /> Staff History</button>
-        <button onClick={() => setTab('users')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>
-        <button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>
-        <button onClick={() => setTab('settings')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>
+      
+      {/* Dynamic Tab Navigation Based on Permissions */}
+      <div className="flex flex-wrap justify-center gap-2 mb-6 scrollbar-hide overflow-x-auto p-1 mt-6 sm:mt-0 px-4 sm:px-0">
+        {hasAccess('bookings') && (
+            <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+              <CalendarPlus className="w-4 h-4 mr-2" /> Bookings
+              {pendingCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{pendingCount}</span>}
+            </button>
+        )}
+        {hasAccess('reports') && (
+            <button onClick={() => setTab('reports')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'reports' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+                <BarChart2 className="w-4 h-4 mr-2" /> Staff History
+            </button>
+        )}
+        {hasAccess('users') && (
+            <button onClick={() => setTab('users')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+                <User className="w-4 h-4 mr-2" /> Users
+            </button>
+        )}
+        {hasAccess('admins') && (
+            <button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+                <ShieldCheck className="w-4 h-4 mr-2" /> Admins
+            </button>
+        )}
+        {hasAccess('settings') && (
+            <button onClick={() => setTab('settings')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+                <Settings className="w-4 h-4 mr-2" /> Settings
+            </button>
+        )}
       </div>
-      {tab === 'bookings' && <AdminBookingsList bookings={pendingBookings} />}
-      {tab === 'reports' && <AdminStaffHistoryList bookings={historyBookings} />}
-      {tab === 'users' && <AdminUsersList />}
-      {tab === 'admins' && <AdminManagementList />}
-      {tab === 'settings' && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
+
+      {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} />}
+      {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} />}
+      {tab === 'users' && hasAccess('users') && <AdminUsersList />}
+      {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
+      {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
     </div>
   );
 });
@@ -246,92 +334,92 @@ function AdminStaffHistoryList({ bookings }: { bookings: Booking[] }) {
            {/* DASHBOARD VIEW WITH LATE TIME DISPLAY */}
            {view === 'dashboard' && (
               <div className="space-y-8 animate-fade-in">
-                  
-                  {/* Currently In Service */}
-                  <div>
-                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
-                      {activeBookings.length === 0 ? (
-                          <p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently in service.</p>
-                      ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {activeBookings.map(b => {
-                                  const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
-                                  const isLate = b.expectedEndTimeMillis ? now > b.expectedEndTimeMillis : false;
-                                  
-                                  let lateText = 'OVERTIME (LATE)';
-                                  if (isLate && b.expectedEndTimeMillis) {
-                                       const lateSecs = Math.floor((now - b.expectedEndTimeMillis) / 1000);
-                                       lateText = `LATE: +${formatSecondsAdmin(lateSecs)}`;
-                                  }
+                 
+                 {/* Currently In Service */}
+                 <div>
+                     <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
+                     {activeBookings.length === 0 ? (
+                         <p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently in service.</p>
+                     ) : (
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                             {activeBookings.map(b => {
+                                 const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
+                                 const isLate = b.expectedEndTimeMillis ? now > b.expectedEndTimeMillis : false;
+                                 
+                                 let lateText = 'OVERTIME (LATE)';
+                                 if (isLate && b.expectedEndTimeMillis) {
+                                      const lateSecs = Math.floor((now - b.expectedEndTimeMillis) / 1000);
+                                      lateText = `LATE: +${formatSecondsAdmin(lateSecs)}`;
+                                 }
 
-                                  return (
-                                      <div key={b.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : (isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200')} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
-                                          <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : (isOutcall ? 'bg-blue-500' : 'bg-orange-500')} animate-pulse`}></div>
-                                          <div className="flex justify-between items-start mb-2">
-                                              <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{b.therapist}</div>
-                                              <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : (isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>
-                                                 {isLate ? lateText : (isOutcall ? 'Outcall' : 'In Room')}
-                                              </span>
-                                          </div>
-                                          <div className="text-sm font-semibold text-gray-800 truncate mb-1" title={b.service}>{b.service.split('(')[0]}</div>
-                                          <div className="text-xs text-gray-500 mb-4 flex items-center"><User className="w-3 h-3 mr-1 text-gray-400" />Cust: {b.name}</div>
-                                          <div className={`flex justify-between items-center text-xs border-t pt-3 ${isLate ? 'border-red-200' : (isOutcall ? 'border-blue-200/50' : 'border-orange-200/50')}`}>
-                                              <div className="text-gray-500"><span className="font-bold text-gray-600">Start:</span> {formatMillis(b.startTimeMillis)}</div>
-                                              <div className="text-gray-500">
-                                                  <span className="font-bold text-gray-600">End:</span> 
-                                                  <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>
-                                                      {formatMillis(b.expectedEndTimeMillis)}
-                                                  </span>
-                                              </div>
-                                          </div>
-                                      </div>
-                                  );
-                              })}
-                          </div>
-                      )}
-                  </div>
+                                 return (
+                                     <div key={b.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : (isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200')} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
+                                         <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : (isOutcall ? 'bg-blue-500' : 'bg-orange-500')} animate-pulse`}></div>
+                                         <div className="flex justify-between items-start mb-2">
+                                             <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{b.therapist}</div>
+                                             <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : (isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>
+                                                {isLate ? lateText : (isOutcall ? 'Outcall' : 'In Room')}
+                                             </span>
+                                         </div>
+                                         <div className="text-sm font-semibold text-gray-800 truncate mb-1" title={b.service}>{b.service.split('(')[0]}</div>
+                                         <div className="text-xs text-gray-500 mb-4 flex items-center"><User className="w-3 h-3 mr-1 text-gray-400" />Cust: {b.name}</div>
+                                         <div className={`flex justify-between items-center text-xs border-t pt-3 ${isLate ? 'border-red-200' : (isOutcall ? 'border-blue-200/50' : 'border-orange-200/50')}`}>
+                                             <div className="text-gray-500"><span className="font-bold text-gray-600">Start:</span> {formatMillis(b.startTimeMillis)}</div>
+                                             <div className="text-gray-500">
+                                                 <span className="font-bold text-gray-600">End:</span> 
+                                                 <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>
+                                                     {formatMillis(b.expectedEndTimeMillis)}
+                                                 </span>
+                                             </div>
+                                         </div>
+                                     </div>
+                                 );
+                             })}
+                         </div>
+                     )}
+                 </div>
 
-                  {/* Currently on Out Pass */}
-                  <div>
-                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
-                      {activeOutpasses.length === 0 ? (
-                          <p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently on out pass.</p>
-                      ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {activeOutpasses.map(o => {
-                                  const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
-                                  
-                                  let lateText = 'OVERTIME (LATE)';
-                                  if (isLate && o.expectedInTimeMillis) {
-                                       const lateSecs = Math.floor((now - o.expectedInTimeMillis) / 1000);
-                                       lateText = `LATE: +${formatSecondsAdmin(lateSecs)}`;
-                                  }
+                 {/* Currently on Out Pass */}
+                 <div>
+                     <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
+                     {activeOutpasses.length === 0 ? (
+                         <p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently on out pass.</p>
+                     ) : (
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                             {activeOutpasses.map(o => {
+                                 const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
+                                 
+                                 let lateText = 'OVERTIME (LATE)';
+                                 if (isLate && o.expectedInTimeMillis) {
+                                      const lateSecs = Math.floor((now - o.expectedInTimeMillis) / 1000);
+                                      lateText = `LATE: +${formatSecondsAdmin(lateSecs)}`;
+                                 }
 
-                                  return (
-                                      <div key={o.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
-                                          <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div>
-                                          <div className="flex justify-between items-start mb-2">
-                                              <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div>
-                                              <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>
-                                                  {isLate ? lateText : 'Out Pass'}
-                                              </span>
-                                          </div>
-                                          <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div>
-                                          <div className={`flex justify-between items-center text-xs border-t ${isLate ? 'border-red-200' : 'border-purple-200/50'} pt-3`}>
-                                              <div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div>
-                                              <div className="text-gray-500">
-                                                  <span className="font-bold text-gray-600">Return:</span> 
-                                                  <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>
-                                                      {formatMillis(o.expectedInTimeMillis)}
-                                                  </span>
-                                              </div>
-                                          </div>
-                                      </div>
-                                  );
-                              })}
-                          </div>
-                      )}
-                  </div>
+                                 return (
+                                     <div key={o.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
+                                         <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div>
+                                         <div className="flex justify-between items-start mb-2">
+                                             <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div>
+                                             <span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>
+                                                 {isLate ? lateText : 'Out Pass'}
+                                             </span>
+                                         </div>
+                                         <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div>
+                                         <div className={`flex justify-between items-center text-xs border-t ${isLate ? 'border-red-200' : 'border-purple-200/50'} pt-3`}>
+                                             <div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div>
+                                             <div className="text-gray-500">
+                                                 <span className="font-bold text-gray-600">Return:</span> 
+                                                 <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>
+                                                     {formatMillis(o.expectedInTimeMillis)}
+                                                 </span>
+                                             </div>
+                                         </div>
+                                     </div>
+                                 );
+                             })}
+                         </div>
+                     )}
+                 </div>
 
               </div>
            )}
@@ -472,15 +560,17 @@ function AdminUsersList() {
 }
 
 function AdminManagementList() {
-  const [admins, setAdmins] = useState<AdminProfile[]>([]);
+  const [admins, setAdmins] = useState<LocalAdminProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newAdmin, setNewAdmin] = useState({ username: '', password: '' });
+  const [newAdmin, setNewAdmin] = useState<{username: string, password: string, role: 'super_admin'|'custom', permissions: string[]}>({ 
+      username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'settings'] 
+  });
 
   const fetchAdmins = async () => {
     try {
       const snap = await getDocs(collection(db, 'admins'));
-      const data: AdminProfile[] = [];
-      snap.forEach(doc => data.push(doc.data() as AdminProfile));
+      const data: LocalAdminProfile[] = [];
+      snap.forEach(doc => data.push(doc.data() as LocalAdminProfile));
       setAdmins(data);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -491,8 +581,13 @@ function AdminManagementList() {
     e.preventDefault();
     if(!newAdmin.username || !newAdmin.password) return;
     try {
-      await setDoc(doc(db, 'admins', newAdmin.username), { username: newAdmin.username, password: newAdmin.password });
-      setNewAdmin({ username: '', password: '' });
+      await setDoc(doc(db, 'admins', newAdmin.username), { 
+          username: newAdmin.username, 
+          password: newAdmin.password,
+          role: newAdmin.role,
+          permissions: newAdmin.role === 'super_admin' ? ['bookings', 'reports', 'users', 'admins', 'settings'] : newAdmin.permissions
+      });
+      setNewAdmin({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'settings'] });
       fetchAdmins();
     } catch (e) { alert('Error adding admin'); }
   };
@@ -506,19 +601,61 @@ function AdminManagementList() {
     } catch (e) { alert('Error deleting admin'); }
   };
 
+  const handleCheckboxChange = (tabId: string) => {
+      setNewAdmin(prev => {
+          const perms = prev.permissions.includes(tabId) 
+              ? prev.permissions.filter(p => p !== tabId) 
+              : [...prev.permissions, tabId];
+          return { ...prev, permissions: perms };
+      });
+  };
+
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Admins...</div>;
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-[#D4AF37]" /> Manage Admins</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {admins.length}</span></div>
       
-      <form onSubmit={handleAddAdmin} className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg flex flex-col sm:flex-row gap-3 items-end">
-        <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Username</label><input type="text" value={newAdmin.username} onChange={e=>setNewAdmin({...newAdmin, username: e.target.value})} className="w-full p-2 border rounded" required /></div>
-        <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Password</label><input type="text" value={newAdmin.password} onChange={e=>setNewAdmin({...newAdmin, password: e.target.value})} className="w-full p-2 border rounded" required /></div>
-        <button type="submit" className="w-full sm:w-auto px-4 py-2 bg-[#123524] text-white rounded font-bold flex items-center justify-center"><PlusCircle className="w-4 h-4 mr-1"/> Add Admin</button>
+      <form onSubmit={handleAddAdmin} className="mb-6 p-5 bg-gray-50 border border-gray-200 rounded-xl flex flex-col items-end">
+        <div className="flex flex-col sm:flex-row gap-4 w-full">
+            <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Username</label><input type="text" value={newAdmin.username} onChange={e=>setNewAdmin({...newAdmin, username: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" required /></div>
+            <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Password</label><input type="text" value={newAdmin.password} onChange={e=>setNewAdmin({...newAdmin, password: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" required /></div>
+        </div>
+        
+        {/* Role & Permissions Selection */}
+        <div className="w-full mt-4 border-t border-gray-200 pt-4">
+            <label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label>
+            <div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3">
+                <label className="flex items-center space-x-2 text-sm font-bold cursor-pointer">
+                    <input type="radio" checked={newAdmin.role === 'super_admin'} onChange={() => setNewAdmin({...newAdmin, role: 'super_admin'})} className="w-4 h-4 accent-[#123524]" />
+                    <span className="text-[#123524]">Super Admin <span className="text-xs text-gray-500 font-semibold">(All Access)</span></span>
+                </label>
+                <label className="flex items-center space-x-2 text-sm font-bold cursor-pointer">
+                    <input type="radio" checked={newAdmin.role === 'custom'} onChange={() => setNewAdmin({...newAdmin, role: 'custom'})} className="w-4 h-4 accent-[#123524]" />
+                    <span className="text-[#123524]">Custom Role</span>
+                </label>
+            </div>
+            
+            {newAdmin.role === 'custom' && (
+                <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in">
+                    <p className="text-[10px] text-gray-400 font-bold mb-3 uppercase tracking-wider">Select Allowed Tabs (ဝင်ကြည့်ခွင့်ပြုမည့် Tab ကိုရွေးပါ)</p>
+                    <div className="flex flex-wrap gap-4">
+                        {['bookings', 'reports', 'users', 'settings'].map(tab => (
+                            <label key={tab} className="flex items-center space-x-2 text-xs font-bold cursor-pointer bg-gray-50 px-3 py-2 rounded border border-gray-100 hover:bg-gray-100 transition">
+                                <input type="checkbox" checked={newAdmin.permissions.includes(tab)} onChange={() => handleCheckboxChange(tab)} className="w-4 h-4 accent-[#123524]" />
+                                <span className="capitalize">{tab === 'reports' ? 'Staff History' : tab}</span>
+                            </label>
+                        ))}
+                    </div>
+                    <p className="text-[10px] text-red-500 mt-3 font-semibold flex items-center"><AlertCircle className="w-3 h-3 mr-1"/> Note: Custom admins are restricted from accessing the 'Admins' management tab.</p>
+                </div>
+            )}
+        </div>
+
+        <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-[#123524] text-white rounded font-bold flex items-center justify-center mt-4 shadow-md hover:bg-green-900 transition"><PlusCircle className="w-5 h-5 mr-2"/> Add New Admin</button>
       </form>
 
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-bold text-gray-800 flex items-center"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.username)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 font-bold text-[10px] flex items-center ml-auto"><Trash2 className="w-3 h-3 mr-1"/> Delete</button></td></tr>))}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username & Role</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800 flex items-center text-sm"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</div><div className="mt-1.5">{a.role === 'super_admin' || !a.role ? (<span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-purple-200">Super Admin</span>) : (<div className="flex flex-wrap gap-1 mt-1">{a.permissions?.map(p => <span key={p} className="text-[9px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded uppercase tracking-wider">{p === 'reports' ? 'Staff History' : p}</span>)}</div>)}</div></td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.username)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody></table></div>
     </div>
   );
 }
@@ -806,7 +943,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           <h4 className="text-sm font-bold text-gray-800 mb-2">Shop Location (For Staff Out Pass GPS Restriction)</h4>
           <div className="flex items-center space-x-2">
              <div className="flex-1 bg-gray-50 p-3 rounded border border-gray-200 text-xs text-gray-600 font-mono">
-               Lat: {localBranding.shopLat ? localBranding.shopLat.toFixed(5) : 'Not set'}, Lng: {localBranding.shopLng ? localBranding.shopLng.toFixed(5) : 'Not set'}
+                Lat: {localBranding.shopLat ? localBranding.shopLat.toFixed(5) : 'Not set'}, Lng: {localBranding.shopLng ? localBranding.shopLng.toFixed(5) : 'Not set'}
              </div>
              <button type="button" onClick={() => {
                 navigator.geolocation.getCurrentPosition((pos) => {
