@@ -1167,7 +1167,7 @@ export function CustomerBookingWizard({
              </div>
 
              {/* နောက်ရက် ကြိုတင်ဘိုကင် ခလုတ် - အောက်ဆုံးတွင်ထားရှိပြီး ဝန်ထမ်းအားလုံးပြည့်နေမှသာ ပေါ်မည် */}
-             {(!formData.date || formData.date === todayStr) && currentStep === 1 && allFullyBooked && (
+             {(!formData.date || formData.date === todayStr) && allFullyBooked && (
                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-center shadow-sm w-full animate-fade-in mt-4">
                      <p className="text-sm font-bold text-gray-700 mb-3 leading-relaxed">
                          ဒီနေ့အတွက် ဘိုကင်ယူနိုင်သည့်အချိန်ကျော်လွန်သွားပြီလား (သို့မဟုတ်) ဝန်ထမ်းများအားလုံး ပြည့်နေပါသလား?
