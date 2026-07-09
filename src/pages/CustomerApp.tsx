@@ -85,7 +85,7 @@ function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: numbe
         const [time, ampm] = slot.split(' ');
         let [sh, sm] = time.split(':').map(Number);
         if (ampm === 'PM' && sh < 12) h += 12;
-        if (ampm === 'AM' && sh === 12) sh = 0;
+        if (ampm === 'AM' && h === 12) sh = 0;
         slotTime.setHours(sh, sm, 0, 0);
         
         const slotTimeMillis = slotTime.getTime();
@@ -984,38 +984,42 @@ export function CustomerBookingWizard({
       
       {/* 🌟 PREMIUM PROMOTION BANNER 🌟 */}
       {promoActive && (
-        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-5 sm:p-6 rounded-2xl mb-8 shadow-xl border border-[#D4AF37]/40 animate-fade-in">
+        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in">
            {/* Decorative elements */}
-           <div className="absolute -top-6 -right-6 w-24 h-24 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-2xl opacity-20 animate-pulse"></div>
-           <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-2xl opacity-20 animate-pulse"></div>
+           <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+           <div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
 
-           <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-4 sm:mr-5 mb-3 sm:mb-0 border-2 border-[#123524] shadow-md flex-shrink-0 transform -rotate-12">
-                 <Percent className="w-6 h-6 sm:w-7 sm:h-7 text-[#123524]" />
+           <div className="relative z-10 w-full">
+              {/* Header Row - Combined Icon and Title */}
+              <div className="flex justify-between items-center mb-3">
+                 <div className="flex items-center">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0">
+                       <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" />
+                    </div>
+                    <h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-base tracking-wide uppercase flex items-center">
+                       <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" /> Special App Promo
+                    </h4>
+                 </div>
+                 <span className="text-[8px] sm:text-[10px] text-[#123524] bg-[#D4AF37] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap">
+                     Limited Time
+                 </span>
               </div>
-              <div className="flex-1 w-full">
-                 <div className="flex justify-between items-center mb-1">
-                     <h4 className="font-extrabold text-[#D4AF37] text-base sm:text-lg tracking-wide uppercase flex items-center">
-                         <Sparkles className="w-4 h-4 mr-2" /> Special App Promotion
-                     </h4>
-                     <span className="text-[9px] sm:text-[10px] text-[#123524] bg-[#D4AF37] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm">
-                         Limited Time
-                     </span>
+              
+              {/* Discounts Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+                 <div className="bg-white/10 text-white text-[11px] sm:text-xs font-bold px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between backdrop-blur-sm shadow-sm">
+                    <div className="flex items-center"><Home className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]"/> Hotel & Home</div> 
+                    <span className="text-[#D4AF37] text-xs sm:text-sm bg-[#123524]/50 px-2 py-0.5 rounded">{appData.promotion?.hotelDiscountPercent}% OFF</span>
                  </div>
-                 
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 w-full">
-                    <div className="bg-white/10 text-white text-xs font-bold px-3 py-2 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between backdrop-blur-sm shadow-sm">
-                       <div className="flex items-center"><Home className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]"/> Hotel & Home</div> 
-                       <span className="text-[#D4AF37] text-sm bg-[#123524]/50 px-2 py-0.5 rounded">{appData.promotion?.hotelDiscountPercent}% OFF</span>
-                    </div>
-                    <div className="bg-white/10 text-white text-xs font-bold px-3 py-2 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between backdrop-blur-sm shadow-sm">
-                       <div className="flex items-center"><Activity className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]"/> Other Services</div>
-                       <span className="text-[#D4AF37] text-sm bg-[#123524]/50 px-2 py-0.5 rounded">{appData.promotion?.otherDiscountPercent}% OFF</span>
-                    </div>
+                 <div className="bg-white/10 text-white text-[11px] sm:text-xs font-bold px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between backdrop-blur-sm shadow-sm">
+                    <div className="flex items-center"><Activity className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]"/> Other Services</div>
+                    <span className="text-[#D4AF37] text-xs sm:text-sm bg-[#123524]/50 px-2 py-0.5 rounded">{appData.promotion?.otherDiscountPercent}% OFF</span>
                  </div>
-                 <div className="mt-3 text-[10px] text-gray-300 font-semibold flex items-center">
-                     <Clock className="w-3 h-3 mr-1" /> Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span>
-                 </div>
+              </div>
+
+              {/* Footer */}
+              <div className="mt-2 text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">
+                  <Clock className="w-3 h-3 mr-1" /> Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span>
               </div>
            </div>
         </div>
@@ -1162,7 +1166,7 @@ export function CustomerBookingWizard({
           <div className={`mt-8 flex flex-col gap-4`}>
              <div className={`flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} w-full`}>
                 {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-                <button type="button" disabled={!formData.therapist || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center w-full sm:w-auto justify-center`} style={{ backgroundColor: THEME.primary }}>
+                <button type="button" disabled={formData.therapist === undefined || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center w-full sm:w-auto justify-center`} style={{ backgroundColor: THEME.primary }}>
                   {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
                 </button>
              </div>
