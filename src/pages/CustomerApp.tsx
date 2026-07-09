@@ -981,18 +981,44 @@ export function CustomerBookingWizard({
 
   const renderServiceSelection = (currentStep: number) => (
     <div className="animate-fade-in px-2 sm:px-0">
+      
+      {/* 🌟 PREMIUM PROMOTION BANNER 🌟 */}
       {promoActive && (
-          <div className="bg-green-50 border border-green-200 p-4 rounded-xl mb-6 shadow-sm flex items-start animate-fade-in">
-             <Sparkles className="w-6 h-6 text-green-600 mr-3 flex-shrink-0 mt-0.5" />
-             <div>
-                <h4 className="font-bold text-green-800 text-sm">🎉 App Special Promotion!</h4>
-                <p className="text-xs text-green-700 mt-1 font-semibold leading-relaxed">
-                   Hotel & Home Services: {appData.promotion?.hotelDiscountPercent}% OFF <br/>
-                   Other Services: {appData.promotion?.otherDiscountPercent}% OFF <br/>
-                   <span className="text-[10px] text-green-600/80 bg-green-100 px-2 py-0.5 rounded mt-1 inline-block border border-green-200">Valid until: {appData.promotion?.endDate}</span>
-                </p>
-             </div>
-          </div>
+        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-5 sm:p-6 rounded-2xl mb-8 shadow-xl border border-[#D4AF37]/40 animate-fade-in">
+           {/* Decorative elements */}
+           <div className="absolute -top-6 -right-6 w-24 h-24 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-2xl opacity-20 animate-pulse"></div>
+           <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-2xl opacity-20 animate-pulse"></div>
+
+           <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-4 sm:mr-5 mb-3 sm:mb-0 border-2 border-[#123524] shadow-md flex-shrink-0 transform -rotate-12">
+                 <Percent className="w-6 h-6 sm:w-7 sm:h-7 text-[#123524]" />
+              </div>
+              <div className="flex-1 w-full">
+                 <div className="flex justify-between items-center mb-1">
+                     <h4 className="font-extrabold text-[#D4AF37] text-base sm:text-lg tracking-wide uppercase flex items-center">
+                         <Sparkles className="w-4 h-4 mr-2" /> Special App Promotion
+                     </h4>
+                     <span className="text-[9px] sm:text-[10px] text-[#123524] bg-[#D4AF37] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm">
+                         Limited Time
+                     </span>
+                 </div>
+                 
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 w-full">
+                    <div className="bg-white/10 text-white text-xs font-bold px-3 py-2 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between backdrop-blur-sm shadow-sm">
+                       <div className="flex items-center"><Home className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]"/> Hotel & Home</div> 
+                       <span className="text-[#D4AF37] text-sm bg-[#123524]/50 px-2 py-0.5 rounded">{appData.promotion?.hotelDiscountPercent}% OFF</span>
+                    </div>
+                    <div className="bg-white/10 text-white text-xs font-bold px-3 py-2 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between backdrop-blur-sm shadow-sm">
+                       <div className="flex items-center"><Activity className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]"/> Other Services</div>
+                       <span className="text-[#D4AF37] text-sm bg-[#123524]/50 px-2 py-0.5 rounded">{appData.promotion?.otherDiscountPercent}% OFF</span>
+                    </div>
+                 </div>
+                 <div className="mt-3 text-[10px] text-gray-300 font-semibold flex items-center">
+                     <Clock className="w-3 h-3 mr-1" /> Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span>
+                 </div>
+              </div>
+           </div>
+        </div>
       )}
 
       <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
