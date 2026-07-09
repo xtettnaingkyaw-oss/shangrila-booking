@@ -84,7 +84,7 @@ function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: numbe
         const slotTime = new Date(Number(y), Number(m) - 1, Number(d));
         const [time, ampm] = slot.split(' ');
         let [sh, sm] = time.split(':').map(Number);
-        if (ampm === 'PM' && sh < 12) sh += 12;
+        if (ampm === 'PM' && sh < 12) h += 12;
         if (ampm === 'AM' && sh === 12) sh = 0;
         slotTime.setHours(sh, sm, 0, 0);
         
@@ -697,6 +697,7 @@ export function CustomerBookingWizard({
       const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
 
       if (fixedDetails) {
+          // If fixed duration, checking just 1 slot to see if entirely blocked is sufficient
           neededSlots = 1; 
       } else if (formData.selectedItem) {
           const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
@@ -1161,7 +1162,7 @@ export function CustomerBookingWizard({
           <div className={`mt-8 flex flex-col gap-4`}>
              <div className={`flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} w-full`}>
                 {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-                <button type="button" disabled={formData.therapist === undefined} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center w-full sm:w-auto justify-center`} style={{ backgroundColor: THEME.primary }}>
+                <button type="button" disabled={!formData.therapist || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center w-full sm:w-auto justify-center`} style={{ backgroundColor: THEME.primary }}>
                   {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
                 </button>
              </div>
