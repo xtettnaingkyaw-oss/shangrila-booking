@@ -272,7 +272,7 @@ function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfi
 }
 
 function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedInStaff: TherapistProfile }) {
-   const [outpasses, setOutpasses] = useState<OutPass[]>([]);
+   const [allOutpasses, setAllOutpasses] = useState<OutPass[]>([]);
    const [loading, setLoading] = useState(true);
    const [reason, setReason] = useState('');
    const [locating, setLocating] = useState(false);
@@ -284,19 +284,19 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
        const unsub = onSnapshot(q, snap => {
            const arr: OutPass[] = [];
            snap.forEach(d => {
-               const data = d.data() as OutPass;
-               if (data.date === todayStr) arr.push({ id: d.id, ...data });
+               arr.push({ id: d.id, ...d.data() } as OutPass);
            });
            arr.sort((a,b) => b.outTimeMillis - a.outTimeMillis);
-           setOutpasses(arr);
+           setAllOutpasses(arr);
            setLoading(false);
        });
        return () => unsub();
-   }, [todayStr]);
+   }, []);
 
-   const myPasses = outpasses.filter(o => o.therapist === loggedInStaff.name);
-   const activePasses = outpasses.filter(o => o.status === 'out');
-   const myActivePass = myPasses.find(o => o.status === 'out');
+   // Active Passes များကို ယနေ့အတွက်သာ မဟုတ်ဘဲ အားလုံးထဲမှ ရှာပါမည် (အဟောင်းများ ပြန်ပိတ်နိုင်ရန်)
+   const myPasses = allOutpasses.filter(o => o.therapist === loggedInStaff.name && o.date === todayStr);
+   const activePasses = allOutpasses.filter(o => o.status === 'out');
+   const myActivePass = allOutpasses.find(o => o.therapist === loggedInStaff.name && o.status === 'out');
 
    const handleGoOut = async () => {
        if (activePasses.length >= 2) return;
@@ -316,7 +316,6 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
        navigator.geolocation.getCurrentPosition(async (pos) => {
            const dist = calculateDistanceInMeters(pos.coords.latitude, pos.coords.longitude, appData.branding.shopLat!, appData.branding.shopLng!);
            
-           // အကွာအဝေးကို ၅၀ မီတာ ပြောင်းလဲ သတ်မှတ်ထားပါသည်
            if (dist > 50) { 
                setLocError(`ဆိုင်နှင့် အကွာအဝေး ${Math.round(dist)} မီတာ ရှိနေပါသည်။ (၅၀ မီတာအတွင်းသာ နှိပ်ခွင့်ရှိသည်)`);
                setLocating(false); return; 
@@ -347,7 +346,6 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
        navigator.geolocation.getCurrentPosition(async (pos) => {
            const dist = calculateDistanceInMeters(pos.coords.latitude, pos.coords.longitude, appData.branding.shopLat!, appData.branding.shopLng!);
            
-           // အကွာအဝေးကို ၅၀ မီတာ ပြောင်းလဲ သတ်မှတ်ထားပါသည်
            if (dist > 50) { 
                setLocError(`ဆိုင်နှင့် အကွာအဝေး ${Math.round(dist)} မီတာ ရှိနေပါသည်။ (၅၀ မီတာအတွင်းသာ နှိပ်ခွင့်ရှိသည်)`);
                setLocating(false); return; 
