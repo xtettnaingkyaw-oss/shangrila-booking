@@ -17,6 +17,11 @@ const DEFAULT_INSTALL_STEPS: InstallStep[] = [
    { id: '3', text: '"Add" ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။', imageUrl: '' }
 ];
 
+const getLocalTodayStr = () => {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
 // Admin Role သတ်မှတ်ရန် Local Interface Extension
 interface LocalAdminProfile extends AdminProfile {
     role?: 'super_admin' | 'custom';
@@ -217,7 +222,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
       </div>
 
       {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
-      {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} />}
+      {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
       {tab === 'users' && hasAccess('users') && <AdminUsersList />}
       {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
@@ -297,9 +302,10 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
   );
 }
 
-function AdminStaffHistoryList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
+function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
    const [view, setView] = useState<'dashboard' | 'service' | 'outpass'>('dashboard');
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
+   const todayStr = getLocalTodayStr();
    
    const [now, setNow] = useState(Date.now());
    useEffect(() => {
@@ -444,6 +450,26 @@ function AdminStaffHistoryList({ bookings, adminRole }: { bookings: Booking[], a
                              })}
                          </div>
                      )}
+                 </div>
+
+                 {/* Today's Out Pass Quota (New Section) */}
+                 <div>
+                     <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><User className="w-4 h-4 mr-2 text-blue-500" /> Today's Out Pass Quota (ဒီနေ့ ထွက်ခွင့်အခြေအနေ)</h3>
+                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                         {therapists.map(t => {
+                             const used = outpasses.filter(o => o.therapist === t.name && o.date === todayStr).length;
+                             const remaining = Math.max(0, 4 - used);
+                             return (
+                                 <div key={t.id} className={`p-3 rounded-xl border flex items-center justify-between ${used >= 4 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-200'} shadow-sm`}>
+                                     <div className="font-bold text-sm text-[#123524] truncate mr-2" title={t.name}>{t.name}</div>
+                                     <div className="text-right flex-shrink-0 leading-tight">
+                                         <div className="text-[10px] font-bold text-gray-500">Used: <span className={used >= 4 ? 'text-red-600' : 'text-blue-600'}>{used}</span></div>
+                                         <div className="text-[10px] font-bold text-gray-500">Left: <span className={remaining === 0 ? 'text-red-600' : 'text-green-600'}>{remaining}</span></div>
+                                     </div>
+                                 </div>
+                             );
+                         })}
+                     </div>
                  </div>
 
               </div>
