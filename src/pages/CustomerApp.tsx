@@ -72,7 +72,11 @@ function useCountdown(initialMinutes: number, onExpire: () => void) {
 
 function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: number, dateStr: string): Set<string> {
     const blocked = new Set<string>();
+    if (!dateStr) return blocked;
+    
     const [y, m, d] = dateStr.split('-');
+    if (!y || !m || !d) return blocked;
+    
     const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
     const startOfDay = dateObj.setHours(0, 0, 0, 0);
     const endOfDay = dateObj.setHours(23, 59, 59, 999);
@@ -84,8 +88,8 @@ function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: numbe
         const slotTime = new Date(Number(y), Number(m) - 1, Number(d));
         const [time, ampm] = slot.split(' ');
         let [sh, sm] = time.split(':').map(Number);
-        if (ampm === 'PM' && sh < 12) h += 12;
-        if (ampm === 'AM' && h === 12) sh = 0;
+        if (ampm === 'PM' && sh < 12) sh += 12;
+        if (ampm === 'AM' && sh === 12) sh = 0;
         slotTime.setHours(sh, sm, 0, 0);
         
         const slotTimeMillis = slotTime.getTime();
@@ -103,10 +107,10 @@ export function getSlotsFromTimeText(t: string, neededSlotsByDuration: number): 
     if (!t) return [];
     if (t.includes("to")) {
         const [start, endRaw] = t.split(" to ");
-        const end = endRaw.replace(" (Next Day)", "");
+        const end = endRaw ? endRaw.replace(" (Next Day)", "") : "";
         const sIdx = ALL_TIME_SLOTS.indexOf(start.trim());
         let eIdx = ALL_TIME_SLOTS.indexOf(end.trim());
-        if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+        if (endRaw && (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx))) {
             eIdx = ALL_TIME_SLOTS.length;
         }
         const slots = [];
@@ -130,7 +134,8 @@ export function getSlotsFromTimeText(t: string, neededSlotsByDuration: number): 
 
 // Master Helper: Booking တစ်ခုရဲ့ အသုံးပြုသွားတဲ့ Time Slots တွေကို အတိအကျ တွက်ထုတ်ပေးမည့် Function
 export function getBookingCoveredSlots(b: Booking): string[] {
-    const serviceLower = b.service.toLowerCase();
+    if (!b) return [];
+    const serviceLower = (b.service || '').toLowerCase();
     const isNight = serviceLower.includes('night') || serviceLower.includes('24 hour') || serviceLower.includes('day and night');
     let slots: string[] = [];
 
@@ -142,7 +147,7 @@ export function getBookingCoveredSlots(b: Booking): string[] {
             d.setHours(8, 0, 0, 0); // Night Booking ဆိုလျှင် နောက်ရက် ၈ နာရီအထိ သတ်မှတ်မည်
             end = Math.max(end, d.getTime());
         }
-        slots = Array.from(getSlotsCoveredByInterval(b.startTimeMillis, end, b.date));
+        slots = Array.from(getSlotsCoveredByInterval(b.startTimeMillis, end, b.date || ''));
     } else if (b.time) {
         if (isNight) {
             const startStr = b.time.split(" to ")[0].trim();
@@ -155,10 +160,10 @@ export function getBookingCoveredSlots(b: Booking): string[] {
             }
         } else if (b.time.includes("to")) {
             const [start, endRaw] = b.time.split(" to ");
-            const end = endRaw.replace(" (Next Day)", "").trim();
+            const end = endRaw ? endRaw.replace(" (Next Day)", "").trim() : "";
             const sIdx = ALL_TIME_SLOTS.indexOf(start.trim());
             let eIdx = ALL_TIME_SLOTS.indexOf(end);
-            if (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx)) {
+            if (endRaw && (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx))) {
                 eIdx = ALL_TIME_SLOTS.length;
             }
             if (sIdx !== -1) {
@@ -168,7 +173,7 @@ export function getBookingCoveredSlots(b: Booking): string[] {
             }
         } else {
             let neededSlots = 2;
-            const match = b.service.match(/(\d+)\s*Mins/i);
+            const match = (b.service || '').match(/(\d+)\s*Mins/i);
             if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
             const sIdx = ALL_TIME_SLOTS.indexOf(b.time.trim());
             if (sIdx !== -1) {
@@ -204,7 +209,7 @@ export function BookingCard({ b }: { b: Booking }) {
        <div className={`absolute top-0 left-0 w-1.5 h-full ${b.status === 'in_progress' ? 'bg-orange-500 animate-pulse' : b.status === 'approved' ? 'bg-green-500' : 'bg-gray-200'}`}></div>
        <div className="flex justify-between items-start mb-3">
          <div>
-           <div className="font-bold text-gray-800 text-base">{b.service.split('(')[0]}</div>
+           <div className="font-bold text-gray-800 text-base">{(b.service || '').split('(')[0]}</div>
            <div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1 text-[#D4AF37]"/> {b.therapist}</div>
          </div>
          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider ${statusColor}`}>{b.status.replace('_', ' ')}</span>
@@ -396,7 +401,7 @@ export function CustomerBookingWizard({
   }, [preselectedStaff, appData.therapists, formData.therapist]);
 
   useEffect(() => {
-      if (staffClockIn && formData.date === todayStr && (!formData.time || !/^\d{2}:\d{2}$/.test(formData.time))) {
+      if (staffClockIn && formData.date === todayStr && (!formData.time || !/^\d{1,2}:\d{2}(?::\d{2})?$/.test(formData.time))) {
           const now = new Date();
           const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
           setFormData(prev => ({ ...prev, time: hhmm }));
@@ -415,7 +420,7 @@ export function CustomerBookingWizard({
           if (b.status === 'cancelled' || b.status === 'completed') return;
           if (b.date !== selectedDate) return;
           
-          const serviceLower = b.service.toLowerCase();
+          const serviceLower = (b.service || '').toLowerCase();
           const isBookingOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
           if (isBookingOutcall) return; 
 
@@ -460,7 +465,7 @@ export function CustomerBookingWizard({
           if (b.status === 'cancelled' || b.status === 'completed') return;
           if (b.date !== todayStr) return; // ယနေ့အတွက်သာ
           
-          const serviceLower = b.service.toLowerCase();
+          const serviceLower = (b.service || '').toLowerCase();
           if (serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home')) return;
           const isVip = serviceLower.includes('vvip');
           
@@ -513,7 +518,7 @@ export function CustomerBookingWizard({
           if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
           neededSlots = Math.max(1, endIdx - startIdx);
       } else if (formData.selectedItem) {
-          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+          const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
 
@@ -530,7 +535,7 @@ export function CustomerBookingWizard({
       }
 
       // 2. Room Available? (VIP = 3, Normal = 2) - Buffer မပါဝင်ပါ
-      const serviceLower = formData.selectedItem?.name.toLowerCase() || '';
+      const serviceLower = (formData.selectedItem?.name || '').toLowerCase();
       const isCurrentOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
       
       if (!isCurrentOutcall) {
@@ -568,7 +573,7 @@ export function CustomerBookingWizard({
               if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
               neededSlots = Math.max(1, endIdx - startIdx);
           } else if (formData.selectedItem) {
-              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+              const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
 
@@ -614,7 +619,7 @@ export function CustomerBookingWizard({
           const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
           if (fixedDetails) {
               setFormData({ ...formData, time: `${t} to ${fixedDetails.end}${fixedDetails.nextDay ? ' (Next Day)' : ''}` });
-          } else if (formData.selectedItem?.name.toLowerCase().includes("night")) {
+          } else if ((formData.selectedItem?.name || '').toLowerCase().includes("night")) {
               setFormData({ ...formData, time: `${t} to 8:00 AM (Next Day)` });
           } else {
               setFormData({ ...formData, time: t });
@@ -636,7 +641,7 @@ export function CustomerBookingWizard({
             allowedSlots = ALL_TIME_SLOTS.slice(Math.max(0, startIndex), endIndex);
         } else {
             const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
-            const serviceName = formData.selectedItem.name.toLowerCase();
+            const serviceName = (formData.selectedItem.name || '').toLowerCase();
             const isNightService = serviceName.includes("night");
 
             if (isHotelService) {
@@ -678,7 +683,7 @@ export function CustomerBookingWizard({
   };
 
   const availableTimeSlots = getAvailableTimeSlots();
-  const isSelectedNightService = formData.selectedItem?.name.toLowerCase().includes("night");
+  const isSelectedNightService = (formData.selectedItem?.name || '').toLowerCase().includes("night");
   const currentFixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
 
   const getMinMaxDates = () => {
@@ -700,7 +705,7 @@ export function CustomerBookingWizard({
           // If fixed duration, checking just 1 slot to see if entirely blocked is sufficient
           neededSlots = 1; 
       } else if (formData.selectedItem) {
-          const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+          const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
 
@@ -782,7 +787,8 @@ export function CustomerBookingWizard({
       
       let isOverlap = false;
       
-      const isStaffImmediate = staffClockIn && formData.date === todayStr && /^\d{2}:\d{2}$/.test(formData.time);
+      const timeRegex = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+      const isStaffImmediate = staffClockIn && formData.date === todayStr && timeRegex.test(formData.time || '');
 
       let fluidStartTimeMillis = Date.now();
       let expectedEndTimeMillis = Date.now();
@@ -792,37 +798,40 @@ export function CustomerBookingWizard({
       const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
 
       if (formData.selectedItem && !fixedDetails) {
-         const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
-         if (match) durationMins = parseInt(match[1]);
+         const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
+         if (match) durationMins = parseInt(match[1]) || 60;
       }
 
       if (isStaffImmediate) {
-          const [h, m] = formData.time.split(':').map(Number);
+          const timeParts = (formData.time || "00:00").split(':');
+          const h = Number(timeParts[0]) || 0;
+          const m = Number(timeParts[1]) || 0;
           const ampm = h >= 12 ? 'PM' : 'AM';
           const hrs12 = h % 12 || 12;
           finalTimeStr = `${hrs12}:${m.toString().padStart(2, '0')} ${ampm}`;
 
-          const [y, mo, d] = formData.date.split('-');
-          const startDateTime = new Date(Number(y), Number(mo)-1, Number(d));
+          const dateParts = (formData.date || todayStr).split('-');
+          const startDateTime = new Date(Number(dateParts[0]), Number(dateParts[1])-1, Number(dateParts[2]));
           startDateTime.setHours(h, m, 0, 0);
-          fluidStartTimeMillis = startDateTime.getTime();
+          fluidStartTimeMillis = startDateTime.getTime(); 
           
           if (fixedDetails) {
               finalTimeStr = `${finalTimeStr} to ${fixedDetails.end}${fixedDetails.nextDay ? ' (Next Day)' : ''}`;
               
-              const [endHStr, endMStr] = fixedDetails.end.split(' ')[0].split(':');
-              const endAmPm = fixedDetails.end.split(' ')[1];
-              let endH = parseInt(endHStr);
+              const endParts = fixedDetails.end.split(' ');
+              const [endHStr, endMStr] = (endParts[0] || '00:00').split(':');
+              const endAmPm = endParts[1] || 'AM';
+              let endH = parseInt(endHStr) || 0;
               if(endAmPm === 'PM' && endH < 12) endH += 12;
               if(endAmPm === 'AM' && endH === 12) endH = 0;
               
               const endDateTime = new Date(startDateTime);
-              endDateTime.setHours(endH, parseInt(endMStr), 0, 0);
+              endDateTime.setHours(endH, parseInt(endMStr) || 0, 0, 0);
               if (fixedDetails.nextDay || endDateTime < startDateTime) {
                   endDateTime.setDate(endDateTime.getDate() + 1);
               }
               expectedEndTimeMillis = endDateTime.getTime();
-          } else if (formData.selectedItem && formData.selectedItem.name.toLowerCase().includes("night")) {
+          } else if ((formData.selectedItem?.name || '').toLowerCase().includes("night")) {
               const nextDay = new Date(startDateTime);
               nextDay.setDate(nextDay.getDate() + 1);
               nextDay.setHours(8, 0, 0, 0);
@@ -831,8 +840,8 @@ export function CustomerBookingWizard({
               expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000);
           }
 
-          const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
-          const coveredForImmediate = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date));
+          const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
+          const coveredForImmediate = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date || ''));
           for (const slot of coveredForImmediate) {
               if (blockedNow.has(slot)) { isOverlap = true; break; }
           }
@@ -840,18 +849,18 @@ export function CustomerBookingWizard({
       } else {
           let neededSlots = 2; 
           if (fixedDetails) {
-              const startIdx = ALL_TIME_SLOTS.indexOf(formData.time.split(' to ')[0].trim());
+              const startIdx = ALL_TIME_SLOTS.indexOf((formData.time || '').split(' to ')[0].trim());
               let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
               if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
               neededSlots = Math.max(1, endIdx - startIdx);
           } else if (formData.selectedItem) {
-              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+              const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
           
-          const actualTestStr = formData.time.includes("to") ? `${formData.time.split(' to ')[0].trim()} to ${formData.time.split(' to ')[1]}` : formData.time;
+          const actualTestStr = (formData.time || '').includes("to") ? `${(formData.time || '').split(' to ')[0].trim()} to ${(formData.time || '').split(' to ')[1]}` : (formData.time || '');
           const coveredSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-          const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date);
+          const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
           for (const slot of coveredSlots) {
               if (blockedNow.has(slot)) { isOverlap = true; break; }
           }
@@ -863,27 +872,28 @@ export function CustomerBookingWizard({
       }
 
       // Final Room Check before submit
-      const isCurrentOutcall = formData.selectedItem?.name.toLowerCase().includes('outcall') || formData.selectedItem?.name.toLowerCase().includes('hotel') || formData.selectedItem?.name.toLowerCase().includes('home');
+      const serviceLowerNameForCheck = (formData.selectedItem?.name || '').toLowerCase();
+      const isCurrentOutcall = serviceLowerNameForCheck.includes('outcall') || serviceLowerNameForCheck.includes('hotel') || serviceLowerNameForCheck.includes('home');
       if (!isCurrentOutcall) {
-          const freshRoomUsage = getRoomUsageMap(formData.date, freshBookings);
+          const freshRoomUsage = getRoomUsageMap(formData.date || todayStr, freshBookings);
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
           
           let neededSlots = 2;
           if (fixedDetails) {
-              const startIdx = ALL_TIME_SLOTS.indexOf(formData.time.split(' to ')[0].trim());
+              const startIdx = ALL_TIME_SLOTS.indexOf((formData.time || '').split(' to ')[0].trim());
               let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
               if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
               neededSlots = Math.max(1, endIdx - startIdx);
           } else if (formData.selectedItem) {
-              const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+              const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
           
           let coveredSlotsToCheck: string[] = [];
           if (isStaffImmediate) {
-              coveredSlotsToCheck = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date));
+              coveredSlotsToCheck = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date || ''));
           } else {
-              const actualTestStr = formData.time.includes("to") ? `${formData.time.split(' to ')[0].trim()} to ${formData.time.split(' to ')[1]}` : formData.time;
+              const actualTestStr = (formData.time || '').includes("to") ? `${(formData.time || '').split(' to ')[0].trim()} to ${(formData.time || '').split(' to ')[1]}` : (formData.time || '');
               coveredSlotsToCheck = getSlotsFromTimeText(actualTestStr, neededSlots);
           }
 
@@ -905,36 +915,46 @@ export function CustomerBookingWizard({
       }
 
       if (formData.phone && formData.phone.trim() !== '') {
-        const userRef = doc(db, 'users', formData.phone);
+        const userRef = doc(db, 'users', formData.phone.trim());
         const userSnap = await getDoc(userRef);
         if (!userSnap.exists()) {
-          await setDoc(userRef, { phone: formData.phone, name: formData.name, password: '', createdAt: Date.now() });
+          await setDoc(userRef, { phone: formData.phone.trim(), name: formData.name || '', password: '', createdAt: Date.now() });
         } else if (!userSnap.data().name) {
-          await updateDoc(userRef, { name: formData.name });
+          await updateDoc(userRef, { name: formData.name || '' });
         }
       }
 
-      const dataToSave = {
+      // Safety check for NaN values before sending to Firestore
+      if (isNaN(expectedEndTimeMillis)) expectedEndTimeMillis = fluidStartTimeMillis + (60 * 60 * 1000);
+
+      const dataToSave: any = {
         name: formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest'), 
         phone: formData.phone || '-',
-        service: `${formData.selectedItem?.name} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`,
+        service: `${formData.selectedItem?.name || ''} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`.trim(),
         therapist: formData.therapist?.name || 'Any Available Therapist',
-        date: formData.date, 
-        time: finalTimeStr, 
-        paymentMethod: isStaffMode ? 'Cash Payment in Shop' : formData.paymentMethod, 
-        txId: isStaffMode ? 'CASH' : formData.txId, 
-        totalPrice: calculateTotal(), 
+        date: formData.date || todayStr, 
+        time: finalTimeStr || '00:00', 
+        paymentMethod: isStaffMode ? 'Cash Payment in Shop' : (formData.paymentMethod || '-'), 
+        txId: isStaffMode ? 'CASH' : (formData.txId || '-'), 
+        totalPrice: Number(calculateTotal()) || 0, 
         status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
         createdAt: Date.now(),
-        specialRequest: formData.specialRequest,
+        specialRequest: formData.specialRequest || '',
         ...(isStaffImmediate && {
-           startTimeMillis: fluidStartTimeMillis,
-           expectedEndTimeMillis: expectedEndTimeMillis
+           startTimeMillis: Number(fluidStartTimeMillis) || Date.now(),
+           expectedEndTimeMillis: Number(expectedEndTimeMillis) || Date.now()
         })
       };
+
+      // Clean up any stray undefined properties just to be absolutely safe for Firestore
+      Object.keys(dataToSave).forEach(key => dataToSave[key] === undefined ? delete dataToSave[key] : {});
+
       await addDoc(collection(db, 'bookings'), dataToSave);
       setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
-    } catch (error) { console.error(error); setAlertMessage("Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။"); }
+    } catch (error: any) { 
+        console.error(error); 
+        setAlertMessage("Error: " + (error.message || "Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။")); 
+    }
     setLoading(false);
   };
 
@@ -984,43 +1004,41 @@ export function CustomerBookingWizard({
       
       {/* 🌟 PREMIUM PROMOTION BANNER 🌟 */}
       {promoActive && (
-        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in">
+        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between">
            {/* Decorative elements */}
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
            <div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
 
-           <div className="relative z-10 w-full">
-              {/* Header Row - Combined Icon and Title */}
-              <div className="flex justify-between items-center mb-3">
-                 <div className="flex items-center">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0">
-                       <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" />
-                    </div>
-                    <h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-base tracking-wide uppercase flex items-center">
-                       <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" /> Special App Promo
-                    </h4>
-                 </div>
-                 <span className="text-[8px] sm:text-[10px] text-[#123524] bg-[#D4AF37] px-2 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap">
-                     Limited Time
-                 </span>
+           {/* Left Side: Icon + Title */}
+           <div className="relative z-10 flex items-center">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0">
+                 <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" />
               </div>
-              
-              {/* Discounts Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
-                 <div className="bg-white/10 text-white text-[11px] sm:text-xs font-bold px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between backdrop-blur-sm shadow-sm">
-                    <div className="flex items-center"><Home className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]"/> Hotel & Home</div> 
-                    <span className="text-[#D4AF37] text-xs sm:text-sm bg-[#123524]/50 px-2 py-0.5 rounded">{appData.promotion?.hotelDiscountPercent}% OFF</span>
+              <div>
+                 <div className="flex items-center gap-2 mb-0.5">
+                     <h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-sm tracking-wide uppercase flex items-center">
+                         <Sparkles className="w-3 h-3 mr-1" /> Special Promo
+                     </h4>
+                     <span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap">
+                         Limited Time
+                     </span>
                  </div>
-                 <div className="bg-white/10 text-white text-[11px] sm:text-xs font-bold px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between backdrop-blur-sm shadow-sm">
-                    <div className="flex items-center"><Activity className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]"/> Other Services</div>
-                    <span className="text-[#D4AF37] text-xs sm:text-sm bg-[#123524]/50 px-2 py-0.5 rounded">{appData.promotion?.otherDiscountPercent}% OFF</span>
+                 <div className="text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">
+                     Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span>
                  </div>
               </div>
+           </div>
 
-              {/* Footer */}
-              <div className="mt-2 text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">
-                  <Clock className="w-3 h-3 mr-1" /> Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span>
-              </div>
+           {/* Right Side: Discounts Grid */}
+           <div className="relative z-10 flex flex-col gap-1.5 ml-3">
+               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm">
+                  <span className="flex items-center"><Home className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Hotel</span> 
+                  <span className="text-[#D4AF37] ml-2">{appData.promotion?.hotelDiscountPercent}% OFF</span>
+               </div>
+               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm">
+                  <span className="flex items-center"><Activity className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Other</span>
+                  <span className="text-[#D4AF37] ml-2">{appData.promotion?.otherDiscountPercent}% OFF</span>
+               </div>
            </div>
         </div>
       )}
@@ -1166,7 +1184,7 @@ export function CustomerBookingWizard({
           <div className={`mt-8 flex flex-col gap-4`}>
              <div className={`flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} w-full`}>
                 {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-                <button type="button" disabled={formData.therapist === undefined || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center w-full sm:w-auto justify-center`} style={{ backgroundColor: THEME.primary }}>
+                <button type="button" disabled={formData.therapist === undefined || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition shadow-md flex items-center w-full sm:w-auto justify-center ${formData.therapist === undefined || allFullyBooked ? 'bg-gray-300 cursor-not-allowed' : 'hover:opacity-90'}`} style={formData.therapist !== undefined && !allFullyBooked ? { backgroundColor: THEME.primary } : {}}>
                   {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
                 </button>
              </div>
@@ -1253,7 +1271,7 @@ export function CustomerBookingWizard({
                                                if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length;
                                                neededSlots = Math.max(1, endIdx - startIdx);
                                            } else if (formData.selectedItem) {
-                                               const match = formData.selectedItem.duration.match(/(\d+)\s*Mins/i);
+                                               const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
                                                if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
                                            }
 
@@ -1539,7 +1557,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const coveredMap = new Map<string, { service: string, status: string }>();
 
       tBookings.forEach(b => {
-           const cleanServiceName = b.service.split('(')[0].trim();
+           const cleanServiceName = (b.service || '').split('(')[0].trim();
            const coveredSlots = getBookingCoveredSlots(b);
            
            coveredSlots.forEach(slot => {
@@ -1592,7 +1610,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           let endTime = getNextSlotTime(b.endSlot);
           if (b.state === 'Booked') {
              // Find matching booking to determine exact end time
-             const matchingNB = tBookings.find(bk => bk.service.split('(')[0].trim() === b.service);
+             const matchingNB = tBookings.find(bk => (bk.service || '').split('(')[0].trim() === b.service);
              if (matchingNB) {
                  if (matchingNB.time && matchingNB.time.includes("Next Day")) {
                      endTime = "8:00 AM (Next Day)";
@@ -1623,7 +1641,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (b.date !== todayStr) return;
           if (b.therapist !== tName) return;
 
-          const cleanServiceName = b.service.split('(')[0].trim();
+          const cleanServiceName = (b.service || '').split('(')[0].trim();
           const serviceLower = cleanServiceName.toLowerCase();
           const isNight = serviceLower.includes('night') || serviceLower.includes('24 hour') || serviceLower.includes('day and night');
 
@@ -1687,7 +1705,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       for (let i = 0; i <= endLimitIdx; i++) {
           const slot = ALL_TIME_SLOTS[i];
           const [timePart, ampm] = slot.split(' ');
-          let [h, m] = timePart.split(':').map(Number);
+          let [h, m] = tPart.split(':').map(Number);
           if (ampm === 'PM' && h < 12) h += 12;
           if (ampm === 'AM' && h === 12) h = 0;
           const slotTime = new Date();
@@ -1884,7 +1902,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                      <div className="flex items-start">
                         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mr-4 mt-1"><Sparkles className="w-5 h-5 text-gray-500"/></div>
                         <div>
-                           <div className="font-bold text-gray-800 text-sm sm:text-base">{b.service.split('(')[0]}</div>
+                           <div className="font-bold text-gray-800 text-sm sm:text-base">{(b.service || '').split('(')[0]}</div>
                            <div className="text-xs text-gray-500 mt-1 flex items-center"><Calendar className="w-3 h-3 mr-1"/> {b.date} &nbsp; <Clock className="w-3 h-3 mx-1"/> {b.time}</div>
                         </div>
                      </div>
@@ -1898,7 +1916,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                      <div className="p-5 border-t border-gray-100 bg-gray-50 animate-fade-in">
                         <div className="grid grid-cols-2 gap-4 mb-4">
                            <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">THERAPIST</span><span className="text-sm font-bold text-gray-800">{b.therapist}</span></div>
-                           <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">DURATION / EXTRA</span><span className="text-sm font-bold text-gray-800">{b.service.split('(')[1] ? '(' + b.service.split('(').slice(1).join('(') : '-'}</span></div>
+                           <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">DURATION / EXTRA</span><span className="text-sm font-bold text-gray-800">{(b.service || '').split('(')[1] ? '(' + (b.service || '').split('(').slice(1).join('(') : '-'}</span></div>
                            <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">TXID</span><span className="text-sm font-mono font-bold text-gray-800 tracking-widest">{b.txId}</span></div>
                            <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">PAYMENT</span><span className="text-sm font-bold text-gray-800">{b.paymentMethod}</span></div>
                         </div>
