@@ -1580,8 +1580,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           const covered = coveredMap.get(slot);
           if (covered) return { slot, state: covered.status, service: covered.service };
 
-          const [tPart, ampm] = slot.split(' ');
-          let [h, m] = tPart.split(':').map(Number);
+          const [timePart, ampm] = slot.split(' ');
+          let [h, m] = timePart.split(':').map(Number);
           if (ampm === 'PM' && h < 12) h += 12;
           if (ampm === 'AM' && h === 12) h = 0;
           const slotTime = new Date();
@@ -1663,8 +1663,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                }
           } else {
                if (coveredSlots.some(slot => {
-                   const [tPart, ampm] = slot.split(' ');
-                   let [h, m] = tPart.split(':').map(Number);
+                   const [timePart, ampm] = slot.split(' ');
+                   let [h, m] = timePart.split(':').map(Number);
                    if (ampm === 'PM' && h < 12) h += 12;
                    if (ampm === 'AM' && h === 12) h = 0;
                    const slotTime = new Date();
@@ -1705,7 +1705,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       for (let i = 0; i <= endLimitIdx; i++) {
           const slot = ALL_TIME_SLOTS[i];
           const [timePart, ampm] = slot.split(' ');
-          let [h, m] = tPart.split(':').map(Number);
+          let [h, m] = timePart.split(':').map(Number);
           if (ampm === 'PM' && h < 12) h += 12;
           if (ampm === 'AM' && h === 12) h = 0;
           const slotTime = new Date();
