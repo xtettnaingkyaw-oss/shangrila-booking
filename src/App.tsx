@@ -1,7 +1,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
-import { Download, X, MapPin, Phone, LogOut } from 'lucide-react';
+import { Download, X, MapPin, Phone, LogOut, DatabaseBackup } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
 
 // Lazy load the specific apps to keep the initial bundle size extremely small
@@ -95,8 +95,10 @@ function MainApp() {
 
     const initData = async () => {
       try {
-        const docRef = doc(db, 'settings', 'appData'); const snap = await getDoc(docRef);
-        let loadedData: Partial<AppData> = {}; if (snap.exists()) loadedData = snap.data() || {};
+        const docRef = doc(db, 'settings', 'appData'); 
+        const snap = await getDoc(docRef);
+        let loadedData: Partial<AppData> = {}; 
+        if (snap.exists()) loadedData = snap.data() || {};
         
         const finalCategories = Array.isArray(loadedData.categories) ? loadedData.categories : DEFAULT_CATEGORIES;
         const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
@@ -106,9 +108,15 @@ function MainApp() {
         // Admin Panel မှ သိမ်းဆည်းထားသော အဆင့်များကို ဆွဲယူခြင်း
         const finalInstallSteps = loadedData.installSteps || DEFAULT_INSTALL_STEPS;
         
-        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); const tSnap = await getDocs(tQuery);
+        const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); 
+        const tSnap = await getDocs(tQuery);
         let loadedTherapists: TherapistProfile[] = [];
-        if (!tSnap.empty) { tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); } else { loadedTherapists = DEFAULT_THERAPISTS; }
+        
+        if (!tSnap.empty) { 
+            tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); 
+        } else { 
+            loadedTherapists = DEFAULT_THERAPISTS; 
+        }
         
         setAppData({ 
             categories: finalCategories, 
@@ -119,15 +127,9 @@ function MainApp() {
             installSteps: finalInstallSteps 
         });
       } catch (err) {
-        console.error(err); setDbError(true);
-        setAppData({ 
-            categories: DEFAULT_CATEGORIES, 
-            therapists: DEFAULT_THERAPISTS, 
-            branding: DEFAULT_BRANDING, 
-            paymentMethods: DEFAULT_PAYMENT_METHODS, 
-            promotion: DEFAULT_PROMOTION, 
-            installSteps: DEFAULT_INSTALL_STEPS 
-        });
+        console.error("Firebase Connection Error:", err); 
+        setDbError(true);
+        // Error ဖြစ်သွားပါက App Freeze မဖြစ်စေရန် Data များကို မဆွဲတော့ပါ။
       }
     };
     initData();
@@ -141,14 +143,46 @@ function MainApp() {
     return () => clearInterval(interval);
   }, [loggedInAdmin]);
 
-  if (!appData) { return <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold">Loading The Shangri-La...</div>; }
+  // ==========================================
+  // SAFE FALLBACK ERROR UI (App Freeze မဖြစ်စေရန်)
+  // ==========================================
+  if (dbError) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
+           <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-red-100 animate-fade-in">
+               <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
+                  <DatabaseBackup className="w-8 h-8" />
+               </div>
+               <h2 className="text-xl font-bold text-red-600 mb-2">Database Connection Failed</h2>
+               <p className="text-sm text-gray-600 mb-6 font-semibold leading-relaxed">
+                  Database တွင် Data ရှိသော်လည်း Vercel မှတဆင့် ချိတ်ဆက်၍မရဖြစ်နေပါသည်။ ကျေးဇူးပြု၍ အောက်ပါတို့ကို စစ်ဆေးပေးပါ-
+               </p>
+               <div className="text-left bg-gray-50 p-4 rounded-lg border border-gray-200 text-[11px] sm:text-xs text-gray-700 space-y-3 font-semibold mb-6">
+                   <p className="flex items-start"><span className="text-red-500 mr-1.5">•</span> Vercel Project Settings ထဲတွင် <b>Environment Variables (Firebase Keys)</b> များ အပြည့်အစုံ ထည့်သွင်းရန်ကျန်နေခြင်း။</p>
+                   <p className="flex items-start"><span className="text-red-500 mr-1.5">•</span> ENV ထည့်ပြီးသော်လည်း Vercel တွင် <b>Redeploy</b> အသစ် ပြန်မလုပ်ရသေးခြင်း။</p>
+                   <p className="flex items-start"><span className="text-red-500 mr-1.5">•</span> Firebase ၏ <b>Firestore Rules</b> ပိတ်နေခြင်း။</p>
+               </div>
+               <button onClick={() => window.location.reload()} className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-lg font-bold shadow-md hover:bg-opacity-90 transition">
+                  Refresh App
+               </button>
+           </div>
+        </div>
+      );
+  }
 
-  // Admin မှ ပြင်ဆင်ထားသော ပုံများနှင့် စာများကို Customer သို့ တိုက်ရိုက်ထုတ်ပေးရန် သတ်မှတ်ခြင်း
+  if (!appData) { 
+      return (
+          <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold">
+              <div className="w-12 h-12 border-4 border-[#123524] border-t-[#D4AF37] rounded-full animate-spin mb-4"></div>
+              Loading The Shangri-La...
+          </div>
+      ); 
+  }
+
   const stepsToShow = appData.installSteps && appData.installSteps.length > 0 ? appData.installSteps : DEFAULT_INSTALL_STEPS;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
-      {dbError && <div className="bg-red-500 text-white text-xs text-center py-1">Database Loading Warning. Showing Default Data.</div>}
       
       {/* ================= DYNAMIC DOWNLOAD INSTRUCTIONS MODAL ================= */}
       {showInstallModal && (
@@ -161,7 +195,6 @@ function MainApp() {
              <div className="p-5 max-h-[75vh] overflow-y-auto space-y-4">
                 <div className="text-center text-sm font-bold text-gray-700 mb-4">အောက်ပါ အဆင့်များအတိုင်း လုပ်ဆောင်ပေးပါ</div>
                 
-                {/* ဤနေရာတွင် Database မှ သိမ်းဆည်းထားသော အချက်အလက်များအား အလိုအလျောက် ပုံဖော်ပေးမည်ဖြစ်သည် */}
                 {stepsToShow.map((step, idx) => (
                    <div key={step.id || idx} className="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
                       <p className="text-xs font-bold mb-2 leading-relaxed text-gray-800">{idx + 1}။ {step.text}</p>
@@ -197,7 +230,12 @@ function MainApp() {
       </header>
 
       <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-6">
-        <Suspense fallback={<div className="text-center py-20 font-bold text-gray-500">Loading Components...</div>}>
+        <Suspense fallback={
+            <div className="text-center py-20 font-bold text-[#123524] flex flex-col items-center">
+                <div className="w-10 h-10 border-4 border-[#123524] border-t-[#D4AF37] rounded-full animate-spin mb-4"></div>
+                Loading Component...
+            </div>
+        }>
             {appMode === 'admin' ? (
               <AdminApp appData={appData} onSettingsUpdated={setAppData} />
             ) : appMode === 'staff' ? (
