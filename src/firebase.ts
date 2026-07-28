@@ -1,8 +1,9 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth'; // Auth ကို အသစ်ထည့်ထားပါသည်
 
 const firebaseConfig = {
-  apiKey: "AIzaSyD72t-U4ZQY1DVmsxj902Vu_XXXXXxw1Ko",
+  apiKey: "AIzaSyD72t-U4ZQY1DVmsxj9O2Vu_XXXXKxwlKo",
   authDomain: "shangrila-online-booking-app.firebaseapp.com",
   projectId: "shangrila-online-booking-app",
   storageBucket: "shangrila-online-booking-app.firebasestorage.app",
@@ -12,3 +13,4 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app); // Auth ကို Export လုပ်ထားပါသည်
