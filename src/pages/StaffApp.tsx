@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, addDoc, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
+import { encryptText, decryptText } from '../security'; // လုံခြုံရေးစနစ်ကို ချိတ်ဆက်ခြင်း
 import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets } from 'lucide-react';
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 
@@ -94,8 +95,12 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
     e.preventDefault();
     setError('');
     const staff = therapists.find(t => t.id === therapistId);
-    if (staff && staff.password === password) {
-       onLoginSuccess(staff);
+    
+    // Database မှ လာသော Encrypted Password အား Decrypt ပြန်လုပ်ပြီး စစ်ဆေးခြင်း
+    const decPassword = staff ? (decryptText(staff.password) || staff.password) : '';
+    
+    if (staff && decPassword === password) {
+       onLoginSuccess({ ...staff, password: decPassword });
     } else {
        setError('Invalid Therapist Selection or Password.');
     }
@@ -140,7 +145,16 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
        const unsubscribe = onSnapshot(q, (snap) => {
            let foundActive = null;
            snap.forEach((doc) => {
-               const b = { id: doc.id, ...doc.data() } as Booking;
+               const raw = doc.data();
+               const b = { 
+                   id: doc.id, 
+                   ...raw,
+                   name: decryptText(raw.name),
+                   phone: decryptText(raw.phone),
+                   txId: decryptText(raw.txId),
+                   specialRequest: decryptText(raw.specialRequest)
+               } as Booking;
+               
                if (b.therapist === loggedInStaff.name && b.status === 'in_progress') {
                    foundActive = b;
                }
@@ -229,7 +243,16 @@ function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfi
        const unsub = onSnapshot(q, (snap) => {
            const arr: Booking[] = [];
            snap.forEach(doc => {
-               const b = { id: doc.id, ...doc.data() } as Booking;
+               const raw = doc.data();
+               const b = { 
+                   id: doc.id, 
+                   ...raw,
+                   name: decryptText(raw.name),
+                   phone: decryptText(raw.phone),
+                   txId: decryptText(raw.txId),
+                   specialRequest: decryptText(raw.specialRequest)
+               } as Booking;
+
                if (b.therapist === loggedInStaff.name && b.date === todayStr && (b.status === 'completed' || b.status === 'cancelled')) {
                    arr.push(b);
                }
