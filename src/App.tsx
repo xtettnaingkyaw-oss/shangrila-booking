@@ -18,9 +18,27 @@ const DEFAULT_BRANDING: AppBranding = {
 const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [{ id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' }];
 const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i, password: '' }));
 const DEFAULT_PROMOTION: PromotionSettings = { isActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' };
+
+// Service Menu များကို အပြည့်အစုံ ထည့်သွင်းထားပါသည်
 const DEFAULT_CATEGORIES: MenuCategory[] = [
-  { id: 'massage', title: 'Massage', items: [{ id: 'm1', name: 'Traditional Massage', price: 25000, duration: '60 Mins' }] },
-  { id: 'hotel', title: 'Hotel & Home Services', items: [{ id: 'h1', name: 'Part Time Outcall Service', price: 70000, duration: '100 Mins' }] }
+  { 
+    id: 'massage', 
+    title: 'Massage', 
+    items: [
+      { id: 'm1', name: 'Traditional Massage', price: 25000, duration: '60 Mins' },
+      { id: 'm2', name: 'Aroma Oil Massage', price: 35000, duration: '60 Mins' },
+      { id: 'm3', name: 'Deep Tissue Sport Massage', price: 40000, duration: '90 Mins' },
+      { id: 'm4', name: 'Special VIP Package', price: 60000, duration: '120 Mins' }
+    ] 
+  },
+  { 
+    id: 'hotel', 
+    title: 'Hotel & Home Services', 
+    items: [
+      { id: 'h1', name: 'Part Time Outcall Service', price: 70000, duration: '100 Mins' },
+      { id: 'h2', name: 'VVIP Master Room', price: 90000, duration: '120 Mins' }
+    ] 
+  }
 ];
 
 // Default Instructions
@@ -114,7 +132,7 @@ function MainApp() {
         console.warn("Could not fetch therapists, using defaults:", err);
       }
 
-      const finalCategories = Array.isArray(loadedData.categories) ? loadedData.categories : DEFAULT_CATEGORIES;
+      const finalCategories = Array.isArray(loadedData.categories) && loadedData.categories.length > 0 ? loadedData.categories : DEFAULT_CATEGORIES;
       const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
       const finalPaymentMethods = Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS;
       const finalPromotion = loadedData.promotion || DEFAULT_PROMOTION;
