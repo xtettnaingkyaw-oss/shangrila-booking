@@ -182,10 +182,10 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
           const b = { 
               id: doc.id, 
               ...raw,
-              name: decryptText(raw.name),
-              phone: decryptText(raw.phone),
-              txId: decryptText(raw.txId),
-              specialRequest: decryptText(raw.specialRequest)
+              name: decryptText(raw.name) || raw.name,
+              phone: decryptText(raw.phone) || raw.phone,
+              txId: decryptText(raw.txId) || raw.txId,
+              specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
           } as Booking; 
           data.push(b); 
           if (b.status === 'pending') currentPendingCount++; 
@@ -254,7 +254,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
 
       {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
       {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
-      {tab === 'users' && hasAccess('users') && <AdminUsersList />}
+      {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} />}
       {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
     </div>
@@ -393,11 +393,8 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
               </div>
            </div>
 
-           {/* DASHBOARD VIEW WITH LATE TIME DISPLAY */}
            {view === 'dashboard' && (
               <div className="space-y-8 animate-fade-in">
-                 
-                 {/* Currently In Service */}
                  <div>
                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
                      {activeBookings.length === 0 ? (
@@ -441,7 +438,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                      )}
                  </div>
 
-                 {/* Currently on Out Pass */}
                  <div>
                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
                      {activeOutpasses.length === 0 ? (
@@ -483,7 +479,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                      )}
                  </div>
 
-                 {/* Today's Out Pass Quota (New Section) */}
                  <div>
                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><User className="w-4 h-4 mr-2 text-blue-500" /> Today's Out Pass Quota (ဒီနေ့ ထွက်ခွင့်အခြေအနေ)</h3>
                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -502,7 +497,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                          })}
                      </div>
                  </div>
-
               </div>
            )}
 
@@ -586,7 +580,7 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
    );
 }
 
-function AdminUsersList() {
+function AdminUsersList({ adminRole }: { adminRole: string }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -602,8 +596,8 @@ function AdminUsersList() {
              docId: doc.id,
              ...raw,
              phone: decryptText(raw.phone) || doc.id,
-             name: decryptText(raw.name),
-             password: decryptText(raw.password)
+             name: decryptText(raw.name) || raw.name,
+             password: decryptText(raw.password) || raw.password
           });
       });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -611,6 +605,7 @@ function AdminUsersList() {
     } catch (e) { console.error(e); }
     setLoading(false);
   };
+  
   useEffect(() => { fetchUsers(); }, []);
 
   const handleUpdateUser = async (e: React.FormEvent) => {
@@ -625,6 +620,15 @@ function AdminUsersList() {
       setEditingUser(null);
       fetchUsers();
     } catch (e) { alert('Error updating user'); }
+  };
+
+  const handleDeleteUser = async (docId: string, phone: string) => {
+    if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
+    if (!window.confirm(`User [${phone}] ကို အပြီးတိုင် ဖျက်မည် သေချာပါသလား?`)) return;
+    try {
+      await deleteDoc(doc(db, 'users', docId));
+      fetchUsers();
+    } catch (e) { alert('Error deleting user'); }
   };
 
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Users...</div>;
@@ -648,7 +652,32 @@ function AdminUsersList() {
       )}
 
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[700px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td><td className="p-3 text-right"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center ml-auto"><Edit className="w-3 h-3 mr-1"/> Edit</button></td></tr>))}</tbody></table></div>
+      <div className="overflow-x-auto">
+         <table className="w-full text-left border-collapse min-w-[700px]">
+             <thead>
+                 <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+                     <th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th><th className="p-3 pb-4 text-right">Action</th>
+                 </tr>
+             </thead>
+             <tbody>
+                 {users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}
+                 {users.map((u, idx) => (
+                 <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition">
+                     <td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td>
+                     <td className="p-3 font-bold text-gray-800">{u.name || '-'}</td>
+                     <td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td>
+                     <td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
+                     <td className="p-3 text-right">
+                         <div className="flex items-center justify-end space-x-2">
+                             <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center"><Edit className="w-3 h-3 mr-1"/> Edit</button>
+                             <button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button>
+                         </div>
+                     </td>
+                 </tr>
+                 ))}
+             </tbody>
+         </table>
+      </div>
     </div>
   );
 }
@@ -683,7 +712,6 @@ function AdminManagementList() {
     e.preventDefault();
     if(!newAdmin.username || !newAdmin.password) return;
     try {
-      // Secure Code ဖြင့် Random ID Doc ဆောက်ပြီး သိမ်းမည်
       await addDoc(collection(db, 'admins'), { 
           username: encryptText(newAdmin.username), 
           password: encryptText(newAdmin.password),
@@ -725,7 +753,6 @@ function AdminManagementList() {
             <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Password</label><input type="text" value={newAdmin.password} onChange={e=>setNewAdmin({...newAdmin, password: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" required /></div>
         </div>
         
-        {/* Role & Permissions Selection */}
         <div className="w-full mt-4 border-t border-gray-200 pt-4">
             <label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label>
             <div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3">
@@ -765,7 +792,6 @@ function AdminManagementList() {
 
 // Admin Settings
 function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
-  // Database ထဲက လာတဲ့ Encrypted Password တွေကို စစချင်း Decrypt လုပ်ပေးထားပါမည်
   const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(() => {
       return (appData.therapists || []).map(t => ({...t, password: decryptText(t.password) || t.password}));
   });
@@ -774,8 +800,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
   const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
-  
-  // DOWNLOAD APP INSTRUCTIONS STATE
   const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
 
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
@@ -793,6 +817,68 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     };
     fetchInstallSteps();
   }, []);
+
+  const handleMigrateDatabase = async () => {
+      if (!window.confirm("Database ထဲရှိ Data အဟောင်းများအားလုံးကို Secure Code သို့ ပြောင်းလဲမည် သေချာပါသလား?")) return;
+      setSavingCategory('migration');
+      try {
+          // 1. Users Migration
+          const uSnap = await getDocs(collection(db, 'users'));
+          const uPromises: any[] = [];
+          uSnap.forEach(d => {
+              const raw = d.data();
+              if (d.id.length < 15 || (raw.phone && !raw.phone.startsWith('U2FsdGVk'))) {
+                  const originalPhone = raw.phone || d.id;
+                  uPromises.push(addDoc(collection(db, 'users'), {
+                      phone: encryptText(originalPhone),
+                      name: encryptText(raw.name || ''),
+                      password: encryptText(raw.password || ''),
+                      createdAt: raw.createdAt || Date.now()
+                  }).then(() => deleteDoc(doc(db, 'users', d.id))));
+              }
+          });
+          await Promise.all(uPromises);
+
+          // 2. Bookings Migration
+          const bSnap = await getDocs(collection(db, 'bookings'));
+          const bPromises: any[] = [];
+          bSnap.forEach(d => {
+              const raw = d.data();
+              if ((raw.phone && !raw.phone.startsWith('U2FsdGVk')) || (raw.name && !raw.name.startsWith('U2FsdGVk'))) {
+                  bPromises.push(updateDoc(doc(db, 'bookings', d.id), {
+                      phone: encryptText(raw.phone || '-'),
+                      name: encryptText(raw.name || 'Walk-in Guest'),
+                      txId: encryptText(raw.txId || '-'),
+                      specialRequest: encryptText(raw.specialRequest || '')
+                  }));
+              }
+          });
+          await Promise.all(bPromises);
+
+          // 3. Admins Migration
+          const aSnap = await getDocs(collection(db, 'admins'));
+          const aPromises: any[] = [];
+          aSnap.forEach(d => {
+              const raw = d.data();
+              if (d.id.length < 15 || (raw.username && !raw.username.startsWith('U2FsdGVk'))) {
+                  const originalUser = raw.username || d.id;
+                  aPromises.push(addDoc(collection(db, 'admins'), {
+                      username: encryptText(originalUser),
+                      password: encryptText(raw.password || ''),
+                      role: raw.role || 'super_admin',
+                      permissions: raw.permissions || ['bookings', 'reports', 'users', 'admins', 'settings']
+                  }).then(() => deleteDoc(doc(db, 'admins', d.id))));
+              }
+          });
+          await Promise.all(aPromises);
+
+          alert("Data အဟောင်းများအားလုံးကို အောင်မြင်စွာ Encrypt လုပ်ပြီးပါပြီ။");
+      } catch (e) {
+          console.error(e);
+          alert("Migration Error. Please check console.");
+      }
+      setSavingCategory(null);
+  };
 
   const handleSaveCategory = async (cIdx: number) => {
     const cat = localCategories[cIdx];
@@ -822,7 +908,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setSavingCategory('therapists');
     try {
       const finalizedTherapists = localTherapists.map((t, idx) => ({ ...t, order: idx }));
-      // ဝန်ထမ်းများ၏ Password များကို Database ထဲမသိမ်းခင် Encrypt လုပ်ပါမည်
       const tPromises = finalizedTherapists.map((t) => setDoc(doc(db, 'therapists', t.id), { 
           name: t.name, 
           images: t.images, 
@@ -833,7 +918,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       await Promise.all([...tPromises, ...delPromises]);
       setDeletedTherapistIds([]);
       setLocalTherapists(finalizedTherapists);
-      // Wait for appData refresh to handle encryption properly
       alert('Therapists saved successfully.');
     } catch (e) { alert('Update error.'); }
     setSavingCategory(null);
@@ -913,6 +997,24 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
   return (
     <div className="space-y-6">
+
+      {/* Database Upgrade Section (NEW) */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-red-500">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+              <div className="mb-4 sm:mb-0">
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><ShieldCheck className="w-5 h-5 mr-2 text-red-500" /> Security Upgrade (Data Migration)</h3>
+                  <p className="text-xs text-gray-500 mt-1">အရင်က ရိုးရိုး Text အနေဖြင့် သိမ်းထားသော Data အဟောင်းများအားလုံးကို Secure Code (Encrypt) အဖြစ်သို့ အလိုအလျောက် ပြောင်းလဲပေးမည်ဖြစ်ပါသည်။</p>
+              </div>
+              <button disabled={savingCategory === 'migration'} onClick={handleMigrateDatabase} className="flex items-center bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-red-100 flex-shrink-0 sm:ml-3 transition">
+                 {savingCategory === 'migration' ? <div className="w-4 h-4 mr-2 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div> : <ShieldAlert className="w-4 h-4 mr-2" />}
+                 {savingCategory === 'migration' ? 'Upgrading...' : 'Upgrade Old Data Now'}
+              </button>
+          </div>
+          <div className="text-[10px] bg-red-50 p-3 rounded text-red-600 font-semibold">
+              <span className="font-bold uppercase mb-1 block">⚠️ သတိပြုရန်</span>
+              ဤခလုတ်ကို တစ်ကြိမ်နှိပ်ရုံဖြင့် လုံလောက်ပါသည်။ Data များ များပြားပါက စက္ကန့်အနည်းငယ် ကြာနိုင်ပါသည်။
+          </div>
+      </div>
 
       {/* App Promotion & Discounts Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6">
