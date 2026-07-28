@@ -1,7 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
-// Vercel (သို့) .env ထဲက Key တွေကို ချိတ်ဆက်လှမ်းယူမယ့် စနစ်
+// Vercel က Key တွေကို တကယ် မြင်/မမြင် စစ်ဆေးပေးမည့် အပိုင်း
+console.log("Firebase Keys Status:", {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ? "✅ ရောက်သည်" : "❌ မရောက်ပါ",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ? "✅ ရောက်သည်" : "❌ မရောက်ပါ",
+});
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
