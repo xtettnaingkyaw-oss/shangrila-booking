@@ -1,4 +1,13 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React from 'react';
+
+export default function App() {
+  return (
+    <div style={{ padding: '20px', textAlign: 'center' }}>
+      <h1>The Shangri-La Men's Retreat</h1>
+      <p>Welcome to Online Booking System</p>
+    </div>
+  );
+}
 
 import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 
