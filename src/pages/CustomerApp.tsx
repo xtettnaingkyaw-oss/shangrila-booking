@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { encryptText, decryptText } from '../security'; // လုံခြုံရေးစနစ်ကို ချိတ်ဆက်ခြင်း
 
 // Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2 } from 'lucide-react';
@@ -13,7 +14,6 @@ const ICON_MAP: Record<string, any> = {
   massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
 };
 
-// ည ၁၁ နာရီအထိ Night Booking အတွက် Time Slots များကို တိုးမြှင့်ထားပါသည်
 const ALL_TIME_SLOTS = ["6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"];
 
 const getLocalTodayStr = () => {
@@ -27,7 +27,6 @@ export const getTomorrowStr = () => {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 };
 
-// ဝန်ဆောင်မှုကြာချိန်ရှည်လျားသော Service များအတွက် Helper
 export const getFixedServiceDetails = (serviceName: string | undefined | null) => {
     if (!serviceName) return null;
     const name = serviceName.toLowerCase();
@@ -102,7 +101,6 @@ function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: numbe
     return blocked;
 }
 
-// ဤ Function သည် အချိန် Text (e.g. "9:00 AM" or "9:00 AM to 11:00 AM") မှ Slots များကို ဖြတ်ထုတ်ပေးပါသည်
 export function getSlotsFromTimeText(t: string, neededSlotsByDuration: number): string[] {
     if (!t) return [];
     if (t.includes("to")) {
@@ -132,7 +130,6 @@ export function getSlotsFromTimeText(t: string, neededSlotsByDuration: number): 
     }
 }
 
-// Master Helper: Booking တစ်ခုရဲ့ အသုံးပြုသွားတဲ့ Time Slots တွေကို အတိအကျ တွက်ထုတ်ပေးမည့် Function
 export function getBookingCoveredSlots(b: Booking): string[] {
     if (!b) return [];
     const serviceLower = (b.service || '').toLowerCase();
@@ -144,7 +141,7 @@ export function getBookingCoveredSlots(b: Booking): string[] {
         if (isNight) {
             const d = new Date(b.startTimeMillis);
             d.setDate(d.getDate() + 1);
-            d.setHours(8, 0, 0, 0); // Night Booking ဆိုလျှင် နောက်ရက် ၈ နာရီအထိ သတ်မှတ်မည်
+            d.setHours(8, 0, 0, 0); 
             end = Math.max(end, d.getTime());
         }
         slots = Array.from(getSlotsCoveredByInterval(b.startTimeMillis, end, b.date || ''));
@@ -275,11 +272,12 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
     const unsubscribe = onSnapshot(q, (snap) => {
       let changed = false;
       snap.docs.forEach((doc) => {
-        const b = { id: doc.id, ...doc.data() } as Booking;
-        if (b.phone === userPhone) {
-          const oldStatus = prevStatuses.current[b.id!];
-          if (oldStatus && oldStatus !== b.status) changed = true;
-          prevStatuses.current[b.id!] = b.status;
+        const raw = doc.data();
+        const bPhone = decryptText(raw.phone) || raw.phone;
+        if (bPhone === userPhone) {
+          const oldStatus = prevStatuses.current[doc.id];
+          if (oldStatus && oldStatus !== raw.status) changed = true;
+          prevStatuses.current[doc.id] = raw.status;
         }
       });
       if (!isFirstLoad.current && changed) {
@@ -387,7 +385,17 @@ export function CustomerBookingWizard({
       const q = query(collection(db, 'bookings'));
       const unsub = onSnapshot(q, (snap) => {
           const arr: Booking[] = [];
-          snap.forEach(d => arr.push({id: d.id, ...d.data()} as Booking));
+          snap.forEach(d => {
+             const raw = d.data();
+             arr.push({
+                 id: d.id, 
+                 ...raw,
+                 name: decryptText(raw.name),
+                 phone: decryptText(raw.phone),
+                 txId: decryptText(raw.txId),
+                 specialRequest: decryptText(raw.specialRequest)
+             } as Booking);
+          });
           setAllBookings(arr);
       });
       return () => unsub();
@@ -411,7 +419,6 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // VIP=3, Normal=2 Room Logic Helper (Global Function ကို အသုံးပြုသည် - Buffer မပါဝင်ပါ)
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -425,7 +432,7 @@ export function CustomerBookingWizard({
           if (isBookingOutcall) return; 
 
           const isVip = serviceLower.includes('vvip');
-          const coveredSlots = getBookingCoveredSlots(b); // Get actual slots without buffer
+          const coveredSlots = getBookingCoveredSlots(b); 
 
           coveredSlots.forEach(slot => {
               const current = usage.get(slot);
@@ -441,7 +448,6 @@ export function CustomerBookingWizard({
 
   const roomUsageMap = useMemo(() => getRoomUsageMap(formData.date || todayStr, allBookings), [allBookings, formData.date, todayStr]);
 
-  // လက်ရှိအချိန် (Current Time) အတွက် အခန်းပြည့်မပြည့် စစ်ဆေးခြင်း (Service Tab တွင် VVIP ပိတ်ရန်အတွက်)
   const currentRoomUsage = useMemo(() => {
       let vip = 0;
       let normal = 0;
@@ -463,7 +469,7 @@ export function CustomerBookingWizard({
       
       allBookings.forEach(b => {
           if (b.status === 'cancelled' || b.status === 'completed') return;
-          if (b.date !== todayStr) return; // ယနေ့အတွက်သာ
+          if (b.date !== todayStr) return; 
           
           const serviceLower = (b.service || '').toLowerCase();
           if (serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home')) return;
@@ -481,7 +487,6 @@ export function CustomerBookingWizard({
   const isVipCurrentlyFull = currentRoomUsage.vip >= 3 || currentRoomUsage.total >= 5;
   const disableVvipToggle = !formData.selectedItem?.vvipPrice || isVipCurrentlyFull;
 
-  // ဤနေရာတွင် ဝန်ထမ်းအတွက် "နာရီဝက် (1 Slot)" Buffer Time ကို ထည့်သွင်းတွက်ချက်ပါသည်
   const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
       const blocked = new Set<string>();
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
@@ -493,14 +498,11 @@ export function CustomerBookingWizard({
 
           const coveredSlots = getBookingCoveredSlots(b);
           if (coveredSlots.length > 0) {
-              // 1. အမှန်တကယ် အသုံးပြုမည့် Service အချိန်များကို Block လုပ်မည်
               coveredSlots.forEach(slot => blocked.add(slot));
               
-              // 2. ဘိုကင်မတိုင်မီ "ရှေ့နာရီဝက် (30 mins buffer)" ကို Block လုပ်မည်
               const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
               if (firstIdx > 0) blocked.add(ALL_TIME_SLOTS[firstIdx - 1]);
               
-              // 3. ဘိုကင်အပြီး "နောက်နာရီဝက် (30 mins buffer)" ကို Block လုပ်မည်
               const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
               if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blocked.add(ALL_TIME_SLOTS[lastIdx + 1]);
           }
@@ -526,7 +528,6 @@ export function CustomerBookingWizard({
       const coveredSlotsForT = getSlotsFromTimeText(actualTestStr, neededSlots);
       if (coveredSlotsForT.length === 0) return { available: false, reason: 'invalid' };
 
-      // 1. Therapist Available?
       if (formData.therapist) {
           const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date || todayStr);
           for (const slot of coveredSlotsForT) {
@@ -534,7 +535,6 @@ export function CustomerBookingWizard({
           }
       }
 
-      // 2. Room Available? (VIP = 3, Normal = 2) - Buffer မပါဝင်ပါ
       const serviceLower = (formData.selectedItem?.name || '').toLowerCase();
       const isCurrentOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
       
@@ -627,7 +627,6 @@ export function CustomerBookingWizard({
       }
   };
 
-  // Time Slot Logic (With Real-Time Check for Today & Night Booking Logic)
   const getAvailableTimeSlots = (targetDateOverride?: string) => {
     let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("11:00 PM") + 1);
 
@@ -702,7 +701,6 @@ export function CustomerBookingWizard({
       const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
 
       if (fixedDetails) {
-          // If fixed duration, checking just 1 slot to see if entirely blocked is sufficient
           neededSlots = 1; 
       } else if (formData.selectedItem) {
           const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
@@ -783,7 +781,17 @@ export function CustomerBookingWizard({
     try {
       const freshSnap = await getDocs(query(collection(db, 'bookings')));
       const freshBookings: Booking[] = [];
-      freshSnap.forEach(d => freshBookings.push({id: d.id, ...d.data()} as Booking));
+      freshSnap.forEach(d => {
+         const raw = d.data();
+         freshBookings.push({
+             id: d.id, 
+             ...raw,
+             name: decryptText(raw.name),
+             phone: decryptText(raw.phone),
+             txId: decryptText(raw.txId),
+             specialRequest: decryptText(raw.specialRequest)
+         } as Booking);
+      });
       
       let isOverlap = false;
       
@@ -871,7 +879,6 @@ export function CustomerBookingWizard({
          setLoading(false); return;
       }
 
-      // Final Room Check before submit
       const serviceLowerNameForCheck = (formData.selectedItem?.name || '').toLowerCase();
       const isCurrentOutcall = serviceLowerNameForCheck.includes('outcall') || serviceLowerNameForCheck.includes('hotel') || serviceLowerNameForCheck.includes('home');
       if (!isCurrentOutcall) {
@@ -914,39 +921,57 @@ export function CustomerBookingWizard({
           }
       }
 
+      // --- USER DATA ENCRYPTION ---
       if (formData.phone && formData.phone.trim() !== '') {
-        const userRef = doc(db, 'users', formData.phone.trim());
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          await setDoc(userRef, { phone: formData.phone.trim(), name: formData.name || '', password: '', createdAt: Date.now() });
-        } else if (!userSnap.data().name) {
-          await updateDoc(userRef, { name: formData.name || '' });
+        const usersSnap = await getDocs(collection(db, 'users'));
+        let userRefId: string | null = null;
+        let hasName = false;
+
+        usersSnap.forEach(d => {
+          const decPhone = decryptText(d.data().phone) || d.id;
+          if (decPhone === formData.phone.trim() || d.id === formData.phone.trim()) {
+             userRefId = d.id;
+             hasName = !!decryptText(d.data().name);
+          }
+        });
+
+        if (!userRefId) {
+          // Document ID ကို Random ID အဖြစ်ပြောင်းသိမ်းမည်
+          await addDoc(collection(db, 'users'), {
+             phone: encryptText(formData.phone.trim()),
+             name: encryptText(formData.name || ''),
+             password: encryptText(''),
+             createdAt: Date.now()
+          });
+        } else if (!hasName) {
+          await updateDoc(doc(db, 'users', userRefId), {
+             name: encryptText(formData.name || '')
+          });
         }
       }
 
-      // Safety check for NaN values before sending to Firestore
       if (isNaN(expectedEndTimeMillis)) expectedEndTimeMillis = fluidStartTimeMillis + (60 * 60 * 1000);
 
+      // --- BOOKING DATA ENCRYPTION ---
       const dataToSave: any = {
-        name: formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest'), 
-        phone: formData.phone || '-',
+        name: encryptText(formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest')), 
+        phone: encryptText(formData.phone || '-'),
         service: `${formData.selectedItem?.name || ''} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`.trim(),
         therapist: formData.therapist?.name || 'Any Available Therapist',
         date: formData.date || todayStr, 
         time: finalTimeStr || '00:00', 
         paymentMethod: isStaffMode ? 'Cash Payment in Shop' : (formData.paymentMethod || '-'), 
-        txId: isStaffMode ? 'CASH' : (formData.txId || '-'), 
+        txId: encryptText(isStaffMode ? 'CASH' : (formData.txId || '-')), 
         totalPrice: Number(calculateTotal()) || 0, 
         status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
         createdAt: Date.now(),
-        specialRequest: formData.specialRequest || '',
+        specialRequest: encryptText(formData.specialRequest || ''),
         ...(isStaffImmediate && {
-           startTimeMillis: Number(fluidStartTimeMillis) || Date.now(),
-           expectedEndTimeMillis: Number(expectedEndTimeMillis) || Date.now()
+            startTimeMillis: Number(fluidStartTimeMillis) || Date.now(),
+            expectedEndTimeMillis: Number(expectedEndTimeMillis) || Date.now()
         })
       };
 
-      // Clean up any stray undefined properties just to be absolutely safe for Firestore
       Object.keys(dataToSave).forEach(key => dataToSave[key] === undefined ? delete dataToSave[key] : {});
 
       await addDoc(collection(db, 'bookings'), dataToSave);
@@ -1005,11 +1030,9 @@ export function CustomerBookingWizard({
       {/* 🌟 PREMIUM PROMOTION BANNER 🌟 */}
       {promoActive && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between">
-           {/* Decorative elements */}
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
            <div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
 
-           {/* Left Side: Icon + Title */}
            <div className="relative z-10 flex items-center">
               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0">
                  <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" />
@@ -1029,7 +1052,6 @@ export function CustomerBookingWizard({
               </div>
            </div>
 
-           {/* Right Side: Discounts Grid */}
            <div className="relative z-10 flex flex-col gap-1.5 ml-3">
                <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm">
                   <span className="flex items-center"><Home className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Hotel</span> 
@@ -1064,7 +1086,6 @@ export function CustomerBookingWizard({
         )
       })}</div>
       
-      {/* VVIP Toggle Display */}
       <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
         <div className="flex items-center">
             <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
@@ -1102,7 +1123,6 @@ export function CustomerBookingWizard({
   );
 
   const renderTherapistSelection = (currentStep: number) => {
-      // တွက်ချက်မှု - ဝန်ထမ်းအားလုံး ပြည့်နေသလား စစ်ဆေးခြင်း
       let globalCheckDate = formData.date;
       if (!globalCheckDate) {
           const now = new Date();
@@ -1189,7 +1209,6 @@ export function CustomerBookingWizard({
                 </button>
              </div>
 
-             {/* နောက်ရက် ကြိုတင်ဘိုကင် ခလုတ် - အောက်ဆုံးတွင်ထားရှိပြီး ဝန်ထမ်းအားလုံးပြည့်နေမှသာ ပေါ်မည် */}
              {(!formData.date || formData.date === todayStr) && allFullyBooked && (
                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-center shadow-sm w-full animate-fade-in mt-4">
                      <p className="text-sm font-bold text-gray-700 mb-3 leading-relaxed">
@@ -1217,7 +1236,6 @@ export function CustomerBookingWizard({
 
   return (
     <div>
-      {/* GLOBAL CUSTOM ALERT */}
       <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
 
       {renderStepper()}
@@ -1225,7 +1243,6 @@ export function CustomerBookingWizard({
       {step === 1 && (isTherapistFirst ? renderTherapistSelection(1) : renderServiceSelection(1))}
       {step === 2 && (isTherapistFirst ? renderServiceSelection(2) : renderTherapistSelection(2))}
 
-      {/* STEP 3: DATE & TIME */}
       {step === 3 && (
         <div className="animate-fade-in px-2 sm:px-0">
           <div className="text-center mb-8">
@@ -1358,7 +1375,6 @@ export function CustomerBookingWizard({
         </div>
       )}
 
-      {/* STEP 4: CONFIRM */}
       {step === 4 && (
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10 px-2 sm:px-0">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး အတည်ပြုပေးပါ)</p></div>
@@ -1456,7 +1472,6 @@ export function CustomerBookingWizard({
                   </div>
                 )}
                 
-                {/* Countdown Timer Display */}
                 {selectedPaymentConfig && (
                   <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
                      <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
@@ -1525,7 +1540,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   const [viewingDetails, setViewingDetails] = useState<TherapistProfile | null>(null);
   const todayStr = getLocalTodayStr();
 
-  // Dashboard Auto-Refresh for current time
   const [now, setNow] = useState(new Date());
   useEffect(() => {
      const timer = setInterval(() => setNow(new Date()), 60000); // 1 minute
@@ -1536,7 +1550,17 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
     const q = query(collection(db, 'bookings'));
     const unsub = onSnapshot(q, (snap) => {
         const arr: Booking[] = [];
-        snap.forEach(d => arr.push({id: d.id, ...d.data()} as Booking));
+        snap.forEach(d => {
+            const raw = d.data();
+            arr.push({
+                id: d.id, 
+                ...raw,
+                name: decryptText(raw.name),
+                phone: decryptText(raw.phone),
+                txId: decryptText(raw.txId),
+                specialRequest: decryptText(raw.specialRequest)
+            } as Booking);
+        });
         setBookings(arr);
     });
     return () => unsub();
@@ -1609,7 +1633,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       return merged.map(b => {
           let endTime = getNextSlotTime(b.endSlot);
           if (b.state === 'Booked') {
-             // Find matching booking to determine exact end time
              const matchingNB = tBookings.find(bk => (bk.service || '').split('(')[0].trim() === b.service);
              if (matchingNB) {
                  if (matchingNB.time && matchingNB.time.includes("Next Day")) {
@@ -1650,9 +1673,9 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
           if (coveredSlots.length > 0) {
               coveredSlots.forEach(slot => blockedNow.add(slot));
               const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
-              if (firstIdx > 0) blockedNow.add(ALL_TIME_SLOTS[firstIdx - 1]); // Add Front Buffer
+              if (firstIdx > 0) blockedNow.add(ALL_TIME_SLOTS[firstIdx - 1]); 
               const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
-              if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blockedNow.add(ALL_TIME_SLOTS[lastIdx + 1]); // Add Back Buffer
+              if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blockedNow.add(ALL_TIME_SLOTS[lastIdx + 1]); 
           }
 
           if (b.status === 'in_progress') {
@@ -1739,7 +1762,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 
   return (
     <div className="animate-fade-in px-2 sm:px-0 relative">
-       {/* SCHEDULE DETAILED VIEW MODAL */}
        {viewingDetails && (
            <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingDetails(null)}>
                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -1792,7 +1814,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
                        <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
                           <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>
-                             {status.label}
+                              {status.label}
                           </span>
                           {status.activeService && (
                               <span className="block pb-1 mb-1 border-b text-current opacity-90 leading-snug" style={{ borderColor: 'currentColor' }}>
@@ -1800,7 +1822,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                               </span>
                           )}
                           <span className="font-semibold block opacity-90 leading-snug">
-                             {status.mm}
+                              {status.mm}
                           </span>
                        </div>
                    </div>
@@ -1873,8 +1895,18 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
         const snap = await getDocs(q);
         const data: Booking[] = [];
         snap.forEach((doc) => {
-          const b = { id: doc.id, ...doc.data() } as Booking;
-          if (b.phone === userPhone) data.push(b);
+          const raw = doc.data();
+          const decPhone = decryptText(raw.phone) || raw.phone;
+          if (decPhone === userPhone) {
+              data.push({
+                  id: doc.id, 
+                  ...raw,
+                  name: decryptText(raw.name),
+                  phone: decPhone,
+                  txId: decryptText(raw.txId),
+                  specialRequest: decryptText(raw.specialRequest)
+              } as Booking);
+          }
         });
         data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setBookings(data);
@@ -1938,6 +1970,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
 // ==========================================
 export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [userDocId, setUserDocId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({ name: '', password: '' });
@@ -1947,12 +1980,16 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
   useEffect(() => {
     if (!userPhone) return;
     const fetchUser = async () => {
-      const snap = await getDoc(doc(db, 'users', userPhone));
-      if (snap.exists()) {
-        const data = snap.data() as UserProfile;
-        setProfile(data);
-        setFormData({ name: data.name || '', password: data.password || '' });
-      }
+      const snap = await getDocs(collection(db, 'users'));
+      snap.forEach(d => {
+         const data = d.data() as UserProfile;
+         const decPhone = decryptText(data.phone) || d.id;
+         if (decPhone === userPhone || d.id === userPhone) {
+             setProfile({ ...data, name: decryptText(data.name), password: decryptText(data.password), phone: userPhone });
+             setFormData({ name: decryptText(data.name) || '', password: decryptText(data.password) || '' });
+             setUserDocId(d.id);
+         }
+      });
       setLoading(false);
     };
     fetchUser();
@@ -1960,9 +1997,10 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!userDocId) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', userPhone), { name: formData.name, password: formData.password });
+      await updateDoc(doc(db, 'users', userDocId), { name: encryptText(formData.name), password: encryptText(formData.password) });
       setProfile({ ...profile!, name: formData.name, password: formData.password });
       setEditMode(false);
       setAlertMessage("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
@@ -2021,11 +2059,20 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
   const handleNext = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const snap = await getDoc(doc(db, 'users', phone));
-      if (!snap.exists()) { setError("ဖုန်းနံပါတ် ရှာမတွေ့ပါ။ ဘိုကင်အရင်တင်ပေးပါခင်ဗျာ။"); }
+      const snap = await getDocs(collection(db, 'users'));
+      let found = false;
+      let userPass = '';
+      snap.forEach(d => {
+         const data = d.data();
+         const decPhone = decryptText(data.phone) || d.id;
+         if (decPhone === phone || d.id === phone) {
+            found = true;
+            userPass = decryptText(data.password);
+         }
+      });
+      if (!found) { setError("ဖုန်းနံပါတ် ရှာမတွေ့ပါ။ ဘိုကင်အရင်တင်ပေးပါခင်ဗျာ။"); }
       else {
-        const user = snap.data() as UserProfile;
-        if (user.password) { setStep(2); }
+        if (userPass) { setStep(2); }
         else { onLoginSuccess(phone); }
       }
     } catch (e) { setError("Network Error"); }
@@ -2035,9 +2082,16 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const snap = await getDoc(doc(db, 'users', phone));
-      const user = snap.data() as UserProfile;
-      if (user.password === password) { onLoginSuccess(phone); }
+      const snap = await getDocs(collection(db, 'users'));
+      let userPass = '';
+      snap.forEach(d => {
+         const data = d.data();
+         const decPhone = decryptText(data.phone) || d.id;
+         if (decPhone === phone || d.id === phone) {
+            userPass = decryptText(data.password);
+         }
+      });
+      if (userPass === password) { onLoginSuccess(phone); }
       else { setError("Password မှားယွင်းနေပါသည်။"); }
     } catch (e) { setError("Network Error"); }
     setLoading(false);
