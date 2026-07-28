@@ -1,7 +1,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
-import { Download, X, MapPin, Phone, LogOut, DatabaseBackup } from 'lucide-react';
+import { Download, X, MapPin, Phone, LogOut } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
 
 // Lazy load the specific apps to keep the initial bundle size extremely small
@@ -53,7 +53,6 @@ function MainApp() {
   const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff'>('customer');
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
   const [appData, setAppData] = useState<AppData | null>(null);
-  const [dbError, setDbError] = useState(false);
   
   // PWA Install Prompt State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -94,43 +93,42 @@ function MainApp() {
     else if (searchParams.get('mode') === 'staff') setAppMode('staff');
 
     const initData = async () => {
+      let loadedData: Partial<AppData> = {}; 
+      let loadedTherapists: TherapistProfile[] = [];
+
       try {
         const docRef = doc(db, 'settings', 'appData'); 
         const snap = await getDoc(docRef);
-        let loadedData: Partial<AppData> = {}; 
         if (snap.exists()) loadedData = snap.data() || {};
-        
-        const finalCategories = Array.isArray(loadedData.categories) ? loadedData.categories : DEFAULT_CATEGORIES;
-        const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
-        const finalPaymentMethods = Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS;
-        const finalPromotion = loadedData.promotion || DEFAULT_PROMOTION;
-        
-        // Admin Panel မှ သိမ်းဆည်းထားသော အဆင့်များကို ဆွဲယူခြင်း
-        const finalInstallSteps = loadedData.installSteps || DEFAULT_INSTALL_STEPS;
-        
+      } catch (err) {
+        console.warn("Could not fetch settings, using defaults:", err);
+      }
+
+      try {
         const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); 
         const tSnap = await getDocs(tQuery);
-        let loadedTherapists: TherapistProfile[] = [];
-        
         if (!tSnap.empty) { 
             tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); 
-        } else { 
-            loadedTherapists = DEFAULT_THERAPISTS; 
         }
-        
-        setAppData({ 
-            categories: finalCategories, 
-            therapists: loadedTherapists, 
-            branding: finalBranding, 
-            paymentMethods: finalPaymentMethods, 
-            promotion: finalPromotion, 
-            installSteps: finalInstallSteps 
-        });
       } catch (err) {
-        console.error("Firebase Connection Error:", err); 
-        setDbError(true);
-        // Error ဖြစ်သွားပါက App Freeze မဖြစ်စေရန် Data များကို မဆွဲတော့ပါ။
+        console.warn("Could not fetch therapists, using defaults:", err);
       }
+
+      const finalCategories = Array.isArray(loadedData.categories) ? loadedData.categories : DEFAULT_CATEGORIES;
+      const finalBranding = { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) };
+      const finalPaymentMethods = Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS;
+      const finalPromotion = loadedData.promotion || DEFAULT_PROMOTION;
+      const finalInstallSteps = loadedData.installSteps || DEFAULT_INSTALL_STEPS;
+      const finalTherapists = loadedTherapists.length > 0 ? loadedTherapists : DEFAULT_THERAPISTS;
+
+      setAppData({ 
+          categories: finalCategories, 
+          therapists: finalTherapists, 
+          branding: finalBranding, 
+          paymentMethods: finalPaymentMethods, 
+          promotion: finalPromotion, 
+          installSteps: finalInstallSteps 
+      });
     };
     initData();
   }, []);
@@ -142,33 +140,6 @@ function MainApp() {
     }, 1000);
     return () => clearInterval(interval);
   }, [loggedInAdmin]);
-
-  // ==========================================
-  // SAFE FALLBACK ERROR UI (App Freeze မဖြစ်စေရန်)
-  // ==========================================
-  if (dbError) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
-           <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-red-100 animate-fade-in">
-               <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100">
-                  <DatabaseBackup className="w-8 h-8" />
-               </div>
-               <h2 className="text-xl font-bold text-red-600 mb-2">Database Connection Failed</h2>
-               <p className="text-sm text-gray-600 mb-6 font-semibold leading-relaxed">
-                  Database တွင် Data ရှိသော်လည်း Vercel မှတဆင့် ချိတ်ဆက်၍မရဖြစ်နေပါသည်။ ကျေးဇူးပြု၍ အောက်ပါတို့ကို စစ်ဆေးပေးပါ-
-               </p>
-               <div className="text-left bg-gray-50 p-4 rounded-lg border border-gray-200 text-[11px] sm:text-xs text-gray-700 space-y-3 font-semibold mb-6">
-                   <p className="flex items-start"><span className="text-red-500 mr-1.5">•</span> Vercel Project Settings ထဲတွင် <b>Environment Variables (Firebase Keys)</b> များ အပြည့်အစုံ ထည့်သွင်းရန်ကျန်နေခြင်း။</p>
-                   <p className="flex items-start"><span className="text-red-500 mr-1.5">•</span> ENV ထည့်ပြီးသော်လည်း Vercel တွင် <b>Redeploy</b> အသစ် ပြန်မလုပ်ရသေးခြင်း။</p>
-                   <p className="flex items-start"><span className="text-red-500 mr-1.5">•</span> Firebase ၏ <b>Firestore Rules</b> ပိတ်နေခြင်း။</p>
-               </div>
-               <button onClick={() => window.location.reload()} className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-lg font-bold shadow-md hover:bg-opacity-90 transition">
-                  Refresh App
-               </button>
-           </div>
-        </div>
-      );
-  }
 
   if (!appData) { 
       return (
@@ -184,7 +155,6 @@ function MainApp() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col">
       
-      {/* ================= DYNAMIC DOWNLOAD INSTRUCTIONS MODAL ================= */}
       {showInstallModal && (
         <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden animate-fade-in shadow-2xl">
