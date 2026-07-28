@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
-import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { encryptText, decryptText } from '../security'; // လုံခြုံရေးစနစ်ကို ချိတ်ဆက်ခြင်း
 
 // Vercel တွင် Error မတက်စေရန် Admin Panel အတွက် လိုအပ်သော Icon များအားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut } from 'lucide-react';
@@ -24,6 +25,9 @@ const getLocalTodayStr = () => {
 
 // Admin Role သတ်မှတ်ရန် Local Interface Extension
 interface LocalAdminProfile extends AdminProfile {
+    docId?: string;
+    username?: string;
+    password?: string;
     role?: 'super_admin' | 'custom';
     permissions?: string[];
 }
@@ -77,17 +81,26 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('');
     try {
-      const snap = await getDoc(doc(db, 'admins', username));
-      if (snap.exists()) {
-        if (snap.data().password === password) onLogin(username);
+      const allAdmins = await getDocs(collection(db, 'admins'));
+      let foundUser: any = null;
+      
+      allAdmins.forEach(doc => {
+          const raw = doc.data();
+          const decUser = decryptText(raw.username) || doc.id; // Fallback to doc.id for older plain text
+          if (decUser === username) {
+              foundUser = { id: doc.id, ...raw, password: decryptText(raw.password) || raw.password };
+          }
+      });
+
+      if (foundUser) {
+        if (foundUser.password === password) onLogin(username);
         else setError('Invalid password');
       } else {
-        const allAdmins = await getDocs(collection(db, 'admins'));
         if (allAdmins.empty && username === 'admin' && password === 'admin123') {
-          // Default Super Admin ဖန်တီးခြင်း
-          await setDoc(doc(db, 'admins', 'admin'), { 
-              username: 'admin', 
-              password: 'admin123',
+          // Default Super Admin ဖန်တီးခြင်း (Secure Code ဖြင့်)
+          await addDoc(collection(db, 'admins'), { 
+              username: encryptText('admin'), 
+              password: encryptText('admin123'),
               role: 'super_admin',
               permissions: ['bookings', 'reports', 'users', 'admins', 'settings']
           });
@@ -132,17 +145,24 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
   useEffect(() => {
       const fetchRole = async () => {
           try {
-              const snap = await getDoc(doc(db, 'admins', loggedInAdmin));
-              if (snap.exists()) {
-                  const data = snap.data() as LocalAdminProfile;
-                  // Role မရှိသေးသော Account အဟောင်းများအား Super Admin ဟု သတ်မှတ်မည်
-                  const r = data.role || 'super_admin'; 
-                  const p = data.permissions || ['bookings', 'reports', 'users', 'admins', 'settings'];
+              const allAdmins = await getDocs(collection(db, 'admins'));
+              let matchedAdmin: LocalAdminProfile | null = null;
+              
+              allAdmins.forEach(d => {
+                 const raw = d.data();
+                 const decUser = decryptText(raw.username) || d.id;
+                 if (decUser === loggedInAdmin) {
+                     matchedAdmin = raw as LocalAdminProfile;
+                 }
+              });
+
+              if (matchedAdmin) {
+                  const r = matchedAdmin.role || 'super_admin'; 
+                  const p = matchedAdmin.permissions || ['bookings', 'reports', 'users', 'admins', 'settings'];
                   
                   setAdminRole(r);
                   setAdminPermissions(p);
 
-                  // ဝင်ခွင့်မရှိသော Tab တွင် ရောက်နေပါက ပထမဆုံး ဝင်ခွင့်ရှိသော Tab သို့ အလိုအလျောက် ပြောင်းပေးမည်
                   if (r !== 'super_admin' && !p.includes(tab) && p.length > 0) {
                       setTab(p[0] as any);
                   }
@@ -157,7 +177,19 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
     const q = query(collection(db, 'bookings'));
     const unsubscribe = onSnapshot(q, (snap) => {
       const data: Booking[] = []; let currentPendingCount = 0;
-      snap.forEach((doc) => { const b = { id: doc.id, ...doc.data() } as Booking; data.push(b); if (b.status === 'pending') currentPendingCount++; });
+      snap.forEach((doc) => { 
+          const raw = doc.data();
+          const b = { 
+              id: doc.id, 
+              ...raw,
+              name: decryptText(raw.name),
+              phone: decryptText(raw.phone),
+              txId: decryptText(raw.txId),
+              specialRequest: decryptText(raw.specialRequest)
+          } as Booking; 
+          data.push(b); 
+          if (b.status === 'pending') currentPendingCount++; 
+      });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setBookings(data); setPendingCount(currentPendingCount);
 
@@ -215,7 +247,6 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
             </button>
         )}
 
-        {/* Single Integrated Logout Button */}
         <button onClick={onLogout} className="px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm sm:ml-2">
             <LogOut className="w-4 h-4 mr-2" /> Logout
         </button>
@@ -556,16 +587,25 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
 }
 
 function AdminUsersList() {
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editingUser, setEditingUser] = useState<any>(null);
   const [editForm, setEditForm] = useState({ name: '', password: '' });
 
   const fetchUsers = async () => {
     try {
       const snap = await getDocs(collection(db, 'users'));
-      const data: UserProfile[] = [];
-      snap.forEach(doc => data.push(doc.data() as UserProfile));
+      const data: any[] = [];
+      snap.forEach(doc => {
+          const raw = doc.data();
+          data.push({
+             docId: doc.id,
+             ...raw,
+             phone: decryptText(raw.phone) || doc.id,
+             name: decryptText(raw.name),
+             password: decryptText(raw.password)
+          });
+      });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setUsers(data);
     } catch (e) { console.error(e); }
@@ -577,7 +617,10 @@ function AdminUsersList() {
     e.preventDefault();
     if (!editingUser) return;
     try {
-      await updateDoc(doc(db, 'users', editingUser.phone), { name: editForm.name, password: editForm.password });
+      await updateDoc(doc(db, 'users', editingUser.docId), { 
+          name: encryptText(editForm.name), 
+          password: encryptText(editForm.password) 
+      });
       alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။');
       setEditingUser(null);
       fetchUsers();
@@ -621,7 +664,15 @@ function AdminManagementList() {
     try {
       const snap = await getDocs(collection(db, 'admins'));
       const data: LocalAdminProfile[] = [];
-      snap.forEach(doc => data.push(doc.data() as LocalAdminProfile));
+      snap.forEach(doc => {
+          const raw = doc.data();
+          data.push({
+             docId: doc.id,
+             ...raw,
+             username: decryptText(raw.username) || doc.id,
+             password: decryptText(raw.password) || raw.password
+          });
+      });
       setAdmins(data);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -632,9 +683,10 @@ function AdminManagementList() {
     e.preventDefault();
     if(!newAdmin.username || !newAdmin.password) return;
     try {
-      await setDoc(doc(db, 'admins', newAdmin.username), { 
-          username: newAdmin.username, 
-          password: newAdmin.password,
+      // Secure Code ဖြင့် Random ID Doc ဆောက်ပြီး သိမ်းမည်
+      await addDoc(collection(db, 'admins'), { 
+          username: encryptText(newAdmin.username), 
+          password: encryptText(newAdmin.password),
           role: newAdmin.role,
           permissions: newAdmin.role === 'super_admin' ? ['bookings', 'reports', 'users', 'admins', 'settings'] : newAdmin.permissions
       });
@@ -643,11 +695,11 @@ function AdminManagementList() {
     } catch (e) { alert('Error adding admin'); }
   };
 
-  const handleDeleteAdmin = async (username: string) => {
+  const handleDeleteAdmin = async (docId: string, username: string) => {
     if (admins.length <= 1) { alert("အနည်းဆုံး Admin တစ်ယောက် ကျန်ရှိရပါမည်။"); return; }
     if (!window.confirm(`Admin [${username}] ကို ဖျက်မည် သေချာပါသလား?`)) return;
     try {
-      await deleteDoc(doc(db, 'admins', username));
+      await deleteDoc(doc(db, 'admins', docId));
       fetchAdmins();
     } catch (e) { alert('Error deleting admin'); }
   };
@@ -706,14 +758,18 @@ function AdminManagementList() {
         <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-[#123524] text-white rounded font-bold flex items-center justify-center mt-4 shadow-md hover:bg-green-900 transition"><PlusCircle className="w-5 h-5 mr-2"/> Add New Admin</button>
       </form>
 
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username & Role</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800 flex items-center text-sm"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</div><div className="mt-1.5">{a.role === 'super_admin' || !a.role ? (<span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-purple-200">Super Admin</span>) : (<div className="flex flex-wrap gap-1 mt-1">{a.permissions?.map(p => <span key={p} className="text-[9px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded uppercase tracking-wider">{p === 'reports' ? 'Staff History' : p}</span>)}</div>)}</div></td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.username)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username & Role</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800 flex items-center text-sm"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</div><div className="mt-1.5">{a.role === 'super_admin' || !a.role ? (<span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-purple-200">Super Admin</span>) : (<div className="flex flex-wrap gap-1 mt-1">{a.permissions?.map(p => <span key={p} className="text-[9px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded uppercase tracking-wider">{p === 'reports' ? 'Staff History' : p}</span>)}</div>)}</div></td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.docId!, a.username || '')} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody></table></div>
     </div>
   );
 }
 
 // Admin Settings
 function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
-  const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(JSON.parse(JSON.stringify(appData.therapists || [])));
+  // Database ထဲက လာတဲ့ Encrypted Password တွေကို စစချင်း Decrypt လုပ်ပေးထားပါမည်
+  const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(() => {
+      return (appData.therapists || []).map(t => ({...t, password: decryptText(t.password) || t.password}));
+  });
+  
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
@@ -766,12 +822,18 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setSavingCategory('therapists');
     try {
       const finalizedTherapists = localTherapists.map((t, idx) => ({ ...t, order: idx }));
-      const tPromises = finalizedTherapists.map((t) => setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order, password: t.password || '' }));
+      // ဝန်ထမ်းများ၏ Password များကို Database ထဲမသိမ်းခင် Encrypt လုပ်ပါမည်
+      const tPromises = finalizedTherapists.map((t) => setDoc(doc(db, 'therapists', t.id), { 
+          name: t.name, 
+          images: t.images, 
+          order: t.order, 
+          password: encryptText(t.password || '') 
+      }));
       const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id)));
       await Promise.all([...tPromises, ...delPromises]);
       setDeletedTherapistIds([]);
       setLocalTherapists(finalizedTherapists);
-      onSettingsUpdated({ ...appData, therapists: finalizedTherapists });
+      // Wait for appData refresh to handle encryption properly
       alert('Therapists saved successfully.');
     } catch (e) { alert('Update error.'); }
     setSavingCategory(null);
