@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 
-// မိမိစိတ်ကြိုက် လျှို့ဝှက် Key (ဒီ Key ကို ဘယ်သူ့ကိုမှ မပေးရပါ)
-const SECRET_KEY = "Shangrila@2026!SecureKey_V1_tSn2171996"; 
+// Key ကို ကုဒ်ထဲတွင် အသေမရေးဘဲ Vercel Environment မှ လှမ်းယူမည် (VITE_ ဖြင့်စရမည်)
+const SECRET_KEY = import.meta.env.VITE_SECRET_KEY || "fallback_default_key_do_not_use";
 
 // (၁) မူလစာသားကို Secure Code အဖြစ် ပြောင်းပေးမည့် Function
 export const encryptText = (text: string | null | undefined): string => {
@@ -15,7 +15,7 @@ export const decryptText = (cipherText: string | null | undefined): string => {
     try {
         const bytes = CryptoJS.AES.decrypt(cipherText, SECRET_KEY);
         const originalText = bytes.toString(CryptoJS.enc.Utf8);
-        return originalText || cipherText; // အကယ်၍ ပြောင်းလို့မရရင် မူလစာသားကိုပဲ ပြန်ထုတ်ပေးမည်
+        return originalText || cipherText;
     } catch (error) {
         return cipherText; 
     }
