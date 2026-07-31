@@ -3,6 +3,7 @@ import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc,
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
+import CryptoJS from 'crypto-js'; // Key အသစ်ပြောင်းရန်အတွက် လိုအပ်ပါသည်
 
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
@@ -399,33 +400,68 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+  
+  // New Key Change States
+  const [newSecretKey, setNewSecretKey] = useState('');
+  const [migratingKey, setMigratingKey] = useState(false);
 
   useEffect(() => { const fetchInstallSteps = async () => { try { const snap = await getDoc(doc(db, 'settings', 'appData')); if (snap.exists() && snap.data().installSteps) { setLocalInstallSteps(snap.data().installSteps); } } catch (e) { console.error(e); } }; fetchInstallSteps(); }, []);
 
-  const handleMigrateDatabase = async () => {
-      if (!window.confirm("Database ထဲရှိ Data အဟောင်းများအားလုံးကို Secure Code သို့ ပြောင်းလဲပြီး Firebase Auth အဖြစ် Upgrade လုပ်မည် သေချာပါသလား?")) return;
-      setSavingCategory('migration');
-      try {
-          const uSnap = await getDocs(collection(db, 'users')); const uPromises: any[] = [];
-          uSnap.forEach(d => { const raw = d.data(); if (d.id.length < 15 || (raw.phone && !raw.phone.startsWith('U2FsdGVk'))) { const originalPhone = raw.phone || d.id; uPromises.push(addDoc(collection(db, 'users'), { phone: encryptText(originalPhone), name: encryptText(raw.name || ''), password: encryptText(raw.password || ''), createdAt: raw.createdAt || Date.now() }).then(() => deleteDoc(doc(db, 'users', d.id)))); } });
-          
-          const bSnap = await getDocs(collection(db, 'bookings')); const bPromises: any[] = [];
-          bSnap.forEach(d => { const raw = d.data(); if ((raw.phone && !raw.phone.startsWith('U2FsdGVk')) || (raw.name && !raw.name.startsWith('U2FsdGVk'))) { bPromises.push(updateDoc(doc(db, 'bookings', d.id), { phone: encryptText(raw.phone || '-'), name: encryptText(raw.name || 'Walk-in Guest'), txId: encryptText(raw.txId || '-'), specialRequest: encryptText(raw.specialRequest || '') })); } });
-          
-          const aSnap = await getDocs(collection(db, 'admins')); const aPromises: any[] = [];
-          aSnap.forEach(d => { 
-             const raw = d.data(); const originalUser = raw.username ? (decryptText(raw.username) || raw.username) : d.id; const originalPass = raw.password ? (decryptText(raw.password) || raw.password) : '';
-             if (originalPass.length >= 6) { aPromises.push(createUserWithEmailAndPassword(secondaryAuth, `${originalUser.toLowerCase()}@shangrila.com`, originalPass).catch(()=>{})); }
-             if (d.id.length < 15 || !raw.username?.startsWith('U2FsdGVk')) { aPromises.push(addDoc(collection(db, 'admins'), { username: encryptText(originalUser), password: encryptText(originalPass), role: raw.role || 'super_admin', permissions: raw.permissions || ['bookings', 'reports', 'users', 'admins', 'settings'] }).then(() => deleteDoc(doc(db, 'admins', d.id)))); }
-          });
-          
-          const tPromises: any[] = [];
-          localTherapists.forEach(t => { const decPass = decryptText(t.password) || t.password; if (decPass && decPass.length >= 6) { tPromises.push(createUserWithEmailAndPassword(secondaryAuth, `${t.id.toLowerCase()}@shangrila.com`, decPass).catch(()=>{})); } });
+  // ====== KEY ပြောင်းမည့် FUNCTION အသစ် ======
+  const handleChangeSecretKey = async () => {
+      if(!newSecretKey) return alert("Key အသစ် ရိုက်ထည့်ပါ");
+      if(newSecretKey.length < 10) return alert("Key အသစ်သည် အနည်းဆုံး စာလုံး ၁၀ လုံးရှိရပါမည်");
+      if(!window.confirm("သတိပြုရန်: ဤလုပ်ဆောင်ချက်သည် Database တစ်ခုလုံးရှိ Data များကို Key အသစ်ဖြင့် ပြောင်းလဲမည်ဖြစ်ပါသည်။ သေချာပါသလား?")) return;
 
-          await Promise.all([...uPromises, ...bPromises, ...aPromises, ...tPromises]);
-          alert("Data အားလုံးကို အောင်မြင်စွာ Encrypt လုပ်ပြီး Auth Upgrade ပြုလုပ်ပြီးပါပြီ။");
-      } catch (e) { console.error(e); alert("Migration Error. Please check console."); }
-      setSavingCategory(null);
+      setMigratingKey(true);
+      try {
+          const reEncrypt = (oldCipher: string) => {
+              if(!oldCipher || !oldCipher.startsWith('U2FsdGVk')) return oldCipher;
+              try {
+                  const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY);
+                  const originalText = bytes.toString(CryptoJS.enc.Utf8);
+                  if(!originalText) return oldCipher;
+                  return CryptoJS.AES.encrypt(originalText, newSecretKey).toString();
+              } catch(e) { return oldCipher; }
+          };
+
+          // 1. Users
+          const uSnap = await getDocs(collection(db, 'users'));
+          const uPromises: any[] = [];
+          uSnap.forEach(d => {
+              const raw = d.data();
+              uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password) }));
+          });
+          await Promise.all(uPromises);
+
+          // 2. Bookings
+          const bSnap = await getDocs(collection(db, 'bookings'));
+          const bPromises: any[] = [];
+          bSnap.forEach(d => {
+              const raw = d.data();
+              bPromises.push(updateDoc(doc(db, 'bookings', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), txId: reEncrypt(raw.txId), specialRequest: reEncrypt(raw.specialRequest) }));
+          });
+          await Promise.all(bPromises);
+
+          // 3. Admins
+          const aSnap = await getDocs(collection(db, 'admins'));
+          const aPromises: any[] = [];
+          aSnap.forEach(d => {
+              const raw = d.data();
+              aPromises.push(updateDoc(doc(db, 'admins', d.id), { username: reEncrypt(raw.username), password: reEncrypt(raw.password) }));
+          });
+          await Promise.all(aPromises);
+
+          // 4. Therapists (in appData)
+          const tPromises: any[] = [];
+          localTherapists.forEach(t => {
+               tPromises.push(updateDoc(doc(db, 'therapists', t.id), { password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString() }));
+          });
+          await Promise.all(tPromises);
+
+          alert("Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် Key အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
+      } catch(e) { console.error(e); alert("Error updating keys"); }
+      setMigratingKey(false);
   };
 
   const handleSaveCategory = async (cIdx: number) => { const cat = localCategories[cIdx]; if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; setSavingCategory(cat.id); try { await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true }); onSettingsUpdated({ ...appData, categories: localCategories }); alert('Saved Successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
@@ -470,18 +506,25 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   return (
     <div className="space-y-6">
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-red-500">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-              <div className="mb-4 sm:mb-0">
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><ShieldCheck className="w-5 h-5 mr-2 text-red-500" /> Security Upgrade (Data Migration)</h3>
-                  <p className="text-xs text-gray-500 mt-1">အရင်က ရိုးရိုး Text အနေဖြင့် သိမ်းထားသော Data အဟောင်းများအားလုံးကို Secure Code သို့ ပြောင်းလဲပြီး Firebase Auth အကောင့်များ ဖွင့်ပေးပါမည်။</p>
-              </div>
-              <button disabled={savingCategory === 'migration'} onClick={handleMigrateDatabase} className="flex items-center bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-red-100 flex-shrink-0 sm:ml-3 transition">
-                 {savingCategory === 'migration' ? <div className="w-4 h-4 mr-2 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div> : <ShieldAlert className="w-4 h-4 mr-2" />}
-                 {savingCategory === 'migration' ? 'Upgrading...' : 'Upgrade Old Data Now'}
+      {/* Key ပြောင်းရန် Section (NEW) */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-orange-500">
+          <h3 className="text-xl font-bold text-gray-800 flex items-center mb-2"><KeyRound className="w-5 h-5 mr-2 text-orange-500" /> Change Encryption Key</h3>
+          <p className="text-xs text-gray-500 mb-4">Database ထဲရှိ Data အားလုံးကို အောက်ပါ Key အသစ်ဖြင့် အလိုအလျောက် ပြောင်းလဲပေးပါမည်။</p>
+          <div className="flex flex-col sm:flex-row gap-3 items-center">
+              <input 
+                  type="text" 
+                  placeholder="Enter New Secret Key" 
+                  value={newSecretKey} 
+                  onChange={(e) => setNewSecretKey(e.target.value)} 
+                  className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:border-orange-500 font-mono text-sm"
+              />
+              <button 
+                  disabled={migratingKey} 
+                  onClick={handleChangeSecretKey} 
+                  className="w-full sm:w-auto px-6 py-3 bg-orange-500 text-white rounded-lg font-bold shadow-sm hover:bg-orange-600 transition whitespace-nowrap flex items-center justify-center">
+                  {migratingKey ? 'Processing...' : 'Change Key Now'}
               </button>
           </div>
-          <div className="text-[10px] bg-red-50 p-3 rounded text-red-600 font-semibold"><span className="font-bold uppercase mb-1 block">⚠️ သတိပြုရန်</span> ဤခလုတ်ကို တစ်ကြိမ်နှိပ်ရုံဖြင့် လုံလောက်ပါသည်။ Password အနည်းဆုံး ၆ လုံးပြည့်ရပါမည်။</div>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6"><div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><Sparkles className="w-5 h-5 mr-2 text-green-600" /> App Promotion & Discounts</h3><p className="text-xs text-gray-500 mt-1">Web App မှ Booking တင်သူများအတွက် Discount သတ်မှတ်ရန်</p></div><button disabled={savingCategory === 'promotion'} onClick={handleSavePromotion} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'promotion' ? 'Saving...' : 'Save'}</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div className="flex items-center space-x-3 mb-2 md:col-span-2 bg-gray-50 p-3 rounded-lg border border-gray-200 w-full sm:w-auto"><label className="text-sm font-bold text-gray-700 cursor-pointer flex-1 flex items-center justify-between"><span>Enable Promotion (Promotion ဖွင့်ရန်)</span><input type="checkbox" checked={localPromotion.isActive} onChange={(e) => setLocalPromotion({...localPromotion, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524]" /></label></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Hotel & Home Services Discount (%)</label><input type="number" value={localPromotion.hotelDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, hotelDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Other Services Discount (%)</label><input type="number" value={localPromotion.otherDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, otherDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label><input type="date" value={localPromotion.startDate} onChange={(e) => setLocalPromotion({...localPromotion, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">End Date</label><input type="date" value={localPromotion.endDate} onChange={(e) => setLocalPromotion({...localPromotion, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div></div></div>
