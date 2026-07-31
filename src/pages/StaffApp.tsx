@@ -1,16 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, addDoc, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
-import { encryptText, decryptText } from '../security'; // လုံခြုံရေးစနစ်ကို ချိတ်ဆက်ခြင်း
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { db, auth } from '../firebase';
+import { encryptText, decryptText } from '../security'; 
 import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets } from 'lucide-react';
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 
-// ဒီစာကြောင်းလေး ပြုတ်သွားလို့ App Crash ဖြစ်သွားတာပါ၊ အခု သေချာ ပြန်ထည့်ပေးထားပါတယ်
 import { CustomerBookingWizard } from './CustomerApp';
 
-// ==========================================
-// LOCAL HELPERS
-// ==========================================
 const formatPrice = (price: any) => {
     const num = Number(price);
     if (isNaN(num)) return '0 Ks';
@@ -58,9 +55,6 @@ function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: 
   return <span className="text-yellow-600 border border-yellow-200 bg-yellow-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Pending</span>;
 }
 
-// ==========================================
-// MAIN STAFF APP COMPONENT
-// ==========================================
 export default function StaffApp({ appData }: { appData: AppData }) {
   const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
      const saved = localStorage.getItem('shangrila_staff_profile');
@@ -90,27 +84,28 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
   const [therapistId, setTherapistId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(''); setLoading(true);
     const staff = therapists.find(t => t.id === therapistId);
     
-    // Database မှ လာသော Encrypted Password အား Decrypt ပြန်လုပ်ပြီး စစ်ဆေးခြင်း
-    const decPassword = staff ? (decryptText(staff.password) || staff.password) : '';
-    
-    if (staff && decPassword === password) {
-       onLoginSuccess({ ...staff, password: decPassword });
-    } else {
+    try {
+       await signInWithEmailAndPassword(auth, `${therapistId.toLowerCase()}@shangrila.com`, password);
+       const decPassword = staff ? (decryptText(staff.password) || staff.password) : '';
+       onLoginSuccess({ ...staff!, password: decPassword });
+    } catch(err) {
        setError('Invalid Therapist Selection or Password.');
     }
+    setLoading(false);
   };
 
   return (
     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 max-w-sm mx-auto text-center mt-10 animate-fade-in">
       <div className="w-16 h-16 bg-red-50 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><ShieldAlert className="w-8 h-8" /></div>
       <h2 className="text-xl font-bold text-gray-800 mb-2">Staff Portal Login</h2>
-      <p className="text-xs font-bold text-gray-500 mb-6">Secure Access Only</p>
+      <p className="text-xs font-bold text-gray-500 mb-6">Secured by Firebase Auth</p>
       
       <form onSubmit={handleLogin} className="space-y-4">
         <div>
@@ -128,7 +123,7 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
            <input required type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
         </div>
         {error && <div className="text-xs font-bold text-red-500">{error}</div>}
-        <button type="submit" className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex items-center justify-center"><KeyRound className="w-4 h-4 mr-2"/> Verify and Login</button>
+        <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex items-center justify-center"><KeyRound className="w-4 h-4 mr-2"/> {loading ? 'Logging in...' : 'Verify and Login'}</button>
       </form>
     </div>
   );
@@ -149,10 +144,10 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                const b = { 
                    id: doc.id, 
                    ...raw,
-                   name: decryptText(raw.name),
-                   phone: decryptText(raw.phone),
-                   txId: decryptText(raw.txId),
-                   specialRequest: decryptText(raw.specialRequest)
+                   name: decryptText(raw.name) || raw.name,
+                   phone: decryptText(raw.phone) || raw.phone,
+                   txId: decryptText(raw.txId) || raw.txId,
+                   specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
                } as Booking;
                
                if (b.therapist === loggedInStaff.name && b.status === 'in_progress') {
@@ -247,10 +242,10 @@ function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfi
                const b = { 
                    id: doc.id, 
                    ...raw,
-                   name: decryptText(raw.name),
-                   phone: decryptText(raw.phone),
-                   txId: decryptText(raw.txId),
-                   specialRequest: decryptText(raw.specialRequest)
+                   name: decryptText(raw.name) || raw.name,
+                   phone: decryptText(raw.phone) || raw.phone,
+                   txId: decryptText(raw.txId) || raw.txId,
+                   specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
                } as Booking;
 
                if (b.therapist === loggedInStaff.name && b.date === todayStr && (b.status === 'completed' || b.status === 'cancelled')) {
