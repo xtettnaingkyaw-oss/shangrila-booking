@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth'; // Auth ကို အသစ်ထည့်ထားပါသည်
+import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyD72t-U4ZQY1DVmsxj9O2Vu_XXXXKxwlKo",
@@ -13,4 +13,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
-export const auth = getAuth(app); // Auth ကို Export လုပ်ထားပါသည်
+export const auth = getAuth(app);
+
+// Admin မှ ဝန်ထမ်းအသစ်များ၏ Auth ဖန်တီးရန် သီးသန့်စနစ်
+const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
+export const secondaryAuth = getAuth(secondaryApp);
