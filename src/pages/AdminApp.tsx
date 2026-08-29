@@ -3,11 +3,9 @@ import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc,
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
-import CryptoJS from 'crypto-js'; // Key အသစ်ပြောင်းရန်အတွက် လိုအပ်ပါသည်
+import CryptoJS from 'crypto-js'; 
 
-// VIP အတွက် Star နှင့် Award Icon များ ထပ်ပေါင်းထည့်ထားပါသည်
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award } from 'lucide-react';
-// VIP Settings Interfaces များ ထပ်ပေါင်းထည့်ထားပါသည်
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS } from '../shared';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -163,7 +161,6 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
 
       {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
       {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
-      {/* AdminUsersList တွင် VIP Points အတွက် appData ကို Pass လုပ်ပေးထားပါသည် */}
       {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
       {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
@@ -455,15 +452,26 @@ function AdminManagementList() {
 }
 
 function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
+  const defaultVipConfig = {
+    isActive: appData.vipSettings?.isActive ?? true,
+    baseRuleText: appData.vipSettings?.baseRuleText || "သုံးစွဲငွေ ၃၅,၀၀၀ ကျပ် လျှင် = ၁ ပွိုင့် (1 Point)",
+    preJadeText: appData.vipSettings?.preJadeText || "Jade Member မဖြစ်မီ (၅၀) ပွိုင့် စုဆောင်းနေစဉ်ကာလအတွင်း (၁)လ အတွင်း ပြည့်မီသော Points များအတွက် အထူး Discount ကို ထပ်ဆောင်းပေးအပ်ပါသည်။",
+    preJadeRewards: appData.vipSettings?.preJadeRewards || ['10 Pts = 10% Off', '20 Pts = 20% Off', '30 Pts = 30% Off', '40 Pts = 40% Off', '50 Pts = 50% Off'],
+    cumulativeText: appData.vipSettings?.cumulativeText || "Member အဆင့်များကို အဆင့်မြှင့်တင်ရာတွင် ပွိုင့်များကို သုညမှ ပြန်မစဘဲ ရှိပြီးသားပွိုင့်များအပေါ်တွင် ဆက်လက်ပေါင်းထည့်ပေးမည့် စနစ်ကို အသုံးပြုထားပါသည်။ (ဥပမာ - Jade 50 Pts မှ နောက်ထပ် 50 Pts ထပ်ရပါက စုစုပေါင်း 100 Pts ဖြင့် Gold သို့ တက်သွားပါမည်။)",
+    instantUpgradeText: appData.vipSettings?.instantUpgradeText || "(တစ်ကြိမ်တည်းဝယ်ယူမှုပြုလုပ်သူများအနေဖြင့် မိမိဝယ်ယူထားသည့်ငွေပမာဏအတိုင်း မိမိကြိုက်နှစ်သက်ရာ Service သို့မဟုတ် Package ကို မိမိဝယ်ယူထားသည့် Member အဆင့်ခံစားခွင့်နှင့်အညီ (၃)လအတွင်း ပြန်လည်သုံးစွဲနိုင်သည်။)",
+    birthdayStandardText: appData.vipSettings?.birthdayStandardText || "မည်သည့် VIP (Jade, Gold, Imperial) မဆို မိမိမွေးနေ့တွင် မည်သည့် Service ကိုမဆို 50% Discount ခံစားခွင့်ရရှိမည်။",
+    birthdayImperialText: appData.vipSettings?.birthdayImperialText || "အခြေခံ 20% + မွေးနေ့လတွင် ရရှိထားသော Points အရေအတွက် % ။\n(ဥပမာ - 50 Pts စုဆောင်းထားပါက 20% + 50% = 70% Discount ရရှိမည်)",
+    rules: appData.vipSettings?.rules || DEFAULT_VIP_SETTINGS.rules,
+    tiers: appData.vipSettings?.tiers || DEFAULT_VIP_SETTINGS.tiers
+  };
+
   const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(() => { return (appData.therapists || []).map(t => ({...t, password: decryptText(t.password) || t.password})); });
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
   const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
   const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
-  
-  // VIP Settings State အသစ် ထည့်သွင်းထားပါသည်
-  const [localVipSettings, setLocalVipSettings] = useState<VipSettings>(appData.vipSettings || DEFAULT_VIP_SETTINGS);
+  const [localVipSettings, setLocalVipSettings] = useState<any>(defaultVipConfig);
 
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
@@ -495,7 +503,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           const uPromises: any[] = [];
           uSnap.forEach(d => {
               const raw = d.data();
-              uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points) }));
+              uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points), dob: reEncrypt(raw.dob) }));
           });
           await Promise.all(uPromises);
 
@@ -526,7 +534,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       setMigratingKey(false);
   };
 
-  // ====== VIP PROGRAM SAVE FUNCTIONS ======
   const handleSaveVipSettings = async () => {
     if (!window.confirm(`Are you sure you want to save VIP Program settings?`)) return;
     setSavingCategory('vip_settings');
@@ -596,8 +603,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#D4AF37]">
          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <div>
-               <h3 className="text-xl font-bold text-gray-800 flex items-center"><Award className="w-5 h-5 mr-2 text-[#D4AF37]" /> VIP Membership Tiers & Rules</h3>
-               <p className="text-xs text-gray-500 mt-1">Customer များအတွက် Points များ၊ အဆင့်များ (Tiers) နှင့် စည်းကမ်းချက်များကို ပြင်ဆင်ပါ။</p>
+               <h3 className="text-xl font-bold text-gray-800 flex items-center"><Award className="w-5 h-5 mr-2 text-[#D4AF37]" /> VIP Program Customization</h3>
+               <p className="text-xs text-gray-500 mt-1">Customer App တွင်ပြသမည့် VIP အချက်အလက်များအားလုံးကို ဤနေရာတွင် ပြင်ဆင်နိုင်ပါသည်။</p>
             </div>
             <button disabled={savingCategory === 'vip_settings'} onClick={handleSaveVipSettings} className="flex items-center bg-[#123524] text-[#D4AF37] px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3">
                <Save className="w-4 h-4 mr-2" /> {savingCategory === 'vip_settings' ? 'Saving...' : 'Save VIP Program'}
@@ -611,11 +618,15 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
              </label>
          </div>
 
-         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
              <div>
-                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Star className="w-4 h-4 mr-2"/> Membership Tiers (အဆင့်များ)</h4>
+                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Star className="w-4 h-4 mr-2"/> 1. Membership Tiers & Base Rule</h4>
+                 <div className="mb-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                     <label className="block text-[10px] font-bold text-gray-500 mb-1">Base Rule Text (အခြေခံ ပွိုင့်သတ်မှတ်ချက်)</label>
+                     <input type="text" value={localVipSettings.baseRuleText} onChange={(e) => setLocalVipSettings({...localVipSettings, baseRuleText: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                 </div>
                  <div className="space-y-3">
-                     {localVipSettings.tiers.map((tier, tIdx) => (
+                     {localVipSettings.tiers.map((tier: any, tIdx: number) => (
                          <div key={tier.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm">
                              <div className="grid grid-cols-2 gap-3 mb-2">
                                  <div><label className="text-[10px] font-bold text-gray-400">Tier Name</label><input type="text" value={tier.name} onChange={(e) => updateVipTier(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
@@ -632,17 +643,66 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
              </div>
 
              <div>
-                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><ShieldCheck className="w-4 h-4 mr-2"/> Terms & Conditions (စည်းကမ်းချက်များ)</h4>
-                 <div className="space-y-3">
-                     {localVipSettings.rules.map((rule, rIdx) => (
-                         <div key={rIdx} className="flex items-start space-x-2">
-                             <div className="mt-2 text-xs font-bold text-gray-400">{rIdx + 1}.</div>
-                             <textarea value={rule} onChange={(e) => updateVipRule(rIdx, e.target.value)} rows={2} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none leading-relaxed" />
-                             <button onClick={() => setLocalVipSettings({...localVipSettings, rules: localVipSettings.rules.filter((_, i) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
-                         </div>
-                     ))}
-                     <button onClick={() => setLocalVipSettings({...localVipSettings, rules: [...localVipSettings.rules, 'စည်းကမ်းချက်အသစ်...']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center"><PlusCircle className="w-3 h-3 mr-1"/> Add Rule</button>
+                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Target className="w-4 h-4 mr-2"/> 2. Target Rewards (Pre-Jade)</h4>
+                 <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                     <label className="block text-[10px] font-bold text-gray-500 mb-1">Section Description (ရှင်းလင်းချက်)</label>
+                     <textarea value={localVipSettings.preJadeText} onChange={(e) => setLocalVipSettings({...localVipSettings, preJadeText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                     
+                     <label className="block text-[10px] font-bold text-gray-500 mt-4 mb-2">Reward Steps (ဥပမာ - 10 Pts = 10% Off)</label>
+                     <div className="space-y-2">
+                         {(localVipSettings.preJadeRewards || []).map((reward: string, rIdx: number) => (
+                             <div key={rIdx} className="flex space-x-2">
+                                 <input type="text" value={reward} onChange={(e) => { const newR = [...localVipSettings.preJadeRewards]; newR[rIdx] = e.target.value; setLocalVipSettings({...localVipSettings, preJadeRewards: newR}); }} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                                 <button onClick={() => setLocalVipSettings({...localVipSettings, preJadeRewards: localVipSettings.preJadeRewards.filter((_: any, i: number) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
+                             </div>
+                         ))}
+                         <button onClick={() => setLocalVipSettings({...localVipSettings, preJadeRewards: [...localVipSettings.preJadeRewards, 'New Reward']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center mt-2"><PlusCircle className="w-3 h-3 mr-1"/> Add Reward Step</button>
+                     </div>
                  </div>
+             </div>
+         </div>
+
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 border-t border-gray-100 pt-8">
+             <div>
+                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Info className="w-4 h-4 mr-2"/> 3. Upgrade Rules (အဆင့်မြှင့်တင်ခြင်း)</h4>
+                 <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                     <div>
+                         <label className="block text-[10px] font-bold text-gray-500 mb-1">Cumulative Upgrade System Text</label>
+                         <textarea value={localVipSettings.cumulativeText} onChange={(e) => setLocalVipSettings({...localVipSettings, cumulativeText: e.target.value})} rows={4} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                     </div>
+                     <div>
+                         <label className="block text-[10px] font-bold text-gray-500 mb-1">Instant Upgrade Alert Text (တစ်ကြိမ်တည်းဝယ်ယူမှု...)</label>
+                         <textarea value={localVipSettings.instantUpgradeText} onChange={(e) => setLocalVipSettings({...localVipSettings, instantUpgradeText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                     </div>
+                 </div>
+             </div>
+
+             <div>
+                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Gift className="w-4 h-4 mr-2"/> 4. Birthday Bonuses (မွေးနေ့ခံစားခွင့်)</h4>
+                 <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                     <div>
+                         <label className="block text-[10px] font-bold text-gray-500 mb-1">Standard Birthday Bonus Text</label>
+                         <textarea value={localVipSettings.birthdayStandardText} onChange={(e) => setLocalVipSettings({...localVipSettings, birthdayStandardText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                     </div>
+                     <div>
+                         <label className="block text-[10px] font-bold text-gray-500 mb-1">Imperial V-VIP Birthday Bonus Text</label>
+                         <textarea value={localVipSettings.birthdayImperialText} onChange={(e) => setLocalVipSettings({...localVipSettings, birthdayImperialText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                     </div>
+                 </div>
+             </div>
+         </div>
+
+         <div className="border-t border-gray-100 pt-8">
+             <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><ShieldCheck className="w-4 h-4 mr-2"/> 5. Terms & Conditions (စည်းကမ်းချက်များ)</h4>
+             <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                 {localVipSettings.rules.map((rule: string, rIdx: number) => (
+                     <div key={rIdx} className="flex items-start space-x-2">
+                         <div className="mt-2 text-xs font-bold text-gray-400">{rIdx + 1}.</div>
+                         <textarea value={rule} onChange={(e) => updateVipRule(rIdx, e.target.value)} rows={2} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none leading-relaxed font-semibold text-gray-700" />
+                         <button onClick={() => setLocalVipSettings({...localVipSettings, rules: localVipSettings.rules.filter((_: any, i: number) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
+                     </div>
+                 ))}
+                 <button onClick={() => setLocalVipSettings({...localVipSettings, rules: [...localVipSettings.rules, 'စည်းကမ်းချက်အသစ်...']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center mt-2"><PlusCircle className="w-3 h-3 mr-1"/> Add Rule</button>
              </div>
          </div>
       </div>
