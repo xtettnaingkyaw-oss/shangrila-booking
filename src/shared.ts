@@ -14,9 +14,32 @@ export interface OutPass { id?: string; therapist: string; date: string; outTime
 export interface AppBranding { logoUrl: string; address: string; phone1: string; phone2: string; copyright: string; name: string; shopLat?: number; shopLng?: number; }
 export interface PaymentMethod { id: string; name: string; accountNumber: string; accountName: string; logoUrl: string; }
 export interface PromotionSettings { isActive: boolean; hotelDiscountPercent: number; otherDiscountPercent: number; startDate: string; endDate: string; }
-export interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; promotion?: PromotionSettings; }
-export interface UserProfile { phone: string; name: string; password?: string; createdAt: number; }
+
+// --- VIP Program Interfaces ---
+export interface VipTier { id: string; name: string; requiredPoints: number; discountPercent: number; instantUpgrade: string; colorTheme: string; }
+export interface VipSettings { isActive: boolean; rules: string[]; tiers: VipTier[]; }
+
+export interface AppData { therapists: TherapistProfile[]; categories: MenuCategory[]; branding: AppBranding; paymentMethods: PaymentMethod[]; promotion?: PromotionSettings; vipSettings?: VipSettings; }
+export interface UserProfile { phone: string; name: string; password?: string; createdAt: number; points?: number | string; }
 export interface AdminProfile { username: string; password?: string; }
+
+// --- VIP Settings Constants (Admin တွင် ပထမဆုံးအကြိမ် Load ရန်အတွက်) ---
+export const DEFAULT_VIP_SETTINGS: VipSettings = {
+  isActive: true,
+  rules: [
+    "ပွိုင့်သက်တမ်းနှင့် Renew ပြုလုပ်ခြင်း: Customer များ စုဆောင်းထားသော ပွိုင့်များ၏ သက်တမ်းမှာ (၆) လ ဖြစ်ပါသည်။ ၆ လ တစ်ကြိမ် ပွိုင့်များကို Renew ပြုလုပ်မည် (အသစ်ပြန်လည် စတင်မည်) ဖြစ်ပါသည်။",
+    "(၆) လ ကာလအတွင်း VIP အဆင့် တစ်ခုခုသို့ ရောက်ရှိရန် လိုအပ်သော ပွိုင့်အရေအတွက် မပြည့်မီပါက (၆) လ ပြည့်သည့်နေ့တွင် ပွိုင့်များ သုညမှ ပြန်လည်စတင်မည် ဖြစ်ပါသည်။",
+    "VIP Member အဆင့်သို့ ရောက်ရှိသွားပါက အမြဲတမ်း Discount ခံစားခွင့်မှာမူ ပွိုင့် Renew လုပ်သည်နှင့် သက်ဆိုင်ခြင်းမရှိဘဲ ဆက်လက် တည်ရှိနေမည် ဖြစ်ပါသည်။",
+    "ကတ်ပျောက်ဆုံးခြင်း: ကတ်ပျောက်ဆုံး၊ ပျက်စီးပါက ဝန်ဆောင်ခ ၁၅,၀၀၀ ကျပ်ဖြင့် အသစ်ပြန်လည် ထုတ်ပေးပါမည်။ ယခင်စုဆောင်းထားသော ပွိုင့်များ အပြည့်အဝ ပြန်လည်ရရှိမည် ဖြစ်ပါသည်။",
+    "လွှဲပြောင်းအသုံးပြုခွင့်: VIP Member Card အား မိတ်ဆွေသူငယ်ချင်းများနှင့် မျှဝေသုံးစွဲခွင့်ရှိပြီး၊ လိုအပ်ပါက ဝန်ထမ်းများမှ ဖုန်းနံပါတ် တိုက်ဆိုင်စစ်ဆေးခြင်း ပြုလုပ်နိုင်ပါသည်။",
+    "The Shangri-La Men's Retreat မှ ဤ Membership Program ၏ စည်းကမ်းချက်များကို ကြိုတင်အကြောင်းကြားခြင်းမရှိဘဲ ပြင်ဆင်ပြောင်းလဲခွင့် ရှိပါသည်။"
+  ],
+  tiers: [
+    { id: 't1', name: 'Jade Elite Member', requiredPoints: 50, discountPercent: 10, instantUpgrade: '၈ သိန်းကျပ်', colorTheme: '#00A86B' },
+    { id: 't2', name: 'Imperial Gold VIP', requiredPoints: 100, discountPercent: 15, instantUpgrade: '၁၅ သိန်းကျပ်', colorTheme: '#D4AF37' },
+    { id: 't3', name: 'Shangri-La Signature V-VIP', requiredPoints: 150, discountPercent: 20, instantUpgrade: '၂၅ သိန်းကျပ်', colorTheme: '#1E1E1E' }
+  ]
+};
 
 // --- Helpers ---
 export const formatPrice = (price: any) => { const num = Number(price); if (isNaN(num)) return '0 Ks'; return num.toLocaleString() + ' Ks'; };
