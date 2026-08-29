@@ -15,6 +15,7 @@ const FALLBACK_VIP_SETTINGS = {
     "ကတ်ပျောက်ဆုံးခြင်း: ကတ်ပျောက်ဆုံး၊ ပျက်စီးပါက ဝန်ဆောင်ခ ၁၅,၀၀၀ ကျပ်ဖြင့် အသစ်ပြန်လည် ထုတ်ပေးပါမည်။ ယခင်စုဆောင်းထားသော ပွိုင့်များ အပြည့်အဝ ပြန်လည်ရရှိမည် ဖြစ်ပါသည်။",
     "လွှဲပြောင်းအသုံးပြုခွင့်: VIP Member Card အား မိတ်ဆွေသူငယ်ချင်းများနှင့် မျှဝေသုံးစွဲခွင့်ရှိပြီး၊ လိုအပ်ပါက ဝန်ထမ်းများမှ ဖုန်းနံပါတ် တိုက်ဆိုင်စစ်ဆေးခြင်း ပြုလုပ်နိုင်ပါသည်။",
     "The Shangri-La Men's Retreat မှ ဤ Membership Program ၏ စည်းကမ်းချက်များကို ကြိုတင်အကြောင်းကြားခြင်းမရှိဘဲ ပြင်ဆင်ပြောင်းလဲခွင့် ရှိပါသည်။"
+    "အငြင်းပွားမှုတစ်စုံတစ်ရာ ဖြစ်ပွားလာပါက The Shangri-La Men's Retreat Management Team ၏ ဆုံးဖြတ်ချက်သည်သာလျှင် အတည်ဖြစ်ပါသည်။"
   ],
   tiers: [
     { id: 't1', name: 'Jade Elite Member', requiredPoints: 50, discountPercent: 10, instantUpgrade: '၈ သိန်းကျပ်', colorTheme: '#00A86B' },
@@ -2139,8 +2140,8 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
           if (foundUser) {
               setProfile({ 
                   ...(foundUser as any), 
-                  name: decryptText((foundUser as any).name), 
-                  password: decryptText((foundUser as any).password), 
+                  name: decryptText((foundUser as any).name) || '', 
+                  password: decryptText((foundUser as any).password) || '', 
                   phone: userPhone,
                   points: parseInt(decryptText((foundUser as any).points) || (foundUser as any).points || '0', 10),
                   dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
@@ -2151,6 +2152,10 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                   dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
               });
               setUserDocId(docId);
+          } else {
+              // 🌟 Auto-Heal: Create temporary profile state for ghost users
+              setProfile({ name: 'Walk-in Guest', phone: userPhone, points: 0, dob: '', password: '' } as any);
+              setFormData({ name: '', password: '', dob: '' });
           }
       } catch(err) {
           console.error("Error fetching profile", err);
@@ -2163,14 +2168,26 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userDocId) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', userDocId), { 
-          name: encryptText(formData.name), 
-          password: encryptText(formData.password),
-          dob: encryptText(formData.dob)
-      });
+      if (userDocId) {
+          await updateDoc(doc(db, 'users', userDocId), { 
+              name: encryptText(formData.name), 
+              password: encryptText(formData.password),
+              dob: encryptText(formData.dob)
+          });
+      } else {
+          // 🌟 Auto-Heal: Save missing user to DB
+          const newDocRef = await addDoc(collection(db, 'users'), {
+              phone: encryptText(userPhone),
+              name: encryptText(formData.name),
+              password: encryptText(formData.password),
+              dob: encryptText(formData.dob),
+              points: encryptText('0'),
+              createdAt: Date.now()
+          });
+          setUserDocId(newDocRef.id);
+      }
       setProfile({ ...profile!, name: formData.name, password: formData.password, dob: formData.dob } as any);
       setEditMode(false);
       setAlertMessage("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
@@ -2180,9 +2197,8 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
 
   if (!userPhone) return <AuthRequest onLoginSuccess={onLoginSuccess} title="View Profile" />;
   if (loading) return <div className="text-center py-10 font-bold text-gray-500">Loading Profile...</div>;
-  if (!profile) return <div className="text-center py-10 font-bold text-red-500">User not found. Try logging out.</div>;
 
-  const userTier = getTier(Number(profile.points) || 0);
+  const userTier = profile ? getTier(Number(profile.points) || 0) : null;
 
   return (
     <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0">
@@ -2192,37 +2208,34 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center mb-6">
         
-        {/* Profile Avatar (Changes color if VIP) */}
         <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4 text-[#D4AF37] relative shadow-sm">
             {userTier ? <Crown className="w-10 h-10" style={{ color: userTier.colorTheme }} /> : <User className="w-10 h-10" />}
         </div>
 
         {!editMode ? (
           <>
-            <h3 className="text-xl font-bold text-gray-800">{profile.name || 'User'}</h3>
-            <p className="text-sm font-bold text-gray-500 mt-1 mb-4 flex items-center justify-center"><Phone className="w-4 h-4 mr-1" /> {profile.phone}</p>
+            <h3 className="text-xl font-bold text-gray-800">{profile?.name || 'User'}</h3>
+            <p className="text-sm font-bold text-gray-500 mt-1 mb-4 flex items-center justify-center"><Phone className="w-4 h-4 mr-1" /> {profile?.phone}</p>
             
-            {/* 🌟 VIP Tier Display 🌟 */}
             {userTier && (
                 <div className="mb-6 inline-flex items-center px-4 py-1.5 rounded-full text-xs font-bold text-white shadow-sm border border-white/20" style={{ backgroundColor: userTier.colorTheme }}>
                     <Award className="w-4 h-4 mr-1.5"/> {userTier.name} ({userTier.discountPercent}%)
                 </div>
             )}
             
-            {/* VIP Point and Birthday Display */}
             <div className="grid grid-cols-2 gap-3 mb-6">
                 <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex flex-col items-center justify-center shadow-sm">
                     <span className="text-[10px] text-yellow-600 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1"/> VIP Points</span>
-                    <span className="text-2xl font-black text-[#123524]">{profile.points || 0}</span>
+                    <span className="text-2xl font-black text-[#123524]">{profile?.points || 0}</span>
                 </div>
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex flex-col items-center justify-center shadow-sm">
                     <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest flex items-center mb-1"><Gift className="w-3 h-3 mr-1"/> Birthday</span>
-                    <span className="text-sm font-bold text-blue-900 mt-1">{(profile as any).dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
+                    <span className="text-sm font-bold text-blue-900 mt-1">{(profile as any)?.dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
                 </div>
             </div>
 
-            <div className={`text-[10px] rounded-full px-3 py-1.5 inline-block font-bold mb-6 w-full ${profile.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
-              {profile.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
+            <div className={`text-[10px] rounded-full px-3 py-1.5 inline-block font-bold mb-6 w-full ${profile?.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
+              {profile?.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
             </div>
             <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center"><Edit className="w-4 h-4 mr-2" /> Edit Profile Details</button>
           </>
