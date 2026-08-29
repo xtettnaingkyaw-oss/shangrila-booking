@@ -271,6 +271,16 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
+  // 🌟 VIP Data Realtime Sync 🌟
+  const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
+  useEffect(() => {
+      const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
+          if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
+      });
+      return () => unsub();
+  }, []);
+  const mergedAppData = { ...appData, vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS };
+
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
   useEffect(() => {
@@ -313,7 +323,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
     { id: 'history', label: 'My Bookings', icon: History }
   ] as const;
 
-  const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
+  const vipSettings = mergedAppData.vipSettings;
   const tabs = vipSettings.isActive 
       ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }]
       : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
@@ -322,7 +332,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
       
-      {/* 🌟 Tab Swipe Hint for Mobile (UPDATED) 🌟 */}
       <div className="flex sm:hidden justify-end mb-2 pr-2">
          <span className="text-[10px] text-[#123524] font-bold flex items-center animate-pulse">
             ဘေးသို့ဆွဲကြည့်ပါ <span className="text-[#D4AF37] ml-1 tracking-tighter font-black">&gt;&gt;</span>
@@ -344,12 +353,12 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
         })}
       </div>
       
-      {activeTab === 'book' && <CustomerBookingWizard appData={appData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
-      {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={appData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
-      {activeTab === 'dashboard' && <CustomerDashboard appData={appData} onBookTherapist={handleDashboardBook} />}
+      {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
+      {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
+      {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
       {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
-      {activeTab === 'profile' && <CustomerProfile appData={appData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
-      {activeTab === 'vip' && <VipProgramView appData={appData} onGoToProfile={() => setActiveTab('profile')} />}
+      {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
+      {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
     </div>
   );
 }
@@ -366,6 +375,14 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
 
    const sortedTiers = [...vipSettings.tiers].sort((a,b) => a.requiredPoints - b.requiredPoints);
 
+   const baseRule = (vipSettings as any).baseRuleText || "သုံးစွဲငွေ ၃၅,၀၀၀ ကျပ် လျှင် = ၁ ပွိုင့် (1 Point)";
+   const preJadeTxt = (vipSettings as any).preJadeText || "Jade Member မဖြစ်မီ (၅၀) ပွိုင့် စုဆောင်းနေစဉ်ကာလအတွင်း (၁)လ အတွင်း ပြည့်မီသော Points များအတွက် အထူး Discount ကို ထပ်ဆောင်းပေးအပ်ပါသည်။";
+   const preJadeRws = (vipSettings as any).preJadeRewards || ['10 Pts = 10% Off', '20 Pts = 20% Off', '30 Pts = 30% Off', '40 Pts = 40% Off', '50 Pts = 50% Off'];
+   const cumulativeTxt = (vipSettings as any).cumulativeText || "Member အဆင့်များကို အဆင့်မြှင့်တင်ရာတွင် ပွိုင့်များကို သုညမှ ပြန်မစဘဲ ရှိပြီးသားပွိုင့်များအပေါ်တွင် ဆက်လက်ပေါင်းထည့်ပေးမည့် စနစ်ကို အသုံးပြုထားပါသည်။ (ဥပမာ - Jade 50 Pts မှ နောက်ထပ် 50 Pts ထပ်ရပါက စုစုပေါင်း 100 Pts ဖြင့် Gold သို့ တက်သွားပါမည်။)";
+   const instantUpgTxt = (vipSettings as any).instantUpgradeText || "(တစ်ကြိမ်တည်းဝယ်ယူမှုပြုလုပ်သူများအနေဖြင့် မိမိဝယ်ယူထားသည့်ငွေပမာဏအတိုင်း မိမိကြိုက်နှစ်သက်ရာ Service သို့မဟုတ် Package ကို မိမိဝယ်ယူထားသည့် Member အဆင့်ခံစားခွင့်နှင့်အညီ (၃)လအတွင်း ပြန်လည်သုံးစွဲနိုင်သည်။)";
+   const bdayStd = (vipSettings as any).birthdayStandardText || "မည်သည့် VIP (Jade, Gold, Imperial) မဆို မိမိမွေးနေ့တွင် မည်သည့် Service ကိုမဆို 50% Discount ခံစားခွင့်ရရှိမည်။";
+   const bdayImp = (vipSettings as any).birthdayImperialText || "အခြေခံ 20% + မွေးနေ့လတွင် ရရှိထားသော Points အရေအတွက် % ။\n(ဥပမာ - 50 Pts စုဆောင်းထားပါက 20% + 50% = 70% Discount ရရှိမည်)";
+
    return (
        <div className="max-w-md mx-auto animate-fade-in pb-20">
            <div className="bg-[#123524] text-white p-8 rounded-b-[40px] shadow-lg text-center relative overflow-hidden">
@@ -378,7 +395,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                
                <div className="mt-6 inline-flex flex-col items-center bg-black/20 p-3 rounded-xl border border-white/10">
                    <span className="text-[10px] font-bold uppercase text-[#D4AF37] mb-1 tracking-widest">Base Rule</span>
-                   <span className="text-xs font-semibold text-white">သုံးစွဲငွေ ၃၅,၀၀၀ ကျပ် လျှင် = ၁ ပွိုင့် (1 Point)</span>
+                   <span className="text-xs font-semibold text-white">{baseRule}</span>
                </div>
            </div>
 
@@ -413,10 +430,10 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                        <Target className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-5" />
                        <h3 className="font-bold text-[#D4AF37] text-sm mb-3 flex items-center relative z-10">လစဉ် Target Rewards (Pre-Jade)</h3>
                        <p className="text-[11px] text-gray-300 leading-relaxed mb-4 relative z-10 font-semibold">
-                           Jade Member မဖြစ်မီ (၅၀) ပွိုင့် စုဆောင်းနေစဉ်ကာလအတွင်း (၁)လ အတွင်း ပြည့်မီသော Points များအတွက် အထူး Discount ကို ထပ်ဆောင်းပေးအပ်ပါသည်။
+                           {preJadeTxt}
                        </p>
                        <ul className="space-y-2 relative z-10">
-                           {['10 Pts = 10% Off', '20 Pts = 20% Off', '30 Pts = 30% Off', '40 Pts = 40% Off', '50 Pts = 50% Off'].map((r, i) => (
+                           {preJadeRws.map((r: string, i: number) => (
                                <li key={i} className="flex justify-between items-center bg-white/10 px-3 py-2 rounded-lg text-xs font-bold border border-white/5">
                                    <span>{r.split('=')[0]}</span>
                                    <span className="text-[#D4AF37]">{r.split('=')[1]} (၁ ကြိမ်)</span>
@@ -429,14 +446,13 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                <section className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5">
                    <h3 className="font-bold text-[#123524] text-sm mb-2 flex items-center"><Info className="w-4 h-4 mr-2 text-yellow-600"/> Cumulative Upgrade System</h3>
                    <p className="text-[11px] text-gray-700 leading-relaxed font-semibold mb-4">
-                       Member အဆင့်များကို အဆင့်မြှင့်တင်ရာတွင် ပွိုင့်များကို သုညမှ ပြန်မစဘဲ ရှိပြီးသားပွိုင့်များအပေါ်တွင် ဆက်လက်ပေါင်းထည့်ပေးမည့် စနစ်ကို အသုံးပြုထားပါသည်။ (ဥပမာ - Jade 50 Pts မှ နောက်ထပ် 50 Pts ထပ်ရပါက စုစုပေါင်း 100 Pts ဖြင့် Gold သို့ တက်သွားပါမည်။)
+                       {cumulativeTxt}
                    </p>
-                   {/* 🌟 New Instant Upgrade Alert Box 🌟 */}
                    <div className="bg-white border border-[#D4AF37]/40 shadow-sm rounded-xl p-4 relative overflow-hidden">
                        <div className="absolute top-0 left-0 w-1.5 h-full bg-[#D4AF37]"></div>
                        <p className="text-[11px] text-gray-700 leading-relaxed font-semibold">
                            <span className="text-[#123524] font-bold block mb-1">💡 အထူးသတိပြုရန် -</span>
-                           (တစ်ကြိမ်တည်းဝယ်ယူမှုပြုလုပ်သူများအနေဖြင့် မိမိဝယ်ယူထားသည့်ငွေပမာဏအတိုင်း မိမိကြိုက်နှစ်သက်ရာ Service သို့မဟုတ် Package ကို မိမိဝယ်ယူထားသည့် Member အဆင့်ခံစားခွင့်နှင့်အညီ (၃)လအတွင်း ပြန်လည်သုံးစွဲနိုင်သည်။)
+                           {instantUpgTxt}
                        </p>
                    </div>
                </section>
@@ -448,7 +464,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mr-3 mt-0.5"><Star className="w-4 h-4 text-red-500"/></div>
                            <div>
                                <h4 className="font-bold text-[#123524] text-xs">Standard Birthday Bonus</h4>
-                               <p className="text-[11px] text-gray-600 mt-1 font-semibold leading-relaxed">မည်သည့် VIP (Jade, Gold, Imperial) မဆို မိမိမွေးနေ့တွင် မည်သည့် Service ကိုမဆို <b>50% Discount</b> ခံစားခွင့်ရရှိမည်။</p>
+                               <p className="text-[11px] text-gray-600 mt-1 font-semibold leading-relaxed whitespace-pre-line">{bdayStd}</p>
                            </div>
                        </div>
                        
@@ -456,9 +472,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                            <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0 mr-3 mt-0.5"><Crown className="w-4 h-4 text-[#D4AF37]"/></div>
                            <div>
                                <h4 className="font-bold text-[#D4AF37] text-xs">Imperial V-VIP သီးသန့်ခံစားခွင့်</h4>
-                               <p className="text-[11px] text-gray-400 mt-1 font-semibold leading-relaxed">
-                                   အခြေခံ 20% + မွေးနေ့လတွင် ရရှိထားသော Points အရေအတွက် % ။ <br/><span className="text-[#D4AF37]">(ဥပမာ - 50 Pts စုဆောင်းထားပါက 20% + 50% = 70% Discount ရရှိမည်)</span>
-                               </p>
+                               <p className="text-[11px] text-gray-400 mt-1 font-semibold leading-relaxed whitespace-pre-line">{bdayImp}</p>
                            </div>
                        </div>
                    </div>
@@ -476,7 +490,6 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                    </ul>
                </section>
 
-               {/* 🌟 UPDATED FOOTER WITH BUTTON 🌟 */}
                <div className="text-center pt-6 pb-8 border-t border-gray-200">
                    <div className="w-12 h-1 bg-gray-200 mx-auto rounded-full mb-4"></div>
                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-2">Check Your Points</p>
@@ -536,12 +549,11 @@ export function CustomerBookingWizard({
   const [alertMessage, setAlertMessage] = useState('');
   
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
-  const [userProfile, setUserProfile] = useState<any>(null); // Current User Profile (For VIP Check)
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const todayStr = getLocalTodayStr();
 
-  // Fetch all bookings
   useEffect(() => {
       const q = query(collection(db, 'bookings'));
       const unsub = onSnapshot(q, (snap) => {
@@ -555,7 +567,6 @@ export function CustomerBookingWizard({
       return () => unsub();
   }, []);
 
-  // Fetch Current User Profile to get Points & Date of Birth
   useEffect(() => {
       if (!userPhone) return;
       const fetchUser = async () => {
@@ -630,7 +641,7 @@ export function CustomerBookingWizard({
       if (!userProfile?.dob || !formData.date) return false;
       const dobParts = userProfile.dob.split('-');
       const bookParts = formData.date.split('-');
-      return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; // Month and Day match
+      return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2];
   };
 
   let finalDiscountPercent = 0;
@@ -641,7 +652,6 @@ export function CustomerBookingWizard({
       discountLabel = `Promo Discount (${finalDiscountPercent}%)`;
   } else if (userTier && vipSettings.isActive) {
       if (isBirthday()) {
-          // Imperial Bonus Check (Tier Percent 20 or name contains Imperial)
           if (userTier.discountPercent === 20 || userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) {
               finalDiscountPercent = Math.min(100, 20 + (userProfile?.points || 0));
               discountLabel = `Imperial Birthday Bonus (${finalDiscountPercent}%)`;
@@ -826,7 +836,7 @@ export function CustomerBookingWizard({
               }
               if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
           }
-          if (nextAvailable) setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} မှ ပြန်ရပါမည်။`);
+          if (nextAvailable) setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
           else setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
           return;
       }
@@ -2098,7 +2108,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
 }
 
 // ==========================================
-// COMPONENT: CustomerProfile (WITH ERROR HANDLING FIX)
+// COMPONENT: CustomerProfile
 // ==========================================
 export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -2152,7 +2162,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
               });
               setUserDocId(docId);
           } else {
-              // 🌟 Auto-Heal: Create temporary profile state for ghost users
               setProfile({ name: 'Walk-in Guest', phone: userPhone, points: 0, dob: '', password: '' } as any);
               setFormData({ name: '', password: '', dob: '' });
           }
@@ -2176,7 +2185,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
               dob: encryptText(formData.dob)
           });
       } else {
-          // 🌟 Auto-Heal: Save missing user to DB
           const newDocRef = await addDoc(collection(db, 'users'), {
               phone: encryptText(userPhone),
               name: encryptText(formData.name),
@@ -2213,7 +2221,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
 
         {!editMode ? (
           <>
-            <h3 className="text-xl font-bold text-gray-800">{profile?.name || 'User'}</h3>
+            <h3 className="text-xl font-bold text-gray-800">{profile?.name || 'Walk-in Guest'}</h3>
             <p className="text-sm font-bold text-gray-500 mt-1 mb-4 flex items-center justify-center"><Phone className="w-4 h-4 mr-1" /> {profile?.phone}</p>
             
             {userTier && (
