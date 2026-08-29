@@ -3,10 +3,28 @@ import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc,
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 
-// Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
-// အသစ်ထည့်သွင်းထားသော VIP Program အတွက် Award, Star, ShieldCheck, Gift, Target, Info, Percent စသည်တို့ ပါဝင်ပါသည်
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
+
+// ==========================================
+// FALLBACK VIP SETTINGS (Admin မသတ်မှတ်ရသေးခင် Tab ပေါ်ရန်)
+// ==========================================
+const FALLBACK_VIP_SETTINGS = {
+  isActive: true,
+  rules: [
+    "ပွိုင့်သက်တမ်းနှင့် Renew ပြုလုပ်ခြင်း: Customer များ စုဆောင်းထားသော ပွိုင့်များ၏ သက်တမ်းမှာ (၆) လ ဖြစ်ပါသည်။ ၆ လ တစ်ကြိမ် ပွိုင့်များကို Renew ပြုလုပ်မည် (အသစ်ပြန်လည် စတင်မည်) ဖြစ်ပါသည်။",
+    "(၆) လ ကာလအတွင်း VIP အဆင့် တစ်ခုခုသို့ ရောက်ရှိရန် လိုအပ်သော ပွိုင့်အရေအတွက် မပြည့်မီပါက (၆) လ ပြည့်သည့်နေ့တွင် ပွိုင့်များ သုညမှ ပြန်လည်စတင်မည် ဖြစ်ပါသည်။",
+    "VIP Member အဆင့်သို့ ရောက်ရှိသွားပါက အမြဲတမ်း Discount ခံစားခွင့်မှာမူ ပွိုင့် Renew လုပ်သည်နှင့် သက်ဆိုင်ခြင်းမရှိဘဲ ဆက်လက် တည်ရှိနေမည် ဖြစ်ပါသည်။",
+    "ကတ်ပျောက်ဆုံးခြင်း: ကတ်ပျောက်ဆုံး၊ ပျက်စီးပါက ဝန်ဆောင်ခ ၁၅,၀၀၀ ကျပ်ဖြင့် အသစ်ပြန်လည် ထုတ်ပေးပါမည်။ ယခင်စုဆောင်းထားသော ပွိုင့်များ အပြည့်အဝ ပြန်လည်ရရှိမည် ဖြစ်ပါသည်။",
+    "လွှဲပြောင်းအသုံးပြုခွင့်: VIP Member Card အား မိတ်ဆွေသူငယ်ချင်းများနှင့် မျှဝေသုံးစွဲခွင့်ရှိပြီး၊ လိုအပ်ပါက ဝန်ထမ်းများမှ ဖုန်းနံပါတ် တိုက်ဆိုင်စစ်ဆေးခြင်း ပြုလုပ်နိုင်ပါသည်။",
+    "The Shangri-La Men's Retreat မှ ဤ Membership Program ၏ စည်းကမ်းချက်များကို ကြိုတင်အကြောင်းကြားခြင်းမရှိဘဲ ပြင်ဆင်ပြောင်းလဲခွင့် ရှိပါသည်။"
+  ],
+  tiers: [
+    { id: 't1', name: 'Jade Elite Member', requiredPoints: 50, discountPercent: 10, instantUpgrade: '၈ သိန်းကျပ်', colorTheme: '#00A86B' },
+    { id: 't2', name: 'Imperial Gold VIP', requiredPoints: 100, discountPercent: 15, instantUpgrade: '၁၅ သိန်းကျပ်', colorTheme: '#D4AF37' },
+    { id: 't3', name: 'Shangri-La Signature V-VIP', requiredPoints: 150, discountPercent: 20, instantUpgrade: '၂၅ သိန်းကျပ်', colorTheme: '#1E1E1E' }
+  ]
+};
 
 // ==========================================
 // LOCAL HELPERS & CONSTANTS
@@ -73,16 +91,12 @@ function useCountdown(initialMinutes: number, onExpire: () => void) {
 function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: number, dateStr: string): Set<string> {
     const blocked = new Set<string>();
     if (!dateStr) return blocked;
-    
     const [y, m, d] = dateStr.split('-');
     if (!y || !m || !d) return blocked;
-    
     const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
     const startOfDay = dateObj.setHours(0, 0, 0, 0);
     const endOfDay = dateObj.setHours(23, 59, 59, 999);
-
     if (endTimeMillis <= startOfDay || startTimeMillis >= endOfDay) return blocked;
-
     ALL_TIME_SLOTS.forEach(slot => {
         if (slot.includes("to")) return; 
         const slotTime = new Date(Number(y), Number(m) - 1, Number(d));
@@ -91,10 +105,8 @@ function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: numbe
         if (ampm === 'PM' && sh < 12) sh += 12;
         if (ampm === 'AM' && sh === 12) sh = 0;
         slotTime.setHours(sh, sm, 0, 0);
-        
         const slotTimeMillis = slotTime.getTime();
         const nextSlotTimeMillis = slotTimeMillis + (30 * 60 * 1000); 
-
         if ((startTimeMillis < nextSlotTimeMillis) && (endTimeMillis > slotTimeMillis)) {
             blocked.add(slot);
         }
@@ -300,14 +312,15 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 
   const handleDashboardBook = (t: TherapistProfile) => { setPrefillTherapist(t); setActiveTab('therapists'); };
 
-  // --- TABS အသစ်တွင် VIP Tab ထည့်သွင်းထားသည် ---
   const baseTabs = [
-    { id: 'book', label: 'Book Now', icon: CalendarPlus }, { id: 'therapists', label: 'View Therapists', icon: User },
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, { id: 'history', label: 'My Bookings', icon: History }
+    { id: 'book', label: 'Book Now', icon: CalendarPlus }, 
+    { id: 'therapists', label: 'View Therapists', icon: User },
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, 
+    { id: 'history', label: 'My Bookings', icon: History }
   ] as const;
 
-  // VIP Program ဖွင့်ထားမှသာ Profile မတိုင်မီ VIP Tab ကို ကြားညှပ်ပြမည်
-  const tabs = appData.vipSettings?.isActive 
+  const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
+  const tabs = vipSettings.isActive 
       ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }]
       : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
 
@@ -333,19 +346,17 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
       {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={appData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
       {activeTab === 'dashboard' && <CustomerDashboard appData={appData} onBookTherapist={handleDashboardBook} />}
       {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
-      {activeTab === 'profile' && <CustomerProfile userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
-      
-      {/* 🌟 VIP Tab View 🌟 */}
+      {activeTab === 'profile' && <CustomerProfile appData={appData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
       {activeTab === 'vip' && <VipProgramView appData={appData} />}
     </div>
   );
 }
 
 // ==========================================
-// COMPONENT: VIP Program View (NEW)
+// COMPONENT: VIP Program View
 // ==========================================
 export function VipProgramView({ appData }: { appData: AppData }) {
-   const vipSettings = appData.vipSettings;
+   const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
 
    if (!vipSettings || !vipSettings.isActive) {
        return <div className="text-center py-20 text-gray-400 font-bold text-sm">VIP Program is currently unavailable.</div>;
@@ -466,7 +477,7 @@ export function VipProgramView({ appData }: { appData: AppData }) {
 
 
 // ==========================================
-// CUSTOMER BOOKING WIZARD (FULL LOGIC)
+// CUSTOMER BOOKING WIZARD (FULL LOGIC + VIP DISCOUNT CALCULATION)
 // ==========================================
 export function CustomerBookingWizard({
   appData, 
@@ -490,15 +501,14 @@ export function CustomerBookingWizard({
   preselectedStaff?: string 
 }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
+  const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
   
   const [step, setStep] = useState(() => {
       if (staffClockIn) return isTherapistFirst ? 2 : 1;
       return initialTherapist ? 2 : 1;
   });
 
-  useEffect(() => {
-     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [step]);
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [step]);
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
@@ -506,32 +516,46 @@ export function CustomerBookingWizard({
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
-  
   const [alertMessage, setAlertMessage] = useState('');
   
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
+  const [userProfile, setUserProfile] = useState<any>(null); // Current User Profile (For VIP Check)
+
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const todayStr = getLocalTodayStr();
 
+  // Fetch all bookings
   useEffect(() => {
       const q = query(collection(db, 'bookings'));
       const unsub = onSnapshot(q, (snap) => {
           const arr: Booking[] = [];
           snap.forEach(d => {
              const raw = d.data();
-             arr.push({
-                 id: d.id, 
-                 ...raw,
-                 name: decryptText(raw.name),
-                 phone: decryptText(raw.phone),
-                 txId: decryptText(raw.txId),
-                 specialRequest: decryptText(raw.specialRequest)
-             } as Booking);
+             arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking);
           });
           setAllBookings(arr);
       });
       return () => unsub();
   }, []);
+
+  // Fetch Current User Profile to get Points & Date of Birth
+  useEffect(() => {
+      if (!userPhone) return;
+      const fetchUser = async () => {
+          const snap = await getDocs(collection(db, 'users'));
+          snap.forEach(d => {
+              const decPhone = decryptText(d.data().phone) || d.id;
+              if (decPhone === userPhone) {
+                  setUserProfile({
+                      ...d.data(),
+                      points: parseInt(decryptText(d.data().points) || d.data().points || '0', 10),
+                      dob: decryptText(d.data().dob) || d.data().dob || ''
+                  });
+              }
+          });
+      };
+      fetchUser();
+  }, [userPhone]);
 
   useEffect(() => {
      if (preselectedStaff && !formData.therapist) {
@@ -551,6 +575,73 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
+  // VIP DISCOUNT CALCULATION LOGIC
+  const getTier = (points: number) => {
+      if(!vipSettings.isActive || !vipSettings.tiers) return null;
+      const sortedTiers = [...vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
+      return sortedTiers.find(t => points >= t.requiredPoints);
+  };
+
+  const userTier = getTier(userProfile?.points || 0);
+
+  const checkPromoActive = () => {
+      const promo = appData.promotion;
+      if (!promo?.isActive) return false;
+      if (!promo.startDate || !promo.endDate) return false;
+      const today = new Date(getLocalTodayStr()).getTime();
+      const sDate = new Date(promo.startDate).getTime();
+      const eDate = new Date(promo.endDate).getTime();
+      return today >= sDate && today <= eDate;
+  };
+
+  const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id) || false;
+  const promoActive = checkPromoActive();
+
+  const isBirthday = () => {
+      if (!userProfile?.dob || !formData.date) return false;
+      const dobParts = userProfile.dob.split('-');
+      const bookParts = formData.date.split('-');
+      return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; // Month and Day match
+  };
+
+  let finalDiscountPercent = 0;
+  let discountLabel = '';
+
+  if (promoActive) {
+      finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
+      discountLabel = `Promo Discount (${finalDiscountPercent}%)`;
+  } else if (userTier && vipSettings.isActive) {
+      if (isBirthday()) {
+          // Imperial Bonus Check (Tier Percent 20 or name contains Imperial)
+          if (userTier.discountPercent === 20 || userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) {
+              finalDiscountPercent = Math.min(100, 20 + (userProfile?.points || 0));
+              discountLabel = `Imperial Birthday Bonus (${finalDiscountPercent}%)`;
+          } else {
+              finalDiscountPercent = 50;
+              discountLabel = `VIP Birthday Bonus (50%)`;
+          }
+      } else {
+          finalDiscountPercent = userTier.discountPercent;
+          discountLabel = `VIP Member Discount (${finalDiscountPercent}%)`;
+      }
+  }
+
+  const calculateSubTotal = () => {
+    if (!formData.selectedItem) return 0;
+    const basePrice = Number(formData.selectedItem.price) || 0;
+    const vvipPrice = Number(formData.selectedItem.vvipPrice) || 0;
+    return formData.isVvipUpgrade && vvipPrice > 0 && !formData.selectedItem.vvipIncluded ? vvipPrice : basePrice;
+  };
+
+  const calculateDiscountAmount = () => {
+      return (calculateSubTotal() * finalDiscountPercent) / 100;
+  };
+
+  const calculateTotal = () => {
+      return calculateSubTotal() - calculateDiscountAmount();
+  };
+
+  // ROOM USAGE & AVAILABILITY LOGIC
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -581,36 +672,23 @@ export function CustomerBookingWizard({
   const roomUsageMap = useMemo(() => getRoomUsageMap(formData.date || todayStr, allBookings), [allBookings, formData.date, todayStr]);
 
   const currentRoomUsage = useMemo(() => {
-      let vip = 0;
-      let normal = 0;
-      const now = new Date();
-      let currentSlot = "";
+      let vip = 0; let normal = 0; const now = new Date(); let currentSlot = "";
       for (let i = ALL_TIME_SLOTS.length - 1; i >= 0; i--) {
-          const slot = ALL_TIME_SLOTS[i];
-          const [tPart, ampm] = slot.split(' ');
+          const slot = ALL_TIME_SLOTS[i]; const [tPart, ampm] = slot.split(' ');
           let [h, m] = tPart.split(':').map(Number);
-          if (ampm === 'PM' && h < 12) h += 12;
-          if (ampm === 'AM' && h === 12) h = 0;
-          const slotTime = new Date();
-          slotTime.setHours(h, m, 0, 0);
-          if (now >= slotTime) {
-              currentSlot = slot;
-              break;
-          }
+          if (ampm === 'PM' && h < 12) h += 12; if (ampm === 'AM' && h === 12) h = 0;
+          const slotTime = new Date(); slotTime.setHours(h, m, 0, 0);
+          if (now >= slotTime) { currentSlot = slot; break; }
       }
       
       allBookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed') return;
-          if (b.date !== todayStr) return; 
-          
+          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr) return; 
           const serviceLower = (b.service || '').toLowerCase();
           if (serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home')) return;
           const isVip = serviceLower.includes('vvip');
-          
           const coveredSlots = getBookingCoveredSlots(b);
           if (currentSlot && coveredSlots.includes(currentSlot)) {
-              if (isVip) vip++;
-              else normal++;
+              if (isVip) vip++; else normal++;
           }
       });
       return { vip, normal, total: vip + normal };
@@ -622,19 +700,13 @@ export function CustomerBookingWizard({
   const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
       const blocked = new Set<string>();
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
-      
       bookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed') return; 
-          if (b.date !== selectedDate) return;
-          if (b.therapist !== selectedTherapistName) return;
-
+          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== selectedDate || b.therapist !== selectedTherapistName) return;
           const coveredSlots = getBookingCoveredSlots(b);
           if (coveredSlots.length > 0) {
               coveredSlots.forEach(slot => blocked.add(slot));
-              
               const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
               if (firstIdx > 0) blocked.add(ALL_TIME_SLOTS[firstIdx - 1]);
-              
               const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
               if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blocked.add(ALL_TIME_SLOTS[lastIdx + 1]);
           }
@@ -675,25 +747,18 @@ export function CustomerBookingWizard({
           for (const slot of coveredSlotsForT) {
                const usage = roomUsageMap.get(slot) || { vip: 0, normal: 0 };
                const totalUsed = usage.vip + usage.normal;
-               if (isUserVip) {
-                   if (usage.vip >= 3 || totalUsed >= 5) return { available: false, reason: 'room' };
-               } else {
-                   if (usage.normal >= 2 || totalUsed >= 5) return { available: false, reason: 'room' };
-               }
+               if (isUserVip && (usage.vip >= 3 || totalUsed >= 5)) return { available: false, reason: 'room' };
+               if (!isUserVip && (usage.normal >= 2 || totalUsed >= 5)) return { available: false, reason: 'room' };
           }
       }
-
       return { available: true, reason: '' };
   };
 
   const handleTimeSlotClick = (t: string, state: { available: boolean, reason: string }) => {
       if (!formData.date) return;
-      
       if (state.reason === 'therapist') {
-          setAlertMessage("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
-          return;
+          setAlertMessage("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။"); return;
       }
-      
       if (state.reason === 'room') {
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
           let neededSlots = 2;
@@ -715,7 +780,6 @@ export function CustomerBookingWizard({
           for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
               let durationFree = true;
               const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
-              
               for(let j=0; j < neededSlots; j++) {
                   const subSlot = ALL_TIME_SLOTS[i+j];
                   if(!subSlot) { durationFree = false; break; }
@@ -724,7 +788,6 @@ export function CustomerBookingWizard({
                   if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
                   if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
               }
-
               if (durationFree && formData.therapist) {
                   const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
                   const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
@@ -732,21 +795,12 @@ export function CustomerBookingWizard({
                       if (tBlocked.has(slot)) { durationFree = false; break; }
                   }
               }
-
-              if (durationFree) {
-                  nextAvailable = ALL_TIME_SLOTS[i];
-                  break;
-              }
+              if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
           }
-
-          if (nextAvailable) {
-              setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} မှ ပြန်ရပါမည်။`);
-          } else {
-              setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
-          }
+          if (nextAvailable) setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} မှ ပြန်ရပါမည်။`);
+          else setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
           return;
       }
-
       if (state.available) {
           const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
           if (fixedDetails) {
@@ -764,7 +818,6 @@ export function CustomerBookingWizard({
 
     if (formData.selectedItem) {
         const fixedDetails = getFixedServiceDetails(formData.selectedItem.name);
-        
         if (fixedDetails) {
             let startIndex = ALL_TIME_SLOTS.indexOf(fixedDetails.start);
             let endIndex = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
@@ -779,9 +832,7 @@ export function CustomerBookingWizard({
               if (serviceName.includes("outcall")) {
                   allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
               } else if (isNightService) {
-                  allowedSlots = [
-                      "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"
-                  ];
+                  allowedSlots = ["7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"];
               }
             } else {
                allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
@@ -790,7 +841,6 @@ export function CustomerBookingWizard({
     }
 
     const targetDate = targetDateOverride || formData.date || todayStr;
-
     if (targetDate === todayStr) {
         const now = new Date();
         allowedSlots = allowedSlots.filter(slot => {
@@ -798,13 +848,9 @@ export function CustomerBookingWizard({
             if (slot.includes("to")) timeStr = slot.split(" to ")[0].trim(); 
             const match = timeStr.match(/(\d+):(\d+)\s+(AM|PM)/i);
             if (match) {
-                let h = parseInt(match[1]);
-                const m = parseInt(match[2]);
-                const ampm = match[3].toUpperCase();
-                if (ampm === 'PM' && h < 12) h += 12;
-                if (ampm === 'AM' && h === 12) h = 0;
-                const slotTime = new Date();
-                slotTime.setHours(h, m, 0, 0);
+                let h = parseInt(match[1]); const m = parseInt(match[2]); const ampm = match[3].toUpperCase();
+                if (ampm === 'PM' && h < 12) h += 12; if (ampm === 'AM' && h === 12) h = 0;
+                const slotTime = new Date(); slotTime.setHours(h, m, 0, 0);
                 return slotTime > now; 
             }
             return true; 
@@ -818,71 +864,31 @@ export function CustomerBookingWizard({
   const currentFixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
 
   const getMinMaxDates = () => {
-    const d = new Date(); 
-    const minDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    d.setDate(d.getDate() + 3); 
-    const maxDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const d = new Date(); const minDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    d.setDate(d.getDate() + 3); const maxDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     return { minDateStr, maxDateStr };
   }
   const { minDateStr, maxDateStr } = getMinMaxDates();
 
   const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
       const allowedSlots = getAvailableTimeSlots(dateToCheck);
-      
       let neededSlots = 2; 
       const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
 
-      if (fixedDetails) {
-          neededSlots = 1; 
-      } else if (formData.selectedItem) {
+      if (fixedDetails) neededSlots = 1; 
+      else if (formData.selectedItem) {
           const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
-
       const tBlocked = getBlockedSlots(allBookings, tName, dateToCheck);
-      
       for (const t of allowedSlots) {
            const actualTestStr = t.includes("to") ? `${t.split(' to ')[0].trim()} to ${t.split(' to ')[1]}` : t;
            const covered = getSlotsFromTimeText(actualTestStr, neededSlots);
            let overlap = false;
-           for (const slot of covered) {
-                if (tBlocked.has(slot)) { overlap = true; break; }
-           }
+           for (const slot of covered) { if (tBlocked.has(slot)) { overlap = true; break; } }
            if (!overlap) return false; 
       }
       return true;
-  };
-
-  const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id) || false;
-
-  const checkPromoActive = () => {
-      const promo = appData.promotion;
-      if (!promo?.isActive) return false;
-      if (!promo.startDate || !promo.endDate) return false;
-      const today = new Date(getLocalTodayStr()).getTime();
-      const sDate = new Date(promo.startDate).getTime();
-      const eDate = new Date(promo.endDate).getTime();
-      return today >= sDate && today <= eDate;
-  };
-
-  const promoActive = checkPromoActive();
-  const discountPercent = promoActive 
-      ? (isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0)) 
-      : 0;
-
-  const calculateSubTotal = () => {
-    if (!formData.selectedItem) return 0;
-    const basePrice = Number(formData.selectedItem.price) || 0;
-    const vvipPrice = Number(formData.selectedItem.vvipPrice) || 0;
-    return formData.isVvipUpgrade && vvipPrice > 0 && !formData.selectedItem.vvipIncluded ? vvipPrice : basePrice;
-  };
-
-  const calculateDiscountAmount = () => {
-      return (calculateSubTotal() * discountPercent) / 100;
-  };
-
-  const calculateTotal = () => {
-      return calculateSubTotal() - calculateDiscountAmount();
   };
 
   const handleCopy = (text: string) => {
@@ -894,9 +900,7 @@ export function CustomerBookingWizard({
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleNextStep = (nextStep: number) => {
-    setStep(nextStep);
-  };
+  const handleNextStep = (nextStep: number) => { setStep(nextStep); };
 
   const handleCountdownExpire = () => {
      if (isStaffMode) return;
@@ -915,18 +919,10 @@ export function CustomerBookingWizard({
       const freshBookings: Booking[] = [];
       freshSnap.forEach(d => {
          const raw = d.data();
-         freshBookings.push({
-             id: d.id, 
-             ...raw,
-             name: decryptText(raw.name),
-             phone: decryptText(raw.phone),
-             txId: decryptText(raw.txId),
-             specialRequest: decryptText(raw.specialRequest)
-         } as Booking);
+         freshBookings.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking);
       });
       
       let isOverlap = false;
-      
       const timeRegex = /^\d{1,2}:\d{2}(?::\d{2})?$/;
       const isStaffImmediate = staffClockIn && formData.date === todayStr && timeRegex.test(formData.time || '');
 
@@ -944,10 +940,8 @@ export function CustomerBookingWizard({
 
       if (isStaffImmediate) {
           const timeParts = (formData.time || "00:00").split(':');
-          const h = Number(timeParts[0]) || 0;
-          const m = Number(timeParts[1]) || 0;
-          const ampm = h >= 12 ? 'PM' : 'AM';
-          const hrs12 = h % 12 || 12;
+          const h = Number(timeParts[0]) || 0; const m = Number(timeParts[1]) || 0;
+          const ampm = h >= 12 ? 'PM' : 'AM'; const hrs12 = h % 12 || 12;
           finalTimeStr = `${hrs12}:${m.toString().padStart(2, '0')} ${ampm}`;
 
           const dateParts = (formData.date || todayStr).split('-');
@@ -957,7 +951,6 @@ export function CustomerBookingWizard({
           
           if (fixedDetails) {
               finalTimeStr = `${finalTimeStr} to ${fixedDetails.end}${fixedDetails.nextDay ? ' (Next Day)' : ''}`;
-              
               const endParts = fixedDetails.end.split(' ');
               const [endHStr, endMStr] = (endParts[0] || '00:00').split(':');
               const endAmPm = endParts[1] || 'AM';
@@ -967,14 +960,10 @@ export function CustomerBookingWizard({
               
               const endDateTime = new Date(startDateTime);
               endDateTime.setHours(endH, parseInt(endMStr) || 0, 0, 0);
-              if (fixedDetails.nextDay || endDateTime < startDateTime) {
-                  endDateTime.setDate(endDateTime.getDate() + 1);
-              }
+              if (fixedDetails.nextDay || endDateTime < startDateTime) endDateTime.setDate(endDateTime.getDate() + 1);
               expectedEndTimeMillis = endDateTime.getTime();
           } else if ((formData.selectedItem?.name || '').toLowerCase().includes("night")) {
-              const nextDay = new Date(startDateTime);
-              nextDay.setDate(nextDay.getDate() + 1);
-              nextDay.setHours(8, 0, 0, 0);
+              const nextDay = new Date(startDateTime); nextDay.setDate(nextDay.getDate() + 1); nextDay.setHours(8, 0, 0, 0);
               expectedEndTimeMillis = nextDay.getTime();
           } else {
               expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000);
@@ -982,10 +971,7 @@ export function CustomerBookingWizard({
 
           const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
           const coveredForImmediate = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date || ''));
-          for (const slot of coveredForImmediate) {
-              if (blockedNow.has(slot)) { isOverlap = true; break; }
-          }
-
+          for (const slot of coveredForImmediate) { if (blockedNow.has(slot)) { isOverlap = true; break; } }
       } else {
           let neededSlots = 2; 
           if (fixedDetails) {
@@ -997,19 +983,13 @@ export function CustomerBookingWizard({
               const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
-          
           const actualTestStr = (formData.time || '').includes("to") ? `${(formData.time || '').split(' to ')[0].trim()} to ${(formData.time || '').split(' to ')[1]}` : (formData.time || '');
           const coveredSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
           const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
-          for (const slot of coveredSlots) {
-              if (blockedNow.has(slot)) { isOverlap = true; break; }
-          }
+          for (const slot of coveredSlots) { if (blockedNow.has(slot)) { isOverlap = true; break; } }
       }
 
-      if (isOverlap) {
-         setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။");
-         setLoading(false); return;
-      }
+      if (isOverlap) { setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။"); setLoading(false); return; }
 
       const serviceLowerNameForCheck = (formData.selectedItem?.name || '').toLowerCase();
       const isCurrentOutcall = serviceLowerNameForCheck.includes('outcall') || serviceLowerNameForCheck.includes('hotel') || serviceLowerNameForCheck.includes('home');
@@ -1029,28 +1009,20 @@ export function CustomerBookingWizard({
           }
           
           let coveredSlotsToCheck: string[] = [];
-          if (isStaffImmediate) {
-              coveredSlotsToCheck = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date || ''));
-          } else {
+          if (isStaffImmediate) coveredSlotsToCheck = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date || ''));
+          else {
               const actualTestStr = (formData.time || '').includes("to") ? `${(formData.time || '').split(' to ')[0].trim()} to ${(formData.time || '').split(' to ')[1]}` : (formData.time || '');
               coveredSlotsToCheck = getSlotsFromTimeText(actualTestStr, neededSlots);
           }
 
           let isRoomOverlap = false;
-          
           for (const slotName of coveredSlotsToCheck) {
               const usage = freshRoomUsage.get(slotName) || { vip: 0, normal: 0 };
               const totalUsed = usage.vip + usage.normal;
-              if (isUserVip) {
-                  if (usage.vip >= 3 || totalUsed >= 5) { isRoomOverlap = true; break; }
-              } else {
-                  if (usage.normal >= 2 || totalUsed >= 5) { isRoomOverlap = true; break; }
-              }
+              if (isUserVip) { if (usage.vip >= 3 || totalUsed >= 5) { isRoomOverlap = true; break; } }
+              else { if (usage.normal >= 2 || totalUsed >= 5) { isRoomOverlap = true; break; } }
           }
-          if (isRoomOverlap) {
-              setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်တွင် အခန်းပြည့်သွားပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။");
-              setLoading(false); return;
-          }
+          if (isRoomOverlap) { setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်တွင် အခန်းပြည့်သွားပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။"); setLoading(false); return; }
       }
 
       // --- USER DATA ENCRYPTION ---
@@ -1068,18 +1040,16 @@ export function CustomerBookingWizard({
         });
 
         if (!userRefId) {
-          // Document ID ကို Random ID အဖြစ်ပြောင်းသိမ်းမည်
           await addDoc(collection(db, 'users'), {
              phone: encryptText(formData.phone.trim()),
              name: encryptText(formData.name || ''),
              password: encryptText(''),
-             points: encryptText('0'), // Auto Create အကောင့်များအတွက် VIP Point အသစ်စထည့်ခြင်း
+             points: encryptText('0'),
+             dob: encryptText(''),
              createdAt: Date.now()
           });
         } else if (!hasName) {
-          await updateDoc(doc(db, 'users', userRefId), {
-             name: encryptText(formData.name || '')
-          });
+          await updateDoc(doc(db, 'users', userRefId), { name: encryptText(formData.name || '') });
         }
       }
 
@@ -1099,10 +1069,7 @@ export function CustomerBookingWizard({
         status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
         createdAt: Date.now(),
         specialRequest: encryptText(formData.specialRequest || ''),
-        ...(isStaffImmediate && {
-            startTimeMillis: Number(fluidStartTimeMillis) || Date.now(),
-            expectedEndTimeMillis: Number(expectedEndTimeMillis) || Date.now()
-        })
+        ...(isStaffImmediate && { startTimeMillis: Number(fluidStartTimeMillis) || Date.now(), expectedEndTimeMillis: Number(expectedEndTimeMillis) || Date.now() })
       };
 
       Object.keys(dataToSave).forEach(key => dataToSave[key] === undefined ? delete dataToSave[key] : {});
@@ -1538,9 +1505,10 @@ export function CustomerBookingWizard({
                     <span className="font-semibold">Subtotal</span>
                     <span className="font-bold">{formatPrice(calculateSubTotal())}</span>
                 </div>
-                {promoActive && discountPercent > 0 && (
-                    <div className="flex justify-between items-center text-sm text-green-600 mb-2 bg-green-50 px-2 py-1 rounded">
-                        <span className="font-bold flex items-center"><Percent className="w-3 h-3 mr-1"/> Promo Discount ({discountPercent}%)</span>
+                {/* VIP / Promo Discount Display */}
+                {finalDiscountPercent > 0 && (
+                    <div className="flex justify-between items-center text-sm text-green-600 mb-2 bg-green-50 px-2 py-1.5 rounded border border-green-200 shadow-sm animate-fade-in">
+                        <span className="font-bold flex items-center"><Percent className="w-3 h-3 mr-1"/> {discountLabel}</span>
                         <span className="font-bold">-{formatPrice(calculateDiscountAmount())}</span>
                     </div>
                 )}
@@ -2099,23 +2067,31 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
 }
 
 // ==========================================
-// COMPONENT: CustomerProfile
+// COMPONENT: CustomerProfile (WITH VIP TIER & DOB)
 // ==========================================
-export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
+export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userDocId, setUserDocId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
-  const [formData, setFormData] = useState({ name: '', password: '' });
+  const [formData, setFormData] = useState({ name: '', password: '', dob: '' });
   const [saving, setSaving] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
+
+  const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
+
+  const getTier = (points: number) => {
+     if(!vipSettings.isActive || !vipSettings.tiers) return null;
+     const sortedTiers = [...vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
+     return sortedTiers.find(t => points >= t.requiredPoints);
+  };
 
   useEffect(() => {
     if (!userPhone) return;
     const fetchUser = async () => {
       const snap = await getDocs(collection(db, 'users'));
       snap.forEach(d => {
-         const data = d.data() as UserProfile;
+         const data = d.data();
          const decPhone = decryptText(data.phone) || d.id;
          if (decPhone === userPhone || d.id === userPhone) {
              setProfile({ 
@@ -2123,9 +2099,14 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
                  name: decryptText(data.name), 
                  password: decryptText(data.password), 
                  phone: userPhone,
-                 points: parseInt(decryptText(data.points as string) || (data.points as string) || '0', 10) 
+                 points: parseInt(decryptText(data.points as string) || (data.points as string) || '0', 10),
+                 dob: decryptText(data.dob as string) || (data.dob as string) || ''
+             } as any);
+             setFormData({ 
+                 name: decryptText(data.name) || '', 
+                 password: decryptText(data.password) || '',
+                 dob: decryptText(data.dob as string) || (data.dob as string) || ''
              });
-             setFormData({ name: decryptText(data.name) || '', password: decryptText(data.password) || '' });
              setUserDocId(d.id);
          }
       });
@@ -2139,8 +2120,12 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
     if (!userDocId) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', userDocId), { name: encryptText(formData.name), password: encryptText(formData.password) });
-      setProfile({ ...profile!, name: formData.name, password: formData.password });
+      await updateDoc(doc(db, 'users', userDocId), { 
+          name: encryptText(formData.name), 
+          password: encryptText(formData.password),
+          dob: encryptText(formData.dob)
+      });
+      setProfile({ ...profile!, name: formData.name, password: formData.password, dob: formData.dob } as any);
       setEditMode(false);
       setAlertMessage("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
     } catch (e) { setAlertMessage("Error updating profile."); }
@@ -2151,6 +2136,8 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
   if (loading) return <div className="text-center py-10 font-bold text-gray-500">Loading Profile...</div>;
   if (!profile) return <div className="text-center py-10 font-bold text-red-500">User not found. Try logging out.</div>;
 
+  const userTier = getTier(Number(profile.points) || 0);
+
   return (
     <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0">
       <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
@@ -2158,27 +2145,45 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
       <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>My Profile</h2></div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center mb-6">
-        <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4 text-[#D4AF37]"><User className="w-10 h-10" /></div>
+        
+        {/* Profile Avatar (Changes color if VIP) */}
+        <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4 text-[#D4AF37] relative shadow-sm">
+            {userTier ? <Crown className="w-10 h-10" style={{ color: userTier.colorTheme }} /> : <User className="w-10 h-10" />}
+        </div>
 
         {!editMode ? (
           <>
             <h3 className="text-xl font-bold text-gray-800">{profile.name || 'User'}</h3>
             <p className="text-sm font-bold text-gray-500 mt-1 mb-4 flex items-center justify-center"><Phone className="w-4 h-4 mr-1" /> {profile.phone}</p>
             
-            {/* VIP Point Display in Profile */}
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-6 inline-flex flex-col items-center justify-center min-w-[120px]">
-                <span className="text-[10px] text-yellow-600 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1"/> VIP Points</span>
-                <span className="text-xl font-black text-[#123524]">{profile.points || 0}</span>
+            {/* 🌟 VIP Tier Display 🌟 */}
+            {userTier && (
+                <div className="mb-6 inline-flex items-center px-4 py-1.5 rounded-full text-xs font-bold text-white shadow-sm border border-white/20" style={{ backgroundColor: userTier.colorTheme }}>
+                    <Award className="w-4 h-4 mr-1.5"/> {userTier.name} ({userTier.discountPercent}%)
+                </div>
+            )}
+            
+            {/* VIP Point and Birthday Display */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex flex-col items-center justify-center shadow-sm">
+                    <span className="text-[10px] text-yellow-600 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1"/> VIP Points</span>
+                    <span className="text-2xl font-black text-[#123524]">{profile.points || 0}</span>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex flex-col items-center justify-center shadow-sm">
+                    <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest flex items-center mb-1"><Gift className="w-3 h-3 mr-1"/> Birthday</span>
+                    <span className="text-sm font-bold text-blue-900 mt-1">{(profile as any).dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
+                </div>
             </div>
 
-            <div className={`text-[10px] rounded-full px-3 py-1 inline-block font-bold mb-6 w-full ${profile.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
+            <div className={`text-[10px] rounded-full px-3 py-1.5 inline-block font-bold mb-6 w-full ${profile.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
               {profile.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
             </div>
-            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center"><Edit className="w-4 h-4 mr-2" /> Edit Profile</button>
+            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center"><Edit className="w-4 h-4 mr-2" /> Edit Profile Details</button>
           </>
         ) : (
           <form onSubmit={handleSave} className="text-left space-y-4">
             <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name</label><input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" required /></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth (For Birthday Bonus)</label><input type="date" value={formData.dob} onChange={e => setFormData({ ...formData, dob: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" /></div>
             <div><label className="block text-xs font-bold text-gray-500 mb-1">Set Password (Optional)</label><input type="text" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="Leave blank for no password" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" /></div>
             <div className="flex space-x-2 pt-2">
               <button type="button" onClick={() => setEditMode(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200">Cancel</button>
