@@ -25,7 +25,6 @@ interface LocalAdminProfile extends AdminProfile { docId?: string; username?: st
 export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
 
-  // 🌟 Real-time VIP Sync System 🌟
   const [realtimeVip, setRealtimeVip] = useState<VipSettings | undefined>(appData.vipSettings);
   useEffect(() => {
       const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
@@ -136,7 +135,19 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
       const data: Booking[] = []; let currentPendingCount = 0;
       snap.forEach((doc) => { 
           const raw = doc.data();
-          const b = { id: doc.id, ...raw, name: decryptText(raw.name) || raw.name, phone: decryptText(raw.phone) || raw.phone, txId: decryptText(raw.txId) || raw.txId, specialRequest: decryptText(raw.specialRequest) || raw.specialRequest } as Booking; 
+          const b = { 
+             id: doc.id, 
+             ...raw, 
+             name: decryptText(raw.name) || raw.name, 
+             phone: decryptText(raw.phone) || raw.phone, 
+             txId: decryptText(raw.txId) || raw.txId, 
+             specialRequest: decryptText(raw.specialRequest) || raw.specialRequest,
+             // 🌟 Added VIP & Discount Decryption here 🌟
+             originalPrice: raw.originalPrice ? Number(decryptText(raw.originalPrice)) : undefined,
+             discountPercent: raw.discountPercent ? Number(decryptText(raw.discountPercent)) : undefined,
+             discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
+             vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
+          } as Booking; 
           data.push(b); if (b.status === 'pending') currentPendingCount++; 
       });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -178,6 +189,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
   );
 });
 
+// 🌟 UPDATED: AdminBookingsList တွင် VIP Tiers နှင့် Original Price ကို ပြသပါမည် 🌟
 function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
   const handleStatusChange = async (id: string, newStatus: string) => {
     let reason = '';
@@ -192,9 +204,54 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
       if (window.confirm('Are you sure you want to delete this booking?')) { await deleteDoc(doc(db, 'bookings', id)); } 
   };
 
+  // 🌟 Export to Excel/CSV Logic 🌟
+  const handleExportExcel = () => {
+      const headers = ['Booking ID', 'Customer Name', 'Phone', 'Service', 'Therapist', 'Date', 'Time', 'Total Price (Ks)', 'Original Price (Ks)', 'Discount Percent (%)', 'Discount Label', 'Payment Method', 'Transaction ID', 'Status', 'Special Request', 'Booking Date'];
+      
+      const rows = bookings.map(b => [
+          b.id || '',
+          `"${b.name || ''}"`,
+          `"${b.phone || ''}"`,
+          `"${b.service || ''}"`,
+          `"${b.therapist || ''}"`,
+          b.date || '',
+          b.time || '',
+          b.totalPrice || 0,
+          b.originalPrice || '',
+          b.discountPercent || '',
+          b.discountLabel ? `"${b.discountLabel}"` : '',
+          b.paymentMethod || '',
+          b.txId || '',
+          b.status || '',
+          `"${b.specialRequest || ''}"`,
+          new Date(b.createdAt).toLocaleString()
+      ]);
+      
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Bookings_Report_${getLocalTodayStr()}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><CalendarPlus className="mr-2 text-yellow-500" /> Booking Requests</h2><span className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full text-sm font-bold border border-yellow-200">Total: {bookings.length}</span></div>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+          <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
+              <CalendarPlus className="mr-2 text-yellow-500" /> Booking Requests
+          </h2>
+          <div className="flex items-center space-x-3 w-full sm:w-auto">
+              <button onClick={handleExportExcel} className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm">
+                 <Download className="w-4 h-4 mr-1.5" /> Export Excel
+              </button>
+              <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-bold border border-yellow-200">Total: {bookings.length}</span>
+          </div>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse min-w-[800px]">
           <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status & Action</th><th className="p-3 pb-4 text-right">Delete</th></tr></thead>
@@ -202,10 +259,41 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
             {bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No pending bookings.</td></tr>)}
             {bookings.map((b) => (
               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                <td className="p-3"><div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div></td>
+                <td className="p-3">
+                    <div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div>
+                    <div className="text-xs text-gray-500">{b.phone || '-'}</div>
+                    {b.vipTierName ? (
+                        <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-sm">
+                            <Crown className="w-3 h-3 mr-1 text-yellow-600" /> {b.vipTierName}
+                        </div>
+                    ) : (b.discountPercent && b.discountPercent > 0) ? (
+                        <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-sm">
+                            <Sparkles className="w-3 h-3 mr-1 text-green-600" /> Promo Active
+                        </div>
+                    ) : null}
+                </td>
                 <td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>{b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}</td>
                 <td className="p-3 text-sm text-gray-700"><div className="font-semibold text-[#123524]">{b.date || '-'}</div><div className="text-gray-600 text-xs mt-1">{b.time || '-'}</div></td>
-                <td className="p-3"><div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div><div className="text-[10px] uppercase tracking-wider font-bold text-yellow-600 mt-1">{b.paymentMethod || 'Unknown'} • {formatPrice(b.totalPrice)}</div></td>
+                <td className="p-3">
+                    <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div>
+                    <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-1">{b.paymentMethod || 'Unknown'}</div>
+                    
+                    {/* Original Price & Discount Display */}
+                    {b.originalPrice && b.originalPrice > b.totalPrice ? (
+                        <div className="mt-2 p-1.5 bg-green-50 border border-green-100 rounded-md w-max">
+                           <div className="flex items-center space-x-2 mb-0.5">
+                              <span className="text-[10px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span>
+                              <span className="text-[9px] font-bold text-red-500 bg-red-100 px-1 py-0.5 rounded">-{b.discountPercent}%</span>
+                           </div>
+                           <div className="font-bold text-[#123524] text-sm">
+                              {formatPrice(b.totalPrice)}
+                           </div>
+                           {b.discountLabel && <div className="text-[8.5px] text-green-700 font-semibold mt-1 uppercase tracking-wider">{b.discountLabel.replace(/ \(\d+%\)/, '')}</div>}
+                        </div>
+                    ) : (
+                        <div className="mt-1.5 font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
+                    )}
+                </td>
                 <td className="p-3">
                   <select value={b.status} onChange={(e) => handleStatusChange(b.id!, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
                     <option value="pending">Pending</option><option value="payment_checking">Confirming</option><option value="approved">Approve</option><option value="cancelled">Cancel</option>
