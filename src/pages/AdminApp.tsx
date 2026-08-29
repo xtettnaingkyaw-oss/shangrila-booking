@@ -25,6 +25,16 @@ interface LocalAdminProfile extends AdminProfile { docId?: string; username?: st
 export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
 
+  // 🌟 Real-time VIP Sync System 🌟
+  const [realtimeVip, setRealtimeVip] = useState<VipSettings | undefined>(appData.vipSettings);
+  useEffect(() => {
+      const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
+          if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
+      });
+      return () => unsub();
+  }, []);
+  const mergedAppData = { ...appData, vipSettings: realtimeVip || appData.vipSettings || DEFAULT_VIP_SETTINGS };
+
   useEffect(() => {
     const interval = setInterval(() => {
        const sessionAdmin = sessionStorage.getItem('shangrila_admin');
@@ -45,7 +55,7 @@ export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppD
         setLoggedInAdmin(user); 
     }} />;
   }
-  return <AdminDashboard appData={appData} onSettingsUpdated={onSettingsUpdated} loggedInAdmin={loggedInAdmin} onLogout={handleLogout} />;
+  return <AdminDashboard appData={mergedAppData} onSettingsUpdated={onSettingsUpdated} loggedInAdmin={loggedInAdmin} onLogout={handleLogout} />;
 }
 
 function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
@@ -303,12 +313,11 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
    );
 }
 
-// ==== VIP POINTS လျှောက်ထားခြင်းနှင့် ပြင်ဆင်ခြင်းအတွက် UPDATE ပြုလုပ်ထားသော Users List ====
 function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: AppData }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ name: '', password: '', points: 0 });
+  const [editForm, setEditForm] = useState({ name: '', password: '', points: 0, dob: '' });
 
   const fetchUsers = async () => {
     try {
@@ -322,7 +331,8 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
              phone: decryptText(raw.phone) || doc.id, 
              name: decryptText(raw.name) || raw.name, 
              password: decryptText(raw.password) || raw.password,
-             points: parseInt(decryptText(raw.points) || raw.points || '0', 10)
+             points: parseInt(decryptText(raw.points) || raw.points || '0', 10),
+             dob: decryptText(raw.dob) || raw.dob || ''
           });
       });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -340,7 +350,8 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
       await updateDoc(doc(db, 'users', editingUser.docId), { 
           name: encryptText(editForm.name), 
           password: encryptText(editForm.password),
-          points: encryptText(editForm.points.toString()) 
+          points: encryptText(editForm.points.toString()),
+          dob: encryptText(editForm.dob)
       });
       alert('User အချက်အလက်နှင့် VIP Point များ ပြင်ဆင်ပြီးပါပြီ။'); 
       setEditingUser(null); 
@@ -369,6 +380,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
             <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full"><h3 className="text-lg font-bold mb-4 text-[#123524]">Edit User ({editingUser.phone})</h3>
                <form onSubmit={handleUpdateUser} className="space-y-4">
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded" required /></div>
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth</label><input type="date" value={editForm.dob} onChange={e=>setEditForm({...editForm, dob: e.target.value})} className="w-full p-2 border rounded" /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Leave blank for no password" className="w-full p-2 border rounded" /></div>
                  <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100">
                     <label className="block text-xs font-bold text-yellow-800 mb-1 flex items-center"><Star className="w-3 h-3 mr-1"/> VIP Points (35k = 1 Pts)</label>
@@ -381,21 +393,23 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
       )}
 
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => {
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name & DOB</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => {
          const userTier = getTier(u.points);
          return (
          <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition">
              <td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td>
-             <td className="p-3 font-bold text-gray-800">{u.name || '-'}</td>
+             <td className="p-3">
+                 <div className="font-bold text-gray-800">{u.name || '-'}</div>
+                 {u.dob && <div className="text-[10px] text-gray-500 mt-0.5 flex items-center"><Gift className="w-3 h-3 mr-1"/> {u.dob}</div>}
+             </td>
              <td className="p-3">
                  <div className="flex items-center space-x-2">
                      <span className="font-bold text-gray-800 text-lg">{u.points || 0} Pts</span>
                      {userTier && <span className="text-[10px] px-2 py-0.5 rounded font-bold text-white shadow-sm flex items-center" style={{ backgroundColor: userTier.colorTheme }}><Award className="w-3 h-3 mr-1"/> {userTier.name} ({userTier.discountPercent}%)</span>}
                  </div>
              </td>
-             <td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td>
-             <td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
-             <td className="p-3 text-right"><div className="flex items-center justify-end space-x-2"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', points: u.points || 0 }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center"><Edit className="w-3 h-3 mr-1"/> Edit / Add Pts</button><button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button></div></td>
+             <td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td>
+             <td className="p-3 text-right"><div className="flex items-center justify-end space-x-2"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', points: u.points || 0, dob: u.dob || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center"><Edit className="w-3 h-3 mr-1"/> Edit</button><button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button></div></td>
          </tr>
          );
       })}</tbody></table></div>
