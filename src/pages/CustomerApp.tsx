@@ -505,9 +505,8 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
    );
 }
 
-
 // ==========================================
-// CUSTOMER BOOKING WIZARD (FULL LOGIC + VIP DISCOUNT CALCULATION)
+// CUSTOMER BOOKING WIZARD (FOUR HANDS MASSAGE SUPPORT)
 // ==========================================
 export function CustomerBookingWizard({
   appData, 
@@ -541,7 +540,22 @@ export function CustomerBookingWizard({
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [step]);
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+  
+  // 🌟 Added therapist2 for Four Hands Massage 🌟
+  const [formData, setFormData] = useState({ 
+      name: isStaffMode ? 'Walk-in Guest' : '', 
+      phone: userPhone, 
+      selectedItem: null as MenuItem | null, 
+      isVvipUpgrade: false, 
+      therapist: initialTherapist, 
+      therapist2: null as TherapistProfile | null,
+      date: '', 
+      time: '', 
+      paymentMethod: '', 
+      txId: '', 
+      specialRequest: '' 
+  });
+  
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
@@ -553,6 +567,11 @@ export function CustomerBookingWizard({
 
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const todayStr = getLocalTodayStr();
+
+  // Check if current selected service is Four Hands
+  const isFourHands = useMemo(() => {
+      return (formData.selectedItem?.name || '').toLowerCase().includes('four hands');
+  }, [formData.selectedItem]);
 
   useEffect(() => {
       const q = query(collection(db, 'bookings'));
@@ -590,9 +609,7 @@ export function CustomerBookingWizard({
                       dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
                   });
               }
-          } catch(e) {
-              console.error(e);
-          }
+          } catch(e) { console.error(e); }
       };
       fetchUser();
   }, [userPhone]);
@@ -615,7 +632,6 @@ export function CustomerBookingWizard({
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
 
-  // VIP DISCOUNT CALCULATION LOGIC
   const getTier = (points: number) => {
       if(!vipSettings.isActive || !vipSettings.tiers) return null;
       const sortedTiers = [...vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
@@ -672,15 +688,9 @@ export function CustomerBookingWizard({
     return formData.isVvipUpgrade && vvipPrice > 0 && !formData.selectedItem.vvipIncluded ? vvipPrice : basePrice;
   };
 
-  const calculateDiscountAmount = () => {
-      return (calculateSubTotal() * finalDiscountPercent) / 100;
-  };
+  const calculateDiscountAmount = () => { return (calculateSubTotal() * finalDiscountPercent) / 100; };
+  const calculateTotal = () => { return calculateSubTotal() - calculateDiscountAmount(); };
 
-  const calculateTotal = () => {
-      return calculateSubTotal() - calculateDiscountAmount();
-  };
-
-  // ROOM USAGE & AVAILABILITY LOGIC
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
@@ -740,7 +750,7 @@ export function CustomerBookingWizard({
       const blocked = new Set<string>();
       if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
       bookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== selectedDate || b.therapist !== selectedTherapistName) return;
+          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== selectedDate || !b.therapist.includes(selectedTherapistName)) return;
           const coveredSlots = getBookingCoveredSlots(b);
           if (coveredSlots.length > 0) {
               coveredSlots.forEach(slot => blocked.add(slot));
@@ -775,6 +785,14 @@ export function CustomerBookingWizard({
           const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date || todayStr);
           for (const slot of coveredSlotsForT) {
               if (tBlocked.has(slot)) return { available: false, reason: 'therapist' };
+          }
+      }
+      
+      // 🌟 Check 2nd therapist for Four Hands
+      if (formData.therapist2) {
+          const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date || todayStr);
+          for (const slot of coveredSlotsForT) {
+              if (tBlocked2.has(slot)) return { available: false, reason: 'therapist' };
           }
       }
 
@@ -827,16 +845,21 @@ export function CustomerBookingWizard({
                   if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
                   if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
               }
+              
               if (durationFree && formData.therapist) {
                   const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
                   const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-                  for (const slot of testSlots) {
-                      if (tBlocked.has(slot)) { durationFree = false; break; }
-                  }
+                  for (const slot of testSlots) { if (tBlocked.has(slot)) { durationFree = false; break; } }
               }
+              if (durationFree && formData.therapist2) {
+                  const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date);
+                  const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
+                  for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } }
+              }
+              
               if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
           }
-          if (nextAvailable) setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
+          if (nextAvailable) setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} မှ ပြန်ရပါမည်။`);
           else setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
           return;
       }
@@ -944,7 +967,7 @@ export function CustomerBookingWizard({
   const handleCountdownExpire = () => {
      if (isStaffMode) return;
      setAlertMessage("ငွေပေးချေရန် သတ်မှတ်ချိန် (၁၅) မိနစ် ကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ ဘိုကင် အသစ်ပြန်လည်တင်ပေးပါ။");
-     setStep(1); setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
+     setStep(1); setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, therapist2: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   };
   const formattedCountdown = useCountdown(isStaffMode ? 0 : 15, handleCountdownExpire);
 
@@ -1009,8 +1032,12 @@ export function CustomerBookingWizard({
           }
 
           const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
+          const blockedNow2 = formData.therapist2 ? getBlockedSlots(freshBookings, formData.therapist2.name, formData.date || '') : new Set();
           const coveredForImmediate = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date || ''));
-          for (const slot of coveredForImmediate) { if (blockedNow.has(slot)) { isOverlap = true; break; } }
+          
+          for (const slot of coveredForImmediate) { 
+              if (blockedNow.has(slot) || blockedNow2.has(slot)) { isOverlap = true; break; } 
+          }
       } else {
           let neededSlots = 2; 
           if (fixedDetails) {
@@ -1025,13 +1052,18 @@ export function CustomerBookingWizard({
           const actualTestStr = (formData.time || '').includes("to") ? `${(formData.time || '').split(' to ')[0].trim()} to ${(formData.time || '').split(' to ')[1]}` : (formData.time || '');
           const coveredSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
           const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
-          for (const slot of coveredSlots) { if (blockedNow.has(slot)) { isOverlap = true; break; } }
+          const blockedNow2 = formData.therapist2 ? getBlockedSlots(freshBookings, formData.therapist2.name, formData.date || '') : new Set();
+          
+          for (const slot of coveredSlots) { 
+              if (blockedNow.has(slot) || blockedNow2.has(slot)) { isOverlap = true; break; } 
+          }
       }
 
       if (isOverlap) { setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။"); setLoading(false); return; }
 
       const serviceLowerNameForCheck = (formData.selectedItem?.name || '').toLowerCase();
       const isCurrentOutcall = serviceLowerNameForCheck.includes('outcall') || serviceLowerNameForCheck.includes('hotel') || serviceLowerNameForCheck.includes('home');
+      
       if (!isCurrentOutcall) {
           const freshRoomUsage = getRoomUsageMap(formData.date || todayStr, freshBookings);
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
@@ -1064,7 +1096,6 @@ export function CustomerBookingWizard({
           if (isRoomOverlap) { setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်တွင် အခန်းပြည့်သွားပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။"); setLoading(false); return; }
       }
 
-      // --- USER DATA ENCRYPTION ---
       if (formData.phone && formData.phone.trim() !== '') {
         const usersSnap = await getDocs(collection(db, 'users'));
         let userRefId: string | null = null;
@@ -1096,12 +1127,19 @@ export function CustomerBookingWizard({
 
       if (isNaN(expectedEndTimeMillis)) expectedEndTimeMillis = fluidStartTimeMillis + (60 * 60 * 1000);
 
-      // --- BOOKING DATA ENCRYPTION ---
+      // 🌟 Combined Therapist String for Four Hands 🌟
+      let combinedTherapistName = formData.therapist?.name || 'Any Available Therapist';
+      if (isFourHands && formData.therapist && formData.therapist2) {
+          combinedTherapistName = `${formData.therapist.name} & ${formData.therapist2.name}`;
+      } else if (isFourHands && formData.therapist) {
+          combinedTherapistName = `${formData.therapist.name} & (Any Available)`;
+      }
+
       const dataToSave: any = {
         name: encryptText(formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest')), 
         phone: encryptText(formData.phone || '-'),
         service: `${formData.selectedItem?.name || ''} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`.trim(),
-        therapist: formData.therapist?.name || 'Any Available Therapist',
+        therapist: combinedTherapistName,
         date: formData.date || todayStr, 
         time: finalTimeStr || '00:00', 
         paymentMethod: isStaffMode ? 'Cash Payment in Shop' : (formData.paymentMethod || '-'), 
@@ -1133,7 +1171,7 @@ export function CustomerBookingWizard({
         <button onClick={() => { 
            if (staffClockInSuccess) { staffClockInSuccess(); return; }
            if (isStaffMode) {
-               setStep(1); setFormData({ name: 'Walk-in Guest', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: initialTherapist, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' }); setSuccessMsg(''); window.scrollTo({ top: 0, behavior: 'smooth' });
+               setStep(1); setFormData({ name: 'Walk-in Guest', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: initialTherapist, therapist2: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' }); setSuccessMsg(''); window.scrollTo({ top: 0, behavior: 'smooth' });
            } else { setSuccessMsg(''); if (onBooked) onBooked(formData.phone); }
         }} className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>
            {staffClockIn ? 'Finish' : (isStaffMode ? 'နောက်ထပ် ဘိုကင်တင်မည် (Add Another)' : 'မှတ်တမ်းကြည့်ရန် (View History)')}
@@ -1168,7 +1206,6 @@ export function CustomerBookingWizard({
   const renderServiceSelection = (currentStep: number) => (
     <div className="animate-fade-in px-2 sm:px-0">
       
-      {/* 🌟 PREMIUM PROMOTION BANNER 🌟 */}
       {promoActive && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between">
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
@@ -1217,7 +1254,7 @@ export function CustomerBookingWizard({
             </div>
             {activeCategory === category.id && (
               <div className="p-2 border-t border-gray-100 bg-gray-50/50">{category.items.map(s => (
-                <div key={s.id} onClick={() => setFormData({ ...formData, selectedItem: s, isVvipUpgrade: false, time: '' })} className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${formData.selectedItem?.id === s.id ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
+                <div key={s.id} onClick={() => setFormData({ ...formData, selectedItem: s, isVvipUpgrade: false, time: '', therapist2: null })} className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${formData.selectedItem?.id === s.id ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
                   <div><div className="font-bold text-gray-800 text-sm">{s.name}</div>{s.duration && <div className="text-xs text-gray-500 mt-1">{s.duration}</div>}</div>
                   <div className="font-bold text-sm" style={{ color: THEME.primary }}>{formatPrice(s.price)}</div>
                 </div>
@@ -1278,6 +1315,10 @@ export function CustomerBookingWizard({
       
       const allFullyBooked = appData.therapists.length > 0 && appData.therapists.every(t => isTherapistFullForDate(t.name, globalCheckDate));
 
+      // 🌟 Four Hands Logic Check 🌟
+      const isSelectionIncomplete = isFourHands && formData.therapist !== null && formData.therapist2 === null;
+      const isAnySelected = formData.therapist === null;
+
       return (
         <div className="animate-fade-in relative px-2 sm:px-0">
           {viewGallery && (
@@ -1296,18 +1337,48 @@ export function CustomerBookingWizard({
             </div>
           )}
 
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)</p></div>
-          <div onClick={() => setFormData({ ...formData, therapist: null, time: '' })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}><div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div><div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div></div>
+          <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2>
+              <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>
+                  {isFourHands ? '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်း ၂ ယောက်ကို ရွေးချယ်ပါ)' : '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)'}
+              </p>
+          </div>
+          
+          <div onClick={() => setFormData({ ...formData, therapist: null, therapist2: null, time: '' })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
+              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div>
+              <div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div>
+          </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {appData.therapists.map((therapist) => {
-              const isSelected = formData.therapist?.id === therapist.id; const hasImage = therapist.images && therapist.images.length > 0;
+              const isSelected1 = formData.therapist?.id === therapist.id; 
+              const isSelected2 = formData.therapist2?.id === therapist.id;
+              const isSelected = isSelected1 || isSelected2;
+              const hasImage = therapist.images && therapist.images.length > 0;
               const isFull = isTherapistFullForDate(therapist.name, globalCheckDate);
               const fullTextEn = globalCheckDate === todayStr ? "Fully Booked For Today" : "Fully Booked";
               const fullTextMm = globalCheckDate === todayStr ? "(ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ)" : "(ဘိုကင်ပြည့်သွားပါပြီ)";
 
               return (
-                <div key={therapist.id} onClick={() => !isFull && setFormData({ ...formData, therapist: therapist, time: '' })} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
+                <div key={therapist.id} onClick={() => {
+                    if (isFull) return;
+                    if (isFourHands) {
+                        if (isSelected1) {
+                            setFormData({ ...formData, therapist: formData.therapist2, therapist2: null, time: '' });
+                        } else if (isSelected2) {
+                            setFormData({ ...formData, therapist2: null, time: '' });
+                        } else if (!formData.therapist) {
+                            setFormData({ ...formData, therapist: therapist, time: '' });
+                        } else if (!formData.therapist2) {
+                            setFormData({ ...formData, therapist2: therapist, time: '' });
+                        } else {
+                            setFormData({ ...formData, therapist2: therapist, time: '' });
+                        }
+                    } else {
+                        setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' });
+                    }
+                }} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
+                  
                   {isFull && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                       <div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500">
@@ -1316,6 +1387,12 @@ export function CustomerBookingWizard({
                       </div>
                     </div>
                   )}
+
+                  {/* 🌟 Selection Badges 🌟 */}
+                  {isSelected1 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">1</div>}
+                  {isSelected2 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">2</div>}
+                  {isSelected && !isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-white w-6 h-6 rounded-full flex items-center justify-center z-30 shadow-md border-2 border-white"><Check className="w-4 h-4"/></div>}
+
                   <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-70' : ''}`}>
                     {hasImage ? (
                       <>
@@ -1332,8 +1409,8 @@ export function CustomerBookingWizard({
                   <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-600' : 'text-gray-800'}`}>{therapist.name}</div>
                   <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
                   
-                  {isTherapistFirst && (
-                    <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist, time: '' }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
+                  {isTherapistFirst && !isFourHands && (
+                    <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>
                       Book Now {!isFull && <ChevronRight className="w-3 h-3 ml-1" />}
                     </button>
                   )}
@@ -1345,7 +1422,7 @@ export function CustomerBookingWizard({
           <div className={`mt-8 flex flex-col gap-4`}>
              <div className={`flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} w-full`}>
                 {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-                <button type="button" disabled={formData.therapist === undefined || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition shadow-md flex items-center w-full sm:w-auto justify-center ${formData.therapist === undefined || allFullyBooked ? 'bg-gray-300 cursor-not-allowed' : 'hover:opacity-90'}`} style={formData.therapist !== undefined && !allFullyBooked ? { backgroundColor: THEME.primary } : {}}>
+                <button type="button" disabled={(!isAnySelected && isSelectionIncomplete) || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition shadow-md flex items-center w-full sm:w-auto justify-center ${((!isAnySelected && isSelectionIncomplete) || allFullyBooked) ? 'bg-gray-300 cursor-not-allowed' : 'hover:opacity-90'}`} style={!((!isAnySelected && isSelectionIncomplete) || allFullyBooked) ? { backgroundColor: THEME.primary } : {}}>
                   {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
                 </button>
              </div>
@@ -1360,7 +1437,7 @@ export function CustomerBookingWizard({
                          onClick={(e) => {
                              e.stopPropagation();
                              const tomorrowStr = getTomorrowStr();
-                             setFormData({ ...formData, therapist: null, date: tomorrowStr, time: '' });
+                             setFormData({ ...formData, therapist: null, therapist2: null, date: tomorrowStr, time: '' });
                              setAlertMessage(`ရွေးချယ်မည့်ရက်အား မနက်ဖြန် (${tomorrowStr}) သို့ ပြောင်းလဲလိုက်ပါသည်။ ဝန်ထမ်းကို ဆက်လက်ရွေးချယ်ပါ။`);
                              window.scrollTo({ top: 0, behavior: 'smooth' });
                          }}
@@ -1452,9 +1529,12 @@ export function CustomerBookingWizard({
                                                if (durationFree && formData.therapist) {
                                                    const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
                                                    const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-                                                   for (const slot of testSlots) {
-                                                       if (tBlocked.has(slot)) { durationFree = false; break; }
-                                                   }
+                                                   for (const slot of testSlots) { if (tBlocked.has(slot)) { durationFree = false; break; } }
+                                               }
+                                               if (durationFree && formData.therapist2) {
+                                                   const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date);
+                                                   const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
+                                                   for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } }
                                                }
                                                if (durationFree) {
                                                    nextAvailable = ALL_TIME_SLOTS[i];
@@ -1537,7 +1617,13 @@ export function CustomerBookingWizard({
                 </div>
               )}
               {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
-              <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist ? formData.therapist.name : 'Any Available Therapist'}</div>
+              
+              <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50">
+                  <User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> 
+                  {formData.therapist && formData.therapist2 && (formData.selectedItem?.name || '').toLowerCase().includes('four hands') 
+                      ? `${formData.therapist.name} & ${formData.therapist2.name}` 
+                      : (formData.therapist ? formData.therapist.name : 'Any Available Therapist')}
+              </div>
               <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
             </div>
             
@@ -2108,7 +2194,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
 }
 
 // ==========================================
-// COMPONENT: CustomerProfile
+// COMPONENT: CustomerProfile (WITH AUTO-HEAL FIX)
 // ==========================================
 export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -2162,6 +2248,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
               });
               setUserDocId(docId);
           } else {
+              // 🌟 Auto-Heal: User DB ထဲမှာ မရှိတော့ရင် (ဖျက်ခံလိုက်ရရင်) Default အနေနဲ့ ပြန်ပြပေးထားပါမည်
               setProfile({ name: 'Walk-in Guest', phone: userPhone, points: 0, dob: '', password: '' } as any);
               setFormData({ name: '', password: '', dob: '' });
           }
@@ -2185,6 +2272,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
               dob: encryptText(formData.dob)
           });
       } else {
+          // 🌟 Auto-Heal: Database ထဲမှာ မရှိသေးရင် အသစ်ပြန်ဖွင့်ပေးပါမည်
           const newDocRef = await addDoc(collection(db, 'users'), {
               phone: encryptText(userPhone),
               name: encryptText(formData.name),
