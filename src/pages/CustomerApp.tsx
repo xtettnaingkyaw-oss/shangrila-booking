@@ -6,9 +6,6 @@ import { encryptText, decryptText } from '../security';
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
-// ==========================================
-// FALLBACK VIP SETTINGS (Admin မသတ်မှတ်ရသေးခင် Tab ပေါ်ရန်)
-// ==========================================
 const FALLBACK_VIP_SETTINGS = {
   isActive: true,
   rules: [
@@ -26,9 +23,6 @@ const FALLBACK_VIP_SETTINGS = {
   ]
 };
 
-// ==========================================
-// LOCAL HELPERS & CONSTANTS
-// ==========================================
 const ICON_MAP: Record<string, any> = {
   massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
 };
@@ -327,14 +321,22 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   return (
     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
-      <div className="flex justify-start sm:justify-center items-center space-x-1 md:space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide">
+      
+      {/* 🌟 Tab Swipe Hint for Mobile 🌟 */}
+      <div className="flex sm:hidden justify-end mb-1 pr-2">
+         <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest flex items-center animate-pulse">
+            Swipe <ChevronRight className="w-3 h-3 ml-0.5" />
+         </span>
+      </div>
+
+      <div className="flex justify-start sm:justify-center items-center space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide snap-x snap-mandatory relative">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
             <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-              className={`relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
+              className={`snap-start relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
               <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
-              <span className="text-center">{tab.label}</span>
+              <span className="text-center whitespace-nowrap">{tab.label}</span>
               {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
               {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
             </button>
@@ -347,7 +349,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
       {activeTab === 'dashboard' && <CustomerDashboard appData={appData} onBookTherapist={handleDashboardBook} />}
       {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
       {activeTab === 'profile' && <CustomerProfile appData={appData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
-      {activeTab === 'vip' && <VipProgramView appData={appData} />}
+      {activeTab === 'vip' && <VipProgramView appData={appData} onGoToProfile={() => setActiveTab('profile')} />}
     </div>
   );
 }
@@ -355,7 +357,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 // ==========================================
 // COMPONENT: VIP Program View
 // ==========================================
-export function VipProgramView({ appData }: { appData: AppData }) {
+export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, onGoToProfile?: () => void }) {
    const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
 
    if (!vipSettings || !vipSettings.isActive) {
@@ -466,9 +468,16 @@ export function VipProgramView({ appData }: { appData: AppData }) {
                    </ul>
                </section>
 
-               <div className="text-center pt-4 pb-8 border-t border-gray-200">
-                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Check Your Points</p>
-                   <p className="text-xs text-gray-400 font-semibold">မိမိ၏ လက်ရှိ Point များကို ဆိုင်ရှိ Reception တွင် ဖုန်းနံပါတ်ဖြင့် မေးမြန်းစစ်ဆေးနိုင်ပါသည်။</p>
+               {/* 🌟 UPDATED FOOTER WITH BUTTON 🌟 */}
+               <div className="text-center pt-6 pb-8 border-t border-gray-200">
+                   <div className="w-12 h-1 bg-gray-200 mx-auto rounded-full mb-4"></div>
+                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-2">Check Your Points</p>
+                   <p className="text-xs text-gray-600 font-semibold mb-5 px-4 leading-relaxed">မိမိ၏ လက်ရှိ Point များကို မိမိ၏ Profile တွင် အချိန်မရွေး ဝင်ရောက်စစ်ဆေးနိုင်ပါသည်။</p>
+                   {onGoToProfile && (
+                       <button onClick={onGoToProfile} className="inline-flex items-center justify-center px-6 py-3 bg-[#123524] text-[#D4AF37] font-bold text-xs rounded-full shadow-md hover:shadow-lg transition transform hover:-translate-y-0.5">
+                           <UserCircle className="w-4 h-4 mr-2" /> Point စစ်ရန် (Go to Profile)
+                       </button>
+                   )}
                </div>
            </div>
        </div>
