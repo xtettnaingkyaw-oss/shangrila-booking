@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { encryptText, decryptText } from '../security'; // လုံခြုံရေးစနစ်ကို ချိတ်ဆက်ခြင်း
+import { encryptText, decryptText } from '../security'; 
 
 // Vercel တွင် Error မတက်စေရန် လိုအပ်သော Icon အားလုံးကို အပြည့်အစုံ Import လုပ်ထားပါသည်
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2 } from 'lucide-react';
+// အသစ်ထည့်သွင်းထားသော VIP Program အတွက် Award, Star, ShieldCheck, Gift, Target, Info, Percent စသည်တို့ ပါဝင်ပါသည်
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 // ==========================================
@@ -250,7 +251,7 @@ export function CustomAlert({ message, title = "Shangrila Online Booking System"
 // MAIN CUSTOMER APP WRAPPER
 // ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
-  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile'>(() => {
+  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
      const searchParams = new URLSearchParams(window.location.search);
      const view = searchParams.get('view');
      if (view === 'therapists') return 'therapists';
@@ -299,11 +300,16 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 
   const handleDashboardBook = (t: TherapistProfile) => { setPrefillTherapist(t); setActiveTab('therapists'); };
 
-  const tabs = [
+  // --- TABS အသစ်တွင် VIP Tab ထည့်သွင်းထားသည် ---
+  const baseTabs = [
     { id: 'book', label: 'Book Now', icon: CalendarPlus }, { id: 'therapists', label: 'View Therapists', icon: User },
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, { id: 'history', label: 'My Bookings', icon: History },
-    { id: 'profile', label: 'Profile', icon: UserCircle }
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, { id: 'history', label: 'My Bookings', icon: History }
   ] as const;
+
+  // VIP Program ဖွင့်ထားမှသာ Profile မတိုင်မီ VIP Tab ကို ကြားညှပ်ပြမည်
+  const tabs = appData.vipSettings?.isActive 
+      ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }]
+      : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
 
   return (
     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
@@ -314,7 +320,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
           return (
             <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
               className={`relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
-              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
+              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
               <span className="text-center">{tab.label}</span>
               {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
               {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
@@ -328,33 +334,160 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
       {activeTab === 'dashboard' && <CustomerDashboard appData={appData} onBookTherapist={handleDashboardBook} />}
       {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
       {activeTab === 'profile' && <CustomerProfile userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
+      
+      {/* 🌟 VIP Tab View 🌟 */}
+      {activeTab === 'vip' && <VipProgramView appData={appData} />}
     </div>
   );
 }
 
 // ==========================================
+// COMPONENT: VIP Program View (NEW)
+// ==========================================
+export function VipProgramView({ appData }: { appData: AppData }) {
+   const vipSettings = appData.vipSettings;
+
+   if (!vipSettings || !vipSettings.isActive) {
+       return <div className="text-center py-20 text-gray-400 font-bold text-sm">VIP Program is currently unavailable.</div>;
+   }
+
+   const sortedTiers = [...vipSettings.tiers].sort((a,b) => a.requiredPoints - b.requiredPoints);
+
+   return (
+       <div className="max-w-md mx-auto animate-fade-in pb-20">
+           <div className="bg-[#123524] text-white p-8 rounded-b-[40px] shadow-lg text-center relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div>
+               <div className="absolute bottom-0 left-0 w-24 h-24 bg-[#D4AF37] opacity-10 rounded-full -ml-8 -mb-8 blur-lg"></div>
+               
+               <Award className="w-14 h-14 mx-auto mb-4 text-[#D4AF37] drop-shadow-md animate-pulse" />
+               <h2 className="text-2xl font-bold tracking-wider" style={{ color: '#D4AF37' }}>VIP MEMBERSHIP</h2>
+               <p className="text-[10px] font-bold mt-2 uppercase tracking-widest text-gray-300">Exclusive Privileges Program</p>
+               
+               <div className="mt-6 inline-flex flex-col items-center bg-black/20 p-3 rounded-xl border border-white/10">
+                   <span className="text-[10px] font-bold uppercase text-[#D4AF37] mb-1 tracking-widest">Base Rule</span>
+                   <span className="text-xs font-semibold text-white">သုံးစွဲငွေ ၃၅,၀၀၀ ကျပ် လျှင် = ၁ ပွိုင့် (1 Point)</span>
+               </div>
+           </div>
+
+           <div className="px-5 mt-8 space-y-8">
+               <section>
+                   <h3 className="font-bold text-[#123524] text-base mb-4 flex items-center"><Star className="w-5 h-5 mr-2 text-[#D4AF37]"/> Member အဆင့်များနှင့် ခံစားခွင့်များ</h3>
+                   <div className="space-y-4">
+                       {sortedTiers.map(tier => (
+                           <div key={tier.id} className="relative rounded-2xl p-5 overflow-hidden shadow-sm border border-gray-100 transition-all hover:shadow-md" style={{ backgroundColor: tier.colorTheme, color: tier.colorTheme === '#D4AF37' ? '#123524' : '#fff' }}>
+                               <div className="absolute top-0 right-0 w-24 h-24 bg-white opacity-[0.08] rounded-full -mr-5 -mt-5"></div>
+                               <div className="flex justify-between items-center relative z-10 mb-4 border-b border-white/20 pb-3">
+                                   <div>
+                                       <h4 className="font-bold text-[17px] tracking-wide">{tier.name}</h4>
+                                       <p className="text-[11px] mt-1 opacity-90 font-semibold">{tier.requiredPoints} Points Required</p>
+                                   </div>
+                                   <div className="text-right">
+                                       <div className="text-3xl font-black">{tier.discountPercent}%</div>
+                                       <div className="text-[9px] uppercase font-bold tracking-widest mt-0.5 opacity-80">Discount</div>
+                                   </div>
+                               </div>
+                               <div className="relative z-10 flex items-center justify-between text-[11px] font-semibold bg-black/10 px-3 py-2 rounded-lg">
+                                   <span className="opacity-90">တစ်ကြိမ်တည်း ဝယ်ယူပါက</span>
+                                   <span className="font-bold">{tier.instantUpgrade}</span>
+                               </div>
+                           </div>
+                       ))}
+                   </div>
+               </section>
+
+               <section>
+                   <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] rounded-2xl p-5 shadow-sm text-white relative overflow-hidden">
+                       <Target className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-5" />
+                       <h3 className="font-bold text-[#D4AF37] text-sm mb-3 flex items-center relative z-10">လစဉ် Target Rewards (Pre-Jade)</h3>
+                       <p className="text-[11px] text-gray-300 leading-relaxed mb-4 relative z-10 font-semibold">
+                           Jade Member မဖြစ်မီ (၅၀) ပွိုင့် စုဆောင်းနေစဉ်ကာလအတွင်း (၁)လ အတွင်း ပြည့်မီသော Points များအတွက် အထူး Discount ကို ထပ်ဆောင်းပေးအပ်ပါသည်။
+                       </p>
+                       <ul className="space-y-2 relative z-10">
+                           {['10 Pts = 10% Off', '20 Pts = 20% Off', '30 Pts = 30% Off', '40 Pts = 40% Off', '50 Pts = 50% Off'].map((r, i) => (
+                               <li key={i} className="flex justify-between items-center bg-white/10 px-3 py-2 rounded-lg text-xs font-bold border border-white/5">
+                                   <span>{r.split('=')[0]}</span>
+                                   <span className="text-[#D4AF37]">{r.split('=')[1]} (၁ ကြိမ်)</span>
+                               </li>
+                           ))}
+                       </ul>
+                   </div>
+               </section>
+
+               <section className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5">
+                   <h3 className="font-bold text-[#123524] text-sm mb-2 flex items-center"><Info className="w-4 h-4 mr-2 text-yellow-600"/> Cumulative Upgrade System</h3>
+                   <p className="text-[11px] text-gray-700 leading-relaxed font-semibold">
+                       Member အဆင့်များကို အဆင့်မြှင့်တင်ရာတွင် ပွိုင့်များကို သုညမှ ပြန်မစဘဲ ရှိပြီးသားပွိုင့်များအပေါ်တွင် ဆက်လက်ပေါင်းထည့်ပေးမည့် စနစ်ကို အသုံးပြုထားပါသည်။ (ဥပမာ - Jade 50 Pts မှ နောက်ထပ် 50 Pts ထပ်ရပါက စုစုပေါင်း 100 Pts ဖြင့် Gold သို့ တက်သွားပါမည်။)
+                   </p>
+               </section>
+
+               <section>
+                   <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><Gift className="w-5 h-5 mr-2 text-red-500"/> မွေးနေ့ အထူးခံစားခွင့်များ</h3>
+                   <div className="space-y-3">
+                       <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-start">
+                           <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mr-3 mt-0.5"><Star className="w-4 h-4 text-red-500"/></div>
+                           <div>
+                               <h4 className="font-bold text-[#123524] text-xs">Standard Birthday Bonus</h4>
+                               <p className="text-[11px] text-gray-600 mt-1 font-semibold leading-relaxed">မည်သည့် VIP (Jade, Gold, Imperial) မဆို မိမိမွေးနေ့တွင် မည်သည့် Service ကိုမဆို <b>50% Discount</b> ခံစားခွင့်ရရှိမည်။</p>
+                           </div>
+                       </div>
+                       
+                       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-start text-white">
+                           <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0 mr-3 mt-0.5"><Crown className="w-4 h-4 text-[#D4AF37]"/></div>
+                           <div>
+                               <h4 className="font-bold text-[#D4AF37] text-xs">Imperial V-VIP သီးသန့်ခံစားခွင့်</h4>
+                               <p className="text-[11px] text-gray-400 mt-1 font-semibold leading-relaxed">
+                                   အခြေခံ 20% + မွေးနေ့လတွင် ရရှိထားသော Points အရေအတွက် % ။ <br/><span className="text-[#D4AF37]">(ဥပမာ - 50 Pts စုဆောင်းထားပါက 20% + 50% = 70% Discount ရရှိမည်)</span>
+                               </p>
+                           </div>
+                       </div>
+                   </div>
+               </section>
+
+               <section className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                   <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><ShieldCheck className="w-4 h-4 mr-2 text-[#D4AF37]"/> Membership Terms & Conditions</h3>
+                   <ul className="space-y-3">
+                       {vipSettings.rules.map((rule, idx) => (
+                           <li key={idx} className="flex items-start text-[11px] text-gray-600 leading-relaxed font-semibold">
+                               <ChevronRight className="w-3 h-3 mr-1.5 mt-0.5 text-[#D4AF37] flex-shrink-0" />
+                               {rule}
+                           </li>
+                       ))}
+                   </ul>
+               </section>
+
+               <div className="text-center pt-4 pb-8 border-t border-gray-200">
+                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">Check Your Points</p>
+                   <p className="text-xs text-gray-400 font-semibold">မိမိ၏ လက်ရှိ Point များကို ဆိုင်ရှိ Reception တွင် ဖုန်းနံပါတ်ဖြင့် မေးမြန်းစစ်ဆေးနိုင်ပါသည်။</p>
+               </div>
+           </div>
+       </div>
+   );
+}
+
+
+// ==========================================
 // CUSTOMER BOOKING WIZARD (FULL LOGIC)
 // ==========================================
 export function CustomerBookingWizard({
-    appData, 
-    userPhone = '', 
-    onBooked, 
-    forceTherapistFirst = false, 
-    initialTherapist = null, 
-    isStaffMode = false, 
-    staffClockIn = false, 
-    staffClockInSuccess, 
-    preselectedStaff 
+  appData, 
+  userPhone = '', 
+  onBooked, 
+  forceTherapistFirst = false, 
+  initialTherapist = null, 
+  isStaffMode = false, 
+  staffClockIn = false, 
+  staffClockInSuccess, 
+  preselectedStaff 
 }: { 
-    appData: AppData, 
-    userPhone?: string, 
-    onBooked?: (phone: string) => void, 
-    forceTherapistFirst?: boolean, 
-    initialTherapist?: TherapistProfile | null, 
-    isStaffMode?: boolean, 
-    staffClockIn?: boolean, 
-    staffClockInSuccess?: () => void, 
-    preselectedStaff?: string 
+  appData: AppData, 
+  userPhone?: string, 
+  onBooked?: (phone: string) => void, 
+  forceTherapistFirst?: boolean, 
+  initialTherapist?: TherapistProfile | null, 
+  isStaffMode?: boolean, 
+  staffClockIn?: boolean, 
+  staffClockInSuccess?: () => void, 
+  preselectedStaff?: string 
 }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   
@@ -374,7 +507,6 @@ export function CustomerBookingWizard({
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   
-  // Custom Alert State
   const [alertMessage, setAlertMessage] = useState('');
   
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
@@ -941,6 +1073,7 @@ export function CustomerBookingWizard({
              phone: encryptText(formData.phone.trim()),
              name: encryptText(formData.name || ''),
              password: encryptText(''),
+             points: encryptText('0'), // Auto Create အကောင့်များအတွက် VIP Point အသစ်စထည့်ခြင်း
              createdAt: Date.now()
           });
         } else if (!hasName) {
@@ -1985,7 +2118,13 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
          const data = d.data() as UserProfile;
          const decPhone = decryptText(data.phone) || d.id;
          if (decPhone === userPhone || d.id === userPhone) {
-             setProfile({ ...data, name: decryptText(data.name), password: decryptText(data.password), phone: userPhone });
+             setProfile({ 
+                 ...data, 
+                 name: decryptText(data.name), 
+                 password: decryptText(data.password), 
+                 phone: userPhone,
+                 points: parseInt(decryptText(data.points as string) || (data.points as string) || '0', 10) 
+             });
              setFormData({ name: decryptText(data.name) || '', password: decryptText(data.password) || '' });
              setUserDocId(d.id);
          }
@@ -2024,8 +2163,15 @@ export function CustomerProfile({ userPhone, onLoginSuccess, onLogout }: { userP
         {!editMode ? (
           <>
             <h3 className="text-xl font-bold text-gray-800">{profile.name || 'User'}</h3>
-            <p className="text-sm font-bold text-gray-500 mt-1 mb-6 flex items-center justify-center"><Phone className="w-4 h-4 mr-1" /> {profile.phone}</p>
-            <div className={`text-xs rounded-full px-3 py-1 inline-block font-bold mb-6 ${profile.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
+            <p className="text-sm font-bold text-gray-500 mt-1 mb-4 flex items-center justify-center"><Phone className="w-4 h-4 mr-1" /> {profile.phone}</p>
+            
+            {/* VIP Point Display in Profile */}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-6 inline-flex flex-col items-center justify-center min-w-[120px]">
+                <span className="text-[10px] text-yellow-600 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1"/> VIP Points</span>
+                <span className="text-xl font-black text-[#123524]">{profile.points || 0}</span>
+            </div>
+
+            <div className={`text-[10px] rounded-full px-3 py-1 inline-block font-bold mb-6 w-full ${profile.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
               {profile.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
             </div>
             <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center"><Edit className="w-4 h-4 mr-2" /> Edit Profile</button>
