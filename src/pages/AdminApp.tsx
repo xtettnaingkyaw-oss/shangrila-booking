@@ -5,8 +5,10 @@ import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; // Key အသစ်ပြောင်းရန်အတွက် လိုအပ်ပါသည်
 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut } from 'lucide-react';
-import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage } from '../shared';
+// VIP အတွက် Star နှင့် Award Icon များ ထပ်ပေါင်းထည့်ထားပါသည်
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award } from 'lucide-react';
+// VIP Settings Interfaces များ ထပ်ပေါင်းထည့်ထားပါသည်
+import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS } from '../shared';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -161,7 +163,8 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
 
       {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
       {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
-      {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} />}
+      {/* AdminUsersList တွင် VIP Points အတွက် appData ကို Pass လုပ်ပေးထားပါသည် */}
+      {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
       {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
     </div>
@@ -262,25 +265,53 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                          </div>
                      )}
                  </div>
+                 <div>
+                     <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
+                     {activeOutpasses.length === 0 ? (<p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently on out pass.</p>) : (
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                             {activeOutpasses.map(o => {
+                                 const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
+                                 let lateText = 'OVERTIME (LATE)';
+                                 if (isLate && o.expectedInTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - o.expectedInTimeMillis) / 1000))}`;
+                                 return (
+                                     <div key={o.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}><div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div><div className="flex justify-between items-start mb-2"><div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div><span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>{isLate ? lateText : 'Out Pass'}</span></div><div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div><div className={`flex justify-between items-center text-xs border-t ${isLate ? 'border-red-200' : 'border-purple-200/50'} pt-3`}><div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div><div className="text-gray-500"><span className="font-bold text-gray-600">Return:</span> <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>{formatMillis(o.expectedInTimeMillis)}</span></div></div></div>
+                                 );
+                             })}
+                         </div>
+                     )}
+                 </div>
+                 <div>
+                     <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><User className="w-4 h-4 mr-2 text-blue-500" /> Today's Out Pass Quota</h3>
+                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                         {therapists.map(t => {
+                             const used = outpasses.filter(o => o.therapist === t.name && o.date === todayStr).length;
+                             const remaining = Math.max(0, 4 - used);
+                             return (
+                                 <div key={t.id} className={`p-3 rounded-xl border flex items-center justify-between ${used >= 4 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-200'} shadow-sm`}><div className="font-bold text-sm text-[#123524] truncate mr-2" title={t.name}>{t.name}</div><div className="text-right flex-shrink-0 leading-tight"><div className="text-[10px] font-bold text-gray-500">Used: <span className={used >= 4 ? 'text-red-600' : 'text-blue-600'}>{used}</span></div><div className="text-[10px] font-bold text-gray-500">Left: <span className={remaining === 0 ? 'text-red-600' : 'text-green-600'}>{remaining}</span></div></div></div>
+                             );
+                         })}
+                     </div>
+                 </div>
               </div>
            )}
 
            {view === 'service' && (
-              <div className="overflow-x-auto animate-fade-in"><table className="w-full text-left border-collapse min-w-[900px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Service & Customer</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Start Time</th><th className="p-3 pb-4">Expected End</th><th className="p-3 pb-4">Actual End</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead><tbody>{bookings.length === 0 && (<tr><td colSpan={7} className="p-10 text-center text-gray-400">No service records found.</td></tr>)}{bookings.map((b) => { let currentOvertime = b.overtimeSeconds || 0; let isLate = currentOvertime > 0; if (b.status === 'in_progress' && b.expectedEndTimeMillis && now > b.expectedEndTimeMillis) { currentOvertime = Math.floor((now - b.expectedEndTimeMillis) / 1000); isLate = true; } return (<tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm"><td className="p-3 font-bold text-[#123524]">{b.therapist}</td><td className="p-3"><div className="font-semibold text-gray-800">{b.service.split('(')[0]}</div><div className="text-xs text-gray-500 mt-0.5">Cust: {b.name}</div></td><td className="p-3 text-gray-700 font-semibold">{b.date}</td><td className="p-3 font-mono text-gray-600">{formatMillis(b.startTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td><td className="p-3 text-right"><div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>{isLate && b.status === 'in_progress' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}</div><button onClick={() => handleDeleteBooking(b.id!)} disabled={adminRole !== 'super_admin'} className={`text-xs font-bold px-2 py-1 rounded transition ${adminRole === 'super_admin' ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-gray-300 bg-gray-100 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}>Delete</button></td></tr>); })}</tbody></table></div>
+              <div className="overflow-x-auto animate-fade-in"><table className="w-full text-left border-collapse min-w-[900px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Service & Customer</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Start Time</th><th className="p-3 pb-4">Expected End</th><th className="p-3 pb-4">Actual End</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead><tbody>{bookings.length === 0 && (<tr><td colSpan={7} className="p-10 text-center text-gray-400">No service records found.</td></tr>)}{bookings.map((b) => { let currentOvertime = b.overtimeSeconds || 0; let isLate = currentOvertime > 0; if (b.status === 'in_progress' && b.expectedEndTimeMillis && now > b.expectedEndTimeMillis) { currentOvertime = Math.floor((now - b.expectedEndTimeMillis) / 1000); isLate = true; } return (<tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm"><td className="p-3 font-bold text-[#123524]">{b.therapist}</td><td className="p-3"><div className="font-semibold text-gray-800">{b.service.split('(')[0]}</div><div className="text-xs text-gray-500 mt-0.5">Cust: {b.name}</div></td><td className="p-3 text-gray-700 font-semibold">{b.date}</td><td className="p-3 font-mono text-gray-600">{formatMillis(b.startTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td><td className="p-3 text-right"><div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>{isLate && b.status === 'in_progress' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}</div><button onClick={() => handleDeleteBooking(b.id!)} disabled={adminRole !== 'super_admin'} className={`text-xs font-bold px-2 py-1 rounded transition ${adminRole === 'super_admin' ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-gray-300 bg-gray-100 cursor-not-allowed'}`} title="Delete">Delete</button></td></tr>); })}</tbody></table></div>
            )}
 
            {view === 'outpass' && (
-              <div className="overflow-x-auto animate-fade-in"><table className="w-full text-left border-collapse min-w-[900px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Out Time</th><th className="p-3 pb-4">Expected Return</th><th className="p-3 pb-4">Actual Return</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead><tbody>{outpasses.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No out pass records found.</td></tr>)}{outpasses.map((o) => { let currentOvertime = o.overtimeSeconds || 0; let isLate = currentOvertime > 0; if (o.status === 'out' && o.expectedInTimeMillis && now > o.expectedInTimeMillis) { currentOvertime = Math.floor((now - o.expectedInTimeMillis) / 1000); isLate = true; } return (<tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm"><td className="p-3"><div className="font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</div><div className="text-[10px] text-gray-500 mt-0.5">Reason: {o.reason || '-'}</div></td><td className="p-3 text-gray-700 font-semibold">{o.date}</td><td className="p-3 font-mono text-gray-600">{formatMillis(o.outTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td><td className="p-3 text-right"><div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>{isLate && o.status === 'out' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}</div><button onClick={() => handleDeleteOutpass(o.id!)} disabled={adminRole !== 'super_admin'} className={`text-xs font-bold px-2 py-1 rounded transition ${adminRole === 'super_admin' ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-gray-300 bg-gray-100 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}>Delete</button></td></tr>); })}</tbody></table></div>
+              <div className="overflow-x-auto animate-fade-in"><table className="w-full text-left border-collapse min-w-[900px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Out Time</th><th className="p-3 pb-4">Expected Return</th><th className="p-3 pb-4">Actual Return</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead><tbody>{outpasses.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No out pass records found.</td></tr>)}{outpasses.map((o) => { let currentOvertime = o.overtimeSeconds || 0; let isLate = currentOvertime > 0; if (o.status === 'out' && o.expectedInTimeMillis && now > o.expectedInTimeMillis) { currentOvertime = Math.floor((now - o.expectedInTimeMillis) / 1000); isLate = true; } return (<tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm"><td className="p-3"><div className="font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</div><div className="text-[10px] text-gray-500 mt-0.5">Reason: {o.reason || '-'}</div></td><td className="p-3 text-gray-700 font-semibold">{o.date}</td><td className="p-3 font-mono text-gray-600">{formatMillis(o.outTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td><td className="p-3 text-right"><div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>{isLate && o.status === 'out' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}</div><button onClick={() => handleDeleteOutpass(o.id!)} disabled={adminRole !== 'super_admin'} className={`text-xs font-bold px-2 py-1 rounded transition ${adminRole === 'super_admin' ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-gray-300 bg-gray-100 cursor-not-allowed'}`} title="Delete">Delete</button></td></tr>); })}</tbody></table></div>
            )}
        </div>
    );
 }
 
-function AdminUsersList({ adminRole }: { adminRole: string }) {
+// ==== VIP POINTS လျှောက်ထားခြင်းနှင့် ပြင်ဆင်ခြင်းအတွက် UPDATE ပြုလုပ်ထားသော Users List ====
+function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: AppData }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ name: '', password: '' });
+  const [editForm, setEditForm] = useState({ name: '', password: '', points: 0 });
 
   const fetchUsers = async () => {
     try {
@@ -288,7 +319,14 @@ function AdminUsersList({ adminRole }: { adminRole: string }) {
       const data: any[] = [];
       snap.forEach(doc => {
           const raw = doc.data();
-          data.push({ docId: doc.id, ...raw, phone: decryptText(raw.phone) || doc.id, name: decryptText(raw.name) || raw.name, password: decryptText(raw.password) || raw.password });
+          data.push({ 
+             docId: doc.id, 
+             ...raw, 
+             phone: decryptText(raw.phone) || doc.id, 
+             name: decryptText(raw.name) || raw.name, 
+             password: decryptText(raw.password) || raw.password,
+             points: parseInt(decryptText(raw.points) || raw.points || '0', 10)
+          });
       });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setUsers(data);
@@ -302,8 +340,14 @@ function AdminUsersList({ adminRole }: { adminRole: string }) {
     e.preventDefault();
     if (!editingUser) return;
     try {
-      await updateDoc(doc(db, 'users', editingUser.docId), { name: encryptText(editForm.name), password: encryptText(editForm.password) });
-      alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။'); setEditingUser(null); fetchUsers();
+      await updateDoc(doc(db, 'users', editingUser.docId), { 
+          name: encryptText(editForm.name), 
+          password: encryptText(editForm.password),
+          points: encryptText(editForm.points.toString()) 
+      });
+      alert('User အချက်အလက်နှင့် VIP Point များ ပြင်ဆင်ပြီးပါပြီ။'); 
+      setEditingUser(null); 
+      fetchUsers();
     } catch (e) { alert('Error updating user'); }
   };
 
@@ -311,6 +355,12 @@ function AdminUsersList({ adminRole }: { adminRole: string }) {
     if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
     if (!window.confirm(`User [${phone}] ကို အပြီးတိုင် ဖျက်မည် သေချာပါသလား?`)) return;
     try { await deleteDoc(doc(db, 'users', docId)); fetchUsers(); } catch (e) { alert('Error deleting user'); }
+  };
+
+  const getTier = (points: number) => {
+     if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null;
+     const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
+     return sortedTiers.find(t => points >= t.requiredPoints);
   };
 
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Users...</div>;
@@ -323,14 +373,35 @@ function AdminUsersList({ adminRole }: { adminRole: string }) {
                <form onSubmit={handleUpdateUser} className="space-y-4">
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded" required /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Leave blank for no password" className="w-full p-2 border rounded" /></div>
+                 <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100">
+                    <label className="block text-xs font-bold text-yellow-800 mb-1 flex items-center"><Star className="w-3 h-3 mr-1"/> VIP Points (35k = 1 Pts)</label>
+                    <input type="number" value={editForm.points} onChange={e=>setEditForm({...editForm, points: Number(e.target.value)})} className="w-full p-2 border border-yellow-300 rounded focus:outline-none focus:border-yellow-500 font-bold text-lg text-center" />
+                 </div>
                  <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold">Save</button></div>
                </form>
             </div>
          </div>
       )}
 
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[700px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td><td className="p-3 font-bold text-gray-800">{u.name || '-'}</td><td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td><td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td><td className="p-3 text-right"><div className="flex items-center justify-end space-x-2"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center"><Edit className="w-3 h-3 mr-1"/> Edit</button><button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button></div></td></tr>))}</tbody></table></div>
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4">Created Date</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => {
+         const userTier = getTier(u.points);
+         return (
+         <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition">
+             <td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td>
+             <td className="p-3 font-bold text-gray-800">{u.name || '-'}</td>
+             <td className="p-3">
+                 <div className="flex items-center space-x-2">
+                     <span className="font-bold text-gray-800 text-lg">{u.points || 0} Pts</span>
+                     {userTier && <span className="text-[10px] px-2 py-0.5 rounded font-bold text-white shadow-sm flex items-center" style={{ backgroundColor: userTier.colorTheme }}><Award className="w-3 h-3 mr-1"/> {userTier.name} ({userTier.discountPercent}%)</span>}
+                 </div>
+             </td>
+             <td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Password Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td>
+             <td className="p-3 text-xs font-bold text-gray-500">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
+             <td className="p-3 text-right"><div className="flex items-center justify-end space-x-2"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', points: u.points || 0 }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center"><Edit className="w-3 h-3 mr-1"/> Edit / Add Pts</button><button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button></div></td>
+         </tr>
+         );
+      })}</tbody></table></div>
     </div>
   );
 }
@@ -374,15 +445,8 @@ function AdminManagementList() {
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-[#D4AF37]" /> Manage Admins</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {admins.length}</span></div>
       <form onSubmit={handleAddAdmin} className="mb-6 p-5 bg-gray-50 border border-gray-200 rounded-xl flex flex-col items-end">
-        <div className="flex flex-col sm:flex-row gap-4 w-full">
-            <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Username</label><input type="text" value={newAdmin.username} onChange={e=>setNewAdmin({...newAdmin, username: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" required /></div>
-            <div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Password (Min 6 Chars)</label><input type="text" value={newAdmin.password} onChange={e=>setNewAdmin({...newAdmin, password: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" minLength={6} required /></div>
-        </div>
-        <div className="w-full mt-4 border-t border-gray-200 pt-4">
-            <label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label>
-            <div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3"><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'super_admin'} onChange={() => setNewAdmin({...newAdmin, role: 'super_admin'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Super Admin <span className="text-xs text-gray-500 font-semibold">(All Access)</span></span></label><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'custom'} onChange={() => setNewAdmin({...newAdmin, role: 'custom'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Custom Role</span></label></div>
-            {newAdmin.role === 'custom' && (<div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in"><p className="text-[10px] text-gray-400 font-bold mb-3 uppercase tracking-wider">Select Allowed Tabs (ဝင်ကြည့်ခွင့်ပြုမည့် Tab ကိုရွေးပါ)</p><div className="flex flex-wrap gap-4">{['bookings', 'reports', 'users', 'settings'].map(tab => (<label key={tab} className="flex items-center space-x-2 text-xs font-bold cursor-pointer bg-gray-50 px-3 py-2 rounded border border-gray-100 hover:bg-gray-100 transition"><input type="checkbox" checked={newAdmin.permissions.includes(tab)} onChange={() => handleCheckboxChange(tab)} className="w-4 h-4 accent-[#123524]" /><span className="capitalize">{tab === 'reports' ? 'Staff History' : tab}</span></label>))}</div><p className="text-[10px] text-red-500 mt-3 font-semibold flex items-center"><AlertCircle className="w-3 h-3 mr-1"/> Note: Custom admins are restricted from accessing the 'Admins' management tab.</p></div>)}
-        </div>
+        <div className="flex flex-col sm:flex-row gap-4 w-full"><div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Username</label><input type="text" value={newAdmin.username} onChange={e=>setNewAdmin({...newAdmin, username: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" required /></div><div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Password (Min 6 Chars)</label><input type="text" value={newAdmin.password} onChange={e=>setNewAdmin({...newAdmin, password: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" minLength={6} required /></div></div>
+        <div className="w-full mt-4 border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label><div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3"><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'super_admin'} onChange={() => setNewAdmin({...newAdmin, role: 'super_admin'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Super Admin <span className="text-xs text-gray-500 font-semibold">(All Access)</span></span></label><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'custom'} onChange={() => setNewAdmin({...newAdmin, role: 'custom'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Custom Role</span></label></div>{newAdmin.role === 'custom' && (<div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in"><p className="text-[10px] text-gray-400 font-bold mb-3 uppercase tracking-wider">Select Allowed Tabs (ဝင်ကြည့်ခွင့်ပြုမည့် Tab ကိုရွေးပါ)</p><div className="flex flex-wrap gap-4">{['bookings', 'reports', 'users', 'settings'].map(tab => (<label key={tab} className="flex items-center space-x-2 text-xs font-bold cursor-pointer bg-gray-50 px-3 py-2 rounded border border-gray-100 hover:bg-gray-100 transition"><input type="checkbox" checked={newAdmin.permissions.includes(tab)} onChange={() => handleCheckboxChange(tab)} className="w-4 h-4 accent-[#123524]" /><span className="capitalize">{tab === 'reports' ? 'Staff History' : tab}</span></label>))}</div><p className="text-[10px] text-red-500 mt-3 font-semibold flex items-center"><AlertCircle className="w-3 h-3 mr-1"/> Note: Custom admins are restricted from accessing the 'Admins' management tab.</p></div>)}</div>
         <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-[#123524] text-white rounded font-bold flex items-center justify-center mt-4 shadow-md hover:bg-green-900 transition"><PlusCircle className="w-5 h-5 mr-2"/> Add New Admin</button>
       </form>
       <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username & Role</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800 flex items-center text-sm"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</div><div className="mt-1.5">{a.role === 'super_admin' || !a.role ? (<span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-purple-200">Super Admin</span>) : (<div className="flex flex-wrap gap-1 mt-1">{a.permissions?.map(p => <span key={p} className="text-[9px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded uppercase tracking-wider">{p === 'reports' ? 'Staff History' : p}</span>)}</div>)}</div></td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.docId!, a.username || '')} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody></table></div>
@@ -397,17 +461,19 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
   const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
   const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
+  
+  // VIP Settings State အသစ် ထည့်သွင်းထားပါသည်
+  const [localVipSettings, setLocalVipSettings] = useState<VipSettings>(appData.vipSettings || DEFAULT_VIP_SETTINGS);
+
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   
-  // New Key Change States
   const [newSecretKey, setNewSecretKey] = useState('');
   const [migratingKey, setMigratingKey] = useState(false);
 
   useEffect(() => { const fetchInstallSteps = async () => { try { const snap = await getDoc(doc(db, 'settings', 'appData')); if (snap.exists() && snap.data().installSteps) { setLocalInstallSteps(snap.data().installSteps); } } catch (e) { console.error(e); } }; fetchInstallSteps(); }, []);
 
-  // ====== KEY ပြောင်းမည့် FUNCTION အသစ် ======
   const handleChangeSecretKey = async () => {
       if(!newSecretKey) return alert("Key အသစ် ရိုက်ထည့်ပါ");
       if(newSecretKey.length < 10) return alert("Key အသစ်သည် အနည်းဆုံး စာလုံး ၁၀ လုံးရှိရပါမည်");
@@ -425,16 +491,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               } catch(e) { return oldCipher; }
           };
 
-          // 1. Users
           const uSnap = await getDocs(collection(db, 'users'));
           const uPromises: any[] = [];
           uSnap.forEach(d => {
               const raw = d.data();
-              uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password) }));
+              uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points) }));
           });
           await Promise.all(uPromises);
 
-          // 2. Bookings
           const bSnap = await getDocs(collection(db, 'bookings'));
           const bPromises: any[] = [];
           bSnap.forEach(d => {
@@ -443,7 +507,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           });
           await Promise.all(bPromises);
 
-          // 3. Admins
           const aSnap = await getDocs(collection(db, 'admins'));
           const aPromises: any[] = [];
           aSnap.forEach(d => {
@@ -452,7 +515,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           });
           await Promise.all(aPromises);
 
-          // 4. Therapists (in appData)
           const tPromises: any[] = [];
           localTherapists.forEach(t => {
                tPromises.push(updateDoc(doc(db, 'therapists', t.id), { password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString() }));
@@ -462,6 +524,30 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           alert("Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် Key အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
       } catch(e) { console.error(e); alert("Error updating keys"); }
       setMigratingKey(false);
+  };
+
+  // ====== VIP PROGRAM SAVE FUNCTIONS ======
+  const handleSaveVipSettings = async () => {
+    if (!window.confirm(`Are you sure you want to save VIP Program settings?`)) return;
+    setSavingCategory('vip_settings');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { vipSettings: localVipSettings }, { merge: true });
+      onSettingsUpdated({ ...appData, vipSettings: localVipSettings });
+      alert('VIP Membership Program saved successfully.');
+    } catch (e) { alert('Update error.'); }
+    setSavingCategory(null);
+  };
+
+  const updateVipTier = (tIdx: number, field: string, val: any) => {
+     const updated = [...localVipSettings.tiers];
+     (updated[tIdx] as any)[field] = val;
+     setLocalVipSettings({...localVipSettings, tiers: updated});
+  };
+
+  const updateVipRule = (rIdx: number, val: string) => {
+     const updated = [...localVipSettings.rules];
+     updated[rIdx] = val;
+     setLocalVipSettings({...localVipSettings, rules: updated});
   };
 
   const handleSaveCategory = async (cIdx: number) => { const cat = localCategories[cIdx]; if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; setSavingCategory(cat.id); try { await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true }); onSettingsUpdated({ ...appData, categories: localCategories }); alert('Saved Successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
@@ -506,7 +592,62 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   return (
     <div className="space-y-6">
 
-      {/* Key ပြောင်းရန် Section (NEW) */}
+      {/* --- VIP PROGRAM SETTINGS SECTION --- */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#D4AF37]">
+         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+            <div>
+               <h3 className="text-xl font-bold text-gray-800 flex items-center"><Award className="w-5 h-5 mr-2 text-[#D4AF37]" /> VIP Membership Tiers & Rules</h3>
+               <p className="text-xs text-gray-500 mt-1">Customer များအတွက် Points များ၊ အဆင့်များ (Tiers) နှင့် စည်းကမ်းချက်များကို ပြင်ဆင်ပါ။</p>
+            </div>
+            <button disabled={savingCategory === 'vip_settings'} onClick={handleSaveVipSettings} className="flex items-center bg-[#123524] text-[#D4AF37] px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3">
+               <Save className="w-4 h-4 mr-2" /> {savingCategory === 'vip_settings' ? 'Saving...' : 'Save VIP Program'}
+            </button>
+         </div>
+         
+         <div className="flex items-center space-x-3 mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200 w-fit">
+             <label className="text-sm font-bold text-gray-700 cursor-pointer flex items-center">
+                 <input type="checkbox" checked={localVipSettings.isActive} onChange={(e) => setLocalVipSettings({...localVipSettings, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524] mr-3" />
+                 Enable VIP Program (Home Page တွင် VIP Tab ကို ဖွင့်ထားမည်)
+             </label>
+         </div>
+
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+             <div>
+                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Star className="w-4 h-4 mr-2"/> Membership Tiers (အဆင့်များ)</h4>
+                 <div className="space-y-3">
+                     {localVipSettings.tiers.map((tier, tIdx) => (
+                         <div key={tier.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm">
+                             <div className="grid grid-cols-2 gap-3 mb-2">
+                                 <div><label className="text-[10px] font-bold text-gray-400">Tier Name</label><input type="text" value={tier.name} onChange={(e) => updateVipTier(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
+                                 <div><label className="text-[10px] font-bold text-gray-400">Card Color Code</label><input type="text" value={tier.colorTheme} onChange={(e) => updateVipTier(tIdx, 'colorTheme', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none" placeholder="#HEXCODE" /></div>
+                             </div>
+                             <div className="grid grid-cols-3 gap-3">
+                                 <div><label className="text-[10px] font-bold text-gray-400">Required Points</label><input type="number" value={tier.requiredPoints} onChange={(e) => updateVipTier(tIdx, 'requiredPoints', Number(e.target.value))} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none" /></div>
+                                 <div><label className="text-[10px] font-bold text-gray-400">Discount (%)</label><input type="number" value={tier.discountPercent} onChange={(e) => updateVipTier(tIdx, 'discountPercent', Number(e.target.value))} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none text-red-600 font-bold" /></div>
+                                 <div><label className="text-[10px] font-bold text-gray-400">Instant Upgrade Amt</label><input type="text" value={tier.instantUpgrade || ''} onChange={(e) => updateVipTier(tIdx, 'instantUpgrade', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none text-blue-600 font-bold" placeholder="ဥပမာ - ၈ သိန်းကျပ်" /></div>
+                             </div>
+                         </div>
+                     ))}
+                 </div>
+             </div>
+
+             <div>
+                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><ShieldCheck className="w-4 h-4 mr-2"/> Terms & Conditions (စည်းကမ်းချက်များ)</h4>
+                 <div className="space-y-3">
+                     {localVipSettings.rules.map((rule, rIdx) => (
+                         <div key={rIdx} className="flex items-start space-x-2">
+                             <div className="mt-2 text-xs font-bold text-gray-400">{rIdx + 1}.</div>
+                             <textarea value={rule} onChange={(e) => updateVipRule(rIdx, e.target.value)} rows={2} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none leading-relaxed" />
+                             <button onClick={() => setLocalVipSettings({...localVipSettings, rules: localVipSettings.rules.filter((_, i) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
+                         </div>
+                     ))}
+                     <button onClick={() => setLocalVipSettings({...localVipSettings, rules: [...localVipSettings.rules, 'စည်းကမ်းချက်အသစ်...']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center"><PlusCircle className="w-3 h-3 mr-1"/> Add Rule</button>
+                 </div>
+             </div>
+         </div>
+      </div>
+
+      {/* Key ပြောင်းရန် Section */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-orange-500">
           <h3 className="text-xl font-bold text-gray-800 flex items-center mb-2"><KeyRound className="w-5 h-5 mr-2 text-orange-500" /> Change Encryption Key</h3>
           <p className="text-xs text-gray-500 mb-4">Database ထဲရှိ Data အားလုံးကို အောက်ပါ Key အသစ်ဖြင့် အလိုအလျောက် ပြောင်းလဲပေးပါမည်။</p>
