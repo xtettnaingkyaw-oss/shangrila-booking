@@ -322,10 +322,10 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
       
-      {/* 🌟 Tab Swipe Hint for Mobile 🌟 */}
-      <div className="flex sm:hidden justify-end mb-1 pr-2">
-         <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest flex items-center animate-pulse">
-            Swipe <ChevronRight className="w-3 h-3 ml-0.5" />
+      {/* 🌟 Tab Swipe Hint for Mobile (UPDATED) 🌟 */}
+      <div className="flex sm:hidden justify-end mb-2 pr-2">
+         <span className="text-[10px] text-[#123524] font-bold flex items-center animate-pulse">
+            ဘေးသို့ဆွဲကြည့်ပါ <span className="text-[#D4AF37] ml-1 tracking-tighter font-black">&gt;&gt;</span>
          </span>
       </div>
 
@@ -428,9 +428,17 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
 
                <section className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5">
                    <h3 className="font-bold text-[#123524] text-sm mb-2 flex items-center"><Info className="w-4 h-4 mr-2 text-yellow-600"/> Cumulative Upgrade System</h3>
-                   <p className="text-[11px] text-gray-700 leading-relaxed font-semibold">
+                   <p className="text-[11px] text-gray-700 leading-relaxed font-semibold mb-4">
                        Member အဆင့်များကို အဆင့်မြှင့်တင်ရာတွင် ပွိုင့်များကို သုညမှ ပြန်မစဘဲ ရှိပြီးသားပွိုင့်များအပေါ်တွင် ဆက်လက်ပေါင်းထည့်ပေးမည့် စနစ်ကို အသုံးပြုထားပါသည်။ (ဥပမာ - Jade 50 Pts မှ နောက်ထပ် 50 Pts ထပ်ရပါက စုစုပေါင်း 100 Pts ဖြင့် Gold သို့ တက်သွားပါမည်။)
                    </p>
+                   {/* 🌟 New Instant Upgrade Alert Box 🌟 */}
+                   <div className="bg-white border border-[#D4AF37]/40 shadow-sm rounded-xl p-4 relative overflow-hidden">
+                       <div className="absolute top-0 left-0 w-1.5 h-full bg-[#D4AF37]"></div>
+                       <p className="text-[11px] text-gray-700 leading-relaxed font-semibold">
+                           <span className="text-[#123524] font-bold block mb-1">💡 အထူးသတိပြုရန် -</span>
+                           (တစ်ကြိမ်တည်းဝယ်ယူမှုပြုလုပ်သူများအနေဖြင့် မိမိဝယ်ယူထားသည့်ငွေပမာဏအတိုင်း မိမိကြိုက်နှစ်သက်ရာ Service သို့မဟုတ် Package ကို မိမိဝယ်ယူထားသည့် Member အဆင့်ခံစားခွင့်နှင့်အညီ (၃)လအတွင်း ပြန်လည်သုံးစွဲနိုင်သည်။)
+                       </p>
+                   </div>
                </section>
 
                <section>
@@ -551,17 +559,29 @@ export function CustomerBookingWizard({
   useEffect(() => {
       if (!userPhone) return;
       const fetchUser = async () => {
-          const snap = await getDocs(collection(db, 'users'));
-          snap.forEach(d => {
-              const decPhone = decryptText(d.data().phone) || d.id;
-              if (decPhone === userPhone) {
+          try {
+              const snap = await getDocs(collection(db, 'users'));
+              let foundUser = null;
+              snap.forEach(d => {
+                  try {
+                      const data = d.data();
+                      const decPhone = decryptText(data.phone) || d.id;
+                      if (decPhone === userPhone || d.id === userPhone) {
+                          foundUser = data;
+                      }
+                  } catch (e) {}
+              });
+              
+              if (foundUser) {
                   setUserProfile({
-                      ...d.data(),
-                      points: parseInt(decryptText(d.data().points) || d.data().points || '0', 10),
-                      dob: decryptText(d.data().dob) || d.data().dob || ''
+                      ...(foundUser as any),
+                      points: parseInt(decryptText((foundUser as any).points) || (foundUser as any).points || '0', 10),
+                      dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
                   });
               }
-          });
+          } catch(e) {
+              console.error(e);
+          }
       };
       fetchUser();
   }, [userPhone]);
@@ -1041,11 +1061,13 @@ export function CustomerBookingWizard({
         let hasName = false;
 
         usersSnap.forEach(d => {
-          const decPhone = decryptText(d.data().phone) || d.id;
-          if (decPhone === formData.phone.trim() || d.id === formData.phone.trim()) {
-             userRefId = d.id;
-             hasName = !!decryptText(d.data().name);
-          }
+          try {
+              const decPhone = decryptText(d.data().phone) || d.id;
+              if (decPhone === formData.phone.trim() || d.id === formData.phone.trim()) {
+                 userRefId = d.id;
+                 hasName = !!decryptText(d.data().name);
+              }
+          } catch(e) {}
         });
 
         if (!userRefId) {
@@ -2076,7 +2098,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
 }
 
 // ==========================================
-// COMPONENT: CustomerProfile (WITH VIP TIER & DOB)
+// COMPONENT: CustomerProfile (WITH ERROR HANDLING FIX)
 // ==========================================
 export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -2098,28 +2120,43 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   useEffect(() => {
     if (!userPhone) return;
     const fetchUser = async () => {
-      const snap = await getDocs(collection(db, 'users'));
-      snap.forEach(d => {
-         const data = d.data();
-         const decPhone = decryptText(data.phone) || d.id;
-         if (decPhone === userPhone || d.id === userPhone) {
-             setProfile({ 
-                 ...data, 
-                 name: decryptText(data.name), 
-                 password: decryptText(data.password), 
-                 phone: userPhone,
-                 points: parseInt(decryptText(data.points as string) || (data.points as string) || '0', 10),
-                 dob: decryptText(data.dob as string) || (data.dob as string) || ''
-             } as any);
-             setFormData({ 
-                 name: decryptText(data.name) || '', 
-                 password: decryptText(data.password) || '',
-                 dob: decryptText(data.dob as string) || (data.dob as string) || ''
-             });
-             setUserDocId(d.id);
-         }
-      });
-      setLoading(false);
+      try {
+          const snap = await getDocs(collection(db, 'users'));
+          let foundUser = null;
+          let docId = null;
+          
+          snap.forEach(d => {
+             const data = d.data();
+             try {
+                 const decPhone = decryptText(data.phone) || d.id;
+                 if (decPhone === userPhone || d.id === userPhone) {
+                     foundUser = data;
+                     docId = d.id;
+                 }
+             } catch(e) {}
+          });
+          
+          if (foundUser) {
+              setProfile({ 
+                  ...(foundUser as any), 
+                  name: decryptText((foundUser as any).name), 
+                  password: decryptText((foundUser as any).password), 
+                  phone: userPhone,
+                  points: parseInt(decryptText((foundUser as any).points) || (foundUser as any).points || '0', 10),
+                  dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
+              });
+              setFormData({ 
+                  name: decryptText((foundUser as any).name) || '', 
+                  password: decryptText((foundUser as any).password) || '',
+                  dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
+              });
+              setUserDocId(docId);
+          }
+      } catch(err) {
+          console.error("Error fetching profile", err);
+      } finally {
+          setLoading(false);
+      }
     };
     fetchUser();
   }, [userPhone]);
@@ -2223,12 +2260,14 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
       let found = false;
       let userPass = '';
       snap.forEach(d => {
-         const data = d.data();
-         const decPhone = decryptText(data.phone) || d.id;
-         if (decPhone === phone || d.id === phone) {
-            found = true;
-            userPass = decryptText(data.password);
-         }
+         try {
+             const data = d.data();
+             const decPhone = decryptText(data.phone) || d.id;
+             if (decPhone === phone || d.id === phone) {
+                found = true;
+                userPass = decryptText(data.password);
+             }
+         } catch(err) {}
       });
       if (!found) { setError("ဖုန်းနံပါတ် ရှာမတွေ့ပါ။ ဘိုကင်အရင်တင်ပေးပါခင်ဗျာ။"); }
       else {
@@ -2236,7 +2275,7 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
         else { onLoginSuccess(phone); }
       }
     } catch (e) { setError("Network Error"); }
-    setLoading(false);
+    finally { setLoading(false); }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -2245,16 +2284,18 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
       const snap = await getDocs(collection(db, 'users'));
       let userPass = '';
       snap.forEach(d => {
-         const data = d.data();
-         const decPhone = decryptText(data.phone) || d.id;
-         if (decPhone === phone || d.id === phone) {
-            userPass = decryptText(data.password);
-         }
+         try {
+             const data = d.data();
+             const decPhone = decryptText(data.phone) || d.id;
+             if (decPhone === phone || d.id === phone) {
+                userPass = decryptText(data.password);
+             }
+         } catch(err){}
       });
       if (userPass === password) { onLoginSuccess(phone); }
       else { setError("Password မှားယွင်းနေပါသည်။"); }
     } catch (e) { setError("Network Error"); }
-    setLoading(false);
+    finally { setLoading(false); }
   };
 
   return (
