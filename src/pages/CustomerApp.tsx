@@ -653,6 +653,31 @@ export function CustomerBookingWizard({
           finalDiscountPercent = userTier.discountPercent;
           discountLabel = `VIP Member Discount (${finalDiscountPercent}%)`;
       }
+  } else if (!userTier && vipSettings.isActive && (userProfile?.points || 0) > 0) {
+      const pts = userProfile.points;
+      let eligiblePercent = 0;
+      const possibleTiers = [50, 40, 30, 20, 10]; 
+
+      for (const tier of possibleTiers) {
+          if (pts >= tier) {
+              const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
+              const hasUsed = allBookings.some(b => 
+                  (b.phone === userPhone || decryptText(b.phone) === userPhone) && 
+                  b.discountLabel === rewardLabel && 
+                  b.status !== 'cancelled'
+              );
+
+              if (!hasUsed) {
+                  eligiblePercent = tier;
+                  discountLabel = rewardLabel;
+                  break; 
+              }
+          }
+      }
+
+      if (eligiblePercent > 0) {
+          finalDiscountPercent = eligiblePercent;
+      }
   }
 
   const calculateSubTotal = () => {
@@ -2194,7 +2219,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
   );
 }
 
-// 🌟 UPDATED: CustomerProfile (With VIP Progress Bar & Point History Modal) 🌟
+// 🌟 UPDATED: CustomerProfile (With VIP Progress Bar & Point History Modal & Pre-Jade Rewards) 🌟
 export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userDocId, setUserDocId] = useState<string | null>(null);
@@ -2411,7 +2436,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                 </div>
             </div>
 
-            {/* 🌟 New VIP Progress Chart 🌟 */}
+            {/* 🌟 VIP Progress Chart (With Pre-Jade Logic) 🌟 */}
             <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 shadow-sm relative overflow-hidden text-left">
                 <h4 className="text-xs font-bold text-gray-800 mb-3 flex items-center"><Target className="w-4 h-4 mr-1.5 text-[#D4AF37]"/> VIP Progress</h4>
                 {nextTier ? (
@@ -2426,6 +2451,39 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                         <p className="text-[10px] text-gray-500 font-semibold mt-2.5 text-center leading-relaxed">
                             <span className="font-bold text-[#123524]">{nextTier.name}</span> ဖြစ်ရန် လိုအပ်သော ပွိုင့်: <span className="font-bold text-red-500">{pointsNeeded} Pts</span>
                         </p>
+
+                        {/* 🌟 Pre-Jade Target Progress 🌟 */}
+                        {currentPoints < 50 && (
+                            <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in">
+                                <h5 className="text-[11px] font-bold text-[#123524] mb-2 flex items-center">
+                                    <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
+                                </h5>
+                                
+                                {(() => {
+                                    const nextTarget = Math.floor(currentPoints / 10) * 10 + 10; 
+                                    const actualTarget = nextTarget > 50 ? 50 : nextTarget;
+                                    const ptsNeededForTarget = actualTarget - currentPoints;
+                                    
+                                    const basePoint = actualTarget - 10;
+                                    const targetProgressPercent = ((currentPoints - basePoint) / 10) * 100;
+
+                                    return (
+                                        <>
+                                            <div className="flex justify-between items-end mb-1.5">
+                                                <span className="text-[9px] font-bold text-gray-500">Target Bonus: {actualTarget}% Off</span>
+                                                <span className="text-[9px] font-bold text-green-600">{actualTarget} Pts</span>
+                                            </div>
+                                            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
+                                                <div className="h-full rounded-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div>
+                                            </div>
+                                            <p className="text-[9px] text-gray-500 font-semibold text-center">
+                                                <span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span>
+                                            </p>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        )}
                     </>
                 ) : (
                     <div className="text-center p-2">
