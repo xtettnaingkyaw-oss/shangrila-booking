@@ -18,7 +18,7 @@ const FALLBACK_VIP_SETTINGS = {
   ],
   tiers: [
     { id: 't1', name: 'Jade Elite Member', requiredPoints: 50, discountPercent: 10, instantUpgrade: '၈ သိန်းကျပ်', colorTheme: '#00A86B' },
-    { id: 't2', name: 'Imperial Gold VIP', requiredPoints: 100, discountPercent: 15, instantUpgrade: '၁၅ သိန်းကျပ်', colorTheme: '#D4AF37' },
+    { id: 't2', name: 'Imperial Gold VIP', requiredPoints: 100, discountPercent: 15, instantUpgrade: '၁5 သိန်းကျပ်', colorTheme: '#D4AF37' },
     { id: 't3', name: 'Shangri-La Signature V-VIP', requiredPoints: 150, discountPercent: 20, instantUpgrade: '၂၅ သိန်းကျပ်', colorTheme: '#1E1E1E' }
   ]
 };
@@ -2233,8 +2233,29 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [userBookings, setUserBookings] = useState<any[]>([]);
 
-  const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
+  useEffect(() => {
+    if (!userPhone) return;
+    const fetchBookings = async () => {
+       try {
+           const snap = await getDocs(query(collection(db, 'bookings')));
+           const data: any[] = [];
+           snap.forEach(d => {
+               const raw = d.data();
+               const decPhone = decryptText(raw.phone) || raw.phone;
+               if (decPhone === userPhone) {
+                   data.push({
+                       status: raw.status,
+                       discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined
+                   });
+               }
+           });
+           setUserBookings(data);
+       } catch(e) {}
+    };
+    fetchBookings();
+  }, [userPhone]);
 
   const fetchHistory = async () => {
       setLoadingHistory(true);
@@ -2420,7 +2441,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
             )}
             
             <div className="grid grid-cols-2 gap-3 mb-6">
-                {/* 🌟 Updated Points Box with View History Button 🌟 */}
                 <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 flex flex-col items-center justify-center shadow-sm relative overflow-hidden group">
                     <Star className="w-16 h-16 absolute -top-4 -right-4 text-yellow-500 opacity-10 group-hover:scale-110 transition-transform" />
                     <span className="text-[10px] text-yellow-700 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1"/> My VIP Points</span>
@@ -2436,7 +2456,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                 </div>
             </div>
 
-            {/* 🌟 VIP Progress Chart (With Pre-Jade Logic) 🌟 */}
+            {/* 🌟 Pre-Jade Target Progress & Rewards Status 🌟 */}
             <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 shadow-sm relative overflow-hidden text-left">
                 <h4 className="text-xs font-bold text-gray-800 mb-3 flex items-center"><Target className="w-4 h-4 mr-1.5 text-[#D4AF37]"/> VIP Progress</h4>
                 {nextTier ? (
@@ -2451,45 +2471,87 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                         <p className="text-[10px] text-gray-500 font-semibold mt-2.5 text-center leading-relaxed">
                             <span className="font-bold text-[#123524]">{nextTier.name}</span> ဖြစ်ရန် လိုအပ်သော ပွိုင့်: <span className="font-bold text-red-500">{pointsNeeded} Pts</span>
                         </p>
-
-                        {/* 🌟 Pre-Jade Target Progress 🌟 */}
-                        {currentPoints < 50 && (
-                            <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in">
-                                <h5 className="text-[11px] font-bold text-[#123524] mb-2 flex items-center">
-                                    <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
-                                </h5>
-                                
-                                {(() => {
-                                    const nextTarget = Math.floor(currentPoints / 10) * 10 + 10; 
-                                    const actualTarget = nextTarget > 50 ? 50 : nextTarget;
-                                    const ptsNeededForTarget = actualTarget - currentPoints;
-                                    
-                                    const basePoint = actualTarget - 10;
-                                    const targetProgressPercent = ((currentPoints - basePoint) / 10) * 100;
-
-                                    return (
-                                        <>
-                                            <div className="flex justify-between items-end mb-1.5">
-                                                <span className="text-[9px] font-bold text-gray-500">Target Bonus: {actualTarget}% Off</span>
-                                                <span className="text-[9px] font-bold text-green-600">{actualTarget} Pts</span>
-                                            </div>
-                                            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
-                                                <div className="h-full rounded-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div>
-                                            </div>
-                                            <p className="text-[9px] text-gray-500 font-semibold text-center">
-                                                <span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span>
-                                            </p>
-                                        </>
-                                    );
-                                })()}
-                            </div>
-                        )}
                     </>
                 ) : (
                     <div className="text-center p-2">
                         <Crown className="w-8 h-8 text-[#D4AF37] mx-auto mb-2" />
                         <p className="text-xs font-bold text-[#123524] leading-relaxed">ဂုဏ်ယူပါသည်။ သင်သည် အမြင့်ဆုံး VIP အဆင့်သို့ ရောက်ရှိနေပါပြီ။</p>
                     </div>
+                )}
+
+                {currentPoints > 0 && (
+                     <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in">
+                         {/* Only show progress to NEXT target if under 50 */}
+                         {currentPoints < 50 && (() => {
+                             const nextTarget = Math.floor(currentPoints / 10) * 10 + 10; 
+                             const actualTarget = nextTarget > 50 ? 50 : nextTarget;
+                             const ptsNeededForTarget = actualTarget - currentPoints;
+                             
+                             const basePoint = actualTarget - 10;
+                             const targetProgressPercent = ((currentPoints - basePoint) / 10) * 100;
+
+                             return (
+                                 <div className="mb-4">
+                                     <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
+                                         <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
+                                     </h5>
+                                     <div className="flex justify-between items-end mb-1.5">
+                                         <span className="text-[9px] font-bold text-gray-500">Target Bonus: {actualTarget}% Off</span>
+                                         <span className="text-[9px] font-bold text-green-600">{actualTarget} Pts</span>
+                                     </div>
+                                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
+                                         <div className="h-full rounded-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div>
+                                     </div>
+                                     <p className="text-[9px] text-gray-500 font-semibold text-center">
+                                         <span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span>
+                                     </p>
+                                 </div>
+                             );
+                         })()}
+
+                         {/* Show Available & Used Rewards */}
+                         {(() => {
+                             const possibleTiers = [10, 20, 30, 40];
+                             const availableRewards: number[] = [];
+                             const usedRewards: number[] = [];
+                             
+                             possibleTiers.forEach(tier => {
+                                 if (currentPoints >= tier) {
+                                     const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
+                                     const isUsed = userBookings.some(b => b.discountLabel === rewardLabel && b.status !== 'cancelled');
+                                     if (isUsed) {
+                                         usedRewards.push(tier);
+                                     } else {
+                                         availableRewards.push(tier);
+                                     }
+                                 }
+                             });
+
+                             if (availableRewards.length === 0 && usedRewards.length === 0) return null;
+
+                             return (
+                                 <div className={`space-y-2 ${currentPoints < 50 ? 'pt-2 border-t border-gray-100' : ''}`}>
+                                     {currentPoints >= 50 && (
+                                         <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
+                                             <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
+                                         </h5>
+                                     )}
+                                     {availableRewards.map(tier => (
+                                         <div key={`avail-${tier}`} className="bg-green-50 text-green-700 p-2.5 rounded-lg text-[10px] font-bold border border-green-200 flex items-center justify-between shadow-sm">
+                                             <span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1.5 text-green-600"/> {tier}% Discount ခံစားခွင့်</span>
+                                             <span className="bg-green-100 px-2 py-1 rounded text-green-800">၁ ကြိမ် ရရှိထားပါသည်</span>
+                                         </div>
+                                     ))}
+                                     {usedRewards.map(tier => (
+                                         <div key={`used-${tier}`} className="bg-gray-50 text-gray-500 p-2.5 rounded-lg text-[10px] font-bold border border-gray-200 flex items-center justify-between opacity-70">
+                                             <span className="flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> {tier}% Discount ခံစားခွင့်</span>
+                                             <span className="bg-gray-200 px-2 py-1 rounded text-gray-600">အသုံးပြုပြီးပါပြီ</span>
+                                         </div>
+                                     ))}
+                                 </div>
+                             );
+                         })()}
+                     </div>
                 )}
             </div>
 
