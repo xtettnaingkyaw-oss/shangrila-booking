@@ -838,7 +838,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
-  const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
+  const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, title: 'SPECIAL PROMO', hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
   const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
   const [localVipSettings, setLocalVipSettings] = useState<any>(defaultVipConfig);
 
@@ -1149,6 +1149,10 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                               <input type="checkbox" checked={localPromotion.isActive} onChange={(e) => setLocalPromotion({...localPromotion, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524]" />
                           </label>
                       </div>
+                      <div className="md:col-span-2">
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Promotion Title (e.g. THADINGYUT PROMO)</label>
+                          <input type="text" value={localPromotion.title || ''} onChange={(e) => setLocalPromotion({...localPromotion, title: e.target.value})} placeholder="SPECIAL PROMO" className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-bold" />
+                      </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 mb-1">Hotel & Home Services Discount (%)</label>
                           <input type="number" value={localPromotion.hotelDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, hotelDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
@@ -1234,7 +1238,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                       <div className="flex flex-wrap gap-2">
                           <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=therapists'; navigator.clipboard.writeText(url); alert('Gallery Link Copied:\n' + url); }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Gallery Link</button>
                           <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=dashboard'; navigator.clipboard.writeText(url); alert('Dashboard Link Copied:\n' + url); }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Dashboard Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
                       </div>
                       <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
                           <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}
@@ -1337,8 +1341,15 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {localTherapists.map((therapist, tIdx) => (
                           <div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
-                              <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4" /></button>
-                              <div className="mb-3 mt-2"><span className="bg-[#123524] text-white text-[10px] font-bold px-2 py-1 rounded">Login ID: {therapist.id}</span></div>
+                              <div className="absolute top-2 left-2 flex space-x-1 z-10">
+                                  <button type="button" onClick={() => moveTherapistUp(tIdx)} disabled={tIdx === 0} className="p-1 bg-white border border-gray-200 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30 shadow-sm"><ChevronUp className="w-4 h-4" /></button>
+                                  <button type="button" onClick={() => moveTherapistDown(tIdx)} disabled={tIdx === localTherapists.length - 1} className="p-1 bg-white border border-gray-200 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30 shadow-sm"><ChevronDown className="w-4 h-4" /></button>
+                              </div>
+                              <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200 z-10"><Trash2 className="w-4 h-4" /></button>
+                              
+                              <div className="mb-3 mt-8">
+                                  <span className="bg-[#123524] text-white text-[10px] font-bold px-2 py-1 rounded">Login ID: {therapist.id}</span>
+                              </div>
                               <div className="grid grid-cols-2 gap-3 mb-4">
                                   <div><label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label><input type="text" value={therapist.name} onChange={(e) => updateTherapistField(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" /></div>
                                   <div><label className="block text-xs font-bold text-gray-500 mb-1">Login Password</label><input type="text" minLength={6} value={therapist.password || ''} onChange={(e) => updateTherapistField(tIdx, 'password', e.target.value)} placeholder="Min 6 chars" className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" /></div>
@@ -1365,46 +1376,9 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           )}
       </div>
 
-      {/* --- THERAPISTS RANKING SECTION --- */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#D4AF37]">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Crown className="w-5 h-5 mr-2 text-yellow-500" /> Top 5 Therapists Ranking</h3>
-                  <p className="text-xs text-gray-500 mt-1">ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ (အစီအစဉ်ရွှေ့ရန်)</p>
-              </div>
-              <button onClick={() => toggleSection('therapist_ranking')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                  {expandedSection === 'therapist_ranking' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-              </button>
-          </div>
-
-          {expandedSection === 'therapist_ranking' && (
-              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                  <div className="flex justify-end mb-6">
-                      <button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3">
-                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save'}
-                      </button>
-                  </div>
-                  <div className="flex flex-col space-y-2">
-                      {localTherapists.map((therapist, tIdx) => (
-                          <div key={therapist.id} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:border-[#D4AF37] transition">
-                              <div className="flex items-center">
-                                  <span className="w-6 h-6 rounded bg-[#123524] text-white flex items-center justify-center text-xs font-bold mr-3">{tIdx + 1}</span>
-                                  <span className="font-bold text-gray-800 text-sm">{therapist.name}</span>
-                              </div>
-                              <div className="flex space-x-1">
-                                  <button type="button" onClick={() => moveTherapistUp(tIdx)} disabled={tIdx === 0} className="p-1.5 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronUp className="w-4 h-4" /></button>
-                                  <button type="button" onClick={() => moveTherapistDown(tIdx)} disabled={tIdx === localTherapists.length - 1} className="p-1.5 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronDown className="w-4 h-4" /></button>
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-              </div>
-          )}
-      </div>
-
       {/* --- CATEGORIES MAP --- */}
       {localCategories.map((cat, cIdx) => (
-        <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
+        <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 border-l-4 border-l-[#123524]">
           <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
              <div>
                 <h3 className="font-bold text-gray-800 flex items-center text-xl"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> {cat.title} Category</h3>
