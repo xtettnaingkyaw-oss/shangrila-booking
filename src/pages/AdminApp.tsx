@@ -618,7 +618,6 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
   const [editingUser, setEditingUser] = useState<any>(null);
   const [editForm, setEditForm] = useState({ name: '', password: '', dob: '' });
   
-  // New state for creating user manually
   const [creatingUser, setCreatingUser] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', phone: '', password: '', dob: '' });
 
@@ -730,7 +729,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           </div>
       )}
 
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
           <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
           <div className="flex space-x-2 items-center w-full sm:w-auto">
               <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm">
@@ -849,6 +848,10 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   
   const [newSecretKey, setNewSecretKey] = useState('');
   const [migratingKey, setMigratingKey] = useState(false);
+
+  // 🌟 Toggle State for Settings Sections 🌟
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const toggleSection = (sec: string) => setExpandedSection(prev => prev === sec ? null : sec);
 
   useEffect(() => { const fetchInstallSteps = async () => { try { const snap = await getDoc(doc(db, 'settings', 'appData')); if (snap.exists() && snap.data().installSteps) { setLocalInstallSteps(snap.data().installSteps); } } catch (e) { console.error(e); } }; fetchInstallSteps(); }, []);
 
@@ -971,151 +974,468 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
       {/* --- VIP PROGRAM SETTINGS SECTION --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#D4AF37]">
-         <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
                <h3 className="text-xl font-bold text-gray-800 flex items-center"><Award className="w-5 h-5 mr-2 text-[#D4AF37]" /> VIP Program Customization</h3>
                <p className="text-xs text-gray-500 mt-1">Customer App တွင်ပြသမည့် VIP အချက်အလက်များအားလုံးကို ဤနေရာတွင် ပြင်ဆင်နိုင်ပါသည်။</p>
             </div>
-            <button disabled={savingCategory === 'vip_settings'} onClick={handleSaveVipSettings} className="flex items-center bg-[#123524] text-[#D4AF37] px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3">
-               <Save className="w-4 h-4 mr-2" /> {savingCategory === 'vip_settings' ? 'Saving...' : 'Save VIP Program'}
+            <button onClick={() => toggleSection('vip')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+               {expandedSection === 'vip' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
             </button>
          </div>
          
-         <div className="flex items-center space-x-3 mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200 w-fit">
-             <label className="text-sm font-bold text-gray-700 cursor-pointer flex items-center">
-                 <input type="checkbox" checked={localVipSettings.isActive} onChange={(e) => setLocalVipSettings({...localVipSettings, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524] mr-3" />
-                 Enable VIP Program (Home Page တွင် VIP Tab ကို ဖွင့်ထားမည်)
-             </label>
-         </div>
-
-         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-             <div>
-                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Star className="w-4 h-4 mr-2"/> 1. Membership Tiers & Base Rule</h4>
-                 <div className="mb-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                     <label className="block text-[10px] font-bold text-gray-500 mb-1">Base Rule Text (အခြေခံ ပွိုင့်သတ်မှတ်ချက်)</label>
-                     <input type="text" value={localVipSettings.baseRuleText} onChange={(e) => setLocalVipSettings({...localVipSettings, baseRuleText: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+         {expandedSection === 'vip' && (
+             <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                 <div className="flex justify-end mb-6">
+                     <button disabled={savingCategory === 'vip_settings'} onClick={handleSaveVipSettings} className="flex items-center bg-[#123524] text-[#D4AF37] px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
+                        <Save className="w-4 h-4 mr-2" /> {savingCategory === 'vip_settings' ? 'Saving...' : 'Save VIP Program'}
+                     </button>
                  </div>
-                 <div className="space-y-3">
-                     {localVipSettings.tiers.map((tier: any, tIdx: number) => (
-                         <div key={tier.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm">
-                             <div className="grid grid-cols-2 gap-3 mb-2">
-                                 <div><label className="text-[10px] font-bold text-gray-400">Tier Name</label><input type="text" value={tier.name} onChange={(e) => updateVipTier(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
-                                 <div><label className="text-[10px] font-bold text-gray-400">Card Color Code</label><input type="text" value={tier.colorTheme} onChange={(e) => updateVipTier(tIdx, 'colorTheme', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none" placeholder="#HEXCODE" /></div>
-                             </div>
-                             <div className="grid grid-cols-3 gap-3">
-                                 <div><label className="text-[10px] font-bold text-gray-400">Required Points</label><input type="number" value={tier.requiredPoints} onChange={(e) => updateVipTier(tIdx, 'requiredPoints', Number(e.target.value))} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none" /></div>
-                                 <div><label className="text-[10px] font-bold text-gray-400">Discount (%)</label><input type="number" value={tier.discountPercent} onChange={(e) => updateVipTier(tIdx, 'discountPercent', Number(e.target.value))} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none text-red-600 font-bold" /></div>
-                                 <div><label className="text-[10px] font-bold text-gray-400">Instant Upgrade Amt</label><input type="text" value={tier.instantUpgrade || ''} onChange={(e) => updateVipTier(tIdx, 'instantUpgrade', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none text-blue-600 font-bold" placeholder="ဥပမာ - ၈ သိန်းကျပ်" /></div>
+
+                 <div className="flex items-center space-x-3 mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200 w-fit">
+                     <label className="text-sm font-bold text-gray-700 cursor-pointer flex items-center">
+                         <input type="checkbox" checked={localVipSettings.isActive} onChange={(e) => setLocalVipSettings({...localVipSettings, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524] mr-3" />
+                         Enable VIP Program (Home Page တွင် VIP Tab ကို ဖွင့်ထားမည်)
+                     </label>
+                 </div>
+
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                     <div>
+                         <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Star className="w-4 h-4 mr-2"/> 1. Membership Tiers & Base Rule</h4>
+                         <div className="mb-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                             <label className="block text-[10px] font-bold text-gray-500 mb-1">Base Rule Text (အခြေခံ ပွိုင့်သတ်မှတ်ချက်)</label>
+                             <input type="text" value={localVipSettings.baseRuleText} onChange={(e) => setLocalVipSettings({...localVipSettings, baseRuleText: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                         </div>
+                         <div className="space-y-3">
+                             {localVipSettings.tiers.map((tier: any, tIdx: number) => (
+                                 <div key={tier.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm">
+                                     <div className="grid grid-cols-2 gap-3 mb-2">
+                                         <div><label className="text-[10px] font-bold text-gray-400">Tier Name</label><input type="text" value={tier.name} onChange={(e) => updateVipTier(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
+                                         <div><label className="text-[10px] font-bold text-gray-400">Card Color Code</label><input type="text" value={tier.colorTheme} onChange={(e) => updateVipTier(tIdx, 'colorTheme', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none" placeholder="#HEXCODE" /></div>
+                                     </div>
+                                     <div className="grid grid-cols-3 gap-3">
+                                         <div><label className="text-[10px] font-bold text-gray-400">Required Points</label><input type="number" value={tier.requiredPoints} onChange={(e) => updateVipTier(tIdx, 'requiredPoints', Number(e.target.value))} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none" /></div>
+                                         <div><label className="text-[10px] font-bold text-gray-400">Discount (%)</label><input type="number" value={tier.discountPercent} onChange={(e) => updateVipTier(tIdx, 'discountPercent', Number(e.target.value))} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none text-red-600 font-bold" /></div>
+                                         <div><label className="text-[10px] font-bold text-gray-400">Instant Upgrade Amt</label><input type="text" value={tier.instantUpgrade || ''} onChange={(e) => updateVipTier(tIdx, 'instantUpgrade', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none text-blue-600 font-bold" placeholder="ဥပမာ - ၈ သိန်းကျပ်" /></div>
+                                     </div>
+                                 </div>
+                             ))}
+                         </div>
+                     </div>
+
+                     <div>
+                         <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Target className="w-4 h-4 mr-2"/> 2. Target Rewards (Pre-Jade)</h4>
+                         <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                             <label className="block text-[10px] font-bold text-gray-500 mb-1">Section Description (ရှင်းလင်းချက်)</label>
+                             <textarea value={localVipSettings.preJadeText} onChange={(e) => setLocalVipSettings({...localVipSettings, preJadeText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                             
+                             <label className="block text-[10px] font-bold text-gray-500 mt-4 mb-2">Reward Steps (ဥပမာ - 10 Pts = 10% Off)</label>
+                             <div className="space-y-2">
+                                 {(localVipSettings.preJadeRewards || []).map((reward: string, rIdx: number) => (
+                                     <div key={rIdx} className="flex space-x-2">
+                                         <input type="text" value={reward} onChange={(e) => { const newR = [...localVipSettings.preJadeRewards]; newR[rIdx] = e.target.value; setLocalVipSettings({...localVipSettings, preJadeRewards: newR}); }} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                                         <button onClick={() => setLocalVipSettings({...localVipSettings, preJadeRewards: localVipSettings.preJadeRewards.filter((_: any, i: number) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
+                                     </div>
+                                 ))}
+                                 <button onClick={() => setLocalVipSettings({...localVipSettings, preJadeRewards: [...localVipSettings.preJadeRewards, 'New Reward']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center mt-2"><PlusCircle className="w-3 h-3 mr-1"/> Add Reward Step</button>
                              </div>
                          </div>
-                     ))}
+                     </div>
                  </div>
-             </div>
 
-             <div>
-                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Target className="w-4 h-4 mr-2"/> 2. Target Rewards (Pre-Jade)</h4>
-                 <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                     <label className="block text-[10px] font-bold text-gray-500 mb-1">Section Description (ရှင်းလင်းချက်)</label>
-                     <textarea value={localVipSettings.preJadeText} onChange={(e) => setLocalVipSettings({...localVipSettings, preJadeText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                     
-                     <label className="block text-[10px] font-bold text-gray-500 mt-4 mb-2">Reward Steps (ဥပမာ - 10 Pts = 10% Off)</label>
-                     <div className="space-y-2">
-                         {(localVipSettings.preJadeRewards || []).map((reward: string, rIdx: number) => (
-                             <div key={rIdx} className="flex space-x-2">
-                                 <input type="text" value={reward} onChange={(e) => { const newR = [...localVipSettings.preJadeRewards]; newR[rIdx] = e.target.value; setLocalVipSettings({...localVipSettings, preJadeRewards: newR}); }} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                                 <button onClick={() => setLocalVipSettings({...localVipSettings, preJadeRewards: localVipSettings.preJadeRewards.filter((_: any, i: number) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 border-t border-gray-100 pt-8">
+                     <div>
+                         <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Info className="w-4 h-4 mr-2"/> 3. Upgrade Rules (အဆင့်မြှင့်တင်ခြင်း)</h4>
+                         <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                             <div>
+                                 <label className="block text-[10px] font-bold text-gray-500 mb-1">Cumulative Upgrade System Text</label>
+                                 <textarea value={localVipSettings.cumulativeText} onChange={(e) => setLocalVipSettings({...localVipSettings, cumulativeText: e.target.value})} rows={4} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                             </div>
+                             <div>
+                                 <label className="block text-[10px] font-bold text-gray-500 mb-1">Instant Upgrade Alert Text (တစ်ကြိမ်တည်းဝယ်ယူမှု...)</label>
+                                 <textarea value={localVipSettings.instantUpgradeText} onChange={(e) => setLocalVipSettings({...localVipSettings, instantUpgradeText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                             </div>
+                         </div>
+                     </div>
+
+                     <div>
+                         <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Gift className="w-4 h-4 mr-2"/> 4. Birthday Bonuses (မွေးနေ့ခံစားခွင့်)</h4>
+                         <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                             <div>
+                                 <label className="block text-[10px] font-bold text-gray-500 mb-1">Standard Birthday Bonus Text</label>
+                                 <textarea value={localVipSettings.birthdayStandardText} onChange={(e) => setLocalVipSettings({...localVipSettings, birthdayStandardText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                             </div>
+                             <div>
+                                 <label className="block text-[10px] font-bold text-gray-500 mb-1">Imperial V-VIP Birthday Bonus Text</label>
+                                 <textarea value={localVipSettings.birthdayImperialText} onChange={(e) => setLocalVipSettings({...localVipSettings, birthdayImperialText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+
+                 <div className="border-t border-gray-100 pt-8">
+                     <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><ShieldCheck className="w-4 h-4 mr-2"/> 5. Terms & Conditions (စည်းကမ်းချက်များ)</h4>
+                     <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                         {localVipSettings.rules.map((rule: string, rIdx: number) => (
+                             <div key={rIdx} className="flex items-start space-x-2">
+                                 <div className="mt-2 text-xs font-bold text-gray-400">{rIdx + 1}.</div>
+                                 <textarea value={rule} onChange={(e) => updateVipRule(rIdx, e.target.value)} rows={2} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none leading-relaxed font-semibold text-gray-700" />
+                                 <button onClick={() => setLocalVipSettings({...localVipSettings, rules: localVipSettings.rules.filter((_: any, i: number) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
                              </div>
                          ))}
-                         <button onClick={() => setLocalVipSettings({...localVipSettings, preJadeRewards: [...localVipSettings.preJadeRewards, 'New Reward']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center mt-2"><PlusCircle className="w-3 h-3 mr-1"/> Add Reward Step</button>
+                         <button onClick={() => setLocalVipSettings({...localVipSettings, rules: [...localVipSettings.rules, 'စည်းကမ်းချက်အသစ်...']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center mt-2"><PlusCircle className="w-3 h-3 mr-1"/> Add Rule</button>
                      </div>
                  </div>
              </div>
-         </div>
-
-         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 border-t border-gray-100 pt-8">
-             <div>
-                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Info className="w-4 h-4 mr-2"/> 3. Upgrade Rules (အဆင့်မြှင့်တင်ခြင်း)</h4>
-                 <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                     <div>
-                         <label className="block text-[10px] font-bold text-gray-500 mb-1">Cumulative Upgrade System Text</label>
-                         <textarea value={localVipSettings.cumulativeText} onChange={(e) => setLocalVipSettings({...localVipSettings, cumulativeText: e.target.value})} rows={4} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                     </div>
-                     <div>
-                         <label className="block text-[10px] font-bold text-gray-500 mb-1">Instant Upgrade Alert Text (တစ်ကြိမ်တည်းဝယ်ယူမှု...)</label>
-                         <textarea value={localVipSettings.instantUpgradeText} onChange={(e) => setLocalVipSettings({...localVipSettings, instantUpgradeText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                     </div>
-                 </div>
-             </div>
-
-             <div>
-                 <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Gift className="w-4 h-4 mr-2"/> 4. Birthday Bonuses (မွေးနေ့ခံစားခွင့်)</h4>
-                 <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                     <div>
-                         <label className="block text-[10px] font-bold text-gray-500 mb-1">Standard Birthday Bonus Text</label>
-                         <textarea value={localVipSettings.birthdayStandardText} onChange={(e) => setLocalVipSettings({...localVipSettings, birthdayStandardText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                     </div>
-                     <div>
-                         <label className="block text-[10px] font-bold text-gray-500 mb-1">Imperial V-VIP Birthday Bonus Text</label>
-                         <textarea value={localVipSettings.birthdayImperialText} onChange={(e) => setLocalVipSettings({...localVipSettings, birthdayImperialText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                     </div>
-                 </div>
-             </div>
-         </div>
-
-         <div className="border-t border-gray-100 pt-8">
-             <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><ShieldCheck className="w-4 h-4 mr-2"/> 5. Terms & Conditions (စည်းကမ်းချက်များ)</h4>
-             <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                 {localVipSettings.rules.map((rule: string, rIdx: number) => (
-                     <div key={rIdx} className="flex items-start space-x-2">
-                         <div className="mt-2 text-xs font-bold text-gray-400">{rIdx + 1}.</div>
-                         <textarea value={rule} onChange={(e) => updateVipRule(rIdx, e.target.value)} rows={2} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none leading-relaxed font-semibold text-gray-700" />
-                         <button onClick={() => setLocalVipSettings({...localVipSettings, rules: localVipSettings.rules.filter((_: any, i: number) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
-                     </div>
-                 ))}
-                 <button onClick={() => setLocalVipSettings({...localVipSettings, rules: [...localVipSettings.rules, 'စည်းကမ်းချက်အသစ်...']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center mt-2"><PlusCircle className="w-3 h-3 mr-1"/> Add Rule</button>
-             </div>
-         </div>
+         )}
       </div>
 
-      {/* Key ပြောင်းရန် Section */}
+      {/* --- ENCRYPTION KEY SECTION --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-orange-500">
-          <h3 className="text-xl font-bold text-gray-800 flex items-center mb-2"><KeyRound className="w-5 h-5 mr-2 text-orange-500" /> Change Encryption Key</h3>
-          <p className="text-xs text-gray-500 mb-4">Database ထဲရှိ Data အားလုံးကို အောက်ပါ Key အသစ်ဖြင့် အလိုအလျောက် ပြောင်းလဲပေးပါမည်။</p>
-          <div className="flex flex-col sm:flex-row gap-3 items-center">
-              <input 
-                  type="text" 
-                  placeholder="Enter New Secret Key" 
-                  value={newSecretKey} 
-                  onChange={(e) => setNewSecretKey(e.target.value)} 
-                  className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:border-orange-500 font-mono text-sm"
-              />
-              <button 
-                  disabled={migratingKey} 
-                  onClick={handleChangeSecretKey} 
-                  className="w-full sm:w-auto px-6 py-3 bg-orange-500 text-white rounded-lg font-bold shadow-sm hover:bg-orange-600 transition whitespace-nowrap flex items-center justify-center">
-                  {migratingKey ? 'Processing...' : 'Change Key Now'}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+             <div>
+                <h3 className="text-xl font-bold text-gray-800 flex items-center"><KeyRound className="w-5 h-5 mr-2 text-orange-500" /> Change Encryption Key</h3>
+                <p className="text-xs text-gray-500 mt-1">Database ထဲရှိ Data အားလုံးကို အောက်ပါ Key အသစ်ဖြင့် အလိုအလျောက် ပြောင်းလဲပေးပါမည်။</p>
+             </div>
+             <button onClick={() => toggleSection('encryption')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                {expandedSection === 'encryption' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+             </button>
+          </div>
+
+          {expandedSection === 'encryption' && (
+              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row gap-3 items-center">
+                      <input 
+                          type="text" 
+                          placeholder="Enter New Secret Key" 
+                          value={newSecretKey} 
+                          onChange={(e) => setNewSecretKey(e.target.value)} 
+                          className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:border-orange-500 font-mono text-sm"
+                      />
+                      <button 
+                          disabled={migratingKey} 
+                          onClick={handleChangeSecretKey} 
+                          className="w-full sm:w-auto px-6 py-3 bg-orange-500 text-white rounded-lg font-bold shadow-sm hover:bg-orange-600 transition whitespace-nowrap flex items-center justify-center">
+                          {migratingKey ? 'Processing...' : 'Change Key Now'}
+                      </button>
+                  </div>
+              </div>
+          )}
+      </div>
+
+      {/* --- PROMOTION SECTION --- */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-green-600">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Sparkles className="w-5 h-5 mr-2 text-green-600" /> App Promotion & Discounts</h3>
+                  <p className="text-xs text-gray-500 mt-1">Web App မှ Booking တင်သူများအတွက် Discount သတ်မှတ်ရန်</p>
+              </div>
+              <button onClick={() => toggleSection('promotion')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                  {expandedSection === 'promotion' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
               </button>
           </div>
+
+          {expandedSection === 'promotion' && (
+              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                  <div className="flex justify-end mb-6">
+                      <button disabled={savingCategory === 'promotion'} onClick={handleSavePromotion} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
+                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'promotion' ? 'Saving...' : 'Save'}
+                      </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-3 mb-2 md:col-span-2 bg-gray-50 p-3 rounded-lg border border-gray-200 w-full sm:w-auto">
+                          <label className="text-sm font-bold text-gray-700 cursor-pointer flex-1 flex items-center justify-between">
+                              <span>Enable Promotion (Promotion ဖွင့်ရန်)</span>
+                              <input type="checkbox" checked={localPromotion.isActive} onChange={(e) => setLocalPromotion({...localPromotion, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524]" />
+                          </label>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Hotel & Home Services Discount (%)</label>
+                          <input type="number" value={localPromotion.hotelDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, hotelDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Other Services Discount (%)</label>
+                          <input type="number" value={localPromotion.otherDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, otherDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label>
+                          <input type="date" value={localPromotion.startDate} onChange={(e) => setLocalPromotion({...localPromotion, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">End Date</label>
+                          <input type="date" value={localPromotion.endDate} onChange={(e) => setLocalPromotion({...localPromotion, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+                      </div>
+                  </div>
+              </div>
+          )}
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6"><div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><Sparkles className="w-5 h-5 mr-2 text-green-600" /> App Promotion & Discounts</h3><p className="text-xs text-gray-500 mt-1">Web App မှ Booking တင်သူများအတွက် Discount သတ်မှတ်ရန်</p></div><button disabled={savingCategory === 'promotion'} onClick={handleSavePromotion} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'promotion' ? 'Saving...' : 'Save'}</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div className="flex items-center space-x-3 mb-2 md:col-span-2 bg-gray-50 p-3 rounded-lg border border-gray-200 w-full sm:w-auto"><label className="text-sm font-bold text-gray-700 cursor-pointer flex-1 flex items-center justify-between"><span>Enable Promotion (Promotion ဖွင့်ရန်)</span><input type="checkbox" checked={localPromotion.isActive} onChange={(e) => setLocalPromotion({...localPromotion, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524]" /></label></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Hotel & Home Services Discount (%)</label><input type="number" value={localPromotion.hotelDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, hotelDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Other Services Discount (%)</label><input type="number" value={localPromotion.otherDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, otherDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label><input type="date" value={localPromotion.startDate} onChange={(e) => setLocalPromotion({...localPromotion, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">End Date</label><input type="date" value={localPromotion.endDate} onChange={(e) => setLocalPromotion({...localPromotion, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div></div></div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6"><div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b border-gray-100"><div className="mb-4 sm:mb-0"><h3 className="text-xl font-bold text-gray-800 flex items-center"><Download className="w-5 h-5 mr-2 text-[#D4AF37]" /> Download App Instructions</h3><p className="text-xs text-gray-500 mt-1">Download App နှိပ်လျှင် ပေါ်လာမည့် လမ်းညွှန်ချက်များနှင့် ပုံများ (အများဆုံး ၁၀ ဆင့်)</p></div><div className="flex space-x-2"><button onClick={() => { if(localInstallSteps.length < 10) setLocalInstallSteps([...localInstallSteps, { id: Date.now().toString(), text: '', imageUrl: '' }]) }} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Step</button><button disabled={savingCategory === 'install_steps'} onClick={handleSaveInstallSteps} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'install_steps' ? 'Saving...' : 'Save'}</button></div></div><div className="space-y-4">{localInstallSteps.map((step, idx) => (<div key={step.id} className="p-4 bg-gray-50 border border-gray-200 rounded-xl relative"><button onClick={() => setLocalInstallSteps(localInstallSteps.filter((_, i) => i !== idx))} className="absolute top-4 right-4 text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded-full"><Trash2 className="w-4 h-4" /></button><div className="font-bold text-gray-700 mb-2">Step {idx + 1}</div><textarea value={step.text} onChange={(e) => { const updated = [...localInstallSteps]; updated[idx].text = e.target.value; setLocalInstallSteps(updated); }} className="w-full p-3 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#D4AF37] text-sm mb-3" placeholder="လမ်းညွှန်ချက် ရေးရန်..." rows={2} /><div className="flex items-center space-x-4"><div className="w-20 h-32 bg-gray-200 rounded border border-gray-300 flex items-center justify-center overflow-hidden relative">{step.imageUrl ? (<><img src={step.imageUrl} alt={`Step ${idx+1}`} className="w-full h-full object-cover" /><button onClick={() => { const updated = [...localInstallSteps]; updated[idx].imageUrl = ''; setLocalInstallSteps(updated); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"><X className="w-3 h-3"/></button></>) : (<ImageIcon className="w-6 h-6 text-gray-400" />)}</div><div className="flex-1"><label className="text-xs font-bold text-[#D4AF37] bg-yellow-50 px-4 py-2 rounded-lg border border-yellow-200 cursor-pointer hover:bg-yellow-100 transition inline-block">{uploadingImage === `install_${idx}` ? 'Uploading...' : 'Upload Screenshot'}<input type="file" accept="image/*" className="hidden" onChange={(e) => handleInstallImageUpload(idx, e)} disabled={uploadingImage === `install_${idx}`} /></label><p className="text-[10px] text-gray-500 mt-2">ဖုန်း Screen အရှည် (Portrait) ပုံစံ ထည့်သွင်းပေးပါ</p></div></div></div>))}</div></div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200"><div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center">App Branding & Footer</h3><div className="flex flex-wrap gap-2 mt-2"><button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=therapists'; navigator.clipboard.writeText(url); alert('Gallery Link Copied:\n' + url); }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Copy Gallery Link</button><button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=dashboard'; navigator.clipboard.writeText(url); alert('Dashboard Link Copied:\n' + url); }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Copy Dashboard Link</button><button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Copy Staff Portal Link</button></div></div><button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center"><label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label><div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">{localBranding.logoUrl ? (<><img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({ ...localBranding, logoUrl: '' })} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4" /></button></div></>) : (<div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : "No Logo"}</div>)}</div><label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">{localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}<input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} /></label></div><div className="space-y-4"><div><label className="block text-xs font-bold text-gray-500 mb-1">Business Name</label><input type="text" value={localBranding.name || ''} onChange={e => setLocalBranding({ ...localBranding, name: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({ ...localBranding, address: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div><div className="grid grid-cols-2 gap-2"><div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({ ...localBranding, phone1: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({ ...localBranding, phone2: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({ ...localBranding, copyright: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div></div></div><div className="border-t border-gray-100 pt-6 mt-6"><h4 className="text-sm font-bold text-gray-800 mb-2">Shop Location (For Staff Out Pass GPS Restriction)</h4><div className="flex items-center space-x-2"><div className="flex-1 bg-gray-50 p-3 rounded border border-gray-200 text-xs text-gray-600 font-mono">Lat: {localBranding.shopLat ? localBranding.shopLat.toFixed(5) : 'Not set'}, Lng: {localBranding.shopLng ? localBranding.shopLng.toFixed(5) : 'Not set'}</div><button type="button" onClick={() => { navigator.geolocation.getCurrentPosition((pos) => { setLocalBranding({...localBranding, shopLat: pos.coords.latitude, shopLng: pos.coords.longitude}); alert("Location updated! Please click 'Save' above to confirm."); }, () => alert("Please enable Location Services in your browser to get coordinates."), {enableHighAccuracy: true}); }} className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-xs font-bold border border-green-200 hover:bg-green-100 transition whitespace-nowrap">Get Current GPS</button></div><p className="text-[10px] text-gray-400 mt-2">Staff will only be able to Clock Out/In within 50 meters of this exact location. Make sure you are physically at the shop when setting this.</p></div></div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200"><div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><CreditCard className="w-5 h-5 mr-2 text-[#D4AF37]" /> Manage Payment</h3></div><div className="flex space-x-2"><button onClick={addPaymentMethod} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Payment</button><button disabled={savingCategory === 'payments'} onClick={handleSavePayments} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'payments' ? 'Saving...' : 'Save'}</button></div></div><div className="space-y-3">{localPaymentMethods.map((pm, pIdx) => (<div key={pm.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-2 flex flex-col items-center justify-center border-r border-gray-200 pr-2"><div className="w-12 h-12 bg-white border border-gray-200 rounded mb-1 flex items-center justify-center overflow-hidden relative group">{pm.logoUrl ? (<><img src={pm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" /><button onClick={() => updatePaymentMethod(pIdx, 'logoUrl', '')} className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button></>) : (<div className="text-[8px] text-gray-400 text-center">{uploadingImage === `pay_${pIdx}` ? '...' : 'No Logo'}</div>)}</div><label className="text-[10px] text-[#D4AF37] font-bold cursor-pointer hover:underline">Upload Logo<input type="file" accept="image/*" className="hidden" onChange={(e) => handlePaymentLogoUpload(pIdx, e)} disabled={uploadingImage === `pay_${pIdx}`} /></label></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Bank Name</label><input type="text" value={pm.name} onChange={(e) => updatePaymentMethod(pIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account No</label><input type="text" value={pm.accountNumber} onChange={(e) => updatePaymentMethod(pIdx, 'accountNumber', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524] tracking-wider" /></div><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account Name</label><input type="text" value={pm.accountName} onChange={(e) => updatePaymentMethod(pIdx, 'accountName', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => removePaymentMethod(pIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div></div>))}</div></div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200"><div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-[#D4AF37]" /> Manage Therapists (Staff)</h3><p className="text-xs text-gray-500 mt-1">Staff များအတွက် Password သည် အနည်းဆုံး ၆ လုံး ရှိရပါမည်။</p></div><div className="flex space-x-2"><button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Therapist</button><button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save'}</button></div></div><div className="grid grid-cols-1 md:grid-cols-2 gap-4">{localTherapists.map((therapist, tIdx) => (<div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative"><button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4" /></button><div className="mb-3 mt-2"><span className="bg-[#123524] text-white text-[10px] font-bold px-2 py-1 rounded">Login ID: {therapist.id}</span></div><div className="grid grid-cols-2 gap-3 mb-4"><div><label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label><input type="text" value={therapist.name} onChange={(e) => updateTherapistField(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" /></div><div><label className="block text-xs font-bold text-gray-500 mb-1">Login Password</label><input type="text" minLength={6} value={therapist.password || ''} onChange={(e) => updateTherapistField(tIdx, 'password', e.target.value)} placeholder="Min 6 chars" className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" /></div></div><label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label><div className="flex flex-wrap gap-2 mb-2">{therapist.images.map((imgUrl, imgIdx) => (<div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200"><img src={imgUrl} alt="upload" className="w-full h-full object-cover" /><button onClick={() => removeImage(tIdx, imgIdx)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><X className="w-3 h-3" /></button></div>))}{therapist.images.length < 5 && (<><label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400 relative">{uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}<input type="file" accept="image/*" multiple className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} /></label></>)}</div></div>))}</div></div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6"><div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100"><div><h3 className="text-xl font-bold text-gray-800 flex items-center"><Crown className="w-5 h-5 mr-2 text-[#D4AF37]" /> Top 5 Therapists Ranking</h3></div><button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save'}</button></div><div className="flex flex-col space-y-2">{localTherapists.map((therapist, tIdx) => (<div key={therapist.id} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:border-[#D4AF37] transition"><div className="flex items-center"><span className="w-6 h-6 rounded bg-[#123524] text-white flex items-center justify-center text-xs font-bold mr-3">{tIdx + 1}</span><span className="font-bold text-gray-800 text-sm">{therapist.name}</span></div><div className="flex space-x-1"><button type="button" onClick={() => moveTherapistUp(tIdx)} disabled={tIdx === 0} className="p-1.5 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronUp className="w-4 h-4" /></button><button type="button" onClick={() => moveTherapistDown(tIdx)} disabled={tIdx === localTherapists.length - 1} className="p-1.5 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronDown className="w-4 h-4" /></button></div></div>))}</div></div>
-
-      {localCategories.map((cat, cIdx) => (
-        <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
-          <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center text-lg"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> {cat.title} Category</h3><div className="flex space-x-2"><button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Item</button><button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : 'Save'}</button></div></div>
-          <div className="p-4 space-y-3">{cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
-            {cat.items.map((item, iIdx) => (<div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-white p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition"><div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div><div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div><div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-gray-50 px-2 py-1.5 rounded border border-gray-200 w-full"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div><div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div></div>))}
+      {/* --- INSTRUCTIONS SECTION --- */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-500">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Download className="w-5 h-5 mr-2 text-blue-500" /> Download App Instructions</h3>
+                  <p className="text-xs text-gray-500 mt-1">Download App နှိပ်လျှင် ပေါ်လာမည့် လမ်းညွှန်ချက်များနှင့် ပုံများ (အများဆုံး ၁၀ ဆင့်)</p>
+              </div>
+              <button onClick={() => toggleSection('instructions')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                  {expandedSection === 'instructions' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+              </button>
           </div>
+
+          {expandedSection === 'instructions' && (
+              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                  <div className="flex justify-end space-x-2 mb-6">
+                      <button onClick={() => { if(localInstallSteps.length < 10) setLocalInstallSteps([...localInstallSteps, { id: Date.now().toString(), text: '', imageUrl: '' }]) }} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Step</button>
+                      <button disabled={savingCategory === 'install_steps'} onClick={handleSaveInstallSteps} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'install_steps' ? 'Saving...' : 'Save'}</button>
+                  </div>
+                  <div className="space-y-4">
+                      {localInstallSteps.map((step, idx) => (
+                          <div key={step.id} className="p-4 bg-gray-50 border border-gray-200 rounded-xl relative">
+                              <button onClick={() => setLocalInstallSteps(localInstallSteps.filter((_, i) => i !== idx))} className="absolute top-4 right-4 text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded-full"><Trash2 className="w-4 h-4" /></button>
+                              <div className="font-bold text-gray-700 mb-2">Step {idx + 1}</div>
+                              <textarea value={step.text} onChange={(e) => { const updated = [...localInstallSteps]; updated[idx].text = e.target.value; setLocalInstallSteps(updated); }} className="w-full p-3 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#D4AF37] text-sm mb-3" placeholder="လမ်းညွှန်ချက် ရေးရန်..." rows={2} />
+                              <div className="flex items-center space-x-4">
+                                  <div className="w-20 h-32 bg-gray-200 rounded border border-gray-300 flex items-center justify-center overflow-hidden relative">
+                                      {step.imageUrl ? (
+                                          <><img src={step.imageUrl} alt={`Step ${idx+1}`} className="w-full h-full object-cover" />
+                                          <button onClick={() => { const updated = [...localInstallSteps]; updated[idx].imageUrl = ''; setLocalInstallSteps(updated); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"><X className="w-3 h-3"/></button></>
+                                      ) : (<ImageIcon className="w-6 h-6 text-gray-400" />)}
+                                  </div>
+                                  <div className="flex-1">
+                                      <label className="text-xs font-bold text-[#D4AF37] bg-yellow-50 px-4 py-2 rounded-lg border border-yellow-200 cursor-pointer hover:bg-yellow-100 transition inline-block">
+                                          {uploadingImage === `install_${idx}` ? 'Uploading...' : 'Upload Screenshot'}
+                                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleInstallImageUpload(idx, e)} disabled={uploadingImage === `install_${idx}`} />
+                                      </label>
+                                      <p className="text-[10px] text-gray-500 mt-2">ဖုန်း Screen အရှည် (Portrait) ပုံစံ ထည့်သွင်းပေးပါ</p>
+                                  </div>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+      </div>
+
+      {/* --- BRANDING SECTION --- */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Settings className="w-5 h-5 mr-2 text-[#123524]" /> App Branding & Footer</h3>
+                  <p className="text-xs text-gray-500 mt-1">ဆိုင်၏ လိုဂို၊ အမည်၊ လိပ်စာ၊ ဖုန်းနံပါတ် နှင့် GPS Location များ ပြင်ဆင်ရန်</p>
+              </div>
+              <button onClick={() => toggleSection('branding')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                  {expandedSection === 'branding' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+              </button>
+          </div>
+
+          {expandedSection === 'branding' && (
+              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                      <div className="flex flex-wrap gap-2">
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=therapists'; navigator.clipboard.writeText(url); alert('Gallery Link Copied:\n' + url); }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Gallery Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=dashboard'; navigator.clipboard.writeText(url); alert('Dashboard Link Copied:\n' + url); }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Dashboard Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
+                      </div>
+                      <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
+                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}
+                      </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
+                          <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
+                          <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
+                              {localBranding.logoUrl ? (
+                                  <><img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({ ...localBranding, logoUrl: '' })} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4" /></button></div></>
+                              ) : (
+                                  <div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : "No Logo"}</div>
+                              )}
+                          </div>
+                          <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">{localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}<input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} /></label>
+                      </div>
+                      <div className="space-y-4">
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Business Name</label><input type="text" value={localBranding.name || ''} onChange={e => setLocalBranding({ ...localBranding, name: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({ ...localBranding, address: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div>
+                          <div className="grid grid-cols-2 gap-2">
+                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({ ...localBranding, phone1: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({ ...localBranding, phone2: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                          </div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({ ...localBranding, copyright: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                      </div>
+                  </div>
+                  
+                  <div className="border-t border-gray-100 pt-6 mt-6">
+                      <h4 className="text-sm font-bold text-gray-800 mb-2">Shop Location (For Staff Out Pass GPS Restriction)</h4>
+                      <div className="flex items-center space-x-2">
+                          <div className="flex-1 bg-gray-50 p-3 rounded border border-gray-200 text-xs text-gray-600 font-mono">Lat: {localBranding.shopLat ? localBranding.shopLat.toFixed(5) : 'Not set'}, Lng: {localBranding.shopLng ? localBranding.shopLng.toFixed(5) : 'Not set'}</div>
+                          <button type="button" onClick={() => { navigator.geolocation.getCurrentPosition((pos) => { setLocalBranding({...localBranding, shopLat: pos.coords.latitude, shopLng: pos.coords.longitude}); alert("Location updated! Please click 'Save' above to confirm."); }, () => alert("Please enable Location Services in your browser to get coordinates."), {enableHighAccuracy: true}); }} className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-xs font-bold border border-green-200 hover:bg-green-100 transition whitespace-nowrap">Get Current GPS</button>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-2">Staff will only be able to Clock Out/In within 50 meters of this exact location. Make sure you are physically at the shop when setting this.</p>
+                  </div>
+              </div>
+          )}
+      </div>
+
+      {/* --- PAYMENT SECTION --- */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-400">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><CreditCard className="w-5 h-5 mr-2 text-blue-500" /> Manage Payment</h3>
+                  <p className="text-xs text-gray-500 mt-1">ငွေလွှဲလက်ခံမည့် ဘဏ်အကောင့်များ ထည့်သွင်းရန်</p>
+              </div>
+              <button onClick={() => toggleSection('payments')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                  {expandedSection === 'payments' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+              </button>
+          </div>
+
+          {expandedSection === 'payments' && (
+              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                  <div className="flex justify-end space-x-2 mb-6">
+                      <button onClick={addPaymentMethod} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Payment</button>
+                      <button disabled={savingCategory === 'payments'} onClick={handleSavePayments} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'payments' ? 'Saving...' : 'Save'}</button>
+                  </div>
+                  <div className="space-y-3">
+                      {localPaymentMethods.map((pm, pIdx) => (
+                          <div key={pm.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition">
+                              <div className="lg:col-span-2 flex flex-col items-center justify-center border-r border-gray-200 pr-2">
+                                  <div className="w-12 h-12 bg-white border border-gray-200 rounded mb-1 flex items-center justify-center overflow-hidden relative group">
+                                      {pm.logoUrl ? (
+                                          <><img src={pm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" /><button onClick={() => updatePaymentMethod(pIdx, 'logoUrl', '')} className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button></>
+                                      ) : (<div className="text-[8px] text-gray-400 text-center">{uploadingImage === `pay_${pIdx}` ? '...' : 'No Logo'}</div>)}
+                                  </div>
+                                  <label className="text-[10px] text-[#D4AF37] font-bold cursor-pointer hover:underline">Upload Logo<input type="file" accept="image/*" className="hidden" onChange={(e) => handlePaymentLogoUpload(pIdx, e)} disabled={uploadingImage === `pay_${pIdx}`} /></label>
+                              </div>
+                              <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Bank Name</label><input type="text" value={pm.name} onChange={(e) => updatePaymentMethod(pIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div>
+                              <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account No</label><input type="text" value={pm.accountNumber} onChange={(e) => updatePaymentMethod(pIdx, 'accountNumber', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524] tracking-wider" /></div>
+                              <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account Name</label><input type="text" value={pm.accountName} onChange={(e) => updatePaymentMethod(pIdx, 'accountName', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
+                              <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => removePaymentMethod(pIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+      </div>
+
+      {/* --- THERAPISTS SECTION --- */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-red-500">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-red-500" /> Manage Therapists (Staff)</h3>
+                  <p className="text-xs text-gray-500 mt-1">Staff များအတွက် Password သည် အနည်းဆုံး ၆ လုံး ရှိရပါမည်။</p>
+              </div>
+              <button onClick={() => toggleSection('therapists')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                  {expandedSection === 'therapists' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+              </button>
+          </div>
+
+          {expandedSection === 'therapists' && (
+              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                  <div className="flex justify-end space-x-2 mb-6">
+                      <button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Therapist</button>
+                      <button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save'}</button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {localTherapists.map((therapist, tIdx) => (
+                          <div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
+                              <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200"><Trash2 className="w-4 h-4" /></button>
+                              <div className="mb-3 mt-2"><span className="bg-[#123524] text-white text-[10px] font-bold px-2 py-1 rounded">Login ID: {therapist.id}</span></div>
+                              <div className="grid grid-cols-2 gap-3 mb-4">
+                                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label><input type="text" value={therapist.name} onChange={(e) => updateTherapistField(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" /></div>
+                                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Login Password</label><input type="text" minLength={6} value={therapist.password || ''} onChange={(e) => updateTherapistField(tIdx, 'password', e.target.value)} placeholder="Min 6 chars" className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" /></div>
+                              </div>
+                              <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label>
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                  {therapist.images.map((imgUrl, imgIdx) => (
+                                      <div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200">
+                                          <img src={imgUrl} alt="upload" className="w-full h-full object-cover" />
+                                          <button onClick={() => removeImage(tIdx, imgIdx)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-500"><X className="w-3 h-3" /></button>
+                                      </div>
+                                  ))}
+                                  {therapist.images.length < 5 && (
+                                      <label className="w-16 aspect-[3/4] border-2 border-dashed border-gray-300 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition text-gray-400 relative">
+                                          {uploadingImage === therapist.id ? <div className="text-[10px] font-bold animate-pulse text-center">Wait...</div> : (<span className="text-[10px] font-bold">Upload</span>)}
+                                          <input type="file" accept="image/*" multiple className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleImageUpload(tIdx, e.target.files)} disabled={uploadingImage === therapist.id} />
+                                      </label>
+                                  )}
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+      </div>
+
+      {/* --- THERAPISTS RANKING SECTION --- */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#D4AF37]">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Crown className="w-5 h-5 mr-2 text-yellow-500" /> Top 5 Therapists Ranking</h3>
+                  <p className="text-xs text-gray-500 mt-1">ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ (အစီအစဉ်ရွှေ့ရန်)</p>
+              </div>
+              <button onClick={() => toggleSection('therapist_ranking')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                  {expandedSection === 'therapist_ranking' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+              </button>
+          </div>
+
+          {expandedSection === 'therapist_ranking' && (
+              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                  <div className="flex justify-end mb-6">
+                      <button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0 ml-3">
+                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save'}
+                      </button>
+                  </div>
+                  <div className="flex flex-col space-y-2">
+                      {localTherapists.map((therapist, tIdx) => (
+                          <div key={therapist.id} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:border-[#D4AF37] transition">
+                              <div className="flex items-center">
+                                  <span className="w-6 h-6 rounded bg-[#123524] text-white flex items-center justify-center text-xs font-bold mr-3">{tIdx + 1}</span>
+                                  <span className="font-bold text-gray-800 text-sm">{therapist.name}</span>
+                              </div>
+                              <div className="flex space-x-1">
+                                  <button type="button" onClick={() => moveTherapistUp(tIdx)} disabled={tIdx === 0} className="p-1.5 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronUp className="w-4 h-4" /></button>
+                                  <button type="button" onClick={() => moveTherapistDown(tIdx)} disabled={tIdx === localTherapists.length - 1} className="p-1.5 bg-white border border-gray-300 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronDown className="w-4 h-4" /></button>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+      </div>
+
+      {/* --- CATEGORIES MAP --- */}
+      {localCategories.map((cat, cIdx) => (
+        <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
+          <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+             <div>
+                <h3 className="font-bold text-gray-800 flex items-center text-xl"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> {cat.title} Category</h3>
+                <p className="text-xs text-gray-500 mt-1">Service များနှင့် စျေးနှုန်းများ ပြင်ဆင်ရန်</p>
+             </div>
+             <button onClick={() => toggleSection(`cat_${cat.id}`)} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                {expandedSection === `cat_${cat.id}` ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+             </button>
+          </div>
+
+          {expandedSection === `cat_${cat.id}` && (
+             <div className="p-6 pt-0 animate-fade-in border-t border-gray-100 mt-2">
+               <div className="flex justify-end space-x-2 my-4">
+                  <button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Item</button>
+                  <button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : 'Save'}</button>
+               </div>
+               <div className="space-y-3">
+                 {cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
+                 {cat.items.map((item, iIdx) => (
+                    <div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-gray-50 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition">
+                       <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div>
+                       <div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
+                       <div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div>
+                       <div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div>
+                       <div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-white px-2 py-1.5 rounded border border-gray-200 w-full shadow-sm"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div>
+                       <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div>
+                    </div>
+                 ))}
+               </div>
+             </div>
+          )}
         </div>
       ))}
     </div>
