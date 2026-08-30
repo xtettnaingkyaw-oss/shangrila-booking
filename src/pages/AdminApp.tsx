@@ -5,7 +5,7 @@ import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search } from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS } from '../shared';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -183,14 +183,13 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
       {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
       {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
       {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
-      {tab === 'points' && hasAccess('points') && <AdminPointManagement />}
+      {tab === 'points' && hasAccess('points') && <AdminPointManagement adminRole={adminRole} appData={appData} />}
       {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
     </div>
   );
 });
 
-// 🌟 AdminBookingsList with Auto Point Calculation 🌟
 function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
   const handleStatusChange = async (b: Booking, newStatus: string) => {
     let reason = '';
@@ -201,7 +200,6 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
     
     let updateData: any = { status: newStatus, cancelReason: reason };
 
-    // 🌟 Auto Point Calculation Logic (Triggers when status becomes 'approved') 🌟
     if (newStatus === 'approved' && !(b as any).pointsAdded && b.totalPrice >= 35000) {
         const earnedPts = Math.floor(b.totalPrice / 35000);
         try {
@@ -221,11 +219,11 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                     points: encryptText((currentPts + earnedPts).toString()) 
                 });
                 
-                // Add History
                 await addDoc(collection(db, 'point_history'), {
                     phone: encryptText(b.phone),
                     amount: encryptText(b.totalPrice.toString()),
                     pointsEarned: encryptText(earnedPts.toString()),
+                    invoiceNo: encryptText(b.txId || 'Online'),
                     type: encryptText('Online Booking'),
                     date: getLocalTodayStr(),
                     createdAt: Date.now()
@@ -335,14 +333,17 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
   );
 }
 
-// 🌟 NEW: Manual Point Management Component 🌟
-function AdminPointManagement() {
+// 🌟 UPDATED: Manual Point Management Component (With History & VIP Tier Display) 🌟
+function AdminPointManagement({ adminRole, appData }: { adminRole: string, appData: AppData }) {
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  
   const [amount, setAmount] = useState<number | ''>('');
+  const [invoiceNo, setInvoiceNo] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
 
   const fetchUsers = async () => {
     try {
@@ -351,7 +352,10 @@ function AdminPointManagement() {
       snap.forEach(doc => {
           const raw = doc.data();
           data.push({ 
-             docId: doc.id, ...raw, phone: decryptText(raw.phone) || doc.id, name: decryptText(raw.name) || raw.name, 
+             docId: doc.id, 
+             ...raw, 
+             phone: decryptText(raw.phone) || doc.id, 
+             name: decryptText(raw.name) || raw.name, 
              points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10)
           });
       });
@@ -363,6 +367,30 @@ function AdminPointManagement() {
   
   useEffect(() => { fetchUsers(); }, []);
 
+  // Fetch History for Super Admin
+  useEffect(() => {
+      if (adminRole !== 'super_admin') return;
+      const q = query(collection(db, 'point_history'), orderBy('createdAt', 'desc'));
+      const unsub = onSnapshot(q, (snap) => {
+          const data: any[] = [];
+          snap.forEach(doc => {
+              const raw = doc.data();
+              data.push({
+                  id: doc.id,
+                  phone: decryptText(raw.phone) || raw.phone,
+                  amount: Number(decryptText(raw.amount) || raw.amount),
+                  pointsEarned: decryptText(raw.pointsEarned) || raw.pointsEarned,
+                  invoiceNo: raw.invoiceNo ? decryptText(raw.invoiceNo) : '-',
+                  type: decryptText(raw.type) || raw.type,
+                  date: raw.date,
+                  createdAt: raw.createdAt
+              });
+          });
+          setHistory(data);
+      });
+      return () => unsub();
+  }, [adminRole]);
+
   const filteredUsers = users.filter(u => u.phone.includes(search) || (u.name && u.name.toLowerCase().includes(search.toLowerCase())));
   const earnedPoints = Math.floor(Number(amount) / 35000) || 0;
 
@@ -370,25 +398,40 @@ function AdminPointManagement() {
      e.preventDefault();
      if (!selectedUser) return;
      if (earnedPoints <= 0) return alert('သုံးစွဲငွေသည် အနည်းဆုံး ၃၅,၀၀၀ ကျပ် ရှိရပါမည်။');
+     if (!invoiceNo.trim()) return alert('Invoice Number ထည့်ပေးပါ။');
      if (!window.confirm(`${selectedUser.name || selectedUser.phone} သို့ ${earnedPoints} Points ထည့်သွင်းမည် သေချာပါသလား?`)) return;
 
      setProcessing(true);
      try {
          const newTotal = (selectedUser.points || 0) + earnedPoints;
          await updateDoc(doc(db, 'users', selectedUser.docId), { points: encryptText(newTotal.toString()) });
+         
          await addDoc(collection(db, 'point_history'), {
               phone: encryptText(selectedUser.phone),
               amount: encryptText(amount.toString()),
               pointsEarned: encryptText(earnedPoints.toString()),
+              invoiceNo: encryptText(invoiceNo),
               type: encryptText('Walk-in / Direct'),
               date: getLocalTodayStr(),
               createdAt: Date.now()
          });
+
          alert(`✅ ${earnedPoints} Points အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ (စုစုပေါင်း - ${newTotal} Pts)`);
-         setSelectedUser(null); setAmount(''); fetchUsers();
+         setSelectedUser(null); 
+         setAmount(''); 
+         setInvoiceNo('');
+         fetchUsers();
      } catch(e) { alert('Error adding points.'); }
      setProcessing(false);
   };
+
+  const getTier = (points: number) => {
+     if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null;
+     const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
+     return sortedTiers.find(t => points >= t.requiredPoints);
+  };
+
+  const userTier = selectedUser ? getTier(selectedUser.points || 0) : null;
 
   return (
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -398,7 +441,7 @@ function AdminPointManagement() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="flex flex-col border-r-0 lg:border-r border-gray-100 lg:pr-8">
                   <div className="relative mb-4"><input type="text" placeholder="Search customer by name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-sm font-semibold" /><Search className="w-4 h-4 text-gray-400 absolute left-4 top-3.5" /></div>
-                  <div className="flex-1 overflow-y-auto max-h-[400px] border border-gray-100 rounded-lg bg-gray-50/50 p-2 space-y-2 scrollbar-hide">
+                  <div className="flex-1 overflow-y-auto max-h-[500px] border border-gray-100 rounded-lg bg-gray-50/50 p-2 space-y-2 scrollbar-hide">
                       {loading ? (<div className="text-center p-4 text-xs font-bold text-gray-400">Loading...</div>) : filteredUsers.length === 0 ? (<div className="text-center p-4 text-xs font-bold text-gray-400">No users found.</div>) : (
                           filteredUsers.map(u => (
                               <div key={u.docId} onClick={() => setSelectedUser(u)} className={`p-3 rounded-lg border cursor-pointer transition-all flex justify-between items-center ${selectedUser?.docId === u.docId ? 'bg-yellow-50 border-yellow-300 shadow-sm' : 'bg-white border-gray-200 hover:border-[#D4AF37]/50'}`}>
@@ -412,8 +455,39 @@ function AdminPointManagement() {
               <div className="flex flex-col">
                   {selectedUser ? (
                       <form onSubmit={handleAddPoints} className="animate-fade-in flex flex-col h-full">
-                          <div className="bg-[#123524] rounded-xl p-5 mb-6 text-white shadow-md relative overflow-hidden"><div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div><h4 className="text-xs text-[#D4AF37] font-bold uppercase tracking-widest mb-1">Selected Customer</h4><div className="font-bold text-lg">{selectedUser.name || 'Unknown'}</div><div className="text-sm text-gray-300 font-mono mb-4">{selectedUser.phone}</div><div className="flex items-center space-x-2 bg-black/20 p-2 rounded-lg w-fit border border-white/10"><Award className="w-4 h-4 text-[#D4AF37]"/><span className="text-sm font-semibold">Current Balance: <span className="font-bold text-[#D4AF37]">{selectedUser.points || 0} Pts</span></span></div></div>
-                          <div className="mb-6"><label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Enter Invoice Amount (MMK)</label><div className="relative"><input type="number" required value={amount} onChange={(e) => setAmount(Number(e.target.value) || '')} placeholder="e.g. 70000" className="w-full pl-6 pr-16 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xl font-black text-[#123524]" /><span className="absolute right-6 top-4 font-bold text-gray-400">Ks</span></div></div>
+                          <div className="bg-[#123524] rounded-xl p-5 mb-6 text-white shadow-md relative overflow-hidden">
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div>
+                              <h4 className="text-xs text-[#D4AF37] font-bold uppercase tracking-widest mb-1">Selected Customer</h4>
+                              <div className="font-bold text-xl mb-1 flex items-center">{selectedUser.name || 'Unknown'}</div>
+                              <div className="text-sm text-gray-300 font-mono mb-4">{selectedUser.phone}</div>
+                              <div className="flex flex-col gap-2">
+                                  {userTier && (
+                                      <div className="flex items-center w-fit px-2.5 py-1 rounded font-bold text-[10px] shadow-sm text-white" style={{ backgroundColor: userTier.colorTheme }}>
+                                          <Crown className="w-3 h-3 mr-1.5" /> {userTier.name}
+                                      </div>
+                                  )}
+                                  <div className="flex items-center space-x-2 bg-black/20 p-2.5 rounded-lg w-fit border border-white/10">
+                                      <Award className="w-4 h-4 text-[#D4AF37]"/>
+                                      <span className="text-sm font-semibold">Total Accumulated: <span className="font-bold text-[#D4AF37] text-lg">{selectedUser.points || 0} Pts</span></span>
+                                  </div>
+                              </div>
+                          </div>
+                          
+                          <div className="mb-4">
+                              <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Enter Invoice Amount (MMK)</label>
+                              <div className="relative">
+                                  <input type="number" required value={amount} onChange={(e) => setAmount(Number(e.target.value) || '')} placeholder="e.g. 70000" className="w-full pl-6 pr-16 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xl font-black text-[#123524]" />
+                                  <span className="absolute right-6 top-4 font-bold text-gray-400">Ks</span>
+                              </div>
+                          </div>
+
+                          <div className="mb-6">
+                              <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Invoice Number</label>
+                              <div className="relative">
+                                  <input type="text" required value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="e.g. INV-20260830-01" className="w-full pl-6 pr-4 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-sm font-bold text-[#123524]" />
+                              </div>
+                          </div>
+
                           <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center mb-6"><p className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Points to be Added</p><div className="text-4xl font-black text-green-600 mb-2">+{earnedPoints}</div><p className="text-[10px] text-green-600/80 font-semibold">(စနစ်မှ သတ်မှတ်ထားသော ၃၅,၀၀၀ ကျပ် = ၁ ပွိုင့် နှုန်းဖြင့် တွက်ချက်ထားပါသည်)</p></div>
                           <div className="mt-auto pt-4"><button type="submit" disabled={processing || earnedPoints <= 0} className="w-full py-4 bg-[#D4AF37] text-white rounded-xl font-bold text-base shadow-md hover:bg-yellow-600 transition disabled:opacity-50 flex justify-center items-center">{processing ? 'Processing...' : 'CONFIRM & ADD POINTS'}</button></div>
                       </form>
@@ -422,6 +496,40 @@ function AdminPointManagement() {
                   )}
               </div>
           </div>
+
+          {/* 🌟 Points History Table (Super Admin Only) 🌟 */}
+          {adminRole === 'super_admin' && (
+              <div className="mt-8 pt-6 border-t border-gray-100 animate-fade-in">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center"><History className="w-5 h-5 mr-2 text-[#D4AF37]" /> Points History Record</h3>
+                  <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse min-w-[800px]">
+                          <thead>
+                              <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+                                  <th className="p-3 pb-4">Date & Time</th>
+                                  <th className="p-3 pb-4">Customer Phone</th>
+                                  <th className="p-3 pb-4">Invoice / TxID</th>
+                                  <th className="p-3 pb-4">Amount</th>
+                                  <th className="p-3 pb-4">Points Added</th>
+                                  <th className="p-3 pb-4">Source</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                              {history.length === 0 && <tr><td colSpan={6} className="p-10 text-center text-gray-400">No point history found.</td></tr>}
+                              {history.map((h) => (
+                                  <tr key={h.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
+                                      <td className="p-3 text-gray-600">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short'})}</td>
+                                      <td className="p-3 font-bold text-gray-800 font-mono tracking-wider">{h.phone}</td>
+                                      <td className="p-3 font-mono font-semibold text-gray-700">{h.invoiceNo}</td>
+                                      <td className="p-3 font-semibold text-[#123524]">{formatPrice(h.amount)}</td>
+                                      <td className="p-3 font-black text-green-600">+{h.pointsEarned} Pts</td>
+                                      <td className="p-3"><span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider ${h.type.includes('Online') ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'}`}>{h.type}</span></td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          )}
       </div>
   );
 }
@@ -505,7 +613,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
    );
 }
 
-// 🌟 UPDATED: AdminUsersList (Removed VIP Points Input field) 🌟
 function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: AppData }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
