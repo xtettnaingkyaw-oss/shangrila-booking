@@ -5,7 +5,7 @@ import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info } from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS } from '../shared';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -71,7 +71,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
               await signInWithEmailAndPassword(auth, 'admin@shangrila.com', password);
           } catch (e: any) {
               await createUserWithEmailAndPassword(auth, 'admin@shangrila.com', password);
-              await addDoc(collection(db, 'admins'), { username: encryptText('admin'), password: encryptText('admin123'), role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'admins', 'settings'] });
+              await addDoc(collection(db, 'admins'), { username: encryptText('admin'), password: encryptText('admin123'), role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'admins', 'settings', 'points'] });
           }
           onLogin('admin');
           setLoading(false);
@@ -99,7 +99,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
 const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
-  const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'admins' | 'settings'>('bookings');
+  const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'points' | 'admins' | 'settings'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [adminRole, setAdminRole] = useState<'super_admin' | 'custom'>('super_admin');
@@ -119,7 +119,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
               });
               if (matchedAdmin) {
                   const r = matchedAdmin.role || 'super_admin'; 
-                  const p = matchedAdmin.permissions || ['bookings', 'reports', 'users', 'admins', 'settings'];
+                  const p = matchedAdmin.permissions || ['bookings', 'reports', 'users', 'points', 'admins', 'settings'];
                   setAdminRole(r); setAdminPermissions(p);
                   if (r !== 'super_admin' && !p.includes(tab) && p.length > 0) setTab(p[0] as any);
               }
@@ -142,7 +142,6 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
              phone: decryptText(raw.phone) || raw.phone, 
              txId: decryptText(raw.txId) || raw.txId, 
              specialRequest: decryptText(raw.specialRequest) || raw.specialRequest,
-             // 🌟 Added VIP & Discount Decryption here 🌟
              originalPrice: raw.originalPrice ? Number(decryptText(raw.originalPrice)) : undefined,
              discountPercent: raw.discountPercent ? Number(decryptText(raw.discountPercent)) : undefined,
              discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
@@ -175,6 +174,10 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
         {hasAccess('bookings') && (<button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><CalendarPlus className="w-4 h-4 mr-2" /> Bookings {pendingCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{pendingCount}</span>}</button>)}
         {hasAccess('reports') && (<button onClick={() => setTab('reports')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'reports' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><BarChart2 className="w-4 h-4 mr-2" /> Staff History</button>)}
         {hasAccess('users') && (<button onClick={() => setTab('users')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>)}
+        
+        {/* 🌟 New Point Management Tab 🌟 */}
+        {hasAccess('points') && (<button onClick={() => setTab('points')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'points' ? 'bg-yellow-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Star className="w-4 h-4 mr-2" /> Point Mgmt</button>)}
+
         {hasAccess('admins') && (<button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('settings')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>)}
         <button onClick={onLogout} className="px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm sm:ml-2"><LogOut className="w-4 h-4 mr-2" /> Logout</button>
@@ -183,28 +186,57 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
       {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
       {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
       {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
+      {tab === 'points' && hasAccess('points') && <AdminPointManagement />}
       {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
     </div>
   );
 });
 
-// 🌟 UPDATED: AdminBookingsList တွင် VIP Tiers နှင့် Original Price ကို ပြသပါမည် 🌟
+// 🌟 UPDATED: AdminBookingsList with Auto Point Calculation 🌟
 function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
-  const handleStatusChange = async (id: string, newStatus: string) => {
+  const handleStatusChange = async (b: Booking, newStatus: string) => {
     let reason = '';
     if (newStatus === 'cancelled') {
       const input = window.prompt("Reason for cancellation:");
       if (input === null) return; reason = input;
     } else { if (!window.confirm('Are you sure you want to change this status?')) return; }
-    try { await updateDoc(doc(db, 'bookings', id), { status: newStatus, cancelReason: reason }); } catch (e) { alert("Error Update"); }
+    
+    let updateData: any = { status: newStatus, cancelReason: reason };
+
+    // 🌟 Auto Point Calculation Logic (Triggers when status becomes 'approved') 🌟
+    if (newStatus === 'approved' && !(b as any).pointsAdded && b.totalPrice >= 35000) {
+        const earnedPts = Math.floor(b.totalPrice / 35000);
+        try {
+            const usersSnap = await getDocs(collection(db, 'users'));
+            let targetDocId = null;
+            let currentPts = 0;
+            usersSnap.forEach(d => {
+                const uData = d.data();
+                const decPhone = decryptText(uData.phone) || d.id;
+                if (decPhone === b.phone) {
+                    targetDocId = d.id;
+                    currentPts = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10);
+                }
+            });
+            if (targetDocId) {
+                await updateDoc(doc(db, 'users', targetDocId), { 
+                    points: encryptText((currentPts + earnedPts).toString()) 
+                });
+                updateData.pointsAdded = true;
+                alert(`✅ Booking Confirmed! Customer ထံသို့ Point (${earnedPts} Pts) အလိုအလျောက် ပေါင်းထည့်ပေးလိုက်ပါပြီ။`);
+            }
+        } catch (e) { console.error("Error adding points:", e); }
+    }
+
+    try { await updateDoc(doc(db, 'bookings', b.id!), updateData); } catch (e) { alert("Error Update"); }
   };
+
   const handleDelete = async (id: string) => { 
       if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
       if (window.confirm('Are you sure you want to delete this booking?')) { await deleteDoc(doc(db, 'bookings', id)); } 
   };
 
-  // 🌟 Export to Excel/CSV Logic 🌟
   const handleExportExcel = () => {
       const headers = ['Booking ID', 'Customer Name', 'Phone', 'Service', 'Therapist', 'Date', 'Time', 'Total Price (Ks)', 'Original Price (Ks)', 'Discount Percent (%)', 'Discount Label', 'Payment Method', 'Transaction ID', 'Status', 'Special Request', 'Booking Date'];
       
@@ -278,7 +310,6 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                     <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div>
                     <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-1">{b.paymentMethod || 'Unknown'}</div>
                     
-                    {/* Original Price & Discount Display */}
                     {b.originalPrice && b.originalPrice > b.totalPrice ? (
                         <div className="mt-2 p-1.5 bg-green-50 border border-green-100 rounded-md w-max">
                            <div className="flex items-center space-x-2 mb-0.5">
@@ -295,10 +326,13 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                     )}
                 </td>
                 <td className="p-3">
-                  <select value={b.status} onChange={(e) => handleStatusChange(b.id!, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
+                  {/* Changed handleStatusChange to pass entire booking object 'b' */}
+                  <select value={b.status} onChange={(e) => handleStatusChange(b, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
                     <option value="pending">Pending</option><option value="payment_checking">Confirming</option><option value="approved">Approve</option><option value="cancelled">Cancel</option>
                   </select>
                   {b.status === 'cancelled' && b.cancelReason && <div className="text-[9px] text-red-500 mt-1 max-w-[120px] truncate" title={b.cancelReason}>Reason: {b.cancelReason}</div>}
+                  {/* Indicator if point is added */}
+                  {(b as any).pointsAdded && <div className="text-[8px] text-green-600 font-bold mt-1 uppercase"><Award className="w-2.5 h-2.5 inline mr-0.5"/>Pts Added</div>}
                 </td>
                 <td className="p-3 text-right"><button onClick={() => handleDelete(b.id!)} disabled={adminRole !== 'super_admin'} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete Booking'} className={`p-2 rounded-lg transition ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`}><Trash2 className="w-4 h-4" /></button></td>
               </tr>
@@ -307,6 +341,174 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         </table>
       </div>
     </div>
+  );
+}
+
+// 🌟 NEW: Manual Point Management Component 🌟
+function AdminPointManagement() {
+  const [users, setUsers] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [amount, setAmount] = useState<number | ''>('');
+  const [processing, setProcessing] = useState(false);
+
+  const fetchUsers = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      const data: any[] = [];
+      snap.forEach(doc => {
+          const raw = doc.data();
+          data.push({ 
+             docId: doc.id, 
+             ...raw, 
+             phone: decryptText(raw.phone) || doc.id, 
+             name: decryptText(raw.name) || raw.name, 
+             points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10)
+          });
+      });
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setUsers(data);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+  
+  useEffect(() => { fetchUsers(); }, []);
+
+  const filteredUsers = users.filter(u => 
+      u.phone.includes(search) || (u.name && u.name.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const earnedPoints = Math.floor(Number(amount) / 35000) || 0;
+
+  const handleAddPoints = async (e: React.FormEvent) => {
+     e.preventDefault();
+     if (!selectedUser) return;
+     if (earnedPoints <= 0) return alert('သုံးစွဲငွေသည် အနည်းဆုံး ၃၅,၀၀၀ ကျပ် ရှိရပါမည်။');
+     if (!window.confirm(`${selectedUser.name || selectedUser.phone} သို့ ${earnedPoints} Points ထည့်သွင်းမည် သေချာပါသလား?`)) return;
+
+     setProcessing(true);
+     try {
+         const newTotal = (selectedUser.points || 0) + earnedPoints;
+         await updateDoc(doc(db, 'users', selectedUser.docId), {
+             points: encryptText(newTotal.toString())
+         });
+         alert(`✅ ${earnedPoints} Points အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ (စုစုပေါင်း - ${newTotal} Pts)`);
+         setSelectedUser(null);
+         setAmount('');
+         fetchUsers();
+     } catch(e) {
+         alert('Error adding points.');
+     }
+     setProcessing(false);
+  };
+
+  return (
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+              <div>
+                  <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
+                      <Star className="mr-2 text-yellow-500" /> Point Management
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">ဆိုင်တွင် တိုက်ရိုက် Service ယူသူများအတွက် Invoice ပမာဏ ထည့်သွင်း၍ Point ပေါင်းရန်</p>
+              </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Left: User Search & Selection */}
+              <div className="flex flex-col border-r-0 lg:border-r border-gray-100 lg:pr-8">
+                  <div className="relative mb-4">
+                      <input 
+                          type="text" 
+                          placeholder="Search customer by name or phone..." 
+                          value={search} 
+                          onChange={(e) => setSearch(e.target.value)}
+                          className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-sm font-semibold"
+                      />
+                      <Search className="w-4 h-4 text-gray-400 absolute left-4 top-3.5" />
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto max-h-[400px] border border-gray-100 rounded-lg bg-gray-50/50 p-2 space-y-2 scrollbar-hide">
+                      {loading ? (
+                          <div className="text-center p-4 text-xs font-bold text-gray-400">Loading...</div>
+                      ) : filteredUsers.length === 0 ? (
+                          <div className="text-center p-4 text-xs font-bold text-gray-400">No users found.</div>
+                      ) : (
+                          filteredUsers.map(u => (
+                              <div 
+                                  key={u.docId} 
+                                  onClick={() => setSelectedUser(u)}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-all flex justify-between items-center ${selectedUser?.docId === u.docId ? 'bg-yellow-50 border-yellow-300 shadow-sm' : 'bg-white border-gray-200 hover:border-[#D4AF37]/50'}`}
+                              >
+                                  <div>
+                                      <div className="font-bold text-sm text-[#123524]">{u.name || 'Unknown Name'}</div>
+                                      <div className="text-xs font-mono text-gray-500 mt-0.5">{u.phone}</div>
+                                  </div>
+                                  <div className="text-right">
+                                      <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Current Pts</div>
+                                      <div className="font-black text-lg text-yellow-600">{u.points || 0}</div>
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+
+              {/* Right: Amount Input & Point Calc */}
+              <div className="flex flex-col">
+                  {selectedUser ? (
+                      <form onSubmit={handleAddPoints} className="animate-fade-in flex flex-col h-full">
+                          <div className="bg-[#123524] rounded-xl p-5 mb-6 text-white shadow-md relative overflow-hidden">
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div>
+                              <h4 className="text-xs text-[#D4AF37] font-bold uppercase tracking-widest mb-1">Selected Customer</h4>
+                              <div className="font-bold text-lg">{selectedUser.name || 'Unknown'}</div>
+                              <div className="text-sm text-gray-300 font-mono mb-4">{selectedUser.phone}</div>
+                              <div className="flex items-center space-x-2 bg-black/20 p-2 rounded-lg w-fit border border-white/10">
+                                  <Award className="w-4 h-4 text-[#D4AF37]"/>
+                                  <span className="text-sm font-semibold">Current Balance: <span className="font-bold text-[#D4AF37]">{selectedUser.points || 0} Pts</span></span>
+                              </div>
+                          </div>
+
+                          <div className="mb-6">
+                              <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Enter Invoice Amount (MMK)</label>
+                              <div className="relative">
+                                  <input 
+                                      type="number" 
+                                      required
+                                      value={amount} 
+                                      onChange={(e) => setAmount(Number(e.target.value) || '')}
+                                      placeholder="e.g. 70000"
+                                      className="w-full pl-6 pr-16 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xl font-black text-[#123524]"
+                                  />
+                                  <span className="absolute right-6 top-4 font-bold text-gray-400">Ks</span>
+                              </div>
+                          </div>
+
+                          <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center mb-6">
+                              <p className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Points to be Added</p>
+                              <div className="text-4xl font-black text-green-600 mb-2">+{earnedPoints}</div>
+                              <p className="text-[10px] text-green-600/80 font-semibold">(စနစ်မှ သတ်မှတ်ထားသော ၃၅,၀၀၀ ကျပ် = ၁ ပွိုင့် နှုန်းဖြင့် တွက်ချက်ထားပါသည်)</p>
+                          </div>
+
+                          <div className="mt-auto pt-4">
+                              <button 
+                                  type="submit" 
+                                  disabled={processing || earnedPoints <= 0}
+                                  className="w-full py-4 bg-[#D4AF37] text-white rounded-xl font-bold text-base shadow-md hover:bg-yellow-600 transition disabled:opacity-50 flex justify-center items-center"
+                              >
+                                  {processing ? 'Processing...' : 'CONFIRM & ADD POINTS'}
+                              </button>
+                          </div>
+                      </form>
+                  ) : (
+                      <div className="flex-1 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-10 text-gray-400 bg-gray-50/50">
+                          <UserCircle className="w-16 h-16 mb-4 opacity-30" />
+                          <p className="text-sm font-bold">Please select a customer from the list first</p>
+                      </div>
+                  )}
+              </div>
+          </div>
+      </div>
   );
 }
 
@@ -401,11 +603,12 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
    );
 }
 
+// 🌟 UPDATED: AdminUsersList (Removed VIP Points Input field) 🌟
 function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: AppData }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ name: '', password: '', points: 0, dob: '' });
+  const [editForm, setEditForm] = useState({ name: '', password: '', dob: '' });
 
   const fetchUsers = async () => {
     try {
@@ -419,7 +622,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
              phone: decryptText(raw.phone) || doc.id, 
              name: decryptText(raw.name) || raw.name, 
              password: decryptText(raw.password) || raw.password,
-             points: parseInt(decryptText(raw.points) || raw.points || '0', 10),
+             points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10),
              dob: decryptText(raw.dob) || raw.dob || ''
           });
       });
@@ -438,10 +641,9 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
       await updateDoc(doc(db, 'users', editingUser.docId), { 
           name: encryptText(editForm.name), 
           password: encryptText(editForm.password),
-          points: encryptText(editForm.points.toString()),
           dob: encryptText(editForm.dob)
       });
-      alert('User အချက်အလက်နှင့် VIP Point များ ပြင်ဆင်ပြီးပါပြီ။'); 
+      alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။'); 
       setEditingUser(null); 
       fetchUsers();
     } catch (e) { alert('Error updating user'); }
@@ -470,10 +672,6 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded" required /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth</label><input type="date" value={editForm.dob} onChange={e=>setEditForm({...editForm, dob: e.target.value})} className="w-full p-2 border rounded" /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Leave blank for no password" className="w-full p-2 border rounded" /></div>
-                 <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100">
-                    <label className="block text-xs font-bold text-yellow-800 mb-1 flex items-center"><Star className="w-3 h-3 mr-1"/> VIP Points (35k = 1 Pts)</label>
-                    <input type="number" value={editForm.points} onChange={e=>setEditForm({...editForm, points: Number(e.target.value)})} className="w-full p-2 border border-yellow-300 rounded focus:outline-none focus:border-yellow-500 font-bold text-lg text-center" />
-                 </div>
                  <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold">Save</button></div>
                </form>
             </div>
@@ -497,7 +695,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
                  </div>
              </td>
              <td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td>
-             <td className="p-3 text-right"><div className="flex items-center justify-end space-x-2"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', points: u.points || 0, dob: u.dob || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center"><Edit className="w-3 h-3 mr-1"/> Edit</button><button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button></div></td>
+             <td className="p-3 text-right"><div className="flex items-center justify-end space-x-2"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center"><Edit className="w-3 h-3 mr-1"/> Edit Info</button><button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button></div></td>
          </tr>
          );
       })}</tbody></table></div>
@@ -508,7 +706,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
 function AdminManagementList() {
   const [admins, setAdmins] = useState<LocalAdminProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newAdmin, setNewAdmin] = useState<{username: string, password: string, role: 'super_admin'|'custom', permissions: string[]}>({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'settings'] });
+  const [newAdmin, setNewAdmin] = useState<{username: string, password: string, role: 'super_admin'|'custom', permissions: string[]}>({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'points', 'settings'] });
 
   const fetchAdmins = async () => {
     try {
@@ -525,8 +723,8 @@ function AdminManagementList() {
     e.preventDefault(); if(!newAdmin.username || !newAdmin.password) return;
     try {
       await createUserWithEmailAndPassword(secondaryAuth, `${newAdmin.username.toLowerCase()}@shangrila.com`, newAdmin.password);
-      await addDoc(collection(db, 'admins'), { username: encryptText(newAdmin.username), password: encryptText(newAdmin.password), role: newAdmin.role, permissions: newAdmin.role === 'super_admin' ? ['bookings', 'reports', 'users', 'admins', 'settings'] : newAdmin.permissions });
-      setNewAdmin({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'settings'] }); fetchAdmins();
+      await addDoc(collection(db, 'admins'), { username: encryptText(newAdmin.username), password: encryptText(newAdmin.password), role: newAdmin.role, permissions: newAdmin.role === 'super_admin' ? ['bookings', 'reports', 'users', 'points', 'admins', 'settings'] : newAdmin.permissions });
+      setNewAdmin({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'points', 'settings'] }); fetchAdmins();
     } catch (e) { alert('Error adding admin. It may already exist in Auth.'); }
   };
 
@@ -545,10 +743,10 @@ function AdminManagementList() {
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-[#D4AF37]" /> Manage Admins</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {admins.length}</span></div>
       <form onSubmit={handleAddAdmin} className="mb-6 p-5 bg-gray-50 border border-gray-200 rounded-xl flex flex-col items-end">
         <div className="flex flex-col sm:flex-row gap-4 w-full"><div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Username</label><input type="text" value={newAdmin.username} onChange={e=>setNewAdmin({...newAdmin, username: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" required /></div><div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Password (Min 6 Chars)</label><input type="text" value={newAdmin.password} onChange={e=>setNewAdmin({...newAdmin, password: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" minLength={6} required /></div></div>
-        <div className="w-full mt-4 border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label><div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3"><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'super_admin'} onChange={() => setNewAdmin({...newAdmin, role: 'super_admin'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Super Admin <span className="text-xs text-gray-500 font-semibold">(All Access)</span></span></label><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'custom'} onChange={() => setNewAdmin({...newAdmin, role: 'custom'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Custom Role</span></label></div>{newAdmin.role === 'custom' && (<div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in"><p className="text-[10px] text-gray-400 font-bold mb-3 uppercase tracking-wider">Select Allowed Tabs (ဝင်ကြည့်ခွင့်ပြုမည့် Tab ကိုရွေးပါ)</p><div className="flex flex-wrap gap-4">{['bookings', 'reports', 'users', 'settings'].map(tab => (<label key={tab} className="flex items-center space-x-2 text-xs font-bold cursor-pointer bg-gray-50 px-3 py-2 rounded border border-gray-100 hover:bg-gray-100 transition"><input type="checkbox" checked={newAdmin.permissions.includes(tab)} onChange={() => handleCheckboxChange(tab)} className="w-4 h-4 accent-[#123524]" /><span className="capitalize">{tab === 'reports' ? 'Staff History' : tab}</span></label>))}</div><p className="text-[10px] text-red-500 mt-3 font-semibold flex items-center"><AlertCircle className="w-3 h-3 mr-1"/> Note: Custom admins are restricted from accessing the 'Admins' management tab.</p></div>)}</div>
+        <div className="w-full mt-4 border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label><div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3"><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'super_admin'} onChange={() => setNewAdmin({...newAdmin, role: 'super_admin'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Super Admin <span className="text-xs text-gray-500 font-semibold">(All Access)</span></span></label><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'custom'} onChange={() => setNewAdmin({...newAdmin, role: 'custom'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Custom Role</span></label></div>{newAdmin.role === 'custom' && (<div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in"><p className="text-[10px] text-gray-400 font-bold mb-3 uppercase tracking-wider">Select Allowed Tabs (ဝင်ကြည့်ခွင့်ပြုမည့် Tab ကိုရွေးပါ)</p><div className="flex flex-wrap gap-4">{['bookings', 'reports', 'users', 'points', 'settings'].map(tab => (<label key={tab} className="flex items-center space-x-2 text-xs font-bold cursor-pointer bg-gray-50 px-3 py-2 rounded border border-gray-100 hover:bg-gray-100 transition"><input type="checkbox" checked={newAdmin.permissions.includes(tab)} onChange={() => handleCheckboxChange(tab)} className="w-4 h-4 accent-[#123524]" /><span className="capitalize">{tab === 'reports' ? 'Staff History' : tab === 'points' ? 'Point Mgmt' : tab}</span></label>))}</div><p className="text-[10px] text-red-500 mt-3 font-semibold flex items-center"><AlertCircle className="w-3 h-3 mr-1"/> Note: Custom admins are restricted from accessing the 'Admins' management tab.</p></div>)}</div>
         <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-[#123524] text-white rounded font-bold flex items-center justify-center mt-4 shadow-md hover:bg-green-900 transition"><PlusCircle className="w-5 h-5 mr-2"/> Add New Admin</button>
       </form>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username & Role</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800 flex items-center text-sm"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</div><div className="mt-1.5">{a.role === 'super_admin' || !a.role ? (<span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-purple-200">Super Admin</span>) : (<div className="flex flex-wrap gap-1 mt-1">{a.permissions?.map(p => <span key={p} className="text-[9px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded uppercase tracking-wider">{p === 'reports' ? 'Staff History' : p}</span>)}</div>)}</div></td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.docId!, a.username || '')} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username & Role</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800 flex items-center text-sm"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</div><div className="mt-1.5">{a.role === 'super_admin' || !a.role ? (<span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-purple-200">Super Admin</span>) : (<div className="flex flex-wrap gap-1 mt-1">{a.permissions?.map(p => <span key={p} className="text-[9px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded uppercase tracking-wider">{p === 'reports' ? 'Staff History' : p === 'points' ? 'Point Mgmt' : p}</span>)}</div>)}</div></td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.docId!, a.username || '')} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody></table></div>
     </div>
   );
 }
