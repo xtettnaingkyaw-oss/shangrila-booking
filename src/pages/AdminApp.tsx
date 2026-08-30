@@ -424,6 +424,39 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
      setProcessing(false);
   };
 
+  const handleDeleteHistory = async (hId: string, phone: string, pointsEarned: string | number) => {
+      if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
+      if (!window.confirm(`ဤမှတ်တမ်းကိုဖျက်၍ Customer ထံမှ ${pointsEarned} Points ကို ပြန်နှုတ်မည် သေချာပါသလား?`)) return;
+
+      try {
+          const targetUser = users.find(u => u.phone === phone);
+          if (targetUser) {
+              const currentPoints = targetUser.points || 0;
+              const ptsToDeduct = Number(pointsEarned) || 0;
+              const newTotal = Math.max(0, currentPoints - ptsToDeduct);
+              await updateDoc(doc(db, 'users', targetUser.docId), { points: encryptText(newTotal.toString()) });
+          } else {
+              const snap = await getDocs(collection(db, 'users'));
+              snap.forEach(d => {
+                  const uData = d.data();
+                  const decPhone = decryptText(uData.phone) || d.id;
+                  if (decPhone === phone) {
+                      const currentPoints = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10);
+                      const ptsToDeduct = Number(pointsEarned) || 0;
+                      const newTotal = Math.max(0, currentPoints - ptsToDeduct);
+                      updateDoc(doc(db, 'users', d.id), { points: encryptText(newTotal.toString()) });
+                  }
+              });
+          }
+          await deleteDoc(doc(db, 'point_history', hId));
+          alert(`✅ မှတ်တမ်းကို ဖျက်ပြီး Customer ထံမှ ${pointsEarned} Points ပြန်နှုတ်လိုက်ပါပြီ။`);
+          fetchUsers();
+      } catch (e) {
+          console.error(e);
+          alert('Error deleting record.');
+      }
+  };
+
   const getTier = (points: number) => {
      if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null;
      const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
@@ -510,10 +543,11 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
                                   <th className="p-3 pb-4">Amount</th>
                                   <th className="p-3 pb-4">Points Added</th>
                                   <th className="p-3 pb-4">Source</th>
+                                  <th className="p-3 pb-4 text-right">Action</th>
                               </tr>
                           </thead>
                           <tbody>
-                              {history.length === 0 && <tr><td colSpan={6} className="p-10 text-center text-gray-400">No point history found.</td></tr>}
+                              {history.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-gray-400">No point history found.</td></tr>}
                               {history.map((h) => (
                                   <tr key={h.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
                                       <td className="p-3 text-gray-600">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short'})}</td>
@@ -522,6 +556,11 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
                                       <td className="p-3 font-semibold text-[#123524]">{formatPrice(h.amount)}</td>
                                       <td className="p-3 font-black text-green-600">+{h.pointsEarned} Pts</td>
                                       <td className="p-3"><span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider ${h.type.includes('Online') ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'}`}>{h.type}</span></td>
+                                      <td className="p-3 text-right">
+                                          <button onClick={() => handleDeleteHistory(h.id, h.phone, h.pointsEarned)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition inline-flex" title="Delete & Deduct">
+                                              <Trash2 className="w-4 h-4"/>
+                                          </button>
+                                      </td>
                                   </tr>
                               ))}
                           </tbody>
@@ -729,7 +768,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           </div>
       )}
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 gap-4">
           <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
           <div className="flex space-x-2 items-center w-full sm:w-auto">
               <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm">
@@ -777,7 +816,6 @@ function AdminManagementList() {
   const [loading, setLoading] = useState(true);
   const [newAdmin, setNewAdmin] = useState<{username: string, password: string, role: 'super_admin'|'custom', permissions: string[]}>({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'settings'] });
   
-  // New state for editing admin
   const [editingAdmin, setEditingAdmin] = useState<LocalAdminProfile | null>(null);
 
   const fetchAdmins = async () => {
@@ -1306,8 +1344,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                       <div className="flex flex-wrap gap-2">
                           <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=therapists'; navigator.clipboard.writeText(url); alert('Gallery Link Copied:\n' + url); }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Gallery Link</button>
                           <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=dashboard'; navigator.clipboard.writeText(url); alert('Dashboard Link Copied:\n' + url); }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Dashboard Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=vip'; navigator.clipboard.writeText(url); alert('VIP Member Link Copied:\n' + url); }} className="text-xs flex items-center text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded border border-yellow-200 hover:bg-yellow-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> VIP Member Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=vip'; navigator.clipboard.writeText(url); alert('VIP Member Link Copied:\n' + url); }} className="text-xs flex items-center text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded border border-yellow-200 hover:bg-yellow-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> VIP Member Link</button>
                       </div>
                       <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
                           <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}
