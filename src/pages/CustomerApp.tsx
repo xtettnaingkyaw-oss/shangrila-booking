@@ -664,21 +664,23 @@ export function CustomerBookingWizard({
       
       let oneTimePercent = 0;
       let oneTimeLabel = '';
-      const possibleTiers = [50, 40, 30, 20, 10]; 
-      for (const tier of possibleTiers) {
-          if (pts >= tier) {
-              const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
-              const hasUsed = allBookings.some(b => 
-                  (b.phone === userPhone || decryptText(b.phone) === userPhone) && 
-                  b.discountLabel === rewardLabel && 
-                  b.status !== 'cancelled'
-              );
-              const isExpired = userTier && userTier.discountPercent >= tier;
-
-              if (!hasUsed && !isExpired) {
-                  oneTimePercent = tier;
-                  oneTimeLabel = rewardLabel;
-                  break; 
+      const possibleTiers = [40, 30, 20, 10]; 
+      
+      // Only check Target Bonus if they are not VIP yet
+      if (!userTier) {
+          for (const tier of possibleTiers) {
+              if (pts >= tier) {
+                  const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
+                  const hasUsed = allBookings.some(b => 
+                      (b.phone === userPhone || decryptText(b.phone) === userPhone) && 
+                      b.discountLabel === rewardLabel && 
+                      b.status !== 'cancelled'
+                  );
+                  if (!hasUsed) {
+                      oneTimePercent = tier;
+                      oneTimeLabel = rewardLabel;
+                      break; 
+                  }
               }
           }
       }
@@ -1942,7 +1944,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                }
           } else {
                if (coveredSlots.some(slot => {
-                   const [timePart, ampm] = split(' ');
+                   const [timePart, ampm] = slot.split(' ');
                    let [h, m] = timePart.split(':').map(Number);
                    if (ampm === 'PM' && h < 12) h += 12;
                    if (ampm === 'AM' && h === 12) h = 0;
@@ -2248,7 +2250,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
   );
 }
 
-// 🌟 UPDATED: CustomerProfile (With VIP Progress Bar & Point History Modal & Pre-Jade Rewards) 🌟
+// 🌟 UPDATED: CustomerProfile 🌟
 export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userDocId, setUserDocId] = useState<string | null>(null);
@@ -2358,7 +2360,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
       }
     };
     
-    // Automatically load history in background for Monthly Points calc
     const loadBackgroundHistory = async () => {
         try {
             const snap = await getDocs(collection(db, 'point_history'));
@@ -2572,6 +2573,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                     </div>
                 )}
 
+                {/* 🌟 Pre-Jade Target Progress and Rewards 🌟 */}
                 {currentPoints < 50 && (() => {
                     const nextTarget = Math.floor(currentPoints / 10) * 10 + 10; 
                     const actualTarget = nextTarget > 50 ? 50 : nextTarget;
@@ -2580,75 +2582,62 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                     const basePoint = actualTarget - 10;
                     const targetProgressPercent = ((currentPoints - basePoint) / 10) * 100;
 
-                    return (
-                        <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in">
-                            <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
-                                <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
-                            </h5>
-                            <div className="flex justify-between items-end mb-1.5">
-                                <span className="text-[9px] font-bold text-gray-500">Target Bonus: {actualTarget}% Off</span>
-                                <span className="text-[9px] font-bold text-green-600">{actualTarget} Pts</span>
-                            </div>
-                            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
-                                <div className="h-full rounded-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div>
-                            </div>
-                            <p className="text-[9px] text-gray-500 font-semibold text-center">
-                                <span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span>
-                            </p>
-                        </div>
-                    );
-                })()}
-
-                {(() => {
-                    const possibleTiers = [10, 20, 30, 40, 50];
+                    const possibleTiers = [10, 20, 30, 40];
                     const availableRewards: number[] = [];
                     const usedRewards: number[] = [];
-                    const expiredRewards: number[] = [];
                     
                     possibleTiers.forEach(tier => {
                         if (currentPoints >= tier) {
                             const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
                             const isUsed = userBookings.some(b => b.discountLabel === rewardLabel && b.status !== 'cancelled');
-                            const isExpired = userTier && userTier.discountPercent >= tier;
                             
                             if (isUsed) {
                                 usedRewards.push(tier);
-                            } else if (isExpired) {
-                                expiredRewards.push(tier);
                             } else {
                                 availableRewards.push(tier);
                             }
                         }
                     });
 
-                    if (availableRewards.length === 0 && usedRewards.length === 0 && expiredRewards.length === 0) return null;
-
                     return (
-                        <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-                            <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
-                                <Award className="w-3 h-3 mr-1 text-[#D4AF37]"/> Target Rewards Status
-                            </h5>
-                            
-                            {availableRewards.map(tier => (
-                                <div key={`avail-${tier}`} className="bg-green-50 text-green-700 p-2.5 rounded-lg text-[10px] font-bold border border-green-200 flex items-center justify-between shadow-sm">
-                                    <span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1.5 text-green-600"/> {tier}% Discount ခံစားခွင့်</span>
-                                    <span className="bg-green-100 px-2 py-1 rounded text-green-800 shadow-sm">၁ ကြိမ် ရရှိထားပါသည်</span>
+                        <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in">
+                            <div className="mb-4">
+                                <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
+                                    <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
+                                </h5>
+                                <div className="flex justify-between items-end mb-1.5">
+                                    <span className="text-[9px] font-bold text-gray-500">Target Bonus: {actualTarget}% Off</span>
+                                    <span className="text-[9px] font-bold text-green-600">{actualTarget} Pts</span>
                                 </div>
-                            ))}
-                            
-                            {usedRewards.map(tier => (
-                                <div key={`used-${tier}`} className="bg-gray-50 text-gray-500 p-2.5 rounded-lg text-[10px] font-bold border border-gray-200 flex items-center justify-between opacity-75">
-                                    <span className="flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> {tier}% Discount ခံစားခွင့်</span>
-                                    <span className="bg-gray-200 px-2 py-1 rounded text-gray-600">အသုံးပြုပြီးပါပြီ</span>
+                                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
+                                    <div className="h-full rounded-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div>
                                 </div>
-                            ))}
+                                <p className="text-[9px] text-gray-500 font-semibold text-center">
+                                    <span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span>
+                                </p>
+                            </div>
 
-                            {expiredRewards.map(tier => (
-                                <div key={`exp-${tier}`} className="bg-red-50 text-red-500 p-2.5 rounded-lg text-[10px] font-bold border border-red-100 flex items-center justify-between opacity-80">
-                                    <span className="flex items-center"><XCircleIcon className="w-3.5 h-3.5 mr-1.5"/> {tier}% Discount ခံစားခွင့်</span>
-                                    <span className="bg-red-100 px-2 py-1 rounded text-red-700 max-w-[120px] text-center leading-tight">အသုံးပြုခွင့်မရှိတော့ပါ<br/><span className="text-[8px]">(VIP {userTier?.discountPercent}% ရရှိထားသောကြောင့်)</span></span>
+                            {(availableRewards.length > 0 || usedRewards.length > 0) && (
+                                <div className="space-y-2 pt-2 border-t border-gray-100">
+                                    <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center mt-2">
+                                        <Award className="w-3 h-3 mr-1 text-[#D4AF37]"/> Target Rewards Status
+                                    </h5>
+                                    
+                                    {availableRewards.map(tier => (
+                                        <div key={`avail-${tier}`} className="bg-green-50 text-green-700 p-2.5 rounded-lg text-[10px] font-bold border border-green-200 flex items-center justify-between shadow-sm">
+                                            <span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1.5 text-green-600"/> {tier}% Discount ခံစားခွင့်</span>
+                                            <span className="bg-green-100 px-2 py-1 rounded text-green-800 shadow-sm">၁ ကြိမ် ရရှိထားပါသည်</span>
+                                        </div>
+                                    ))}
+                                    
+                                    {usedRewards.map(tier => (
+                                        <div key={`used-${tier}`} className="bg-gray-50 text-gray-500 p-2.5 rounded-lg text-[10px] font-bold border border-gray-200 flex items-center justify-between opacity-75">
+                                            <span className="flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> {tier}% Discount ခံစားခွင့်</span>
+                                            <span className="bg-gray-200 px-2 py-1 rounded text-gray-600">အသုံးပြုပြီးပါပြီ</span>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
+                            )}
                         </div>
                     );
                 })()}
