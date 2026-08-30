@@ -271,7 +271,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   const prevStatuses = useRef<Record<string, string>>({});
   const isFirstLoad = useRef(true);
 
-  // 🌟 VIP Data Realtime Sync 🌟
   const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
   useEffect(() => {
       const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
@@ -505,8 +504,9 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
    );
 }
 
+
 // ==========================================
-// CUSTOMER BOOKING WIZARD (FOUR HANDS MASSAGE SUPPORT)
+// CUSTOMER BOOKING WIZARD (FULL LOGIC + VIP DISCOUNT CALCULATION)
 // ==========================================
 export function CustomerBookingWizard({
   appData, 
@@ -541,7 +541,6 @@ export function CustomerBookingWizard({
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   
-  // 🌟 Added therapist2 for Four Hands Massage 🌟
   const [formData, setFormData] = useState({ 
       name: isStaffMode ? 'Walk-in Guest' : '', 
       phone: userPhone, 
@@ -568,7 +567,6 @@ export function CustomerBookingWizard({
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const todayStr = getLocalTodayStr();
 
-  // Check if current selected service is Four Hands
   const isFourHands = useMemo(() => {
       return (formData.selectedItem?.name || '').toLowerCase().includes('four hands');
   }, [formData.selectedItem]);
@@ -788,7 +786,6 @@ export function CustomerBookingWizard({
           }
       }
       
-      // 🌟 Check 2nd therapist for Four Hands
       if (formData.therapist2) {
           const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date || todayStr);
           for (const slot of coveredSlotsForT) {
@@ -845,7 +842,6 @@ export function CustomerBookingWizard({
                   if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
                   if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
               }
-              
               if (durationFree && formData.therapist) {
                   const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
                   const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
@@ -856,7 +852,6 @@ export function CustomerBookingWizard({
                   const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
                   for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } }
               }
-              
               if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
           }
           if (nextAvailable) setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} မှ ပြန်ရပါမည်။`);
@@ -1063,7 +1058,6 @@ export function CustomerBookingWizard({
 
       const serviceLowerNameForCheck = (formData.selectedItem?.name || '').toLowerCase();
       const isCurrentOutcall = serviceLowerNameForCheck.includes('outcall') || serviceLowerNameForCheck.includes('hotel') || serviceLowerNameForCheck.includes('home');
-      
       if (!isCurrentOutcall) {
           const freshRoomUsage = getRoomUsageMap(formData.date || todayStr, freshBookings);
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
@@ -1127,7 +1121,6 @@ export function CustomerBookingWizard({
 
       if (isNaN(expectedEndTimeMillis)) expectedEndTimeMillis = fluidStartTimeMillis + (60 * 60 * 1000);
 
-      // 🌟 Combined Therapist String for Four Hands 🌟
       let combinedTherapistName = formData.therapist?.name || 'Any Available Therapist';
       if (isFourHands && formData.therapist && formData.therapist2) {
           combinedTherapistName = `${formData.therapist.name} & ${formData.therapist2.name}`;
@@ -1135,6 +1128,7 @@ export function CustomerBookingWizard({
           combinedTherapistName = `${formData.therapist.name} & (Any Available)`;
       }
 
+      // 🌟 RESTORED VIP & DISCOUNT DATA SAVING 🌟
       const dataToSave: any = {
         name: encryptText(formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest')), 
         phone: encryptText(formData.phone || '-'),
@@ -1148,6 +1142,13 @@ export function CustomerBookingWizard({
         status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
         createdAt: Date.now(),
         specialRequest: encryptText(formData.specialRequest || ''),
+        
+        // 🌟 အမှားပြင်ဆင်ချက်: လိုအပ်နေသော VIP/Discount Data များကို မှန်ကန်စွာ Encrypt လုပ်၍ သိမ်းဆည်းပါသည် 🌟
+        originalPrice: encryptText(calculateSubTotal().toString()),
+        discountPercent: encryptText(finalDiscountPercent.toString()),
+        discountLabel: encryptText(discountLabel || ''),
+        vipTierName: encryptText(userTier ? userTier.name : ''),
+        
         ...(isStaffImmediate && { startTimeMillis: Number(fluidStartTimeMillis) || Date.now(), expectedEndTimeMillis: Number(expectedEndTimeMillis) || Date.now() })
       };
 
@@ -1315,7 +1316,6 @@ export function CustomerBookingWizard({
       
       const allFullyBooked = appData.therapists.length > 0 && appData.therapists.every(t => isTherapistFullForDate(t.name, globalCheckDate));
 
-      // 🌟 Four Hands Logic Check 🌟
       const isSelectionIncomplete = isFourHands && formData.therapist !== null && formData.therapist2 === null;
       const isAnySelected = formData.therapist === null;
 
@@ -1388,7 +1388,6 @@ export function CustomerBookingWizard({
                     </div>
                   )}
 
-                  {/* 🌟 Selection Badges 🌟 */}
                   {isSelected1 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">1</div>}
                   {isSelected2 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">2</div>}
                   {isSelected && !isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-white w-6 h-6 rounded-full flex items-center justify-center z-30 shadow-md border-2 border-white"><Check className="w-4 h-4"/></div>}
@@ -1529,12 +1528,16 @@ export function CustomerBookingWizard({
                                                if (durationFree && formData.therapist) {
                                                    const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
                                                    const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-                                                   for (const slot of testSlots) { if (tBlocked.has(slot)) { durationFree = false; break; } }
+                                                   for (const slot of testSlots) {
+                                                       if (tBlocked.has(slot)) { durationFree = false; break; }
+                                                   }
                                                }
                                                if (durationFree && formData.therapist2) {
                                                    const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date);
                                                    const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-                                                   for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } }
+                                                   for (const slot of testSlots) {
+                                                       if (tBlocked2.has(slot)) { durationFree = false; break; }
+                                                   }
                                                }
                                                if (durationFree) {
                                                    nextAvailable = ALL_TIME_SLOTS[i];
@@ -2108,7 +2111,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 }
 
 // ==========================================
-// COMPONENT: CustomerHistory
+// COMPONENT: CustomerHistory (RESTORED VIP FIELDS)
 // ==========================================
 export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -2132,7 +2135,12 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                   name: decryptText(raw.name),
                   phone: decPhone,
                   txId: decryptText(raw.txId),
-                  specialRequest: decryptText(raw.specialRequest)
+                  specialRequest: decryptText(raw.specialRequest),
+                  // 🌟 RESTORED VIP DECRYPTION HERE 🌟
+                  originalPrice: raw.originalPrice ? Number(decryptText(raw.originalPrice)) : undefined,
+                  discountPercent: raw.discountPercent ? Number(decryptText(raw.discountPercent)) : undefined,
+                  discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
+                  vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
               } as Booking);
           }
         });
@@ -2168,7 +2176,20 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                      </div>
                      <div className="flex flex-col items-end">
                         <StatusBadge status={b.status} cancelReason={b.cancelReason} />
-                        <div className="font-bold mt-2" style={{ color: THEME.gold }}>{formatPrice(b.totalPrice)}</div>
+                        
+                        {/* 🌟 Original Price & Discount Display in History 🌟 */}
+                        {b.originalPrice && b.originalPrice > b.totalPrice ? (
+                            <div className="mt-2 text-right">
+                               <div className="flex items-center justify-end space-x-1 mb-0.5">
+                                  <span className="text-[9px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span>
+                                  <span className="text-[9px] font-bold text-red-500">-{b.discountPercent}%</span>
+                               </div>
+                               <div className="font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
+                            </div>
+                        ) : (
+                            <div className="font-bold mt-2 text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
+                        )}
+
                         <div className="text-[10px] text-gray-400 mt-1 flex items-center">{isExpanded ? <><ChevronUp className="w-3 h-3 mr-1"/> Less</> : <><ChevronDown className="w-3 h-3 mr-1"/> More</>}</div>
                      </div>
                   </div>
@@ -2180,6 +2201,18 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                            <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">TXID</span><span className="text-sm font-mono font-bold text-gray-800 tracking-widest">{b.txId}</span></div>
                            <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">PAYMENT</span><span className="text-sm font-bold text-gray-800">{b.paymentMethod}</span></div>
                         </div>
+                        
+                        {/* 🌟 Applied Discount Label in Details 🌟 */}
+                        {b.discountLabel && (
+                            <div className="bg-green-50 p-3 rounded-lg border border-green-100 mb-4 flex items-center">
+                                <Award className="w-4 h-4 text-green-600 mr-2"/>
+                                <div>
+                                    <span className="text-[10px] uppercase font-bold text-green-700 block mb-0.5">Applied Discount</span>
+                                    <span className="text-sm text-green-800 font-bold">{b.discountLabel}</span>
+                                </div>
+                            </div>
+                        )}
+
                         {b.specialRequest && <div className="bg-white p-3 rounded-lg border border-gray-100 mb-4"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">SPECIAL REQUEST NOTE</span><span className="text-sm text-gray-700 italic">{b.specialRequest}</span></div>}
                         <div className="flex justify-between items-center text-xs text-gray-400 font-semibold px-1"><span>Booked: {new Date(b.createdAt).toLocaleDateString()}</span><span className="text-[#123524] text-sm">Total: {formatPrice(b.totalPrice)}</span></div>
                      </div>
@@ -2194,7 +2227,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
 }
 
 // ==========================================
-// COMPONENT: CustomerProfile (WITH AUTO-HEAL FIX)
+// COMPONENT: CustomerProfile
 // ==========================================
 export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -2248,7 +2281,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
               });
               setUserDocId(docId);
           } else {
-              // 🌟 Auto-Heal: User DB ထဲမှာ မရှိတော့ရင် (ဖျက်ခံလိုက်ရရင်) Default အနေနဲ့ ပြန်ပြပေးထားပါမည်
               setProfile({ name: 'Walk-in Guest', phone: userPhone, points: 0, dob: '', password: '' } as any);
               setFormData({ name: '', password: '', dob: '' });
           }
@@ -2272,7 +2304,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
               dob: encryptText(formData.dob)
           });
       } else {
-          // 🌟 Auto-Heal: Database ထဲမှာ မရှိသေးရင် အသစ်ပြန်ဖွင့်ပေးပါမည်
           const newDocRef = await addDoc(collection(db, 'users'), {
               phone: encryptText(userPhone),
               name: encryptText(formData.name),
