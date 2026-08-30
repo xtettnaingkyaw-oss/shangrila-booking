@@ -12,13 +12,13 @@ const FALLBACK_VIP_SETTINGS = {
     "ပွိုင့်သက်တမ်းနှင့် Renew ပြုလုပ်ခြင်း: Customer များ စုဆောင်းထားသော ပွိုင့်များ၏ သက်တမ်းမှာ (၆) လ ဖြစ်ပါသည်။ ၆ လ တစ်ကြိမ် ပွိုင့်များကို Renew ပြုလုပ်မည် (အသစ်ပြန်လည် စတင်မည်) ဖြစ်ပါသည်။",
     "(၆) လ ကာလအတွင်း VIP အဆင့် တစ်ခုခုသို့ ရောက်ရှိရန် လိုအပ်သော ပွိုင့်အရေအတွက် မပြည့်မီပါက (၆) လ ပြည့်သည့်နေ့တွင် ပွိုင့်များ သုညမှ ပြန်လည်စတင်မည် ဖြစ်ပါသည်။",
     "VIP Member အဆင့်သို့ ရောက်ရှိသွားပါက အမြဲတမ်း Discount ခံစားခွင့်မှာမူ ပွိုင့် Renew လုပ်သည်နှင့် သက်ဆိုင်ခြင်းမရှိဘဲ ဆက်လက် တည်ရှိနေမည် ဖြစ်ပါသည်။",
-    "ကတ်ပျောက်ဆုံးခြင်း: ကတ်ပျောက်ဆုံး၊ ပျက်စီးပါက ဝန်ဆောင်ခ ၁၅,၀၀၀ ကျပ်ဖြင့် အသစ်ပြန်လည် ထုတ်ပေးပါမည်။ ယခင်စုဆောင်းထားသော ပွိုင့်များ အပြည့်အဝ ပြန်လည်ရရှိမည် ဖြစ်ပါသည်။",
+    "ကတ်ပျောက်ဆုံးခြင်း: ကတ်ပျောက်ဆုံး၊ ပျက်စီးပါက ဝန်ဆောင်ခ ၁၅,၀⁠၀၀ ကျပ်ဖြင့် အသစ်ပြန်လည် ထုတ်ပေးပါမည်။ ယခင်စုဆောင်းထားသော ပွိုင့်များ အပြည့်အဝ ပြန်လည်ရရှိမည် ဖြစ်ပါသည်။",
     "လွှဲပြောင်းအသုံးပြုခွင့်: VIP Member Card အား မိတ်ဆွေသူငယ်ချင်းများနှင့် မျှဝေသုံးစွဲခွင့်ရှိပြီး၊ လိုအပ်ပါက ဝန်ထမ်းများမှ ဖုန်းနံပါတ် တိုက်ဆိုင်စစ်ဆေးခြင်း ပြုလုပ်နိုင်ပါသည်။",
     "The Shangri-La Men's Retreat မှ ဤ Membership Program ၏ စည်းကမ်းချက်များကို ကြိုတင်အကြောင်းကြားခြင်းမရှိဘဲ ပြင်ဆင်ပြောင်းလဲခွင့် ရှိပါသည်။"
   ],
   tiers: [
     { id: 't1', name: 'Jade Elite Member', requiredPoints: 50, discountPercent: 10, instantUpgrade: '၈ သိန်းကျပ်', colorTheme: '#00A86B' },
-    { id: 't2', name: 'Imperial Gold VIP', requiredPoints: 100, discountPercent: 15, instantUpgrade: '၁5 သိန်းကျပ်', colorTheme: '#D4AF37' },
+    { id: 't2', name: 'Imperial Gold VIP', requiredPoints: 100, discountPercent: 15, instantUpgrade: '၁၅ သိန်းကျပ်', colorTheme: '#D4AF37' },
     { id: 't3', name: 'Shangri-La Signature V-VIP', requiredPoints: 150, discountPercent: 20, instantUpgrade: '၂၅ သိန်းကျပ်', colorTheme: '#1E1E1E' }
   ]
 };
@@ -640,24 +640,12 @@ export function CustomerBookingWizard({
   if (promoActive) {
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
       discountLabel = `Promo Discount (${finalDiscountPercent}%)`;
-  } else if (userTier && vipSettings.isActive) {
-      if (isBirthday()) {
-          if (userTier.discountPercent === 20 || userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) {
-              finalDiscountPercent = Math.min(100, 20 + (userProfile?.points || 0));
-              discountLabel = `Imperial Birthday Bonus (${finalDiscountPercent}%)`;
-          } else {
-              finalDiscountPercent = 50;
-              discountLabel = `VIP Birthday Bonus (50%)`;
-          }
-      } else {
-          finalDiscountPercent = userTier.discountPercent;
-          discountLabel = `VIP Member Discount (${finalDiscountPercent}%)`;
-      }
-  } else if (!userTier && vipSettings.isActive && (userProfile?.points || 0) > 0) {
-      const pts = userProfile.points;
-      let eligiblePercent = 0;
+  } else if (vipSettings.isActive && userProfile) {
+      const pts = userProfile.points || 0;
+      
+      let oneTimePercent = 0;
+      let oneTimeLabel = '';
       const possibleTiers = [50, 40, 30, 20, 10]; 
-
       for (const tier of possibleTiers) {
           if (pts >= tier) {
               const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
@@ -666,17 +654,38 @@ export function CustomerBookingWizard({
                   b.discountLabel === rewardLabel && 
                   b.status !== 'cancelled'
               );
-
               if (!hasUsed) {
-                  eligiblePercent = tier;
-                  discountLabel = rewardLabel;
+                  oneTimePercent = tier;
+                  oneTimeLabel = rewardLabel;
                   break; 
               }
           }
       }
 
-      if (eligiblePercent > 0) {
-          finalDiscountPercent = eligiblePercent;
+      let bdayPercent = 0;
+      let bdayLabel = '';
+      if (userTier && isBirthday()) {
+          if (userTier.discountPercent === 20 || userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) {
+              bdayPercent = Math.min(100, 20 + pts);
+              bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`;
+          } else {
+              bdayPercent = 50;
+              bdayLabel = `VIP Birthday Bonus (50%)`;
+          }
+      }
+
+      const tierPercent = userTier ? userTier.discountPercent : 0;
+      const tierLabel = userTier ? `VIP Member Discount (${tierPercent}%)` : '';
+
+      if (bdayPercent >= oneTimePercent && bdayPercent >= tierPercent && bdayPercent > 0) {
+          finalDiscountPercent = bdayPercent;
+          discountLabel = bdayLabel;
+      } else if (oneTimePercent >= tierPercent && oneTimePercent > 0) {
+          finalDiscountPercent = oneTimePercent;
+          discountLabel = oneTimeLabel;
+      } else if (tierPercent > 0) {
+          finalDiscountPercent = tierPercent;
+          discountLabel = tierLabel;
       }
   }
 
@@ -2235,6 +2244,8 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [userBookings, setUserBookings] = useState<any[]>([]);
 
+  const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
+
   useEffect(() => {
     if (!userPhone) return;
     const fetchBookings = async () => {
@@ -2511,7 +2522,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
 
                          {/* Show Available & Used Rewards */}
                          {(() => {
-                             const possibleTiers = [10, 20, 30, 40];
+                             const possibleTiers = [10, 20, 30, 40, 50];
                              const availableRewards: number[] = [];
                              const usedRewards: number[] = [];
                              
