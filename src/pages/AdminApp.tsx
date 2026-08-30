@@ -730,7 +730,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           </div>
       )}
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 gap-4">
           <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
           <div className="flex space-x-2 items-center w-full sm:w-auto">
               <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm">
@@ -756,7 +756,16 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
                  </div>
              </td>
              <td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td>
-             <td className="p-3 text-right"><div className="flex items-center justify-end space-x-2"><button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '' }); }} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-bold text-[10px] flex items-center"><Edit className="w-3 h-3 mr-1"/> Edit Info</button><button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button></div></td>
+             <td className="p-3 text-right">
+                 <div className="flex items-center justify-end space-x-2">
+                     <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '' }); }} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Edit Info'}>
+                         <Edit className="w-3 h-3 mr-1"/> Edit Info
+                     </button>
+                     <button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}>
+                         <Trash2 className="w-3 h-3 mr-1"/> Delete
+                     </button>
+                 </div>
+             </td>
          </tr>
          );
       })}</tbody></table></div>
