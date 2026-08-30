@@ -554,7 +554,15 @@ export function CustomerBookingWizard({
           const arr: Booking[] = [];
           snap.forEach(d => {
              const raw = d.data();
-             arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking);
+             arr.push({ 
+                 id: d.id, 
+                 ...raw, 
+                 name: decryptText(raw.name), 
+                 phone: decryptText(raw.phone), 
+                 txId: decryptText(raw.txId), 
+                 specialRequest: decryptText(raw.specialRequest),
+                 discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined
+             } as Booking);
           });
           setAllBookings(arr);
       });
@@ -658,7 +666,9 @@ export function CustomerBookingWizard({
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
       discountLabel = `Promo Discount (${finalDiscountPercent}%)`;
   } else if (vipSettings.isActive && userProfile) {
-      const pts = userProfile.points || 0;
+      const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
+      const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
+      
       const tierPercent = userTier ? userTier.discountPercent : 0;
       const tierLabel = userTier ? `VIP Member Discount (${tierPercent}%)` : '';
       
@@ -666,14 +676,14 @@ export function CustomerBookingWizard({
       let oneTimeLabel = '';
       const possibleTiers = [40, 30, 20, 10]; 
       
-      // Only check Target Bonus if they are not VIP yet
       if (!userTier) {
           for (const tier of possibleTiers) {
-              if (pts >= tier) {
+              if (monthlyPts >= tier) {
                   const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
                   const hasUsed = allBookings.some(b => 
-                      (b.phone === userPhone || decryptText(b.phone) === userPhone) && 
+                      (b.phone === userPhone) && 
                       b.discountLabel === rewardLabel && 
+                      b.date && b.date.startsWith(currentMonthPrefix) &&
                       b.status !== 'cancelled'
                   );
                   if (!hasUsed) {
@@ -689,8 +699,6 @@ export function CustomerBookingWizard({
       let bdayLabel = '';
       if (userTier && isBirthday()) {
           if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) {
-              const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
-              const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
               bdayPercent = Math.min(100, 20 + monthlyPts);
               bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`;
           } else {
@@ -2280,7 +2288,8 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                if (decPhone === userPhone) {
                    data.push({
                        status: raw.status,
-                       discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined
+                       discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
+                       date: raw.date // Make sure date is mapped for logic checking
                    });
                }
            });
@@ -2360,6 +2369,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
       }
     };
     
+    // Automatically load history in background for Monthly Points calc
     const loadBackgroundHistory = async () => {
         try {
             const snap = await getDocs(collection(db, 'point_history'));
@@ -2575,21 +2585,21 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
 
                 {/* 🌟 Pre-Jade Target Progress and Rewards 🌟 */}
                 {currentPoints < 50 && (() => {
-                    const nextTarget = Math.floor(currentPoints / 10) * 10 + 10; 
+                    const nextTarget = Math.floor(monthlyPoints / 10) * 10 + 10; 
                     const actualTarget = nextTarget > 50 ? 50 : nextTarget;
-                    const ptsNeededForTarget = actualTarget - currentPoints;
+                    const ptsNeededForTarget = actualTarget - monthlyPoints;
                     
                     const basePoint = actualTarget - 10;
-                    const targetProgressPercent = ((currentPoints - basePoint) / 10) * 100;
+                    const targetProgressPercent = ((monthlyPoints - basePoint) / 10) * 100;
 
                     const possibleTiers = [10, 20, 30, 40];
                     const availableRewards: number[] = [];
                     const usedRewards: number[] = [];
                     
                     possibleTiers.forEach(tier => {
-                        if (currentPoints >= tier) {
+                        if (monthlyPoints >= tier) {
                             const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
-                            const isUsed = userBookings.some(b => b.discountLabel === rewardLabel && b.status !== 'cancelled');
+                            const isUsed = userBookings.some(b => b.discountLabel === rewardLabel && b.date && b.date.startsWith(currentMonthPrefix) && b.status !== 'cancelled');
                             
                             if (isUsed) {
                                 usedRewards.push(tier);
