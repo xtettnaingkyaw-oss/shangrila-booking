@@ -5,7 +5,7 @@ import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History } from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS } from '../shared';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -333,7 +333,6 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
   );
 }
 
-// 🌟 UPDATED: Manual Point Management Component (With History & VIP Tier Display) 🌟
 function AdminPointManagement({ adminRole, appData }: { adminRole: string, appData: AppData }) {
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -618,6 +617,10 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [editForm, setEditForm] = useState({ name: '', password: '', dob: '' });
+  
+  // New state for creating user manually
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', phone: '', password: '', dob: '' });
 
   const fetchUsers = async () => {
     try {
@@ -658,6 +661,31 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
     } catch (e) { alert('Error updating user'); }
   };
 
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const exists = users.some(u => u.phone === createForm.phone.trim());
+    if (exists) {
+        alert("ဤဖုန်းနံပါတ်ဖြင့် အကောင့်ရှိပြီးသားဖြစ်ပါသည်။");
+        return;
+    }
+    try {
+        await addDoc(collection(db, 'users'), {
+            phone: encryptText(createForm.phone.trim()),
+            name: encryptText(createForm.name),
+            password: encryptText(createForm.password),
+            dob: encryptText(createForm.dob),
+            points: encryptText('0'),
+            createdAt: Date.now()
+        });
+        alert('User အသစ် ဖန်တီးပြီးပါပြီ။');
+        setCreatingUser(false);
+        setCreateForm({ name: '', phone: '', password: '', dob: '' });
+        fetchUsers();
+    } catch (e) {
+        alert('Error creating user');
+    }
+  };
+
   const handleDeleteUser = async (docId: string, phone: string) => {
     if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
     if (!window.confirm(`User [${phone}] ကို အပြီးတိုင် ဖျက်မည် သေချာပါသလား?`)) return;
@@ -678,16 +706,40 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
             <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full"><h3 className="text-lg font-bold mb-4 text-[#123524]">Edit User ({editingUser.phone})</h3>
                <form onSubmit={handleUpdateUser} className="space-y-4">
-                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded" required /></div>
-                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth</label><input type="date" value={editForm.dob} onChange={e=>setEditForm({...editForm, dob: e.target.value})} className="w-full p-2 border rounded" /></div>
-                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Leave blank for no password" className="w-full p-2 border rounded" /></div>
-                 <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold">Save</button></div>
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" required /></div>
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth</label><input type="date" value={editForm.dob} onChange={e=>setEditForm({...editForm, dob: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Leave blank for no password" className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
+                 <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold hover:bg-gray-200">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold hover:bg-green-900">Save</button></div>
                </form>
             </div>
          </div>
       )}
 
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {users.length}</span></div>
+      {creatingUser && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+              <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full animate-fade-in">
+                  <h3 className="text-lg font-bold mb-4 text-[#123524] flex items-center"><UserPlus className="w-5 h-5 mr-2 text-[#D4AF37]"/> Create New User</h3>
+                  <form onSubmit={handleCreateUser} className="space-y-4">
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone Number (Login ID) *</label><input type="tel" value={createForm.phone} onChange={e=>setCreateForm({...createForm, phone: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" required placeholder="e.g. 09xxxxxxxxx"/></div>
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Name *</label><input type="text" value={createForm.name} onChange={e=>setCreateForm({...createForm, name: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" required placeholder="Customer Name"/></div>
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth</label><input type="date" value={createForm.dob} onChange={e=>setCreateForm({...createForm, dob: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Password (Optional)</label><input type="text" value={createForm.password} onChange={e=>setCreateForm({...createForm, password: e.target.value})} placeholder="Leave blank for auto-login" className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
+                      <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setCreatingUser(false)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold hover:bg-gray-200">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold hover:bg-green-900">Create</button></div>
+                  </form>
+              </div>
+          </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+          <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
+          <div className="flex space-x-2 items-center w-full sm:w-auto">
+              <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm">
+                  <PlusCircle className="w-4 h-4 mr-1.5" /> Add New User
+              </button>
+              <span className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold border border-gray-200 whitespace-nowrap">Total: {users.length}</span>
+          </div>
+      </div>
+      
       <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name & DOB</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => {
          const userTier = getTier(u.points);
          return (
