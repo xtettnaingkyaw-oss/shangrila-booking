@@ -507,6 +507,7 @@ export function CustomerBookingWizard({
 }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
+  const promoTitle = appData.promotion?.title || 'SPECIAL PROMO';
   
   const [step, setStep] = useState(() => {
       if (staffClockIn) return isTherapistFirst ? 2 : 1;
@@ -664,7 +665,7 @@ export function CustomerBookingWizard({
 
   if (promoActive) {
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
-      discountLabel = `Promo Discount (${finalDiscountPercent}%)`;
+      discountLabel = `${promoTitle} (${finalDiscountPercent}%)`;
   } else if (vipSettings.isActive && userProfile) {
       const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
       const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
@@ -676,6 +677,7 @@ export function CustomerBookingWizard({
       let oneTimeLabel = '';
       const possibleTiers = [40, 30, 20, 10]; 
       
+      // Only check Target Bonus if they are not VIP yet
       if (!userTier) {
           for (const tier of possibleTiers) {
               if (monthlyPts >= tier) {
@@ -1255,9 +1257,9 @@ export function CustomerBookingWizard({
               <div>
                  <div className="flex items-center gap-2 mb-0.5">
                      <h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-sm tracking-wide uppercase flex items-center">
-                         <Sparkles className="w-3 h-3 mr-1" /> Special Promo
+                         <Sparkles className="w-3 h-3 mr-1" /> {promoTitle}
                      </h4>
-                     <span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap">
+                     <span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap ml-2">
                          Limited Time
                      </span>
                  </div>
@@ -2289,7 +2291,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                    data.push({
                        status: raw.status,
                        discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
-                       date: raw.date // Make sure date is mapped for logic checking
+                       date: raw.date
                    });
                }
            });
@@ -2369,7 +2371,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
       }
     };
     
-    // Automatically load history in background for Monthly Points calc
     const loadBackgroundHistory = async () => {
         try {
             const snap = await getDocs(collection(db, 'point_history'));
@@ -2583,8 +2584,8 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                     </div>
                 )}
 
-                {/* 🌟 Pre-Jade Target Progress and Rewards 🌟 */}
-                {currentPoints < 50 && (() => {
+                {/* 🌟 Pre-Jade Target Progress and Rewards (Hidden if VIP) 🌟 */}
+                {!userTier && (() => {
                     const nextTarget = Math.floor(monthlyPoints / 10) * 10 + 10; 
                     const actualTarget = nextTarget > 50 ? 50 : nextTarget;
                     const ptsNeededForTarget = actualTarget - monthlyPoints;
@@ -2599,7 +2600,11 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                     possibleTiers.forEach(tier => {
                         if (monthlyPoints >= tier) {
                             const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
-                            const isUsed = userBookings.some(b => b.discountLabel === rewardLabel && b.date && b.date.startsWith(currentMonthPrefix) && b.status !== 'cancelled');
+                            const isUsed = userBookings.some(b => 
+                                b.discountLabel === rewardLabel && 
+                                b.date && b.date.startsWith(currentMonthPrefix) && 
+                                b.status !== 'cancelled'
+                            );
                             
                             if (isUsed) {
                                 usedRewards.push(tier);
