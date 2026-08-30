@@ -343,6 +343,7 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   const [invoiceNo, setInvoiceNo] = useState('');
   const [processing, setProcessing] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
+  const [historySearch, setHistorySearch] = useState('');
 
   const fetchUsers = async () => {
     try {
@@ -391,6 +392,7 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   }, [adminRole]);
 
   const filteredUsers = users.filter(u => u.phone.includes(search) || (u.name && u.name.toLowerCase().includes(search.toLowerCase())));
+  const filteredHistory = history.filter(h => h.phone.includes(historySearch) || h.invoiceNo.toLowerCase().includes(historySearch.toLowerCase()));
   const earnedPoints = Math.floor(Number(amount) / 35000) || 0;
 
   const handleAddPoints = async (e: React.FormEvent) => {
@@ -455,6 +457,23 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
           console.error(e);
           alert('Error deleting record.');
       }
+  };
+
+  const handleExportHistory = () => {
+      const headers = ['Record ID', 'Date & Time', 'Customer Phone', 'Invoice / TxID', 'Amount (Ks)', 'Points Added', 'Source'];
+      const rows = filteredHistory.map(h => [
+          h.id || '', `"${new Date(h.createdAt).toLocaleString()}"`, `"${h.phone}"`, `"${h.invoiceNo}"`, h.amount || 0, h.pointsEarned || 0, `"${h.type}"`
+      ]);
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Point_History_Report_${getLocalTodayStr()}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
   };
 
   const getTier = (points: number) => {
@@ -532,7 +551,18 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
           {/* 🌟 Points History Table (Super Admin Only) 🌟 */}
           {adminRole === 'super_admin' && (
               <div className="mt-8 pt-6 border-t border-gray-100 animate-fade-in">
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center"><History className="w-5 h-5 mr-2 text-[#D4AF37]" /> Points History Record</h3>
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                      <h3 className="text-lg font-bold text-gray-800 flex items-center"><History className="w-5 h-5 mr-2 text-[#D4AF37]" /> Points History Record</h3>
+                      <div className="flex items-center space-x-3 w-full sm:w-auto">
+                          <div className="relative w-full sm:w-64">
+                              <input type="text" placeholder="Search phone or invoice..." value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-xs font-semibold" />
+                              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+                          </div>
+                          <button onClick={handleExportHistory} className="flex-shrink-0 justify-center items-center flex px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm">
+                             <Download className="w-4 h-4 mr-1.5" /> Export
+                          </button>
+                      </div>
+                  </div>
                   <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse min-w-[800px]">
                           <thead>
@@ -547,8 +577,8 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
                               </tr>
                           </thead>
                           <tbody>
-                              {history.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-gray-400">No point history found.</td></tr>}
-                              {history.map((h) => (
+                              {filteredHistory.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-gray-400">No point history found.</td></tr>}
+                              {filteredHistory.map((h) => (
                                   <tr key={h.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
                                       <td className="p-3 text-gray-600">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short'})}</td>
                                       <td className="p-3 font-bold text-gray-800 font-mono tracking-wider">{h.phone}</td>
@@ -730,6 +760,32 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
     try { await deleteDoc(doc(db, 'users', docId)); fetchUsers(); } catch (e) { alert('Error deleting user'); }
   };
 
+  const handleExportUsers = () => {
+      const headers = ['User ID', 'Phone (Login ID)', 'Name', 'DOB', 'Total Points', 'VIP Tier', 'Joined Date'];
+      const rows = users.map(u => {
+          const tier = getTier(u.points);
+          return [
+              u.docId || '', 
+              `"${u.phone || ''}"`, 
+              `"${u.name || ''}"`, 
+              `"${u.dob || ''}"`, 
+              u.points || 0, 
+              tier ? `"${tier.name}"` : 'None',
+              u.createdAt ? `"${new Date(u.createdAt).toLocaleString()}"` : ''
+          ];
+      });
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Users_Report_${getLocalTodayStr()}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
   const getTier = (points: number) => {
      if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null;
      const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
@@ -768,9 +824,12 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           </div>
       )}
 
-      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
           <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
           <div className="flex space-x-2 items-center w-full sm:w-auto">
+              <button onClick={handleExportUsers} className="flex-shrink-0 justify-center items-center flex px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-sm font-bold hover:bg-green-100 transition shadow-sm">
+                  <Download className="w-4 h-4 mr-1.5" /> Export Excel
+              </button>
               <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm">
                   <PlusCircle className="w-4 h-4 mr-1.5" /> Add New User
               </button>
@@ -1344,8 +1403,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                       <div className="flex flex-wrap gap-2">
                           <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=therapists'; navigator.clipboard.writeText(url); alert('Gallery Link Copied:\n' + url); }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Gallery Link</button>
                           <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=dashboard'; navigator.clipboard.writeText(url); alert('Dashboard Link Copied:\n' + url); }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Dashboard Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=vip'; navigator.clipboard.writeText(url); alert('VIP Member Link Copied:\n' + url); }} className="text-xs flex items-center text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded border border-yellow-200 hover:bg-yellow-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> VIP Member Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=vip'; navigator.clipboard.writeText(url); alert('VIP Member Link Copied:\n' + url); }} className="text-xs flex items-center text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded border border-yellow-200 hover:bg-yellow-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> VIP Member Link</button>
                       </div>
                       <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
                           <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}
