@@ -71,7 +71,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
               await signInWithEmailAndPassword(auth, 'admin@shangrila.com', password);
           } catch (e: any) {
               await createUserWithEmailAndPassword(auth, 'admin@shangrila.com', password);
-              await addDoc(collection(db, 'admins'), { username: encryptText('admin'), password: encryptText('admin123'), role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'admins', 'settings', 'points'] });
+              await addDoc(collection(db, 'admins'), { username: encryptText('admin'), password: encryptText('admin123'), role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'points', 'admins', 'settings'] });
           }
           onLogin('admin');
           setLoading(false);
@@ -174,10 +174,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
         {hasAccess('bookings') && (<button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><CalendarPlus className="w-4 h-4 mr-2" /> Bookings {pendingCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{pendingCount}</span>}</button>)}
         {hasAccess('reports') && (<button onClick={() => setTab('reports')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'reports' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><BarChart2 className="w-4 h-4 mr-2" /> Staff History</button>)}
         {hasAccess('users') && (<button onClick={() => setTab('users')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>)}
-        
-        {/* 🌟 New Point Management Tab 🌟 */}
         {hasAccess('points') && (<button onClick={() => setTab('points')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'points' ? 'bg-yellow-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Star className="w-4 h-4 mr-2" /> Point Mgmt</button>)}
-
         {hasAccess('admins') && (<button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('settings')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>)}
         <button onClick={onLogout} className="px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm sm:ml-2"><LogOut className="w-4 h-4 mr-2" /> Logout</button>
@@ -193,7 +190,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
   );
 });
 
-// 🌟 UPDATED: AdminBookingsList with Auto Point Calculation 🌟
+// 🌟 AdminBookingsList with Auto Point Calculation 🌟
 function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
   const handleStatusChange = async (b: Booking, newStatus: string) => {
     let reason = '';
@@ -223,6 +220,17 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                 await updateDoc(doc(db, 'users', targetDocId), { 
                     points: encryptText((currentPts + earnedPts).toString()) 
                 });
+                
+                // Add History
+                await addDoc(collection(db, 'point_history'), {
+                    phone: encryptText(b.phone),
+                    amount: encryptText(b.totalPrice.toString()),
+                    pointsEarned: encryptText(earnedPts.toString()),
+                    type: encryptText('Online Booking'),
+                    date: getLocalTodayStr(),
+                    createdAt: Date.now()
+                });
+
                 updateData.pointsAdded = true;
                 alert(`✅ Booking Confirmed! Customer ထံသို့ Point (${earnedPts} Pts) အလိုအလျောက် ပေါင်းထည့်ပေးလိုက်ပါပြီ။`);
             }
@@ -239,26 +247,12 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
 
   const handleExportExcel = () => {
       const headers = ['Booking ID', 'Customer Name', 'Phone', 'Service', 'Therapist', 'Date', 'Time', 'Total Price (Ks)', 'Original Price (Ks)', 'Discount Percent (%)', 'Discount Label', 'Payment Method', 'Transaction ID', 'Status', 'Special Request', 'Booking Date'];
-      
       const rows = bookings.map(b => [
-          b.id || '',
-          `"${b.name || ''}"`,
-          `"${b.phone || ''}"`,
-          `"${b.service || ''}"`,
-          `"${b.therapist || ''}"`,
-          b.date || '',
-          b.time || '',
-          b.totalPrice || 0,
-          b.originalPrice || '',
-          b.discountPercent || '',
-          b.discountLabel ? `"${b.discountLabel}"` : '',
-          b.paymentMethod || '',
-          b.txId || '',
-          b.status || '',
-          `"${b.specialRequest || ''}"`,
-          new Date(b.createdAt).toLocaleString()
+          b.id || '', `"${b.name || ''}"`, `"${b.phone || ''}"`, `"${b.service || ''}"`, `"${b.therapist || ''}"`,
+          b.date || '', b.time || '', b.totalPrice || 0, b.originalPrice || '', b.discountPercent || '',
+          b.discountLabel ? `"${b.discountLabel}"` : '', b.paymentMethod || '', b.txId || '', b.status || '',
+          `"${b.specialRequest || ''}"`, new Date(b.createdAt).toLocaleString()
       ]);
-      
       const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
@@ -309,7 +303,6 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                 <td className="p-3">
                     <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div>
                     <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-1">{b.paymentMethod || 'Unknown'}</div>
-                    
                     {b.originalPrice && b.originalPrice > b.totalPrice ? (
                         <div className="mt-2 p-1.5 bg-green-50 border border-green-100 rounded-md w-max">
                            <div className="flex items-center space-x-2 mb-0.5">
@@ -326,12 +319,10 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                     )}
                 </td>
                 <td className="p-3">
-                  {/* Changed handleStatusChange to pass entire booking object 'b' */}
                   <select value={b.status} onChange={(e) => handleStatusChange(b, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
                     <option value="pending">Pending</option><option value="payment_checking">Confirming</option><option value="approved">Approve</option><option value="cancelled">Cancel</option>
                   </select>
                   {b.status === 'cancelled' && b.cancelReason && <div className="text-[9px] text-red-500 mt-1 max-w-[120px] truncate" title={b.cancelReason}>Reason: {b.cancelReason}</div>}
-                  {/* Indicator if point is added */}
                   {(b as any).pointsAdded && <div className="text-[8px] text-green-600 font-bold mt-1 uppercase"><Award className="w-2.5 h-2.5 inline mr-0.5"/>Pts Added</div>}
                 </td>
                 <td className="p-3 text-right"><button onClick={() => handleDelete(b.id!)} disabled={adminRole !== 'super_admin'} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete Booking'} className={`p-2 rounded-lg transition ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`}><Trash2 className="w-4 h-4" /></button></td>
@@ -360,10 +351,7 @@ function AdminPointManagement() {
       snap.forEach(doc => {
           const raw = doc.data();
           data.push({ 
-             docId: doc.id, 
-             ...raw, 
-             phone: decryptText(raw.phone) || doc.id, 
-             name: decryptText(raw.name) || raw.name, 
+             docId: doc.id, ...raw, phone: decryptText(raw.phone) || doc.id, name: decryptText(raw.name) || raw.name, 
              points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10)
           });
       });
@@ -375,10 +363,7 @@ function AdminPointManagement() {
   
   useEffect(() => { fetchUsers(); }, []);
 
-  const filteredUsers = users.filter(u => 
-      u.phone.includes(search) || (u.name && u.name.toLowerCase().includes(search.toLowerCase()))
-  );
-
+  const filteredUsers = users.filter(u => u.phone.includes(search) || (u.name && u.name.toLowerCase().includes(search.toLowerCase())));
   const earnedPoints = Math.floor(Number(amount) / 35000) || 0;
 
   const handleAddPoints = async (e: React.FormEvent) => {
@@ -390,121 +375,50 @@ function AdminPointManagement() {
      setProcessing(true);
      try {
          const newTotal = (selectedUser.points || 0) + earnedPoints;
-         await updateDoc(doc(db, 'users', selectedUser.docId), {
-             points: encryptText(newTotal.toString())
+         await updateDoc(doc(db, 'users', selectedUser.docId), { points: encryptText(newTotal.toString()) });
+         await addDoc(collection(db, 'point_history'), {
+              phone: encryptText(selectedUser.phone),
+              amount: encryptText(amount.toString()),
+              pointsEarned: encryptText(earnedPoints.toString()),
+              type: encryptText('Walk-in / Direct'),
+              date: getLocalTodayStr(),
+              createdAt: Date.now()
          });
          alert(`✅ ${earnedPoints} Points အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ (စုစုပေါင်း - ${newTotal} Pts)`);
-         setSelectedUser(null);
-         setAmount('');
-         fetchUsers();
-     } catch(e) {
-         alert('Error adding points.');
-     }
+         setSelectedUser(null); setAmount(''); fetchUsers();
+     } catch(e) { alert('Error adding points.'); }
      setProcessing(false);
   };
 
   return (
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
-              <div>
-                  <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
-                      <Star className="mr-2 text-yellow-500" /> Point Management
-                  </h2>
-                  <p className="text-xs text-gray-500 mt-1">ဆိုင်တွင် တိုက်ရိုက် Service ယူသူများအတွက် Invoice ပမာဏ ထည့်သွင်း၍ Point ပေါင်းရန်</p>
-              </div>
+              <div><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><Star className="mr-2 text-yellow-500" /> Point Management</h2><p className="text-xs text-gray-500 mt-1">ဆိုင်တွင် တိုက်ရိုက် Service ယူသူများအတွက် Invoice ပမာဏ ထည့်သွင်း၍ Point ပေါင်းရန်</p></div>
           </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Left: User Search & Selection */}
               <div className="flex flex-col border-r-0 lg:border-r border-gray-100 lg:pr-8">
-                  <div className="relative mb-4">
-                      <input 
-                          type="text" 
-                          placeholder="Search customer by name or phone..." 
-                          value={search} 
-                          onChange={(e) => setSearch(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-sm font-semibold"
-                      />
-                      <Search className="w-4 h-4 text-gray-400 absolute left-4 top-3.5" />
-                  </div>
-                  
+                  <div className="relative mb-4"><input type="text" placeholder="Search customer by name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-sm font-semibold" /><Search className="w-4 h-4 text-gray-400 absolute left-4 top-3.5" /></div>
                   <div className="flex-1 overflow-y-auto max-h-[400px] border border-gray-100 rounded-lg bg-gray-50/50 p-2 space-y-2 scrollbar-hide">
-                      {loading ? (
-                          <div className="text-center p-4 text-xs font-bold text-gray-400">Loading...</div>
-                      ) : filteredUsers.length === 0 ? (
-                          <div className="text-center p-4 text-xs font-bold text-gray-400">No users found.</div>
-                      ) : (
+                      {loading ? (<div className="text-center p-4 text-xs font-bold text-gray-400">Loading...</div>) : filteredUsers.length === 0 ? (<div className="text-center p-4 text-xs font-bold text-gray-400">No users found.</div>) : (
                           filteredUsers.map(u => (
-                              <div 
-                                  key={u.docId} 
-                                  onClick={() => setSelectedUser(u)}
-                                  className={`p-3 rounded-lg border cursor-pointer transition-all flex justify-between items-center ${selectedUser?.docId === u.docId ? 'bg-yellow-50 border-yellow-300 shadow-sm' : 'bg-white border-gray-200 hover:border-[#D4AF37]/50'}`}
-                              >
-                                  <div>
-                                      <div className="font-bold text-sm text-[#123524]">{u.name || 'Unknown Name'}</div>
-                                      <div className="text-xs font-mono text-gray-500 mt-0.5">{u.phone}</div>
-                                  </div>
-                                  <div className="text-right">
-                                      <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Current Pts</div>
-                                      <div className="font-black text-lg text-yellow-600">{u.points || 0}</div>
-                                  </div>
+                              <div key={u.docId} onClick={() => setSelectedUser(u)} className={`p-3 rounded-lg border cursor-pointer transition-all flex justify-between items-center ${selectedUser?.docId === u.docId ? 'bg-yellow-50 border-yellow-300 shadow-sm' : 'bg-white border-gray-200 hover:border-[#D4AF37]/50'}`}>
+                                  <div><div className="font-bold text-sm text-[#123524]">{u.name || 'Unknown Name'}</div><div className="text-xs font-mono text-gray-500 mt-0.5">{u.phone}</div></div>
+                                  <div className="text-right"><div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Current Pts</div><div className="font-black text-lg text-yellow-600">{u.points || 0}</div></div>
                               </div>
                           ))
                       )}
                   </div>
               </div>
-
-              {/* Right: Amount Input & Point Calc */}
               <div className="flex flex-col">
                   {selectedUser ? (
                       <form onSubmit={handleAddPoints} className="animate-fade-in flex flex-col h-full">
-                          <div className="bg-[#123524] rounded-xl p-5 mb-6 text-white shadow-md relative overflow-hidden">
-                              <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div>
-                              <h4 className="text-xs text-[#D4AF37] font-bold uppercase tracking-widest mb-1">Selected Customer</h4>
-                              <div className="font-bold text-lg">{selectedUser.name || 'Unknown'}</div>
-                              <div className="text-sm text-gray-300 font-mono mb-4">{selectedUser.phone}</div>
-                              <div className="flex items-center space-x-2 bg-black/20 p-2 rounded-lg w-fit border border-white/10">
-                                  <Award className="w-4 h-4 text-[#D4AF37]"/>
-                                  <span className="text-sm font-semibold">Current Balance: <span className="font-bold text-[#D4AF37]">{selectedUser.points || 0} Pts</span></span>
-                              </div>
-                          </div>
-
-                          <div className="mb-6">
-                              <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Enter Invoice Amount (MMK)</label>
-                              <div className="relative">
-                                  <input 
-                                      type="number" 
-                                      required
-                                      value={amount} 
-                                      onChange={(e) => setAmount(Number(e.target.value) || '')}
-                                      placeholder="e.g. 70000"
-                                      className="w-full pl-6 pr-16 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xl font-black text-[#123524]"
-                                  />
-                                  <span className="absolute right-6 top-4 font-bold text-gray-400">Ks</span>
-                              </div>
-                          </div>
-
-                          <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center mb-6">
-                              <p className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Points to be Added</p>
-                              <div className="text-4xl font-black text-green-600 mb-2">+{earnedPoints}</div>
-                              <p className="text-[10px] text-green-600/80 font-semibold">(စနစ်မှ သတ်မှတ်ထားသော ၃၅,၀၀၀ ကျပ် = ၁ ပွိုင့် နှုန်းဖြင့် တွက်ချက်ထားပါသည်)</p>
-                          </div>
-
-                          <div className="mt-auto pt-4">
-                              <button 
-                                  type="submit" 
-                                  disabled={processing || earnedPoints <= 0}
-                                  className="w-full py-4 bg-[#D4AF37] text-white rounded-xl font-bold text-base shadow-md hover:bg-yellow-600 transition disabled:opacity-50 flex justify-center items-center"
-                              >
-                                  {processing ? 'Processing...' : 'CONFIRM & ADD POINTS'}
-                              </button>
-                          </div>
+                          <div className="bg-[#123524] rounded-xl p-5 mb-6 text-white shadow-md relative overflow-hidden"><div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div><h4 className="text-xs text-[#D4AF37] font-bold uppercase tracking-widest mb-1">Selected Customer</h4><div className="font-bold text-lg">{selectedUser.name || 'Unknown'}</div><div className="text-sm text-gray-300 font-mono mb-4">{selectedUser.phone}</div><div className="flex items-center space-x-2 bg-black/20 p-2 rounded-lg w-fit border border-white/10"><Award className="w-4 h-4 text-[#D4AF37]"/><span className="text-sm font-semibold">Current Balance: <span className="font-bold text-[#D4AF37]">{selectedUser.points || 0} Pts</span></span></div></div>
+                          <div className="mb-6"><label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Enter Invoice Amount (MMK)</label><div className="relative"><input type="number" required value={amount} onChange={(e) => setAmount(Number(e.target.value) || '')} placeholder="e.g. 70000" className="w-full pl-6 pr-16 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xl font-black text-[#123524]" /><span className="absolute right-6 top-4 font-bold text-gray-400">Ks</span></div></div>
+                          <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center mb-6"><p className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Points to be Added</p><div className="text-4xl font-black text-green-600 mb-2">+{earnedPoints}</div><p className="text-[10px] text-green-600/80 font-semibold">(စနစ်မှ သတ်မှတ်ထားသော ၃၅,၀၀၀ ကျပ် = ၁ ပွိုင့် နှုန်းဖြင့် တွက်ချက်ထားပါသည်)</p></div>
+                          <div className="mt-auto pt-4"><button type="submit" disabled={processing || earnedPoints <= 0} className="w-full py-4 bg-[#D4AF37] text-white rounded-xl font-bold text-base shadow-md hover:bg-yellow-600 transition disabled:opacity-50 flex justify-center items-center">{processing ? 'Processing...' : 'CONFIRM & ADD POINTS'}</button></div>
                       </form>
                   ) : (
-                      <div className="flex-1 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-10 text-gray-400 bg-gray-50/50">
-                          <UserCircle className="w-16 h-16 mb-4 opacity-30" />
-                          <p className="text-sm font-bold">Please select a customer from the list first</p>
-                      </div>
+                      <div className="flex-1 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-10 text-gray-400 bg-gray-50/50"><UserCircle className="w-16 h-16 mb-4 opacity-30" /><p className="text-sm font-bold">Please select a customer from the list first</p></div>
                   )}
               </div>
           </div>
@@ -576,18 +490,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                              })}
                          </div>
                      )}
-                 </div>
-                 <div>
-                     <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><User className="w-4 h-4 mr-2 text-blue-500" /> Today's Out Pass Quota</h3>
-                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                         {therapists.map(t => {
-                             const used = outpasses.filter(o => o.therapist === t.name && o.date === todayStr).length;
-                             const remaining = Math.max(0, 4 - used);
-                             return (
-                                 <div key={t.id} className={`p-3 rounded-xl border flex items-center justify-between ${used >= 4 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-200'} shadow-sm`}><div className="font-bold text-sm text-[#123524] truncate mr-2" title={t.name}>{t.name}</div><div className="text-right flex-shrink-0 leading-tight"><div className="text-[10px] font-bold text-gray-500">Used: <span className={used >= 4 ? 'text-red-600' : 'text-blue-600'}>{used}</span></div><div className="text-[10px] font-bold text-gray-500">Left: <span className={remaining === 0 ? 'text-red-600' : 'text-green-600'}>{remaining}</span></div></div></div>
-                             );
-                         })}
-                     </div>
                  </div>
               </div>
            )}
@@ -706,7 +608,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
 function AdminManagementList() {
   const [admins, setAdmins] = useState<LocalAdminProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newAdmin, setNewAdmin] = useState<{username: string, password: string, role: 'super_admin'|'custom', permissions: string[]}>({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'points', 'settings'] });
+  const [newAdmin, setNewAdmin] = useState<{username: string, password: string, role: 'super_admin'|'custom', permissions: string[]}>({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'settings'] });
 
   const fetchAdmins = async () => {
     try {
