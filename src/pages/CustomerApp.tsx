@@ -206,30 +206,6 @@ export function StatusBadge({ status, cancelReason }: { status: string, cancelRe
   return <span className="text-yellow-600 border border-yellow-200 bg-yellow-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Pending</span>;
 }
 
-export function BookingCard({ b }: { b: Booking }) {
-   const statusColor = { pending: 'bg-yellow-100 text-yellow-700 border-yellow-200', payment_checking: 'bg-blue-100 text-blue-700 border-blue-200', approved: 'bg-green-100 text-green-700 border-green-200', in_progress: 'bg-orange-100 text-orange-700 border-orange-200', completed: 'bg-gray-100 text-gray-600 border-gray-200', cancelled: 'bg-red-100 text-red-700 border-red-200' }[b.status];
-   return (
-     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:border-[#D4AF37]/50 transition-all duration-300 relative overflow-hidden group">
-       <div className={`absolute top-0 left-0 w-1.5 h-full ${b.status === 'in_progress' ? 'bg-orange-500 animate-pulse' : b.status === 'approved' ? 'bg-green-500' : 'bg-gray-200'}`}></div>
-       <div className="flex justify-between items-start mb-3">
-         <div>
-           <div className="font-bold text-gray-800 text-base">{(b.service || '').split('(')[0]}</div>
-           <div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1 text-[#D4AF37]"/> {b.therapist}</div>
-         </div>
-         <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border uppercase tracking-wider ${statusColor}`}>{b.status.replace('_', ' ')}</span>
-       </div>
-       <div className="grid grid-cols-2 gap-3 mb-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
-         <div><div className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Date</div><div className="font-semibold text-sm text-gray-700 flex items-center"><Calendar className="w-3 h-3 mr-1 text-[#123524]"/>{b.date}</div></div>
-         <div><div className="text-[10px] text-gray-400 font-bold uppercase mb-0.5">Time</div><div className="font-semibold text-sm text-[#123524] flex items-center"><Clock className="w-3 h-3 mr-1 text-[#D4AF37]"/>{b.time}</div></div>
-       </div>
-       <div className="flex justify-between items-end pt-3 border-t border-gray-100">
-         <div className="text-[10px] text-gray-400 font-mono">ID: {b.id?.slice(-6).toUpperCase()}</div>
-         <div className="font-bold text-[#123524] text-lg">{formatPrice(b.totalPrice)}</div>
-       </div>
-     </div>
-   );
-}
-
 // ==========================================
 // CUSTOM ALERT MODAL
 // ==========================================
@@ -506,7 +482,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
 
 
 // ==========================================
-// CUSTOMER BOOKING WIZARD (FULL LOGIC + VIP DISCOUNT CALCULATION)
+// CUSTOMER BOOKING WIZARD
 // ==========================================
 export function CustomerBookingWizard({
   appData, 
@@ -854,7 +830,7 @@ export function CustomerBookingWizard({
               }
               if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
           }
-          if (nextAvailable) setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} မှ ပြန်ရပါမည်။`);
+          if (nextAvailable) setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
           else setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
           return;
       }
@@ -1128,7 +1104,6 @@ export function CustomerBookingWizard({
           combinedTherapistName = `${formData.therapist.name} & (Any Available)`;
       }
 
-      // 🌟 RESTORED VIP & DISCOUNT DATA SAVING 🌟
       const dataToSave: any = {
         name: encryptText(formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest')), 
         phone: encryptText(formData.phone || '-'),
@@ -1142,13 +1117,10 @@ export function CustomerBookingWizard({
         status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
         createdAt: Date.now(),
         specialRequest: encryptText(formData.specialRequest || ''),
-        
-        // 🌟 အမှားပြင်ဆင်ချက်: လိုအပ်နေသော VIP/Discount Data များကို မှန်ကန်စွာ Encrypt လုပ်၍ သိမ်းဆည်းပါသည် 🌟
         originalPrice: encryptText(calculateSubTotal().toString()),
         discountPercent: encryptText(finalDiscountPercent.toString()),
         discountLabel: encryptText(discountLabel || ''),
         vipTierName: encryptText(userTier ? userTier.name : ''),
-        
         ...(isStaffImmediate && { startTimeMillis: Number(fluidStartTimeMillis) || Date.now(), expectedEndTimeMillis: Number(expectedEndTimeMillis) || Date.now() })
       };
 
@@ -1635,7 +1607,6 @@ export function CustomerBookingWizard({
                     <span className="font-semibold">Subtotal</span>
                     <span className="font-bold">{formatPrice(calculateSubTotal())}</span>
                 </div>
-                {/* VIP / Promo Discount Display */}
                 {finalDiscountPercent > 0 && (
                     <div className="flex justify-between items-center text-sm text-green-600 mb-2 bg-green-50 px-2 py-1.5 rounded border border-green-200 shadow-sm animate-fade-in">
                         <span className="font-bold flex items-center"><Percent className="w-3 h-3 mr-1"/> {discountLabel}</span>
@@ -2111,7 +2082,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 }
 
 // ==========================================
-// COMPONENT: CustomerHistory (RESTORED VIP FIELDS)
+// COMPONENT: CustomerHistory
 // ==========================================
 export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -2136,7 +2107,6 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                   phone: decPhone,
                   txId: decryptText(raw.txId),
                   specialRequest: decryptText(raw.specialRequest),
-                  // 🌟 RESTORED VIP DECRYPTION HERE 🌟
                   originalPrice: raw.originalPrice ? Number(decryptText(raw.originalPrice)) : undefined,
                   discountPercent: raw.discountPercent ? Number(decryptText(raw.discountPercent)) : undefined,
                   discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
@@ -2177,7 +2147,6 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                      <div className="flex flex-col items-end">
                         <StatusBadge status={b.status} cancelReason={b.cancelReason} />
                         
-                        {/* 🌟 Original Price & Discount Display in History 🌟 */}
                         {b.originalPrice && b.originalPrice > b.totalPrice ? (
                             <div className="mt-2 text-right">
                                <div className="flex items-center justify-end space-x-1 mb-0.5">
@@ -2202,7 +2171,6 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                            <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">PAYMENT</span><span className="text-sm font-bold text-gray-800">{b.paymentMethod}</span></div>
                         </div>
                         
-                        {/* 🌟 Applied Discount Label in Details 🌟 */}
                         {b.discountLabel && (
                             <div className="bg-green-50 p-3 rounded-lg border border-green-100 mb-4 flex items-center">
                                 <Award className="w-4 h-4 text-green-600 mr-2"/>
@@ -2226,9 +2194,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
   );
 }
 
-// ==========================================
-// COMPONENT: CustomerProfile
-// ==========================================
+// 🌟 UPDATED: CustomerProfile (With VIP Progress Bar & Point History Modal) 🌟
 export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userDocId, setUserDocId] = useState<string | null>(null);
@@ -2238,12 +2204,36 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   const [saving, setSaving] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
 
+  // History Modal States
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
 
-  const getTier = (points: number) => {
-     if(!vipSettings.isActive || !vipSettings.tiers) return null;
-     const sortedTiers = [...vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
-     return sortedTiers.find(t => points >= t.requiredPoints);
+  const fetchHistory = async () => {
+      setLoadingHistory(true);
+      try {
+          const snap = await getDocs(collection(db, 'point_history'));
+          const data: any[] = [];
+          snap.forEach(doc => {
+              const raw = doc.data();
+              const decPhone = decryptText(raw.phone) || raw.phone;
+              if (decPhone === userPhone) {
+                  data.push({
+                      id: doc.id,
+                      amount: Number(decryptText(raw.amount) || raw.amount),
+                      pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned),
+                      type: decryptText(raw.type) || raw.type,
+                      date: raw.date,
+                      createdAt: raw.createdAt
+                  });
+              }
+          });
+          data.sort((a, b) => b.createdAt - a.createdAt);
+          setHistory(data);
+      } catch (e) { console.error(e); }
+      setLoadingHistory(false);
   };
 
   useEffect(() => {
@@ -2324,13 +2314,68 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   if (!userPhone) return <AuthRequest onLoginSuccess={onLoginSuccess} title="View Profile" />;
   if (loading) return <div className="text-center py-10 font-bold text-gray-500">Loading Profile...</div>;
 
-  const userTier = profile ? getTier(Number(profile.points) || 0) : null;
+  // VIP Logic Calculations
+  const sortedTiers = [...(vipSettings.tiers || FALLBACK_VIP_SETTINGS.tiers)].sort((a,b) => a.requiredPoints - b.requiredPoints);
+  const currentPoints = profile?.points || 0;
+  
+  let userTier = null;
+  let nextTier = null;
+  
+  for (let i = 0; i < sortedTiers.length; i++) {
+      if (currentPoints >= sortedTiers[i].requiredPoints) {
+          userTier = sortedTiers[i];
+      }
+      if (currentPoints < sortedTiers[i].requiredPoints && !nextTier) {
+          nextTier = sortedTiers[i];
+      }
+  }
+
+  const progressPercent = nextTier ? Math.min(100, (currentPoints / nextTier.requiredPoints) * 100) : 100;
+  const pointsNeeded = nextTier ? nextTier.requiredPoints - currentPoints : 0;
 
   return (
     <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0">
       <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
       
-      <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>My Profile</h2></div>
+      {/* 🌟 Point History Modal 🌟 */}
+      {showHistory && (
+          <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center sm:items-center sm:p-4 animate-fade-in" onClick={() => setShowHistory(false)}>
+              <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[85vh] sm:h-auto sm:max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
+                  <div className="bg-[#123524] p-5 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+                      <h3 className="text-[#D4AF37] font-bold text-base flex items-center"><History className="w-5 h-5 mr-2" /> Points History</h3>
+                      <button onClick={() => setShowHistory(false)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-5 h-5"/></button>
+                  </div>
+                  <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-3 pb-8">
+                      {loadingHistory ? (
+                          <div className="text-center py-10 text-gray-500 font-bold text-sm animate-pulse">Loading History...</div>
+                      ) : history.length === 0 ? (
+                          <div className="text-center py-10 text-gray-400 font-bold text-sm">Point ရရှိထားသော မှတ်တမ်းမရှိသေးပါ။</div>
+                      ) : (
+                          history.map((h, i) => (
+                              <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between hover:border-[#D4AF37]/50 transition">
+                                  <div className="flex items-center">
+                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${h.type.includes('Online') ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500'}`}>
+                                          {h.type.includes('Online') ? <CalendarPlus className="w-5 h-5"/> : <Home className="w-5 h-5"/>}
+                                      </div>
+                                      <div>
+                                          <div className="font-bold text-[#123524] text-sm">{h.type}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                                          <div className="text-[10px] font-semibold text-gray-600 mt-1">Amount: {formatPrice(h.amount)}</div>
+                                      </div>
+                                  </div>
+                                  <div className="text-right">
+                                      <div className="text-lg font-black text-green-600">+{h.pointsEarned}</div>
+                                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Points</div>
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      <div className="text-center mb-6"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>My Profile</h2></div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center mb-6">
         
@@ -2350,14 +2395,44 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
             )}
             
             <div className="grid grid-cols-2 gap-3 mb-6">
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex flex-col items-center justify-center shadow-sm">
-                    <span className="text-[10px] text-yellow-600 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1"/> VIP Points</span>
-                    <span className="text-2xl font-black text-[#123524]">{profile?.points || 0}</span>
+                {/* 🌟 Updated Points Box with View History Button 🌟 */}
+                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 flex flex-col items-center justify-center shadow-sm relative overflow-hidden group">
+                    <Star className="w-16 h-16 absolute -top-4 -right-4 text-yellow-500 opacity-10 group-hover:scale-110 transition-transform" />
+                    <span className="text-[10px] text-yellow-700 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1"/> My VIP Points</span>
+                    <span className="text-3xl font-black text-[#123524] mb-3">{currentPoints}</span>
+                    <button onClick={() => { setShowHistory(true); fetchHistory(); }} className="px-4 py-1.5 bg-yellow-200 text-yellow-800 rounded-full text-[10px] font-bold shadow-sm hover:bg-yellow-300 transition flex items-center">
+                        <History className="w-3 h-3 mr-1"/> View History
+                    </button>
                 </div>
+
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex flex-col items-center justify-center shadow-sm">
                     <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest flex items-center mb-1"><Gift className="w-3 h-3 mr-1"/> Birthday</span>
                     <span className="text-sm font-bold text-blue-900 mt-1">{(profile as any)?.dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
                 </div>
+            </div>
+
+            {/* 🌟 New VIP Progress Chart 🌟 */}
+            <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 shadow-sm relative overflow-hidden text-left">
+                <h4 className="text-xs font-bold text-gray-800 mb-3 flex items-center"><Target className="w-4 h-4 mr-1.5 text-[#D4AF37]"/> VIP Progress</h4>
+                {nextTier ? (
+                    <>
+                        <div className="flex justify-between items-end mb-1.5">
+                            <span className="text-[10px] font-bold text-gray-500">Current: {currentPoints} Pts</span>
+                            <span className="text-[10px] font-bold text-[#D4AF37] text-right max-w-[120px] truncate" title={nextTier.name}>{nextTier.name} ({nextTier.requiredPoints} Pts)</span>
+                        </div>
+                        <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-[#D4AF37] transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%` }}></div>
+                        </div>
+                        <p className="text-[10px] text-gray-500 font-semibold mt-2.5 text-center leading-relaxed">
+                            <span className="font-bold text-[#123524]">{nextTier.name}</span> ဖြစ်ရန် လိုအပ်သော ပွိုင့်: <span className="font-bold text-red-500">{pointsNeeded} Pts</span>
+                        </p>
+                    </>
+                ) : (
+                    <div className="text-center p-2">
+                        <Crown className="w-8 h-8 text-[#D4AF37] mx-auto mb-2" />
+                        <p className="text-xs font-bold text-[#123524] leading-relaxed">ဂုဏ်ယူပါသည်။ သင်သည် အမြင့်ဆုံး VIP အဆင့်သို့ ရောက်ရှိနေပါပြီ။</p>
+                    </div>
+                )}
             </div>
 
             <div className={`text-[10px] rounded-full px-3 py-1.5 inline-block font-bold mb-6 w-full ${profile?.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
