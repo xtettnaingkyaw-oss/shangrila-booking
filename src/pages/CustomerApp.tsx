@@ -12,7 +12,7 @@ const FALLBACK_VIP_SETTINGS = {
     "ပွိုင့်သက်တမ်းနှင့် Renew ပြုလုပ်ခြင်း: Customer များ စုဆောင်းထားသော ပွိုင့်များ၏ သက်တမ်းမှာ (၆) လ ဖြစ်ပါသည်။ ၆ လ တစ်ကြိမ် ပွိုင့်များကို Renew ပြုလုပ်မည် (အသစ်ပြန်လည် စတင်မည်) ဖြစ်ပါသည်။",
     "(၆) လ ကာလအတွင်း VIP အဆင့် တစ်ခုခုသို့ ရောက်ရှိရန် လိုအပ်သော ပွိုင့်အရေအတွက် မပြည့်မီပါက (၆) လ ပြည့်သည့်နေ့တွင် ပွိုင့်များ သုညမှ ပြန်လည်စတင်မည် ဖြစ်ပါသည်။",
     "VIP Member အဆင့်သို့ ရောက်ရှိသွားပါက အမြဲတမ်း Discount ခံစားခွင့်မှာမူ ပွိုင့် Renew လုပ်သည်နှင့် သက်ဆိုင်ခြင်းမရှိဘဲ ဆက်လက် တည်ရှိနေမည် ဖြစ်ပါသည်။",
-    "ကတ်ပျောက်ဆုံးခြင်း: ကတ်ပျောက်ဆုံး၊ ပျက်စီးပါက ဝန်ဆောင်ခ ၁၅,၀⁠၀၀ ကျပ်ဖြင့် အသစ်ပြန်လည် ထုတ်ပေးပါမည်။ ယခင်စုဆောင်းထားသော ပွိုင့်များ အပြည့်အဝ ပြန်လည်ရရှိမည် ဖြစ်ပါသည်။",
+    "ကတ်ပျောက်ဆုံးခြင်း: ကတ်ပျောက်ဆုံး၊ ပျက်စီးပါက ဝန်ဆောင်ခ ၁၅,၀၀၀ ကျပ်ဖြင့် အသစ်ပြန်လည် ထုတ်ပေးပါမည်။ ယခင်စုဆောင်းထားသော ပွိုင့်များ အပြည့်အဝ ပြန်လည်ရရှိမည် ဖြစ်ပါသည်။",
     "လွှဲပြောင်းအသုံးပြုခွင့်: VIP Member Card အား မိတ်ဆွေသူငယ်ချင်းများနှင့် မျှဝေသုံးစွဲခွင့်ရှိပြီး၊ လိုအပ်ပါက ဝန်ထမ်းများမှ ဖုန်းနံပါတ် တိုက်ဆိုင်စစ်ဆေးခြင်း ပြုလုပ်နိုင်ပါသည်။",
     "The Shangri-La Men's Retreat မှ ဤ Membership Program ၏ စည်းကမ်းချက်များကို ကြိုတင်အကြောင်းကြားခြင်းမရှိဘဲ ပြင်ဆင်ပြောင်းလဲခွင့် ရှိပါသည်။"
   ],
@@ -539,6 +539,7 @@ export function CustomerBookingWizard({
   
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [pointHistory, setPointHistory] = useState<any[]>([]);
 
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const todayStr = getLocalTodayStr();
@@ -585,7 +586,23 @@ export function CustomerBookingWizard({
               }
           } catch(e) { console.error(e); }
       };
+      
+      const fetchPH = async () => {
+          try {
+              const snap = await getDocs(collection(db, 'point_history'));
+              const arr: any[] = [];
+              snap.forEach(d => {
+                  const raw = d.data();
+                  if ((decryptText(raw.phone) || raw.phone) === userPhone) {
+                      arr.push({ date: raw.date, pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned || 0) });
+                  }
+              });
+              setPointHistory(arr);
+          } catch (e) {}
+      };
+
       fetchUser();
+      fetchPH();
   }, [userPhone]);
 
   useEffect(() => {
@@ -642,6 +659,8 @@ export function CustomerBookingWizard({
       discountLabel = `Promo Discount (${finalDiscountPercent}%)`;
   } else if (vipSettings.isActive && userProfile) {
       const pts = userProfile.points || 0;
+      const tierPercent = userTier ? userTier.discountPercent : 0;
+      const tierLabel = userTier ? `VIP Member Discount (${tierPercent}%)` : '';
       
       let oneTimePercent = 0;
       let oneTimeLabel = '';
@@ -654,7 +673,9 @@ export function CustomerBookingWizard({
                   b.discountLabel === rewardLabel && 
                   b.status !== 'cancelled'
               );
-              if (!hasUsed) {
+              const isExpired = userTier && userTier.discountPercent >= tier;
+
+              if (!hasUsed && !isExpired) {
                   oneTimePercent = tier;
                   oneTimeLabel = rewardLabel;
                   break; 
@@ -665,17 +686,16 @@ export function CustomerBookingWizard({
       let bdayPercent = 0;
       let bdayLabel = '';
       if (userTier && isBirthday()) {
-          if (userTier.discountPercent === 20 || userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) {
-              bdayPercent = Math.min(100, 20 + pts);
+          if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) {
+              const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
+              const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
+              bdayPercent = Math.min(100, 20 + monthlyPts);
               bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`;
           } else {
               bdayPercent = 50;
               bdayLabel = `VIP Birthday Bonus (50%)`;
           }
       }
-
-      const tierPercent = userTier ? userTier.discountPercent : 0;
-      const tierLabel = userTier ? `VIP Member Discount (${tierPercent}%)` : '';
 
       if (bdayPercent >= oneTimePercent && bdayPercent >= tierPercent && bdayPercent > 0) {
           finalDiscountPercent = bdayPercent;
@@ -1922,7 +1942,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                }
           } else {
                if (coveredSlots.some(slot => {
-                   const [timePart, ampm] = slot.split(' ');
+                   const [timePart, ampm] = split(' ');
                    let [h, m] = timePart.split(':').map(Number);
                    if (ampm === 'PM' && h < 12) h += 12;
                    if (ampm === 'AM' && h === 12) h = 0;
@@ -2116,7 +2136,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 }
 
 // ==========================================
-// COMPONENT: CustomerHistory
+// CUSTOMER HISTORY
 // ==========================================
 export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -2337,7 +2357,33 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
           setLoading(false);
       }
     };
+    
+    // Automatically load history in background for Monthly Points calc
+    const loadBackgroundHistory = async () => {
+        try {
+            const snap = await getDocs(collection(db, 'point_history'));
+            const data: any[] = [];
+            snap.forEach(doc => {
+                const raw = doc.data();
+                const decPhone = decryptText(raw.phone) || raw.phone;
+                if (decPhone === userPhone) {
+                    data.push({
+                        id: doc.id,
+                        amount: Number(decryptText(raw.amount) || raw.amount),
+                        pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned),
+                        type: decryptText(raw.type) || raw.type,
+                        date: raw.date,
+                        createdAt: raw.createdAt
+                    });
+                }
+            });
+            data.sort((a, b) => b.createdAt - a.createdAt);
+            setHistory(data);
+        } catch (e) {}
+    };
+
     fetchUser();
+    loadBackgroundHistory();
   }, [userPhone]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -2389,6 +2435,16 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
 
   const progressPercent = nextTier ? Math.min(100, (currentPoints / nextTier.requiredPoints) * 100) : 100;
   const pointsNeeded = nextTier ? nextTier.requiredPoints - currentPoints : 0;
+
+  const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
+  const monthlyPoints = history.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((sum, h) => sum + h.pointsEarned, 0);
+  
+  const isBdayMonth = () => {
+      if (!profile?.dob) return false;
+      const dobParts = profile.dob.split('-');
+      const currentParts = getLocalTodayStr().split('-');
+      return dobParts[1] === currentParts[1];
+  };
 
   return (
     <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0">
@@ -2467,7 +2523,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                 </div>
             </div>
 
-            {/* 🌟 Pre-Jade Target Progress & Rewards Status 🌟 */}
             <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 shadow-sm relative overflow-hidden text-left">
                 <h4 className="text-xs font-bold text-gray-800 mb-3 flex items-center"><Target className="w-4 h-4 mr-1.5 text-[#D4AF37]"/> VIP Progress</h4>
                 {nextTier ? (
@@ -2484,86 +2539,119 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                         </p>
                     </>
                 ) : (
-                    <div className="text-center p-2">
+                    <div className="text-center p-2 border-b border-gray-100 mb-4 pb-4">
                         <Crown className="w-8 h-8 text-[#D4AF37] mx-auto mb-2" />
                         <p className="text-xs font-bold text-[#123524] leading-relaxed">ဂုဏ်ယူပါသည်။ သင်သည် အမြင့်ဆုံး VIP အဆင့်သို့ ရောက်ရှိနေပါပြီ။</p>
                     </div>
                 )}
 
-                {currentPoints > 0 && (
-                     <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in">
-                         {/* Only show progress to NEXT target if under 50 */}
-                         {currentPoints < 50 && (() => {
-                             const nextTarget = Math.floor(currentPoints / 10) * 10 + 10; 
-                             const actualTarget = nextTarget > 50 ? 50 : nextTarget;
-                             const ptsNeededForTarget = actualTarget - currentPoints;
-                             
-                             const basePoint = actualTarget - 10;
-                             const targetProgressPercent = ((currentPoints - basePoint) / 10) * 100;
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-100 flex justify-between items-center">
+                    <span className="text-[11px] font-bold text-gray-600 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5 text-gray-400"/> ယခုလအတွင်း စုဆောင်းထားသောပွိုင့်</span>
+                    <span className="text-sm font-black text-[#123524]">{monthlyPoints} Pts</span>
+                </div>
 
-                             return (
-                                 <div className="mb-4">
-                                     <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
-                                         <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
-                                     </h5>
-                                     <div className="flex justify-between items-end mb-1.5">
-                                         <span className="text-[9px] font-bold text-gray-500">Target Bonus: {actualTarget}% Off</span>
-                                         <span className="text-[9px] font-bold text-green-600">{actualTarget} Pts</span>
-                                     </div>
-                                     <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
-                                         <div className="h-full rounded-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div>
-                                     </div>
-                                     <p className="text-[9px] text-gray-500 font-semibold text-center">
-                                         <span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span>
-                                     </p>
-                                 </div>
-                             );
-                         })()}
-
-                         {/* Show Available & Used Rewards */}
-                         {(() => {
-                             const possibleTiers = [10, 20, 30, 40, 50];
-                             const availableRewards: number[] = [];
-                             const usedRewards: number[] = [];
-                             
-                             possibleTiers.forEach(tier => {
-                                 if (currentPoints >= tier) {
-                                     const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
-                                     const isUsed = userBookings.some(b => b.discountLabel === rewardLabel && b.status !== 'cancelled');
-                                     if (isUsed) {
-                                         usedRewards.push(tier);
-                                     } else {
-                                         availableRewards.push(tier);
-                                     }
-                                 }
-                             });
-
-                             if (availableRewards.length === 0 && usedRewards.length === 0) return null;
-
-                             return (
-                                 <div className={`space-y-2 ${currentPoints < 50 ? 'pt-2 border-t border-gray-100' : ''}`}>
-                                     {currentPoints >= 50 && (
-                                         <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
-                                             <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
-                                         </h5>
-                                     )}
-                                     {availableRewards.map(tier => (
-                                         <div key={`avail-${tier}`} className="bg-green-50 text-green-700 p-2.5 rounded-lg text-[10px] font-bold border border-green-200 flex items-center justify-between shadow-sm">
-                                             <span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1.5 text-green-600"/> {tier}% Discount ခံစားခွင့်</span>
-                                             <span className="bg-green-100 px-2 py-1 rounded text-green-800">၁ ကြိမ် ရရှိထားပါသည်</span>
-                                         </div>
-                                     ))}
-                                     {usedRewards.map(tier => (
-                                         <div key={`used-${tier}`} className="bg-gray-50 text-gray-500 p-2.5 rounded-lg text-[10px] font-bold border border-gray-200 flex items-center justify-between opacity-70">
-                                             <span className="flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> {tier}% Discount ခံစားခွင့်</span>
-                                             <span className="bg-gray-200 px-2 py-1 rounded text-gray-600">အသုံးပြုပြီးပါပြီ</span>
-                                         </div>
-                                     ))}
-                                 </div>
-                             );
-                         })()}
-                     </div>
+                {isBdayMonth() && userTier && (
+                    <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                        <h5 className="text-[11px] font-bold text-blue-800 mb-2 flex items-center">
+                            <Gift className="w-4 h-4 mr-1.5"/> Birthday Month Bonus
+                        </h5>
+                        <p className="text-[10px] text-blue-700 font-semibold mb-3 leading-relaxed">
+                            ယခုလသည် သင့်မွေးနေ့လဖြစ်သောကြောင့် အထူးခံစားခွင့် ရရှိနေပါသည်။
+                        </p>
+                        {(userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) ? (
+                            <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
+                                <span className="text-[10px] text-gray-600 font-bold">Base (20%) + Monthly ({monthlyPoints}%)</span>
+                                <span className="text-sm font-black text-blue-600">{Math.min(100, 20 + monthlyPoints)}% OFF</span>
+                            </div>
+                        ) : (
+                            <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
+                                <span className="text-[10px] text-gray-600 font-bold">VIP Standard Birthday</span>
+                                <span className="text-sm font-black text-blue-600">50% OFF</span>
+                            </div>
+                        )}
+                    </div>
                 )}
+
+                {currentPoints < 50 && (() => {
+                    const nextTarget = Math.floor(currentPoints / 10) * 10 + 10; 
+                    const actualTarget = nextTarget > 50 ? 50 : nextTarget;
+                    const ptsNeededForTarget = actualTarget - currentPoints;
+                    
+                    const basePoint = actualTarget - 10;
+                    const targetProgressPercent = ((currentPoints - basePoint) / 10) * 100;
+
+                    return (
+                        <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in">
+                            <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
+                                <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
+                            </h5>
+                            <div className="flex justify-between items-end mb-1.5">
+                                <span className="text-[9px] font-bold text-gray-500">Target Bonus: {actualTarget}% Off</span>
+                                <span className="text-[9px] font-bold text-green-600">{actualTarget} Pts</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
+                                <div className="h-full rounded-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div>
+                            </div>
+                            <p className="text-[9px] text-gray-500 font-semibold text-center">
+                                <span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span>
+                            </p>
+                        </div>
+                    );
+                })()}
+
+                {(() => {
+                    const possibleTiers = [10, 20, 30, 40, 50];
+                    const availableRewards: number[] = [];
+                    const usedRewards: number[] = [];
+                    const expiredRewards: number[] = [];
+                    
+                    possibleTiers.forEach(tier => {
+                        if (currentPoints >= tier) {
+                            const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
+                            const isUsed = userBookings.some(b => b.discountLabel === rewardLabel && b.status !== 'cancelled');
+                            const isExpired = userTier && userTier.discountPercent >= tier;
+                            
+                            if (isUsed) {
+                                usedRewards.push(tier);
+                            } else if (isExpired) {
+                                expiredRewards.push(tier);
+                            } else {
+                                availableRewards.push(tier);
+                            }
+                        }
+                    });
+
+                    if (availableRewards.length === 0 && usedRewards.length === 0 && expiredRewards.length === 0) return null;
+
+                    return (
+                        <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+                            <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
+                                <Award className="w-3 h-3 mr-1 text-[#D4AF37]"/> Target Rewards Status
+                            </h5>
+                            
+                            {availableRewards.map(tier => (
+                                <div key={`avail-${tier}`} className="bg-green-50 text-green-700 p-2.5 rounded-lg text-[10px] font-bold border border-green-200 flex items-center justify-between shadow-sm">
+                                    <span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1.5 text-green-600"/> {tier}% Discount ခံစားခွင့်</span>
+                                    <span className="bg-green-100 px-2 py-1 rounded text-green-800 shadow-sm">၁ ကြိမ် ရရှိထားပါသည်</span>
+                                </div>
+                            ))}
+                            
+                            {usedRewards.map(tier => (
+                                <div key={`used-${tier}`} className="bg-gray-50 text-gray-500 p-2.5 rounded-lg text-[10px] font-bold border border-gray-200 flex items-center justify-between opacity-75">
+                                    <span className="flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> {tier}% Discount ခံစားခွင့်</span>
+                                    <span className="bg-gray-200 px-2 py-1 rounded text-gray-600">အသုံးပြုပြီးပါပြီ</span>
+                                </div>
+                            ))}
+
+                            {expiredRewards.map(tier => (
+                                <div key={`exp-${tier}`} className="bg-red-50 text-red-500 p-2.5 rounded-lg text-[10px] font-bold border border-red-100 flex items-center justify-between opacity-80">
+                                    <span className="flex items-center"><XCircleIcon className="w-3.5 h-3.5 mr-1.5"/> {tier}% Discount ခံစားခွင့်</span>
+                                    <span className="bg-red-100 px-2 py-1 rounded text-red-700 max-w-[120px] text-center leading-tight">အသုံးပြုခွင့်မရှိတော့ပါ<br/><span className="text-[8px]">(VIP {userTier?.discountPercent}% ရရှိထားသောကြောင့်)</span></span>
+                                </div>
+                            ))}
+                        </div>
+                    );
+                })()}
             </div>
 
             <div className={`text-[10px] rounded-full px-3 py-1.5 inline-block font-bold mb-6 w-full ${profile?.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
