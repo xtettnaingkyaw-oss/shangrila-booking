@@ -776,6 +776,9 @@ function AdminManagementList() {
   const [admins, setAdmins] = useState<LocalAdminProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [newAdmin, setNewAdmin] = useState<{username: string, password: string, role: 'super_admin'|'custom', permissions: string[]}>({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'settings'] });
+  
+  // New state for editing admin
+  const [editingAdmin, setEditingAdmin] = useState<LocalAdminProfile | null>(null);
 
   const fetchAdmins = async () => {
     try {
@@ -797,6 +800,24 @@ function AdminManagementList() {
     } catch (e) { alert('Error adding admin. It may already exist in Auth.'); }
   };
 
+  const handleUpdateAdmin = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editingAdmin || !editingAdmin.docId) return;
+      try {
+          await updateDoc(doc(db, 'admins', editingAdmin.docId), {
+              username: encryptText(editingAdmin.username || ''),
+              password: encryptText(editingAdmin.password || ''),
+              role: editingAdmin.role,
+              permissions: editingAdmin.role === 'super_admin' ? ['bookings', 'reports', 'users', 'points', 'admins', 'settings'] : editingAdmin.permissions
+          });
+          alert('Admin updated successfully.');
+          setEditingAdmin(null);
+          fetchAdmins();
+      } catch (e) {
+          alert('Error updating admin.');
+      }
+  };
+
   const handleDeleteAdmin = async (docId: string, username: string) => {
     if (admins.length <= 1) { alert("အနည်းဆုံး Admin တစ်ယောက် ကျန်ရှိရပါမည်။"); return; }
     if (!window.confirm(`Admin [${username}] ကို ဖျက်မည် သေချာပါသလား?`)) return;
@@ -804,18 +825,65 @@ function AdminManagementList() {
   };
 
   const handleCheckboxChange = (tabId: string) => { setNewAdmin(prev => { const perms = prev.permissions.includes(tabId) ? prev.permissions.filter(p => p !== tabId) : [...prev.permissions, tabId]; return { ...prev, permissions: perms }; }); };
+  const handleEditCheckboxChange = (tabId: string) => { setEditingAdmin(prev => { if(!prev) return prev; const perms = (prev.permissions||[]).includes(tabId) ? (prev.permissions||[]).filter(p => p !== tabId) : [...(prev.permissions||[]), tabId]; return { ...prev, permissions: perms }; }); };
 
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Admins...</div>;
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 relative">
+      
+      {editingAdmin && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+              <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full animate-fade-in">
+                  <h3 className="text-lg font-bold mb-4 text-[#123524] flex items-center"><Edit className="w-5 h-5 mr-2 text-[#D4AF37]"/> Edit Admin</h3>
+                  <form onSubmit={handleUpdateAdmin} className="space-y-4">
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Username</label><input type="text" value={editingAdmin.username} onChange={e=>setEditingAdmin({...editingAdmin, username: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" required /></div>
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editingAdmin.password} onChange={e=>setEditingAdmin({...editingAdmin, password: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" minLength={6} required /></div>
+                      
+                      <div className="w-full mt-4 border-t border-gray-200 pt-4">
+                          <label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label>
+                          <div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3">
+                              <label className="flex items-center space-x-2 text-sm font-bold cursor-pointer">
+                                  <input type="radio" checked={editingAdmin.role === 'super_admin'} onChange={() => setEditingAdmin({...editingAdmin, role: 'super_admin'})} className="w-4 h-4 accent-[#123524]" />
+                                  <span className="text-[#123524]">Super Admin</span>
+                              </label>
+                              <label className="flex items-center space-x-2 text-sm font-bold cursor-pointer">
+                                  <input type="radio" checked={editingAdmin.role === 'custom'} onChange={() => setEditingAdmin({...editingAdmin, role: 'custom'})} className="w-4 h-4 accent-[#123524]" />
+                                  <span className="text-[#123524]">Custom Role</span>
+                              </label>
+                          </div>
+                          {editingAdmin.role === 'custom' && (
+                              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in">
+                                  <div className="flex flex-wrap gap-4">
+                                      {['bookings', 'reports', 'users', 'points', 'settings'].map(tab => (
+                                          <label key={tab} className="flex items-center space-x-2 text-xs font-bold cursor-pointer bg-white px-3 py-2 rounded border border-gray-100 hover:bg-gray-50 transition">
+                                              <input type="checkbox" checked={(editingAdmin.permissions||[]).includes(tab)} onChange={() => handleEditCheckboxChange(tab)} className="w-4 h-4 accent-[#123524]" />
+                                              <span className="capitalize">{tab === 'reports' ? 'Staff History' : tab === 'points' ? 'Point Mgmt' : tab}</span>
+                                          </label>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+                      </div>
+
+                      <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingAdmin(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold hover:bg-gray-200">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold hover:bg-green-900">Save</button></div>
+                  </form>
+              </div>
+          </div>
+      )}
+
       <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4"><h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><ShieldCheck className="mr-2 text-[#D4AF37]" /> Manage Admins</h2><span className="bg-gray-100 text-gray-700 px-4 py-1 rounded-full text-sm font-bold border border-gray-200">Total: {admins.length}</span></div>
       <form onSubmit={handleAddAdmin} className="mb-6 p-5 bg-gray-50 border border-gray-200 rounded-xl flex flex-col items-end">
         <div className="flex flex-col sm:flex-row gap-4 w-full"><div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Username</label><input type="text" value={newAdmin.username} onChange={e=>setNewAdmin({...newAdmin, username: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" required /></div><div className="w-full sm:flex-1"><label className="block text-xs font-bold text-gray-500 mb-1">New Password (Min 6 Chars)</label><input type="text" value={newAdmin.password} onChange={e=>setNewAdmin({...newAdmin, password: e.target.value})} className="w-full p-3 border border-gray-300 rounded outline-none focus:border-[#D4AF37]" minLength={6} required /></div></div>
         <div className="w-full mt-4 border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label><div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3"><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'super_admin'} onChange={() => setNewAdmin({...newAdmin, role: 'super_admin'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Super Admin <span className="text-xs text-gray-500 font-semibold">(All Access)</span></span></label><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={newAdmin.role === 'custom'} onChange={() => setNewAdmin({...newAdmin, role: 'custom'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Custom Role</span></label></div>{newAdmin.role === 'custom' && (<div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in"><p className="text-[10px] text-gray-400 font-bold mb-3 uppercase tracking-wider">Select Allowed Tabs (ဝင်ကြည့်ခွင့်ပြုမည့် Tab ကိုရွေးပါ)</p><div className="flex flex-wrap gap-4">{['bookings', 'reports', 'users', 'points', 'settings'].map(tab => (<label key={tab} className="flex items-center space-x-2 text-xs font-bold cursor-pointer bg-gray-50 px-3 py-2 rounded border border-gray-100 hover:bg-gray-100 transition"><input type="checkbox" checked={newAdmin.permissions.includes(tab)} onChange={() => handleCheckboxChange(tab)} className="w-4 h-4 accent-[#123524]" /><span className="capitalize">{tab === 'reports' ? 'Staff History' : tab === 'points' ? 'Point Mgmt' : tab}</span></label>))}</div><p className="text-[10px] text-red-500 mt-3 font-semibold flex items-center"><AlertCircle className="w-3 h-3 mr-1"/> Note: Custom admins are restricted from accessing the 'Admins' management tab.</p></div>)}</div>
         <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-[#123524] text-white rounded font-bold flex items-center justify-center mt-4 shadow-md hover:bg-green-900 transition"><PlusCircle className="w-5 h-5 mr-2"/> Add New Admin</button>
       </form>
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username & Role</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800 flex items-center text-sm"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</div><div className="mt-1.5">{a.role === 'super_admin' || !a.role ? (<span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-purple-200">Super Admin</span>) : (<div className="flex flex-wrap gap-1 mt-1">{a.permissions?.map(p => <span key={p} className="text-[9px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded uppercase tracking-wider">{p === 'reports' ? 'Staff History' : p === 'points' ? 'Point Mgmt' : p}</span>)}</div>)}</div></td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right"><button onClick={() => handleDeleteAdmin(a.docId!, a.username || '')} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button></td></tr>))}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username & Role</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800 flex items-center text-sm"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</div><div className="mt-1.5">{a.role === 'super_admin' || !a.role ? (<span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-purple-200">Super Admin</span>) : (<div className="flex flex-wrap gap-1 mt-1">{a.permissions?.map(p => <span key={p} className="text-[9px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded uppercase tracking-wider">{p === 'reports' ? 'Staff History' : p === 'points' ? 'Point Mgmt' : p}</span>)}</div>)}</div></td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right">
+          <div className="flex items-center justify-end space-x-2">
+             <button onClick={() => setEditingAdmin(a)} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition inline-flex"><Edit className="w-4 h-4"/></button>
+             <button onClick={() => handleDeleteAdmin(a.docId!, a.username || '')} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button>
+          </div>
+      </td></tr>))}</tbody></table></div>
     </div>
   );
 }
@@ -1239,6 +1307,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                           <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=therapists'; navigator.clipboard.writeText(url); alert('Gallery Link Copied:\n' + url); }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Gallery Link</button>
                           <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=dashboard'; navigator.clipboard.writeText(url); alert('Dashboard Link Copied:\n' + url); }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Dashboard Link</button>
                           <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=vip'; navigator.clipboard.writeText(url); alert('VIP Member Link Copied:\n' + url); }} className="text-xs flex items-center text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded border border-yellow-200 hover:bg-yellow-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> VIP Member Link</button>
                       </div>
                       <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
                           <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}
