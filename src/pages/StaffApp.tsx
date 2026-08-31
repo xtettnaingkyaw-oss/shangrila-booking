@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, addDoc, orderBy } from 'firebase/firestore';
+// 🚀 Optimization: Added 'where' to limit queries
+import { collection, query, onSnapshot, doc, updateDoc, addDoc, where } from 'firebase/firestore';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
@@ -136,7 +137,8 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass'>('service');
 
    useEffect(() => {
-       const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
+       // 🚀 Optimization: Fetch ONLY bookings belonging to this specific therapist
+       const q = query(collection(db, 'bookings'), where('therapist', '==', loggedInStaff.name));
        const unsubscribe = onSnapshot(q, (snap) => {
            let foundActive = null;
            snap.forEach((doc) => {
@@ -150,7 +152,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                    specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
                } as Booking;
                
-               if (b.therapist === loggedInStaff.name && b.status === 'in_progress') {
+               if (b.status === 'in_progress') {
                    foundActive = b;
                }
            });
@@ -234,7 +236,8 @@ function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfi
    const todayStr = getLocalTodayStr();
 
    useEffect(() => {
-       const q = query(collection(db, 'bookings'));
+       // 🚀 Optimization: Fetch ONLY bookings belonging to this specific therapist
+       const q = query(collection(db, 'bookings'), where('therapist', '==', loggedInStaff.name));
        const unsub = onSnapshot(q, (snap) => {
            const arr: Booking[] = [];
            snap.forEach(doc => {
@@ -248,7 +251,8 @@ function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfi
                    specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
                } as Booking;
 
-               if (b.therapist === loggedInStaff.name && b.date === todayStr && (b.status === 'completed' || b.status === 'cancelled')) {
+               // Filter by today locally
+               if (b.date === todayStr && (b.status === 'completed' || b.status === 'cancelled')) {
                    arr.push(b);
                }
            });
@@ -300,7 +304,8 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
    const todayStr = getLocalTodayStr();
 
    useEffect(() => {
-       const q = query(collection(db, 'outpasses'));
+       // 🚀 Optimization: Fetch ONLY today's outpasses
+       const q = query(collection(db, 'outpasses'), where('date', '==', todayStr));
        const unsub = onSnapshot(q, snap => {
            const arr: OutPass[] = [];
            snap.forEach(d => {
@@ -311,11 +316,11 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
            setLoading(false);
        });
        return () => unsub();
-   }, []);
+   }, [todayStr]);
 
-   const myPasses = allOutpasses.filter(o => o.therapist === loggedInStaff.name && o.date === todayStr);
+   const myPasses = allOutpasses.filter(o => o.therapist === loggedInStaff.name);
    const activePasses = allOutpasses.filter(o => o.status === 'out');
-   const myActivePass = allOutpasses.find(o => o.therapist === loggedInStaff.name && o.status === 'out');
+   const myActivePass = myPasses.find(o => o.status === 'out');
 
    const handleGoOut = async () => {
        if (activePasses.length >= 2) return;
