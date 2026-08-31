@@ -5,7 +5,7 @@ import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus } from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS } from '../shared';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -342,8 +342,14 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   const [amount, setAmount] = useState<number | ''>('');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [processing, setProcessing] = useState(false);
+  
   const [history, setHistory] = useState<any[]>([]);
   const [historySearch, setHistorySearch] = useState('');
+
+  // States for handling manual target reward redemptions
+  const [selectedUserMonthlyPoints, setSelectedUserMonthlyPoints] = useState(0);
+  const [selectedUserUsedRewards, setSelectedUserUsedRewards] = useState<string[]>([]);
+  const [userBookings, setUserBookings] = useState<any[]>([]);
 
   const fetchUsers = async () => {
     try {
@@ -367,9 +373,8 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   
   useEffect(() => { fetchUsers(); }, []);
 
-  // Fetch History for Super Admin
+  // Fetch History for Super Admin Table & Target Calculation
   useEffect(() => {
-      if (adminRole !== 'super_admin') return;
       const q = query(collection(db, 'point_history'), orderBy('createdAt', 'desc'));
       const unsub = onSnapshot(q, (snap) => {
           const data: any[] = [];
@@ -379,7 +384,7 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
                   id: doc.id,
                   phone: decryptText(raw.phone) || raw.phone,
                   amount: Number(decryptText(raw.amount) || raw.amount),
-                  pointsEarned: decryptText(raw.pointsEarned) || raw.pointsEarned,
+                  pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned),
                   invoiceNo: raw.invoiceNo ? decryptText(raw.invoiceNo) : '-',
                   type: decryptText(raw.type) || raw.type,
                   date: raw.date,
@@ -388,8 +393,47 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
           });
           setHistory(data);
       });
-      return () => unsub();
-  }, [adminRole]);
+
+      const qB = query(collection(db, 'bookings'));
+      const unsubB = onSnapshot(qB, (snap) => {
+          const data: any[] = [];
+          snap.forEach(d => {
+             const raw = d.data();
+             data.push({
+                 phone: decryptText(raw.phone) || raw.phone,
+                 status: raw.status,
+                 date: raw.date,
+                 discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined
+             });
+          });
+          setUserBookings(data);
+      });
+
+      return () => { unsub(); unsubB(); };
+  }, []);
+
+  // Fetch user specific Monthly data when selected
+  useEffect(() => {
+      if (!selectedUser) return;
+      const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
+      
+      // 1. Calculate Monthly Points from History
+      const mPts = history
+          .filter(h => h.phone === selectedUser.phone && h.date && h.date.startsWith(currentMonthPrefix))
+          .reduce((sum, h) => sum + h.pointsEarned, 0);
+      setSelectedUserMonthlyPoints(mPts);
+
+      // 2. Extract Used Rewards
+      const used: string[] = [];
+      userBookings
+          .filter(b => b.phone === selectedUser.phone && b.date && b.date.startsWith(currentMonthPrefix) && b.status !== 'cancelled')
+          .forEach(b => {
+              if (b.discountLabel && b.discountLabel.includes('Target Bonus')) {
+                  used.push(b.discountLabel);
+              }
+          });
+      setSelectedUserUsedRewards(used);
+  }, [selectedUser, history, userBookings]);
 
   const filteredUsers = users.filter(u => u.phone.includes(search) || (u.name && u.name.toLowerCase().includes(search.toLowerCase())));
   const filteredHistory = history.filter(h => h.phone.includes(historySearch) || h.invoiceNo.toLowerCase().includes(historySearch.toLowerCase()));
@@ -418,10 +462,14 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
          });
 
          alert(`✅ ${earnedPoints} Points အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ (စုစုပေါင်း - ${newTotal} Pts)`);
-         setSelectedUser(null); 
+         
+         // Re-fetch everything to make sure state updates immediately
+         await fetchUsers();
+         const updatedUser = users.find(u => u.docId === selectedUser.docId);
+         if (updatedUser) setSelectedUser({ ...updatedUser, points: newTotal });
+
          setAmount(''); 
          setInvoiceNo('');
-         fetchUsers();
      } catch(e) { alert('Error adding points.'); }
      setProcessing(false);
   };
@@ -432,10 +480,11 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
 
       try {
           const targetUser = users.find(u => u.phone === phone);
+          let newTotal = 0;
           if (targetUser) {
               const currentPoints = targetUser.points || 0;
               const ptsToDeduct = Number(pointsEarned) || 0;
-              const newTotal = Math.max(0, currentPoints - ptsToDeduct);
+              newTotal = Math.max(0, currentPoints - ptsToDeduct);
               await updateDoc(doc(db, 'users', targetUser.docId), { points: encryptText(newTotal.toString()) });
           } else {
               const snap = await getDocs(collection(db, 'users'));
@@ -445,14 +494,18 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
                   if (decPhone === phone) {
                       const currentPoints = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10);
                       const ptsToDeduct = Number(pointsEarned) || 0;
-                      const newTotal = Math.max(0, currentPoints - ptsToDeduct);
+                      newTotal = Math.max(0, currentPoints - ptsToDeduct);
                       updateDoc(doc(db, 'users', d.id), { points: encryptText(newTotal.toString()) });
                   }
               });
           }
           await deleteDoc(doc(db, 'point_history', hId));
           alert(`✅ မှတ်တမ်းကို ဖျက်ပြီး Customer ထံမှ ${pointsEarned} Points ပြန်နှုတ်လိုက်ပါပြီ။`);
-          fetchUsers();
+          
+          await fetchUsers();
+          if (selectedUser && selectedUser.phone === phone) {
+             setSelectedUser({ ...selectedUser, points: newTotal });
+          }
       } catch (e) {
           console.error(e);
           alert('Error deleting record.');
@@ -474,6 +527,33 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+  };
+
+  const handleRedeemReward = async (tier: number) => {
+      if (!selectedUser) return;
+      if (!window.confirm(`ဤ Customer အတွက် ${tier}% Target Reward ကို အသုံးပြုပြီးဖြစ်ကြောင်း သတ်မှတ်မည် သေချာပါသလား?`)) return;
+      
+      const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
+      try {
+          // Add a dummy booking record to mark it as used
+          await addDoc(collection(db, 'bookings'), {
+              phone: encryptText(selectedUser.phone),
+              name: encryptText(selectedUser.name || 'Unknown'),
+              service: `Walk-in Reward Redemption (${tier}%)`,
+              therapist: '-',
+              date: getLocalTodayStr(),
+              time: 'Walk-in',
+              status: 'completed',
+              discountLabel: encryptText(rewardLabel),
+              totalPrice: 0,
+              createdAt: Date.now()
+          });
+          alert('Reward အသုံးပြုပြီးကြောင်း မှတ်တမ်းတင်ပြီးပါပြီ။');
+          setSelectedUserUsedRewards([...selectedUserUsedRewards, rewardLabel]);
+      } catch(e) {
+          console.error(e);
+          alert('Error updating reward status.');
+      }
   };
 
   const getTier = (points: number) => {
@@ -505,8 +585,8 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
               </div>
               <div className="flex flex-col">
                   {selectedUser ? (
-                      <form onSubmit={handleAddPoints} className="animate-fade-in flex flex-col h-full">
-                          <div className="bg-[#123524] rounded-xl p-5 mb-6 text-white shadow-md relative overflow-hidden">
+                      <div className="animate-fade-in flex flex-col h-full overflow-y-auto pr-2 scrollbar-hide">
+                          <div className="bg-[#123524] rounded-xl p-5 mb-6 text-white shadow-md relative overflow-hidden flex-shrink-0">
                               <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div>
                               <h4 className="text-xs text-[#D4AF37] font-bold uppercase tracking-widest mb-1">Selected Customer</h4>
                               <div className="font-bold text-xl mb-1 flex items-center">{selectedUser.name || 'Unknown'}</div>
@@ -524,24 +604,60 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
                               </div>
                           </div>
                           
-                          <div className="mb-4">
-                              <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Enter Invoice Amount (MMK)</label>
-                              <div className="relative">
-                                  <input type="number" required value={amount} onChange={(e) => setAmount(Number(e.target.value) || '')} placeholder="e.g. 70000" className="w-full pl-6 pr-16 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xl font-black text-[#123524]" />
-                                  <span className="absolute right-6 top-4 font-bold text-gray-400">Ks</span>
+                          <form onSubmit={handleAddPoints} className="mb-6 flex-shrink-0">
+                              <div className="mb-4">
+                                  <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Enter Invoice Amount (MMK)</label>
+                                  <div className="relative">
+                                      <input type="number" required value={amount} onChange={(e) => setAmount(Number(e.target.value) || '')} placeholder="e.g. 70000" className="w-full pl-6 pr-16 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xl font-black text-[#123524]" />
+                                      <span className="absolute right-6 top-4 font-bold text-gray-400">Ks</span>
+                                  </div>
                               </div>
-                          </div>
 
-                          <div className="mb-6">
-                              <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Invoice Number</label>
-                              <div className="relative">
-                                  <input type="text" required value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="e.g. INV-20260830-01" className="w-full pl-6 pr-4 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-sm font-bold text-[#123524]" />
+                              <div className="mb-6">
+                                  <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Invoice Number</label>
+                                  <div className="relative">
+                                      <input type="text" required value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="e.g. INV-20260830-01" className="w-full pl-6 pr-4 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-sm font-bold text-[#123524]" />
+                                  </div>
                               </div>
-                          </div>
 
-                          <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center mb-6"><p className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Points to be Added</p><div className="text-4xl font-black text-green-600 mb-2">+{earnedPoints}</div><p className="text-[10px] text-green-600/80 font-semibold">(စနစ်မှ သတ်မှတ်ထားသော ၃၅,၀၀၀ ကျပ် = ၁ ပွိုင့် နှုန်းဖြင့် တွက်ချက်ထားပါသည်)</p></div>
-                          <div className="mt-auto pt-4"><button type="submit" disabled={processing || earnedPoints <= 0} className="w-full py-4 bg-[#D4AF37] text-white rounded-xl font-bold text-base shadow-md hover:bg-yellow-600 transition disabled:opacity-50 flex justify-center items-center">{processing ? 'Processing...' : 'CONFIRM & ADD POINTS'}</button></div>
-                      </form>
+                              <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center mb-6"><p className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Points to be Added</p><div className="text-4xl font-black text-green-600 mb-2">+{earnedPoints}</div><p className="text-[10px] text-green-600/80 font-semibold">(စနစ်မှ သတ်မှတ်ထားသော ၃၅,၀၀၀ ကျပ် = ၁ ပွိုင့် နှုန်းဖြင့် တွက်ချက်ထားပါသည်)</p></div>
+                              <button type="submit" disabled={processing || earnedPoints <= 0} className="w-full py-4 bg-[#D4AF37] text-white rounded-xl font-bold text-base shadow-md hover:bg-yellow-600 transition disabled:opacity-50 flex justify-center items-center">{processing ? 'Processing...' : 'CONFIRM & ADD POINTS'}</button>
+                          </form>
+
+                          {/* 🌟 Target Rewards Management for Selected User 🌟 */}
+                          {!userTier && (
+                              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mt-2 flex-shrink-0">
+                                  <h4 className="font-bold text-sm text-[#123524] mb-3 flex items-center">
+                                      <Gift className="w-4 h-4 mr-2 text-green-600"/> Monthly Target Rewards (Pre-Jade)
+                                  </h4>
+                                  <div className="text-xs text-gray-500 mb-4 bg-white p-2.5 rounded-lg border border-gray-100 shadow-sm">
+                                      ယခုလအတွင်း စုဆောင်းထားသောပွိုင့်: <strong className="text-green-600 text-sm ml-1">{selectedUserMonthlyPoints} Pts</strong>
+                                  </div>
+                                  <div className="space-y-2">
+                                      {[10, 20, 30, 40, 50].map(tier => {
+                                          const isUnlocked = selectedUserMonthlyPoints >= tier;
+                                          const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
+                                          const isUsed = selectedUserUsedRewards.includes(rewardLabel);
+                                          
+                                          return (
+                                              <div key={tier} className="flex justify-between items-center p-3 rounded-lg border border-gray-200 bg-white shadow-sm">
+                                                  <span className="text-xs font-bold text-gray-700">{tier} Pts = {tier}% OFF</span>
+                                                  {!isUnlocked ? (
+                                                      <span className="text-[10px] text-gray-400 font-semibold bg-gray-100 px-3 py-1.5 rounded">Locked</span>
+                                                  ) : isUsed ? (
+                                                      <span className="text-[10px] text-gray-500 font-bold bg-gray-100 px-3 py-1.5 rounded flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> Used</span>
+                                                  ) : (
+                                                      <button type="button" onClick={() => handleRedeemReward(tier)} className="text-[10px] font-bold bg-green-50 text-green-700 hover:bg-green-100 px-4 py-1.5 rounded shadow-sm border border-green-200 transition whitespace-nowrap">
+                                                          Mark as Used
+                                                      </button>
+                                                  )}
+                                              </div>
+                                          )
+                                      })}
+                                  </div>
+                              </div>
+                          )}
+                      </div>
                   ) : (
                       <div className="flex-1 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-10 text-gray-400 bg-gray-50/50"><UserCircle className="w-16 h-16 mb-4 opacity-30" /><p className="text-sm font-bold">Please select a customer from the list first</p></div>
                   )}
@@ -685,7 +801,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ name: '', password: '', dob: '' });
+  const [editForm, setEditForm] = useState({ name: '', password: '', dob: '', points: 0 });
   
   const [creatingUser, setCreatingUser] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', phone: '', password: '', dob: '' });
@@ -721,7 +837,8 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
       await updateDoc(doc(db, 'users', editingUser.docId), { 
           name: encryptText(editForm.name), 
           password: encryptText(editForm.password),
-          dob: encryptText(editForm.dob)
+          dob: encryptText(editForm.dob),
+          points: encryptText(editForm.points.toString())
       });
       alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။'); 
       setEditingUser(null); 
@@ -802,6 +919,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
                <form onSubmit={handleUpdateUser} className="space-y-4">
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" required /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth</label><input type="date" value={editForm.dob} onChange={e=>setEditForm({...editForm, dob: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Total Points <span className="text-[9px] text-orange-500">(Fix total points here if sync failed)</span></label><input type="number" value={editForm.points} onChange={e=>setEditForm({...editForm, points: Number(e.target.value)})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none font-bold" required /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Leave blank for no password" className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
                  <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold hover:bg-gray-200">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold hover:bg-green-900">Save</button></div>
                </form>
@@ -855,7 +973,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
              <td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td>
              <td className="p-3 text-right">
                  <div className="flex items-center justify-end space-x-2">
-                     <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '' }); }} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Edit Info'}>
+                     <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '', points: u.points || 0 }); }} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Edit Info'}>
                          <Edit className="w-3 h-3 mr-1"/> Edit Info
                      </button>
                      <button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}>
@@ -1581,3 +1699,4 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     </div>
   );
 }
+)
