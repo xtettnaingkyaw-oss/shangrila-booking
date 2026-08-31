@@ -302,7 +302,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
 }
 
 // ==========================================
-// COMPONENT: VipProgramView
+// VIEWS & COMPONENTS
 // ==========================================
 export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, onGoToProfile?: () => void }) {
    const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
@@ -413,9 +413,6 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
    );
 }
 
-// ==========================================
-// COMPONENT: TherapistsGallery
-// ==========================================
 export function TherapistsGallery({ appData }: { appData: AppData }) {
   return (
     <div className="max-w-4xl mx-auto px-4 pb-20 animate-fade-in">
@@ -449,9 +446,6 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
   );
 }
 
-// ==========================================
-// COMPONENT: CustomerDashboard 
-// ==========================================
 export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [viewingDetails, setViewingDetails] = useState<TherapistProfile | null>(null);
@@ -492,6 +486,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
            const cleanServiceName = (b.service || '').split('(')[0].trim();
            const coveredSlots = getBookingCoveredSlots(b);
            coveredSlots.forEach(slot => { coveredMap.set(slot, { service: cleanServiceName, status: 'Booked' }); });
+           
            if (coveredSlots.length > 0) {
                const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
                if (firstIdx > 0 && !coveredMap.has(ALL_TIME_SLOTS[firstIdx - 1])) { coveredMap.set(ALL_TIME_SLOTS[firstIdx - 1], { service: 'နားချိန် (Rest)', status: 'Buffer' }); }
@@ -705,9 +700,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   );
 }
 
-// ==========================================
-// COMPONENT: CustomerHistory
-// ==========================================
 export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: string, onLoginSuccess: (phone: string) => void }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -796,9 +788,6 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
   );
 }
 
-// ==========================================
-// COMPONENT: CustomerProfile
-// ==========================================
 export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userDocId, setUserDocId] = useState<string | null>(null);
@@ -853,6 +842,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
       try {
           const snap = await getDocs(collection(db, 'users'));
           let foundUser = null; let docId = null; let maxPts = -1;
+          
           snap.forEach(d => {
              const data = d.data();
              try {
@@ -863,6 +853,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                  }
              } catch(e) {}
           });
+          
           if (foundUser) {
               setProfile({ ...(foundUser as any), name: decryptText((foundUser as any).name) || '', password: decryptText((foundUser as any).password) || '', phone: userPhone, points: maxPts, dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || '' });
               setFormData({ name: decryptText((foundUser as any).name) || '', password: decryptText((foundUser as any).password) || '', dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || '' });
@@ -873,6 +864,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
           }
       } catch(err) {} finally { setLoading(false); }
     };
+    
     const loadBackgroundHistory = async () => {
         try {
             const snap = await getDocs(collection(db, 'point_history'));
@@ -885,6 +877,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
             setHistory(data);
         } catch (e) {}
     };
+
     fetchUser(); loadBackgroundHistory();
   }, [userPhone]);
 
@@ -1063,92 +1056,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   );
 }
 
-export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipToPassword = false }: { onLoginSuccess: (phone: string) => void, title: string, prefilledPhone?: string, skipToPassword?: boolean }) {
-  const [phone, setPhone] = useState(prefilledPhone);
-  const [password, setPassword] = useState('');
-  const [contactInfo, setContactInfo] = useState('');
-  const [step, setStep] = useState(skipToPassword ? 2 : 1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-
-  const handleNext = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true);
-    try {
-      const snap = await getDocs(collection(db, 'users'));
-      let found = false; let userPass = '';
-      snap.forEach(d => {
-         try { const data = d.data(); const decPhone = decryptText(data.phone) || d.id; if (decPhone === phone.trim() || d.id === phone.trim()) { found = true; userPass = decryptText(data.password); } } catch(err) {}
-      });
-      if (!found) { setError("ဖုန်းနံပါတ် ရှာမတွေ့ပါ။ ဘိုကင်အရင်တင်ပေးပါခင်ဗျာ။"); } else { if (userPass) { setStep(2); } else { onLoginSuccess(phone.trim()); } }
-    } catch (e) { setError("Network Error"); } finally { setLoading(false); }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setLoading(true);
-    try {
-      const snap = await getDocs(collection(db, 'users'));
-      let userPass = '';
-      snap.forEach(d => {
-         try { const data = d.data(); const decPhone = decryptText(data.phone) || d.id; if (decPhone === phone.trim() || d.id === phone.trim()) { userPass = decryptText(data.password); } } catch(err){}
-      });
-      if (userPass === password) { onLoginSuccess(phone.trim()); } else { setError("Password မှားယွင်းနေပါသည်။"); }
-    } catch (e) { setError("Network Error"); } finally { setLoading(false); }
-  };
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-     e.preventDefault();
-     if(!contactInfo.trim()) { setError('ဆက်သွယ်ရန် Viber သို့မဟုတ် Telegram အကောင့် ဖြည့်ပေးပါ။'); return; }
-     setLoading(true); setError(''); setSuccessMsg('');
-     try {
-         const snap = await getDocs(collection(db, 'users'));
-         let targetId = null;
-         snap.forEach(d => { const decPhone = decryptText(d.data().phone) || d.id; if (decPhone === phone.trim() || d.id === phone.trim()) targetId = d.id; });
-         if (targetId) {
-             await updateDoc(doc(db, 'users', targetId), { resetRequested: true, resetContact: encryptText(contactInfo.trim()) });
-             setSuccessMsg('Admin ထံသို့ စကားဝှက်အသစ်တောင်းဆိုမှု ပို့ပြီးပါပြီ။ မကြာမီ ဆက်သွယ်ပေးပါမည်။');
-             setTimeout(() => { setStep(1); setSuccessMsg(''); setContactInfo(''); setPassword(''); }, 6000);
-         }
-     } catch (e) { setError('Error requesting reset.'); }
-     setLoading(false);
-  };
-
-  return (
-    <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in px-4 sm:px-8">
-      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><KeyRound className="w-8 h-8" /></div>
-      <h2 className="text-xl font-bold text-gray-800 mb-2">{step === 3 ? 'Reset Password' : 'Login Required'}</h2>
-      <p className="text-xs font-bold text-gray-500 mb-6">{step === 3 ? 'Admin ထံသို့ စကားဝှက်အသစ် တောင်းဆိုရန်' : `${title}`}</p>
-      {step === 1 && (
-        <form onSubmit={handleNext} className="space-y-4">
-          <input required type="tel" placeholder="Enter Phone Number" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
-          {error && <div className="text-xs font-bold text-red-500">{error}</div>}
-          <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Checking...' : 'Next'}</button>
-        </form>
-      )}
-      {step === 2 && (
-        <form onSubmit={handleLogin} className="space-y-4 flex flex-col">
-          <input required type="password" placeholder="Enter Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
-          {error && <div className="text-xs font-bold text-red-500">{error}</div>}
-          <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Logging in...' : 'Login'}</button>
-          <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} className="text-xs text-blue-600 underline font-bold mt-4 hover:text-blue-800">စကားဝှက်မေ့နေပါသလား? (Forgot Password)</button>
-        </form>
-      )}
-      {step === 3 && (
-        <form onSubmit={handleResetPassword} className="space-y-4 flex flex-col">
-          <div className="text-left">
-             <label className="block text-xs font-bold text-gray-600 mb-1">ဆက်သွယ်ရန် (Viber သို့မဟုတ် Telegram ဖုန်းနံပါတ်)</label>
-             <div className="relative"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><MessageCircle className="w-4 h-4 text-gray-400" /></div><input required type="text" placeholder="e.g. 09-xxxxxxxxx (Viber)" value={contactInfo} onChange={e => setContactInfo(e.target.value)} className="w-full pl-10 pr-3 py-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-sm" /></div>
-          </div>
-          {error && <div className="text-xs font-bold text-red-500">{error}</div>}
-          {successMsg && <div className="text-xs font-bold text-green-600 bg-green-50 p-3 rounded-lg border border-green-200">{successMsg}</div>}
-          {!successMsg && <button type="submit" disabled={loading} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold shadow-md hover:bg-red-700 flex justify-center items-center">{loading ? 'Sending...' : 'Request New Password'}</button>}
-          <button type="button" onClick={() => setStep(2)} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 hover:text-gray-700">Cancel & Go Back</button>
-        </form>
-      )}
-    </div>
-  );
-}
-
 export function CustomerBookingWizard({ appData, userPhone = '', onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff }: { appData: AppData, userPhone?: string, onBooked?: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
@@ -1166,6 +1073,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const [successMsg, setSuccessMsg] = useState('');
   const [alertMessage, setAlertMessage] = useState('');
   
+  // 🌟 Auth Modal States (For duplicate phone check)
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalPhone, setAuthModalPhone] = useState('');
   const [authModalHasPassword, setAuthModalHasPassword] = useState(false);
@@ -1594,10 +1502,10 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
           } catch(e) {}
         });
 
-        // 🚀 Duplicate Phone Check & Auth Modal Popup
         if (exactPhoneMatch && !isStaffMode && userPhone !== formData.phone.trim() && verifiedPhone !== formData.phone.trim()) {
             setAuthModalPhone(formData.phone.trim()); setAuthModalHasPassword(userHasPassword); setShowAuthModal(true); setLoading(false); return;
         }
+
         if (!userRefId) {
           await addDoc(collection(db, 'users'), { phone: encryptText(formData.phone.trim()), name: encryptText(formData.name || ''), password: encryptText(''), points: encryptText('0'), dob: encryptText(''), createdAt: Date.now() });
         } else if (!hasName) { await updateDoc(doc(db, 'users', userRefId), { name: encryptText(formData.name || '') }); }
@@ -1795,9 +1703,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
                  title="အကောင့်ရှိပြီးသားဖြစ်နေပါသည်"
                  prefilledPhone={authModalPhone}
                  skipToPassword={authModalHasPassword}
-                 onLoginSuccess={(loggedInPhone) => {
-                     setShowAuthModal(false); setVerifiedPhone(loggedInPhone); processBooking(loggedInPhone);
-                 }}
+                 onLoginSuccess={(loggedInPhone) => { setShowAuthModal(false); setVerifiedPhone(loggedInPhone); processBooking(loggedInPhone); }}
               />
            </div>
         </div>
@@ -1809,7 +1715,10 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 
       {step === 3 && (
         <div className="animate-fade-in px-2 sm:px-0">
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
+            <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p>
+          </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
             <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
@@ -1960,6 +1869,112 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
           </div>
         </form>
       )}
+    </div>
+  );
+}
+
+export default function CustomerApp({ appData }: { appData: AppData }) {
+  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
+     const searchParams = new URLSearchParams(window.location.search);
+     const view = searchParams.get('view');
+     if (view === 'therapists') return 'therapists';
+     if (view === 'dashboard') return 'dashboard';
+     return 'book';
+  });
+  
+  const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
+  const [hasNoti, setHasNoti] = useState(false);
+  const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
+  const prevStatuses = useRef<Record<string, string>>({});
+  const isFirstLoad = useRef(true);
+
+  const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
+  useEffect(() => {
+      const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
+          if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
+      });
+      return () => unsub();
+  }, []);
+  const mergedAppData = { ...appData, vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS };
+
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
+
+  useEffect(() => {
+    if (!userPhone) return;
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(50));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      let changed = false;
+      snap.docs.forEach((doc) => {
+        const raw = doc.data();
+        const bPhone = decryptText(raw.phone) || raw.phone;
+        if (bPhone === userPhone) {
+          const oldStatus = prevStatuses.current[doc.id];
+          if (oldStatus && oldStatus !== raw.status) changed = true;
+          prevStatuses.current[doc.id] = raw.status;
+        }
+      });
+      if (!isFirstLoad.current && changed) {
+        if (activeTab !== 'history') setHasNoti(true);
+        const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
+        if (audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); }
+      }
+      isFirstLoad.current = false;
+    });
+    return () => unsubscribe();
+  }, [userPhone, activeTab]);
+
+  useEffect(() => { if (activeTab === 'history') setHasNoti(false); }, [activeTab]);
+
+  const handleInteraction = () => {
+    const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
+    if (audioEl && audioEl.paused) { audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {}); }
+  };
+
+  const handleDashboardBook = (t: TherapistProfile) => { setPrefillTherapist(t); setActiveTab('therapists'); };
+
+  const baseTabs = [
+    { id: 'book', label: 'Book Now', icon: CalendarPlus }, 
+    { id: 'therapists', label: 'View Therapists', icon: User },
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, 
+    { id: 'history', label: 'My Bookings', icon: History }
+  ] as const;
+
+  const vipSettings = mergedAppData.vipSettings;
+  const tabs = vipSettings.isActive 
+      ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }]
+      : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
+
+  return (
+    <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
+      <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
+      
+      <div className="flex sm:hidden justify-end mb-2 pr-2">
+         <span className="text-[10px] text-[#123524] font-bold flex items-center animate-pulse">
+            ဘေးသို့ဆွဲကြည့်ပါ <span className="text-[#D4AF37] ml-1 tracking-tighter font-black">&gt;&gt;</span>
+         </span>
+      </div>
+
+      <div className="flex justify-start sm:justify-center items-center space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide snap-x snap-mandatory relative">
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
+              className={`snap-start relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
+              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+              <span className="text-center whitespace-nowrap">{tab.label}</span>
+              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
+              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
+            </button>
+          )
+        })}
+      </div>
+      
+      {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
+      {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
+      {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
+      {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
+      {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
+      {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
     </div>
   );
 }
