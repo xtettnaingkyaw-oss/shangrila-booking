@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-// 🚀 Optimization: Added where, orderBy, limit for efficient querying
 import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
@@ -261,7 +260,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 
   useEffect(() => {
     if (!userPhone) return;
-    // 🚀 Optimization: Limit listener to recent bookings to save reads
     const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(50));
     const unsubscribe = onSnapshot(q, (snap) => {
       let changed = false;
@@ -482,6 +480,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
    );
 }
 
+
 // ==========================================
 // CUSTOMER BOOKING WIZARD
 // ==========================================
@@ -551,7 +550,6 @@ export function CustomerBookingWizard({
   }, [formData.selectedItem]);
 
   useEffect(() => {
-      // 🚀 Optimization: Fetch ONLY today's and future bookings to calculate availability
       const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
       const unsub = onSnapshot(q, (snap) => {
           const arr: Booking[] = [];
@@ -572,18 +570,32 @@ export function CustomerBookingWizard({
       return () => unsub();
   }, [todayStr]);
 
+  // 🚀 Added a bulletproof number parser to prevent NaN errors
+  const parsePoints = (pts: any) => {
+      if (pts === undefined || pts === null) return 0;
+      if (typeof pts === 'number') return pts;
+      const dec = decryptText(pts);
+      const val = parseInt(dec || pts, 10);
+      return isNaN(val) ? 0 : val;
+  };
+
   useEffect(() => {
       if (!userPhone) return;
       const fetchUser = async () => {
           try {
               const snap = await getDocs(collection(db, 'users'));
               let foundUser = null;
+              let maxPts = -1;
               snap.forEach(d => {
                   try {
                       const data = d.data();
                       const decPhone = decryptText(data.phone) || d.id;
                       if (decPhone === userPhone || d.id === userPhone) {
-                          foundUser = data;
+                          const pts = parsePoints(data.points);
+                          if (pts > maxPts) {
+                              maxPts = pts;
+                              foundUser = data;
+                          }
                       }
                   } catch (e) {}
               });
@@ -591,7 +603,7 @@ export function CustomerBookingWizard({
               if (foundUser) {
                   setUserProfile({
                       ...(foundUser as any),
-                      points: parseInt(decryptText((foundUser as any).points) || (foundUser as any).points || '0', 10),
+                      points: maxPts,
                       dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
                   });
               }
@@ -1015,7 +1027,6 @@ export function CustomerBookingWizard({
     setLoading(true);
     
     try {
-      // 🚀 Optimization: Fetch fresh snapshot restricted to recent bookings
       const freshSnap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', todayStr)));
       const freshBookings: Booking[] = [];
       freshSnap.forEach(d => {
@@ -1138,13 +1149,19 @@ export function CustomerBookingWizard({
         const usersSnap = await getDocs(collection(db, 'users'));
         let userRefId: string | null = null;
         let hasName = false;
+        let maxPts = -1;
 
+        // 🚀 Optimization: Find the user document with the highest points in case of duplicates
         usersSnap.forEach(d => {
           try {
               const decPhone = decryptText(d.data().phone) || d.id;
               if (decPhone === formData.phone.trim() || d.id === formData.phone.trim()) {
-                 userRefId = d.id;
-                 hasName = !!decryptText(d.data().name);
+                 const pts = parsePoints(d.data().points);
+                 if (pts > maxPts) {
+                     maxPts = pts;
+                     userRefId = d.id;
+                     hasName = !!decryptText(d.data().name);
+                 }
               }
           } catch(e) {}
         });
@@ -1435,7 +1452,6 @@ export function CustomerBookingWizard({
                   <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-70' : ''}`}>
                     {hasImage ? (
                       <>
-                        {/* 🚀 Optimization: Added lazy loading to images to save bandwidth */}
                         <img src={therapist.images[0]} alt={therapist.name} loading="lazy" className="w-full h-full object-cover object-top" />
                         {therapist.images.length > 1 && (
                           <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/90 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1 px-1 rounded flex flex-col items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30 leading-tight">
@@ -1782,7 +1798,6 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
             <div className="aspect-[3/4] relative overflow-hidden bg-gray-50">
               {t.images.length > 0 ? (
                 <>
-                  {/* 🚀 Optimization: Added lazy loading to gallery images */}
                   <img src={t.images[0]} alt={t.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-transparent to-transparent opacity-80"></div>
                 </>
@@ -1819,7 +1834,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   }, []);
 
   useEffect(() => {
-    // 🚀 Optimization: Fetch ONLY today's and future bookings to calculate slots
     const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
     const unsub = onSnapshot(q, (snap) => {
         const arr: Booking[] = [];
@@ -2164,7 +2178,6 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
     if (!userPhone) return;
     const fetchMyBookings = async () => {
       try {
-        // 🚀 Optimization: Limit history size if requested, here keeping reasonable load.
         const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
         const snap = await getDocs(q);
         const data: Booking[] = [];
@@ -2265,428 +2278,6 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
   );
 }
 
-// 🌟 UPDATED: CustomerProfile 🌟
-export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [userDocId, setUserDocId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [editMode, setEditMode] = useState(false);
-  const [formData, setFormData] = useState({ name: '', password: '', dob: '' });
-  const [saving, setSaving] = useState(false);
-  const [alertMessage, setAlertMessage] = useState('');
-
-  // History Modal States
-  const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<any[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [userBookings, setUserBookings] = useState<any[]>([]);
-
-  const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
-
-  useEffect(() => {
-    if (!userPhone) return;
-    const fetchBookings = async () => {
-       try {
-           // 🚀 Optimization: Only fetch target rewards for this month to save reads
-           const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
-           const snap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', currentMonthPrefix + '-01')));
-           const data: any[] = [];
-           snap.forEach(d => {
-               const raw = d.data();
-               const decPhone = decryptText(raw.phone) || raw.phone;
-               if (decPhone === userPhone) {
-                   data.push({
-                       status: raw.status,
-                       discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
-                       date: raw.date
-                   });
-               }
-           });
-           setUserBookings(data);
-       } catch(e) {}
-    };
-    fetchBookings();
-  }, [userPhone]);
-
-  const fetchHistory = async () => {
-      setLoadingHistory(true);
-      try {
-          const snap = await getDocs(collection(db, 'point_history'));
-          const data: any[] = [];
-          snap.forEach(doc => {
-              const raw = doc.data();
-              const decPhone = decryptText(raw.phone) || raw.phone;
-              if (decPhone === userPhone) {
-                  data.push({
-                      id: doc.id,
-                      amount: Number(decryptText(raw.amount) || raw.amount),
-                      pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned),
-                      type: decryptText(raw.type) || raw.type,
-                      date: raw.date,
-                      createdAt: raw.createdAt
-                  });
-              }
-          });
-          data.sort((a, b) => b.createdAt - a.createdAt);
-          setHistory(data);
-      } catch (e) { console.error(e); }
-      setLoadingHistory(false);
-  };
-
-  useEffect(() => {
-    if (!userPhone) return;
-    const fetchUser = async () => {
-      try {
-          const snap = await getDocs(collection(db, 'users'));
-          let foundUser = null;
-          let docId = null;
-          
-          snap.forEach(d => {
-             const data = d.data();
-             try {
-                 const decPhone = decryptText(data.phone) || d.id;
-                 if (decPhone === userPhone || d.id === userPhone) {
-                     foundUser = data;
-                     docId = d.id;
-                 }
-             } catch(e) {}
-          });
-          
-          if (foundUser) {
-              setProfile({ 
-                  ...(foundUser as any), 
-                  name: decryptText((foundUser as any).name) || '', 
-                  password: decryptText((foundUser as any).password) || '', 
-                  phone: userPhone,
-                  points: parseInt(decryptText((foundUser as any).points) || (foundUser as any).points || '0', 10),
-                  dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
-              });
-              setFormData({ 
-                  name: decryptText((foundUser as any).name) || '', 
-                  password: decryptText((foundUser as any).password) || '',
-                  dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
-              });
-              setUserDocId(docId);
-          } else {
-              setProfile({ name: 'Walk-in Guest', phone: userPhone, points: 0, dob: '', password: '' } as any);
-              setFormData({ name: '', password: '', dob: '' });
-          }
-      } catch(err) {
-          console.error("Error fetching profile", err);
-      } finally {
-          setLoading(false);
-      }
-    };
-    
-    const loadBackgroundHistory = async () => {
-        try {
-            const snap = await getDocs(collection(db, 'point_history'));
-            const data: any[] = [];
-            snap.forEach(doc => {
-                const raw = doc.data();
-                const decPhone = decryptText(raw.phone) || raw.phone;
-                if (decPhone === userPhone) {
-                    data.push({
-                        id: doc.id,
-                        amount: Number(decryptText(raw.amount) || raw.amount),
-                        pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned),
-                        type: decryptText(raw.type) || raw.type,
-                        date: raw.date,
-                        createdAt: raw.createdAt
-                    });
-                }
-            });
-            data.sort((a, b) => b.createdAt - a.createdAt);
-            setHistory(data);
-        } catch (e) {}
-    };
-
-    fetchUser();
-    loadBackgroundHistory();
-  }, [userPhone]);
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      if (userDocId) {
-          await updateDoc(doc(db, 'users', userDocId), { 
-              name: encryptText(formData.name), 
-              password: encryptText(formData.password),
-              dob: encryptText(formData.dob)
-          });
-      } else {
-          const newDocRef = await addDoc(collection(db, 'users'), {
-              phone: encryptText(userPhone),
-              name: encryptText(formData.name),
-              password: encryptText(formData.password),
-              dob: encryptText(formData.dob),
-              points: encryptText('0'),
-              createdAt: Date.now()
-          });
-          setUserDocId(newDocRef.id);
-      }
-      setProfile({ ...profile!, name: formData.name, password: formData.password, dob: formData.dob } as any);
-      setEditMode(false);
-      setAlertMessage("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
-    } catch (e) { setAlertMessage("Error updating profile."); }
-    setSaving(false);
-  };
-
-  if (!userPhone) return <AuthRequest onLoginSuccess={onLoginSuccess} title="View Profile" />;
-  if (loading) return <div className="text-center py-10 font-bold text-gray-500">Loading Profile...</div>;
-
-  // VIP Logic Calculations
-  const sortedTiers = [...(vipSettings.tiers || FALLBACK_VIP_SETTINGS.tiers)].sort((a,b) => a.requiredPoints - b.requiredPoints);
-  const currentPoints = profile?.points || 0;
-  
-  let userTier = null;
-  let nextTier = null;
-  
-  for (let i = 0; i < sortedTiers.length; i++) {
-      if (currentPoints >= sortedTiers[i].requiredPoints) {
-          userTier = sortedTiers[i];
-      }
-      if (currentPoints < sortedTiers[i].requiredPoints && !nextTier) {
-          nextTier = sortedTiers[i];
-      }
-  }
-
-  const progressPercent = nextTier ? Math.min(100, (currentPoints / nextTier.requiredPoints) * 100) : 100;
-  const pointsNeeded = nextTier ? nextTier.requiredPoints - currentPoints : 0;
-
-  const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
-  const monthlyPoints = history.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((sum, h) => sum + h.pointsEarned, 0);
-  
-  const isBdayMonth = () => {
-      if (!profile?.dob) return false;
-      const dobParts = profile.dob.split('-');
-      const currentParts = getLocalTodayStr().split('-');
-      return dobParts[1] === currentParts[1];
-  };
-
-  return (
-    <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0">
-      <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
-      
-      {/* 🌟 Point History Modal 🌟 */}
-      {showHistory && (
-          <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center sm:items-center sm:p-4 animate-fade-in" onClick={() => setShowHistory(false)}>
-              <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[85vh] sm:h-auto sm:max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
-                  <div className="bg-[#123524] p-5 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-                      <h3 className="text-[#D4AF37] font-bold text-base flex items-center"><History className="w-5 h-5 mr-2" /> Points History</h3>
-                      <button onClick={() => setShowHistory(false)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-5 h-5"/></button>
-                  </div>
-                  <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-3 pb-8">
-                      {loadingHistory ? (
-                          <div className="text-center py-10 text-gray-500 font-bold text-sm animate-pulse">Loading History...</div>
-                      ) : history.length === 0 ? (
-                          <div className="text-center py-10 text-gray-400 font-bold text-sm">Point ရရှိထားသော မှတ်တမ်းမရှိသေးပါ။</div>
-                      ) : (
-                          history.map((h, i) => (
-                              <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between hover:border-[#D4AF37]/50 transition">
-                                  <div className="flex items-center">
-                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${h.type.includes('Online') ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500'}`}>
-                                          {h.type.includes('Online') ? <CalendarPlus className="w-5 h-5"/> : <Home className="w-5 h-5"/>}
-                                      </div>
-                                      <div>
-                                          <div className="font-bold text-[#123524] text-sm">{h.type}</div>
-                                          <div className="text-[10px] text-gray-500 mt-0.5">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</div>
-                                          <div className="text-[10px] font-semibold text-gray-600 mt-1">Amount: {formatPrice(h.amount)}</div>
-                                      </div>
-                                  </div>
-                                  <div className="text-right">
-                                      <div className="text-lg font-black text-green-600">+{h.pointsEarned}</div>
-                                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Points</div>
-                                  </div>
-                              </div>
-                          ))
-                      )}
-                  </div>
-              </div>
-          </div>
-      )}
-
-      <div className="text-center mb-6"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>My Profile</h2></div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center mb-6">
-        
-        <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4 text-[#D4AF37] relative shadow-sm">
-            {userTier ? <Crown className="w-10 h-10" style={{ color: userTier.colorTheme }} /> : <User className="w-10 h-10" />}
-        </div>
-
-        {!editMode ? (
-          <>
-            <h3 className="text-xl font-bold text-gray-800">{profile?.name || 'Walk-in Guest'}</h3>
-            <p className="text-sm font-bold text-gray-500 mt-1 mb-4 flex items-center justify-center"><Phone className="w-4 h-4 mr-1" /> {profile?.phone}</p>
-            
-            {userTier && (
-                <div className="mb-6 inline-flex items-center px-4 py-1.5 rounded-full text-xs font-bold text-white shadow-sm border border-white/20" style={{ backgroundColor: userTier.colorTheme }}>
-                    <Award className="w-4 h-4 mr-1.5"/> {userTier.name} ({userTier.discountPercent}%)
-                </div>
-            )}
-            
-            <div className="grid grid-cols-2 gap-3 mb-6">
-                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 flex flex-col items-center justify-center shadow-sm relative overflow-hidden group">
-                    <Star className="w-16 h-16 absolute -top-4 -right-4 text-yellow-500 opacity-10 group-hover:scale-110 transition-transform" />
-                    <span className="text-[10px] text-yellow-700 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1"/> My VIP Points</span>
-                    <span className="text-3xl font-black text-[#123524] mb-3">{currentPoints}</span>
-                    <button onClick={() => { setShowHistory(true); fetchHistory(); }} className="px-4 py-1.5 bg-yellow-200 text-yellow-800 rounded-full text-[10px] font-bold shadow-sm hover:bg-yellow-300 transition flex items-center">
-                        <History className="w-3 h-3 mr-1"/> View History
-                    </button>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex flex-col items-center justify-center shadow-sm">
-                    <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest flex items-center mb-1"><Gift className="w-3 h-3 mr-1"/> Birthday</span>
-                    <span className="text-sm font-bold text-blue-900 mt-1">{(profile as any)?.dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
-                </div>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 shadow-sm relative overflow-hidden text-left">
-                <h4 className="text-xs font-bold text-gray-800 mb-3 flex items-center"><Target className="w-4 h-4 mr-1.5 text-[#D4AF37]"/> VIP Progress</h4>
-                {nextTier ? (
-                    <>
-                        <div className="flex justify-between items-end mb-1.5">
-                            <span className="text-[10px] font-bold text-gray-500">Current: {currentPoints} Pts</span>
-                            <span className="text-[10px] font-bold text-[#D4AF37] text-right max-w-[120px] truncate" title={nextTier.name}>{nextTier.name} ({nextTier.requiredPoints} Pts)</span>
-                        </div>
-                        <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-[#D4AF37] transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%` }}></div>
-                        </div>
-                        <p className="text-[10px] text-gray-500 font-semibold mt-2.5 text-center leading-relaxed">
-                            <span className="font-bold text-[#123524]">{nextTier.name}</span> ဖြစ်ရန် လိုအပ်သော ပွိုင့်: <span className="font-bold text-red-500">{pointsNeeded} Pts</span>
-                        </p>
-                    </>
-                ) : (
-                    <div className="text-center p-2 border-b border-gray-100 mb-4 pb-4">
-                        <Crown className="w-8 h-8 text-[#D4AF37] mx-auto mb-2" />
-                        <p className="text-xs font-bold text-[#123524] leading-relaxed">ဂုဏ်ယူပါသည်။ သင်သည် အမြင့်ဆုံး VIP အဆင့်သို့ ရောက်ရှိနေပါပြီ။</p>
-                    </div>
-                )}
-
-                <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-100 flex justify-between items-center">
-                    <span className="text-[11px] font-bold text-gray-600 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5 text-gray-400"/> ယခုလအတွင်း စုဆောင်းထားသောပွိုင့်</span>
-                    <span className="text-sm font-black text-[#123524]">{monthlyPoints} Pts</span>
-                </div>
-
-                {isBdayMonth() && userTier && (
-                    <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                        <h5 className="text-[11px] font-bold text-blue-800 mb-2 flex items-center">
-                            <Gift className="w-4 h-4 mr-1.5"/> Birthday Month Bonus
-                        </h5>
-                        <p className="text-[10px] text-blue-700 font-semibold mb-3 leading-relaxed">
-                            ယခုလသည် သင့်မွေးနေ့လဖြစ်သောကြောင့် အထူးခံစားခွင့် ရရှိနေပါသည်။
-                        </p>
-                        {(userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) ? (
-                            <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
-                                <span className="text-[10px] text-gray-600 font-bold">Base (20%) + Monthly ({monthlyPoints}%)</span>
-                                <span className="text-sm font-black text-blue-600">{Math.min(100, 20 + monthlyPoints)}% OFF</span>
-                            </div>
-                        ) : (
-                            <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
-                                <span className="text-[10px] text-gray-600 font-bold">VIP Standard Birthday</span>
-                                <span className="text-sm font-black text-blue-600">50% OFF</span>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* 🌟 Pre-Jade Target Progress and Rewards (Hidden if VIP) 🌟 */}
-                {!userTier && (() => {
-                    const nextTarget = Math.floor(monthlyPoints / 10) * 10 + 10; 
-                    const actualTarget = nextTarget > 50 ? 50 : nextTarget;
-                    const ptsNeededForTarget = actualTarget - monthlyPoints;
-                    
-                    const basePoint = actualTarget - 10;
-                    const targetProgressPercent = ((monthlyPoints - basePoint) / 10) * 100;
-
-                    const possibleTiers = [10, 20, 30, 40];
-                    const availableRewards: number[] = [];
-                    const usedRewards: number[] = [];
-                    
-                    possibleTiers.forEach(tier => {
-                        if (monthlyPoints >= tier) {
-                            const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
-                            const isUsed = userBookings.some(b => 
-                                b.discountLabel === rewardLabel && 
-                                b.date && b.date.startsWith(currentMonthPrefix) && 
-                                b.status !== 'cancelled'
-                            );
-                            
-                            if (isUsed) {
-                                usedRewards.push(tier);
-                            } else {
-                                availableRewards.push(tier);
-                            }
-                        }
-                    });
-
-                    return (
-                        <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in">
-                            <div className="mb-4">
-                                <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center">
-                                    <Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)
-                                </h5>
-                                <div className="flex justify-between items-end mb-1.5">
-                                    <span className="text-[9px] font-bold text-gray-500">Target Bonus: {actualTarget}% Off</span>
-                                    <span className="text-[9px] font-bold text-green-600">{actualTarget} Pts</span>
-                                </div>
-                                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
-                                    <div className="h-full rounded-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div>
-                                </div>
-                                <p className="text-[9px] text-gray-500 font-semibold text-center">
-                                    <span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span>
-                                </p>
-                            </div>
-
-                            {(availableRewards.length > 0 || usedRewards.length > 0) && (
-                                <div className="space-y-2 pt-2 border-t border-gray-100">
-                                    <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center mt-2">
-                                        <Award className="w-3 h-3 mr-1 text-[#D4AF37]"/> Target Rewards Status
-                                    </h5>
-                                    
-                                    {availableRewards.map(tier => (
-                                        <div key={`avail-${tier}`} className="bg-green-50 text-green-700 p-2.5 rounded-lg text-[10px] font-bold border border-green-200 flex items-center justify-between shadow-sm">
-                                            <span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1.5 text-green-600"/> {tier}% Discount ခံစားခွင့်</span>
-                                            <span className="bg-green-100 px-2 py-1 rounded text-green-800 shadow-sm">၁ ကြိမ် ရရှိထားပါသည်</span>
-                                        </div>
-                                    ))}
-                                    
-                                    {usedRewards.map(tier => (
-                                        <div key={`used-${tier}`} className="bg-gray-50 text-gray-500 p-2.5 rounded-lg text-[10px] font-bold border border-gray-200 flex items-center justify-between opacity-75">
-                                            <span className="flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> {tier}% Discount ခံစားခွင့်</span>
-                                            <span className="bg-gray-200 px-2 py-1 rounded text-gray-600">အသုံးပြုပြီးပါပြီ</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })()}
-            </div>
-
-            <div className={`text-[10px] rounded-full px-3 py-1.5 inline-block font-bold mb-6 w-full ${profile?.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
-              {profile?.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
-            </div>
-            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center"><Edit className="w-4 h-4 mr-2" /> Edit Profile Details</button>
-          </>
-        ) : (
-          <form onSubmit={handleSave} className="text-left space-y-4">
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name</label><input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" required /></div>
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth (For Birthday Bonus)</label><input type="date" value={formData.dob} onChange={e => setFormData({ ...formData, dob: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" /></div>
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Set Password (Optional)</label><input type="text" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="Leave blank for no password" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" /></div>
-            <div className="flex space-x-2 pt-2">
-              <button type="button" onClick={() => setEditMode(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200">Cancel</button>
-              <button type="submit" disabled={saving} className="flex-1 py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{saving ? 'Saving...' : 'Save'}</button>
-            </div>
-          </form>
-        )}
-      </div>
-      <button onClick={onLogout} className="w-full py-3 bg-red-50 text-red-600 rounded-lg font-bold border border-red-100 hover:bg-red-100 transition flex justify-center items-center"><LogOut className="w-4 h-4 mr-2" /> Log Out</button>
-    </div>
-  );
-}
-
 // ==========================================
 // COMPONENT: AuthRequest
 // ==========================================
@@ -2707,7 +2298,7 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
          try {
              const data = d.data();
              const decPhone = decryptText(data.phone) || d.id;
-             if (decPhone === phone || d.id === phone) {
+             if (decPhone === phone.trim() || d.id === phone.trim()) {
                 found = true;
                 userPass = decryptText(data.password);
              }
@@ -2716,7 +2307,7 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
       if (!found) { setError("ဖုန်းနံပါတ် ရှာမတွေ့ပါ။ ဘိုကင်အရင်တင်ပေးပါခင်ဗျာ။"); }
       else {
         if (userPass) { setStep(2); }
-        else { onLoginSuccess(phone); }
+        else { onLoginSuccess(phone.trim()); }
       }
     } catch (e) { setError("Network Error"); }
     finally { setLoading(false); }
@@ -2731,12 +2322,12 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
          try {
              const data = d.data();
              const decPhone = decryptText(data.phone) || d.id;
-             if (decPhone === phone || d.id === phone) {
+             if (decPhone === phone.trim() || d.id === phone.trim()) {
                 userPass = decryptText(data.password);
              }
          } catch(err){}
       });
-      if (userPass === password) { onLoginSuccess(phone); }
+      if (userPass === password) { onLoginSuccess(phone.trim()); }
       else { setError("Password မှားယွင်းနေပါသည်။"); }
     } catch (e) { setError("Network Error"); }
     finally { setLoading(false); }
