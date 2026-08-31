@@ -206,9 +206,6 @@ export function StatusBadge({ status, cancelReason }: { status: string, cancelRe
   return <span className="text-yellow-600 border border-yellow-200 bg-yellow-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Pending</span>;
 }
 
-// ==========================================
-// CUSTOM ALERT MODAL
-// ==========================================
 export function CustomAlert({ message, title = "Shangrila Online Booking System", onClose }: { message: string, title?: string, onClose: () => void }) {
   if (!message) return null;
   return (
@@ -229,127 +226,12 @@ export function CustomAlert({ message, title = "Shangrila Online Booking System"
   );
 }
 
-// ==========================================
-// MAIN CUSTOMER APP WRAPPER
-// ==========================================
-export default function CustomerApp({ appData }: { appData: AppData }) {
-  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
-     const searchParams = new URLSearchParams(window.location.search);
-     const view = searchParams.get('view');
-     if (view === 'therapists') return 'therapists';
-     if (view === 'dashboard') return 'dashboard';
-     return 'book';
-  });
-  
-  const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
-  const [hasNoti, setHasNoti] = useState(false);
-  const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
-  const prevStatuses = useRef<Record<string, string>>({});
-  const isFirstLoad = useRef(true);
+// 📌 ALL COMPONENTS DEFINED ABOVE THE MAIN WRAPPER TO PREVENT HOISTING REFERENCE ERRORS
 
-  const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
-  useEffect(() => {
-      const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
-          if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
-      });
-      return () => unsub();
-  }, []);
-  const mergedAppData = { ...appData, vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS };
-
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
-
-  useEffect(() => {
-    if (!userPhone) return;
-    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(50));
-    const unsubscribe = onSnapshot(q, (snap) => {
-      let changed = false;
-      snap.docs.forEach((doc) => {
-        const raw = doc.data();
-        const bPhone = decryptText(raw.phone) || raw.phone;
-        if (bPhone === userPhone) {
-          const oldStatus = prevStatuses.current[doc.id];
-          if (oldStatus && oldStatus !== raw.status) changed = true;
-          prevStatuses.current[doc.id] = raw.status;
-        }
-      });
-      if (!isFirstLoad.current && changed) {
-        if (activeTab !== 'history') setHasNoti(true);
-        const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
-        if (audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); }
-      }
-      isFirstLoad.current = false;
-    });
-    return () => unsubscribe();
-  }, [userPhone, activeTab]);
-
-  useEffect(() => { if (activeTab === 'history') setHasNoti(false); }, [activeTab]);
-
-  const handleInteraction = () => {
-    const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
-    if (audioEl && audioEl.paused) { audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {}); }
-  };
-
-  const handleDashboardBook = (t: TherapistProfile) => { setPrefillTherapist(t); setActiveTab('therapists'); };
-
-  const baseTabs = [
-    { id: 'book', label: 'Book Now', icon: CalendarPlus }, 
-    { id: 'therapists', label: 'View Therapists', icon: User },
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, 
-    { id: 'history', label: 'My Bookings', icon: History }
-  ] as const;
-
-  const vipSettings = mergedAppData.vipSettings;
-  const tabs = vipSettings.isActive 
-      ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }]
-      : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
-
-  return (
-    <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
-      <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
-      
-      <div className="flex sm:hidden justify-end mb-2 pr-2">
-         <span className="text-[10px] text-[#123524] font-bold flex items-center animate-pulse">
-            ဘေးသို့ဆွဲကြည့်ပါ <span className="text-[#D4AF37] ml-1 tracking-tighter font-black">&gt;&gt;</span>
-         </span>
-      </div>
-
-      <div className="flex justify-start sm:justify-center items-center space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide snap-x snap-mandatory relative">
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-              className={`snap-start relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
-              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
-              <span className="text-center whitespace-nowrap">{tab.label}</span>
-              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
-              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
-            </button>
-          )
-        })}
-      </div>
-      
-      {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
-      {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
-      {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
-      {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
-      {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
-      {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
-    </div>
-  );
-}
-
-// ==========================================
-// COMPONENT: VIP Program View
-// ==========================================
 export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, onGoToProfile?: () => void }) {
    const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
-
-   if (!vipSettings || !vipSettings.isActive) {
-       return <div className="text-center py-20 text-gray-400 font-bold text-sm">VIP Program is currently unavailable.</div>;
-   }
-
+   if (!vipSettings || !vipSettings.isActive) return <div className="text-center py-20 text-gray-400 font-bold text-sm">VIP Program is currently unavailable.</div>;
    const sortedTiers = [...vipSettings.tiers].sort((a,b) => a.requiredPoints - b.requiredPoints);
-
    const baseRule = (vipSettings as any).baseRuleText || "သုံးစွဲငွေ ၃၅,၀၀၀ ကျပ် လျှင် = ၁ ပွိုင့် (1 Point)";
    const preJadeTxt = (vipSettings as any).preJadeText || "Jade Member မဖြစ်မီ (၅၀) ပွိုင့် စုဆောင်းနေစဉ်ကာလအတွင်း (၁)လ အတွင်း ပြည့်မီသော Points များအတွက် အထူး Discount ကို ထပ်ဆောင်းပေးအပ်ပါသည်။";
    const preJadeRws = (vipSettings as any).preJadeRewards || ['10 Pts = 10% Off', '20 Pts = 20% Off', '30 Pts = 30% Off', '40 Pts = 40% Off', '50 Pts = 50% Off'];
@@ -363,11 +245,9 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
            <div className="bg-[#123524] text-white p-8 rounded-b-[40px] shadow-lg text-center relative overflow-hidden">
                <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div>
                <div className="absolute bottom-0 left-0 w-24 h-24 bg-[#D4AF37] opacity-10 rounded-full -ml-8 -mb-8 blur-lg"></div>
-               
                <Award className="w-14 h-14 mx-auto mb-4 text-[#D4AF37] drop-shadow-md animate-pulse" />
                <h2 className="text-2xl font-bold tracking-wider" style={{ color: '#D4AF37' }}>VIP MEMBERSHIP</h2>
                <p className="text-[10px] font-bold mt-2 uppercase tracking-widest text-gray-300">Exclusive Privileges Program</p>
-               
                <div className="mt-6 inline-flex flex-col items-center bg-black/20 p-3 rounded-xl border border-white/10">
                    <span className="text-[10px] font-bold uppercase text-[#D4AF37] mb-1 tracking-widest">Base Rule</span>
                    <span className="text-xs font-semibold text-white">{baseRule}</span>
@@ -382,18 +262,11 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                            <div key={tier.id} className="relative rounded-2xl p-5 overflow-hidden shadow-sm border border-gray-100 transition-all hover:shadow-md" style={{ backgroundColor: tier.colorTheme, color: tier.colorTheme === '#D4AF37' ? '#123524' : '#fff' }}>
                                <div className="absolute top-0 right-0 w-24 h-24 bg-white opacity-[0.08] rounded-full -mr-5 -mt-5"></div>
                                <div className="flex justify-between items-center relative z-10 mb-4 border-b border-white/20 pb-3">
-                                   <div>
-                                       <h4 className="font-bold text-[17px] tracking-wide">{tier.name}</h4>
-                                       <p className="text-[11px] mt-1 opacity-90 font-semibold">{tier.requiredPoints} Points Required</p>
-                                   </div>
-                                   <div className="text-right">
-                                       <div className="text-3xl font-black">{tier.discountPercent}%</div>
-                                       <div className="text-[9px] uppercase font-bold tracking-widest mt-0.5 opacity-80">Discount</div>
-                                   </div>
+                                   <div><h4 className="font-bold text-[17px] tracking-wide">{tier.name}</h4><p className="text-[11px] mt-1 opacity-90 font-semibold">{tier.requiredPoints} Points Required</p></div>
+                                   <div className="text-right"><div className="text-3xl font-black">{tier.discountPercent}%</div><div className="text-[9px] uppercase font-bold tracking-widest mt-0.5 opacity-80">Discount</div></div>
                                </div>
                                <div className="relative z-10 flex items-center justify-between text-[11px] font-semibold bg-black/10 px-3 py-2 rounded-lg">
-                                   <span className="opacity-90">တစ်ကြိမ်တည်း ဝယ်ယူပါက</span>
-                                   <span className="font-bold">{tier.instantUpgrade}</span>
+                                   <span className="opacity-90">တစ်ကြိမ်တည်း ဝယ်ယူပါက</span><span className="font-bold">{tier.instantUpgrade}</span>
                                </div>
                            </div>
                        ))}
@@ -404,14 +277,11 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                    <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] rounded-2xl p-5 shadow-sm text-white relative overflow-hidden">
                        <Target className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-5" />
                        <h3 className="font-bold text-[#D4AF37] text-sm mb-3 flex items-center relative z-10">လစဉ် Target Rewards (Pre-Jade)</h3>
-                       <p className="text-[11px] text-gray-300 leading-relaxed mb-4 relative z-10 font-semibold">
-                           {preJadeTxt}
-                       </p>
+                       <p className="text-[11px] text-gray-300 leading-relaxed mb-4 relative z-10 font-semibold">{preJadeTxt}</p>
                        <ul className="space-y-2 relative z-10">
                            {preJadeRws.map((r: string, i: number) => (
                                <li key={i} className="flex justify-between items-center bg-white/10 px-3 py-2 rounded-lg text-xs font-bold border border-white/5">
-                                   <span>{r.split('=')[0]}</span>
-                                   <span className="text-[#D4AF37]">{r.split('=')[1]} (၁ ကြိမ်)</span>
+                                   <span>{r.split('=')[0]}</span><span className="text-[#D4AF37]">{r.split('=')[1]} (၁ ကြိမ်)</span>
                                </li>
                            ))}
                        </ul>
@@ -420,15 +290,10 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
 
                <section className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5">
                    <h3 className="font-bold text-[#123524] text-sm mb-2 flex items-center"><Info className="w-4 h-4 mr-2 text-yellow-600"/> Cumulative Upgrade System</h3>
-                   <p className="text-[11px] text-gray-700 leading-relaxed font-semibold mb-4">
-                       {cumulativeTxt}
-                   </p>
+                   <p className="text-[11px] text-gray-700 leading-relaxed font-semibold mb-4">{cumulativeTxt}</p>
                    <div className="bg-white border border-[#D4AF37]/40 shadow-sm rounded-xl p-4 relative overflow-hidden">
                        <div className="absolute top-0 left-0 w-1.5 h-full bg-[#D4AF37]"></div>
-                       <p className="text-[11px] text-gray-700 leading-relaxed font-semibold">
-                           <span className="text-[#123524] font-bold block mb-1">💡 အထူးသတိပြုရန် -</span>
-                           {instantUpgTxt}
-                       </p>
+                       <p className="text-[11px] text-gray-700 leading-relaxed font-semibold"><span className="text-[#123524] font-bold block mb-1">💡 အထူးသတိပြုရန် -</span>{instantUpgTxt}</p>
                    </div>
                </section>
 
@@ -437,18 +302,11 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                    <div className="space-y-3">
                        <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-start">
                            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mr-3 mt-0.5"><Star className="w-4 h-4 text-red-500"/></div>
-                           <div>
-                               <h4 className="font-bold text-[#123524] text-xs">Standard Birthday Bonus</h4>
-                               <p className="text-[11px] text-gray-600 mt-1 font-semibold leading-relaxed whitespace-pre-line">{bdayStd}</p>
-                           </div>
+                           <div><h4 className="font-bold text-[#123524] text-xs">Standard Birthday Bonus</h4><p className="text-[11px] text-gray-600 mt-1 font-semibold leading-relaxed whitespace-pre-line">{bdayStd}</p></div>
                        </div>
-                       
                        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-start text-white">
                            <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0 mr-3 mt-0.5"><Crown className="w-4 h-4 text-[#D4AF37]"/></div>
-                           <div>
-                               <h4 className="font-bold text-[#D4AF37] text-xs">Imperial V-VIP သီးသန့်ခံစားခွင့်</h4>
-                               <p className="text-[11px] text-gray-400 mt-1 font-semibold leading-relaxed whitespace-pre-line">{bdayImp}</p>
-                           </div>
+                           <div><h4 className="font-bold text-[#D4AF37] text-xs">Imperial V-VIP သီးသန့်ခံစားခွင့်</h4><p className="text-[11px] text-gray-400 mt-1 font-semibold leading-relaxed whitespace-pre-line">{bdayImp}</p></div>
                        </div>
                    </div>
                </section>
@@ -458,8 +316,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                    <ul className="space-y-3">
                        {vipSettings.rules.map((rule, idx) => (
                            <li key={idx} className="flex items-start text-[11px] text-gray-600 leading-relaxed font-semibold">
-                               <ChevronRight className="w-3 h-3 mr-1.5 mt-0.5 text-[#D4AF37] flex-shrink-0" />
-                               {rule}
+                               <ChevronRight className="w-3 h-3 mr-1.5 mt-0.5 text-[#D4AF37] flex-shrink-0" />{rule}
                            </li>
                        ))}
                    </ul>
@@ -480,31 +337,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
    );
 }
 
-
-// ==========================================
-// CUSTOMER BOOKING WIZARD
-// ==========================================
-export function CustomerBookingWizard({
-  appData, 
-  userPhone = '', 
-  onBooked, 
-  forceTherapistFirst = false, 
-  initialTherapist = null, 
-  isStaffMode = false, 
-  staffClockIn = false, 
-  staffClockInSuccess, 
-  preselectedStaff 
-}: { 
-  appData: AppData, 
-  userPhone?: string, 
-  onBooked?: (phone: string) => void, 
-  forceTherapistFirst?: boolean, 
-  initialTherapist?: TherapistProfile | null, 
-  isStaffMode?: boolean, 
-  staffClockIn?: boolean, 
-  staffClockInSuccess?: () => void, 
-  preselectedStaff?: string 
-}) {
+export function CustomerBookingWizard({ appData, userPhone = '', onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff }: { appData: AppData, userPhone?: string, onBooked?: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
   const promoTitle = appData.promotion?.title || 'SPECIAL PROMO';
@@ -517,27 +350,13 @@ export function CustomerBookingWizard({
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [step]);
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  
-  const [formData, setFormData] = useState({ 
-      name: isStaffMode ? 'Walk-in Guest' : '', 
-      phone: userPhone, 
-      selectedItem: null as MenuItem | null, 
-      isVvipUpgrade: false, 
-      therapist: initialTherapist, 
-      therapist2: null as TherapistProfile | null,
-      date: '', 
-      time: '', 
-      paymentMethod: '', 
-      txId: '', 
-      specialRequest: '' 
-  });
+  const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, therapist2: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [alertMessage, setAlertMessage] = useState('');
-  
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [pointHistory, setPointHistory] = useState<any[]>([]);
@@ -545,9 +364,7 @@ export function CustomerBookingWizard({
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const todayStr = getLocalTodayStr();
 
-  const isFourHands = useMemo(() => {
-      return (formData.selectedItem?.name || '').toLowerCase().includes('four hands');
-  }, [formData.selectedItem]);
+  const isFourHands = useMemo(() => { return (formData.selectedItem?.name || '').toLowerCase().includes('four hands'); }, [formData.selectedItem]);
 
   useEffect(() => {
       const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
@@ -555,22 +372,13 @@ export function CustomerBookingWizard({
           const arr: Booking[] = [];
           snap.forEach(d => {
              const raw = d.data();
-             arr.push({ 
-                 id: d.id, 
-                 ...raw, 
-                 name: decryptText(raw.name), 
-                 phone: decryptText(raw.phone), 
-                 txId: decryptText(raw.txId), 
-                 specialRequest: decryptText(raw.specialRequest),
-                 discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined
-             } as Booking);
+             arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest), discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined } as Booking);
           });
           setAllBookings(arr);
       });
       return () => unsub();
   }, [todayStr]);
 
-  // 🚀 Added a bulletproof number parser to prevent NaN errors
   const parsePoints = (pts: any) => {
       if (pts === undefined || pts === null) return 0;
       if (typeof pts === 'number') return pts;
@@ -592,24 +400,15 @@ export function CustomerBookingWizard({
                       const decPhone = decryptText(data.phone) || d.id;
                       if (decPhone === userPhone || d.id === userPhone) {
                           const pts = parsePoints(data.points);
-                          if (pts > maxPts) {
-                              maxPts = pts;
-                              foundUser = data;
-                          }
+                          if (pts > maxPts) { maxPts = pts; foundUser = data; }
                       }
                   } catch (e) {}
               });
-              
               if (foundUser) {
-                  setUserProfile({
-                      ...(foundUser as any),
-                      points: maxPts,
-                      dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
-                  });
+                  setUserProfile({ ...(foundUser as any), points: maxPts, dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || '' });
               }
           } catch(e) { console.error(e); }
       };
-      
       const fetchPH = async () => {
           try {
               const snap = await getDocs(collection(db, 'point_history'));
@@ -623,9 +422,7 @@ export function CustomerBookingWizard({
               setPointHistory(arr);
           } catch (e) {}
       };
-
-      fetchUser();
-      fetchPH();
+      fetchUser(); fetchPH();
   }, [userPhone]);
 
   useEffect(() => {
@@ -674,8 +471,7 @@ export function CustomerBookingWizard({
       return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2];
   };
 
-  let finalDiscountPercent = 0;
-  let discountLabel = '';
+  let finalDiscountPercent = 0; let discountLabel = '';
 
   if (promoActive) {
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
@@ -683,55 +479,33 @@ export function CustomerBookingWizard({
   } else if (vipSettings.isActive && userProfile) {
       const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
       const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
-      
       const tierPercent = userTier ? userTier.discountPercent : 0;
       const tierLabel = userTier ? `VIP Member Discount (${tierPercent}%)` : '';
-      
-      let oneTimePercent = 0;
-      let oneTimeLabel = '';
+      let oneTimePercent = 0; let oneTimeLabel = '';
       const possibleTiers = [40, 30, 20, 10]; 
       
       if (!userTier) {
           for (const tier of possibleTiers) {
               if (monthlyPts >= tier) {
                   const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
-                  const hasUsed = allBookings.some(b => 
-                      (b.phone === userPhone) && 
-                      b.discountLabel === rewardLabel && 
-                      b.date && b.date.startsWith(currentMonthPrefix) &&
-                      b.status !== 'cancelled'
-                  );
-                  if (!hasUsed) {
-                      oneTimePercent = tier;
-                      oneTimeLabel = rewardLabel;
-                      break; 
-                  }
+                  const hasUsed = allBookings.some(b => (b.phone === userPhone) && b.discountLabel === rewardLabel && b.date && b.date.startsWith(currentMonthPrefix) && b.status !== 'cancelled');
+                  if (!hasUsed) { oneTimePercent = tier; oneTimeLabel = rewardLabel; break; }
               }
           }
       }
 
-      let bdayPercent = 0;
-      let bdayLabel = '';
+      let bdayPercent = 0; let bdayLabel = '';
       if (userTier && isBirthday()) {
           if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) {
-              bdayPercent = Math.min(100, 20 + monthlyPts);
-              bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`;
+              bdayPercent = Math.min(100, 20 + monthlyPts); bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`;
           } else {
-              bdayPercent = 50;
-              bdayLabel = `VIP Birthday Bonus (50%)`;
+              bdayPercent = 50; bdayLabel = `VIP Birthday Bonus (50%)`;
           }
       }
 
-      if (bdayPercent >= oneTimePercent && bdayPercent >= tierPercent && bdayPercent > 0) {
-          finalDiscountPercent = bdayPercent;
-          discountLabel = bdayLabel;
-      } else if (oneTimePercent >= tierPercent && oneTimePercent > 0) {
-          finalDiscountPercent = oneTimePercent;
-          discountLabel = oneTimeLabel;
-      } else if (tierPercent > 0) {
-          finalDiscountPercent = tierPercent;
-          discountLabel = tierLabel;
-      }
+      if (bdayPercent >= oneTimePercent && bdayPercent >= tierPercent && bdayPercent > 0) { finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; }
+      else if (oneTimePercent >= tierPercent && oneTimePercent > 0) { finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; }
+      else if (tierPercent > 0) { finalDiscountPercent = tierPercent; discountLabel = tierLabel; }
   }
 
   const calculateSubTotal = () => {
@@ -747,25 +521,17 @@ export function CustomerBookingWizard({
   const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
       const usage = new Map<string, { vip: number, normal: number }>();
       ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
-
       bookingsArray.forEach(b => {
           if (b.status === 'cancelled' || b.status === 'completed') return;
           if (b.date !== selectedDate) return;
-          
           const serviceLower = (b.service || '').toLowerCase();
           const isBookingOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
           if (isBookingOutcall) return; 
-
           const isVip = serviceLower.includes('vvip');
           const coveredSlots = getBookingCoveredSlots(b); 
-
           coveredSlots.forEach(slot => {
               const current = usage.get(slot);
-              if (current) {
-                  if (isVip) current.vip += 1;
-                  else current.normal += 1;
-                  usage.set(slot, current);
-              }
+              if (current) { if (isVip) current.vip += 1; else current.normal += 1; usage.set(slot, current); }
           });
       });
       return usage;
@@ -782,16 +548,13 @@ export function CustomerBookingWizard({
           const slotTime = new Date(); slotTime.setHours(h, m, 0, 0);
           if (now >= slotTime) { currentSlot = slot; break; }
       }
-      
       allBookings.forEach(b => {
           if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr) return; 
           const serviceLower = (b.service || '').toLowerCase();
           if (serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home')) return;
           const isVip = serviceLower.includes('vvip');
           const coveredSlots = getBookingCoveredSlots(b);
-          if (currentSlot && coveredSlots.includes(currentSlot)) {
-              if (isVip) vip++; else normal++;
-          }
+          if (currentSlot && coveredSlots.includes(currentSlot)) { if (isVip) vip++; else normal++; }
       });
       return { vip, normal, total: vip + normal };
   }, [allBookings, todayStr]);
@@ -817,9 +580,7 @@ export function CustomerBookingWizard({
   };
 
   const checkSlotState = (t: string) => {
-      let neededSlots = 2;
-      const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-
+      let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
       if (fixedDetails) {
           const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
           let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
@@ -829,28 +590,19 @@ export function CustomerBookingWizard({
           const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
           if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
       }
-
       const actualTestStr = t.includes("to") ? `${t.split(' to ')[0].trim()} to ${t.split(' to ')[1]}` : t;
       const coveredSlotsForT = getSlotsFromTimeText(actualTestStr, neededSlots);
       if (coveredSlotsForT.length === 0) return { available: false, reason: 'invalid' };
-
       if (formData.therapist) {
           const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date || todayStr);
-          for (const slot of coveredSlotsForT) {
-              if (tBlocked.has(slot)) return { available: false, reason: 'therapist' };
-          }
+          for (const slot of coveredSlotsForT) { if (tBlocked.has(slot)) return { available: false, reason: 'therapist' }; }
       }
-      
       if (formData.therapist2) {
           const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date || todayStr);
-          for (const slot of coveredSlotsForT) {
-              if (tBlocked2.has(slot)) return { available: false, reason: 'therapist' };
-          }
+          for (const slot of coveredSlotsForT) { if (tBlocked2.has(slot)) return { available: false, reason: 'therapist' }; }
       }
-
       const serviceLower = (formData.selectedItem?.name || '').toLowerCase();
       const isCurrentOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
-      
       if (!isCurrentOutcall) {
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
           for (const slot of coveredSlotsForT) {
@@ -865,14 +617,10 @@ export function CustomerBookingWizard({
 
   const handleTimeSlotClick = (t: string, state: { available: boolean, reason: string }) => {
       if (!formData.date) return;
-      if (state.reason === 'therapist') {
-          setAlertMessage("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။"); return;
-      }
+      if (state.reason === 'therapist') { setAlertMessage("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။"); return; }
       if (state.reason === 'room') {
           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
-          let neededSlots = 2;
-          const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-
+          let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
           if (fixedDetails) {
               const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
               let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
@@ -882,10 +630,8 @@ export function CustomerBookingWizard({
               const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
               if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
           }
-
           const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
           let nextAvailable = '';
-          
           for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
               let durationFree = true;
               const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
@@ -915,19 +661,14 @@ export function CustomerBookingWizard({
       }
       if (state.available) {
           const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-          if (fixedDetails) {
-              setFormData({ ...formData, time: `${t} to ${fixedDetails.end}${fixedDetails.nextDay ? ' (Next Day)' : ''}` });
-          } else if ((formData.selectedItem?.name || '').toLowerCase().includes("night")) {
-              setFormData({ ...formData, time: `${t} to 8:00 AM (Next Day)` });
-          } else {
-              setFormData({ ...formData, time: t });
-          }
+          if (fixedDetails) { setFormData({ ...formData, time: `${t} to ${fixedDetails.end}${fixedDetails.nextDay ? ' (Next Day)' : ''}` }); } 
+          else if ((formData.selectedItem?.name || '').toLowerCase().includes("night")) { setFormData({ ...formData, time: `${t} to 8:00 AM (Next Day)` }); } 
+          else { setFormData({ ...formData, time: t }); }
       }
   };
 
   const getAvailableTimeSlots = (targetDateOverride?: string) => {
     let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("11:00 PM") + 1);
-
     if (formData.selectedItem) {
         const fixedDetails = getFixedServiceDetails(formData.selectedItem.name);
         if (fixedDetails) {
@@ -939,19 +680,14 @@ export function CustomerBookingWizard({
             const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
             const serviceName = (formData.selectedItem.name || '').toLowerCase();
             const isNightService = serviceName.includes("night");
-
             if (isHotelService) {
-              if (serviceName.includes("outcall")) {
-                  allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
-              } else if (isNightService) {
-                  allowedSlots = ["7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"];
-              }
+              if (serviceName.includes("outcall")) { allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1); } 
+              else if (isNightService) { allowedSlots = ["7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"]; }
             } else {
                allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
             }
         }
     }
-
     const targetDate = targetDateOverride || formData.date || todayStr;
     if (targetDate === todayStr) {
         const now = new Date();
@@ -984,9 +720,7 @@ export function CustomerBookingWizard({
 
   const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
       const allowedSlots = getAvailableTimeSlots(dateToCheck);
-      let neededSlots = 2; 
-      const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-
+      let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
       if (fixedDetails) neededSlots = 1; 
       else if (formData.selectedItem) {
           const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
@@ -1008,10 +742,7 @@ export function CustomerBookingWizard({
     else { setAlertMessage("Copying manually required: " + text); }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => { setFormData({ ...formData, [e.target.name]: e.target.value }); };
   const handleNextStep = (nextStep: number) => { setStep(nextStep); };
 
   const handleCountdownExpire = () => {
@@ -1084,10 +815,7 @@ export function CustomerBookingWizard({
           const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
           const blockedNow2 = formData.therapist2 ? getBlockedSlots(freshBookings, formData.therapist2.name, formData.date || '') : new Set();
           const coveredForImmediate = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date || ''));
-          
-          for (const slot of coveredForImmediate) { 
-              if (blockedNow.has(slot) || blockedNow2.has(slot)) { isOverlap = true; break; } 
-          }
+          for (const slot of coveredForImmediate) { if (blockedNow.has(slot) || blockedNow2.has(slot)) { isOverlap = true; break; } }
       } else {
           let neededSlots = 2; 
           if (fixedDetails) {
@@ -1104,9 +832,7 @@ export function CustomerBookingWizard({
           const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
           const blockedNow2 = formData.therapist2 ? getBlockedSlots(freshBookings, formData.therapist2.name, formData.date || '') : new Set();
           
-          for (const slot of coveredSlots) { 
-              if (blockedNow.has(slot) || blockedNow2.has(slot)) { isOverlap = true; break; } 
-          }
+          for (const slot of coveredSlots) { if (blockedNow.has(slot) || blockedNow2.has(slot)) { isOverlap = true; break; } }
       }
 
       if (isOverlap) { setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။"); setLoading(false); return; }
@@ -1151,7 +877,6 @@ export function CustomerBookingWizard({
         let hasName = false;
         let maxPts = -1;
 
-        // 🚀 Optimization: Find the user document with the highest points in case of duplicates
         usersSnap.forEach(d => {
           try {
               const decPhone = decryptText(d.data().phone) || d.id;
@@ -1263,40 +988,20 @@ export function CustomerBookingWizard({
 
   const renderServiceSelection = (currentStep: number) => (
     <div className="animate-fade-in px-2 sm:px-0">
-      
       {promoActive && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between">
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
            <div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-
            <div className="relative z-10 flex items-center">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0">
-                 <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" />
-              </div>
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0"><Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" /></div>
               <div>
-                 <div className="flex items-center gap-2 mb-0.5">
-                     <h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-sm tracking-wide uppercase flex items-center">
-                         <Sparkles className="w-3 h-3 mr-1" /> {promoTitle}
-                     </h4>
-                     <span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap ml-2">
-                         Limited Time
-                     </span>
-                 </div>
-                 <div className="text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">
-                     Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span>
-                 </div>
+                 <div className="flex items-center gap-2 mb-0.5"><h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-sm tracking-wide uppercase flex items-center"><Sparkles className="w-3 h-3 mr-1" /> {promoTitle}</h4><span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap ml-2">Limited Time</span></div>
+                 <div className="text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span></div>
               </div>
            </div>
-
            <div className="relative z-10 flex flex-col gap-1.5 ml-3">
-               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm">
-                  <span className="flex items-center"><Home className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Hotel</span> 
-                  <span className="text-[#D4AF37] ml-2">{appData.promotion?.hotelDiscountPercent}% OFF</span>
-               </div>
-               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm">
-                  <span className="flex items-center"><Activity className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Other</span>
-                  <span className="text-[#D4AF37] ml-2">{appData.promotion?.otherDiscountPercent}% OFF</span>
-               </div>
+               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm"><span className="flex items-center"><Home className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Hotel</span> <span className="text-[#D4AF37] ml-2">{appData.promotion?.hotelDiscountPercent}% OFF</span></div>
+               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm"><span className="flex items-center"><Activity className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Other</span><span className="text-[#D4AF37] ml-2">{appData.promotion?.otherDiscountPercent}% OFF</span></div>
            </div>
         </div>
       )}
@@ -1324,21 +1029,11 @@ export function CustomerBookingWizard({
       
       <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
         <div className="flex items-center">
-            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
-                <Crown className="w-5 h-5" style={{ color: THEME.gold }} />
-            </div>
+            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div>
             <div>
                 <div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div>
                 <div className="text-xs text-yellow-600 font-semibold mt-1">
-                    {formData.selectedItem?.vvipIncluded 
-                        ? '✅ Included (Free)' 
-                        : (!formData.selectedItem 
-                            ? 'Select a service' 
-                            : (isVipCurrentlyFull 
-                                ? '🚫 လတ်တလော VIP အခန်းပြည့်နေပါသည်' 
-                                : (formData.selectedItem.vvipPrice 
-                                    ? 'Upgrade for extra comfort' 
-                                    : 'Not available')))}
+                    {formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (isVipCurrentlyFull ? '🚫 လတ်တလော VIP အခန်းပြည့်နေပါသည်' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available')))}
                 </div>
             </div>
         </div>
@@ -1363,16 +1058,12 @@ export function CustomerBookingWizard({
       if (!globalCheckDate) {
           const now = new Date();
           if (now.getHours() >= 23) {
-              const tmrw = new Date(now);
-              tmrw.setDate(tmrw.getDate() + 1);
+              const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1);
               globalCheckDate = tmrw.getFullYear() + '-' + String(tmrw.getMonth() + 1).padStart(2, '0') + '-' + String(tmrw.getDate()).padStart(2, '0');
-          } else {
-              globalCheckDate = todayStr;
-          }
+          } else { globalCheckDate = todayStr; }
       }
       
       const allFullyBooked = appData.therapists.length > 0 && appData.therapists.every(t => isTherapistFullForDate(t.name, globalCheckDate));
-
       const isSelectionIncomplete = isFourHands && formData.therapist !== null && formData.therapist2 === null;
       const isAnySelected = formData.therapist === null;
 
@@ -1394,12 +1085,7 @@ export function CustomerBookingWizard({
             </div>
           )}
 
-          <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2>
-              <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>
-                  {isFourHands ? '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်း ၂ ယောက်ကို ရွေးချယ်ပါ)' : '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)'}
-              </p>
-          </div>
+          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>{isFourHands ? '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်း ၂ ယောက်ကို ရွေးချယ်ပါ)' : '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)'}</p></div>
           
           <div onClick={() => setFormData({ ...formData, therapist: null, therapist2: null, time: '' })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
               <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div>
@@ -1420,27 +1106,18 @@ export function CustomerBookingWizard({
                 <div key={therapist.id} onClick={() => {
                     if (isFull) return;
                     if (isFourHands) {
-                        if (isSelected1) {
-                            setFormData({ ...formData, therapist: formData.therapist2, therapist2: null, time: '' });
-                        } else if (isSelected2) {
-                            setFormData({ ...formData, therapist2: null, time: '' });
-                        } else if (!formData.therapist) {
-                            setFormData({ ...formData, therapist: therapist, time: '' });
-                        } else if (!formData.therapist2) {
-                            setFormData({ ...formData, therapist2: therapist, time: '' });
-                        } else {
-                            setFormData({ ...formData, therapist2: therapist, time: '' });
-                        }
-                    } else {
-                        setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' });
-                    }
+                        if (isSelected1) { setFormData({ ...formData, therapist: formData.therapist2, therapist2: null, time: '' }); } 
+                        else if (isSelected2) { setFormData({ ...formData, therapist2: null, time: '' }); } 
+                        else if (!formData.therapist) { setFormData({ ...formData, therapist: therapist, time: '' }); } 
+                        else if (!formData.therapist2) { setFormData({ ...formData, therapist2: therapist, time: '' }); } 
+                        else { setFormData({ ...formData, therapist2: therapist, time: '' }); }
+                    } else { setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' }); }
                 }} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
                   
                   {isFull && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                       <div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500">
-                        <div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div>
-                        <div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div>
+                        <div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div><div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div>
                       </div>
                     </div>
                   )}
@@ -1485,20 +1162,8 @@ export function CustomerBookingWizard({
 
              {(!formData.date || formData.date === todayStr) && allFullyBooked && (
                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-center shadow-sm w-full animate-fade-in mt-4">
-                     <p className="text-sm font-bold text-gray-700 mb-3 leading-relaxed">
-                         ဒီနေ့အတွက် ဘိုကင်ယူနိုင်သည့်အချိန်ကျော်လွန်သွားပြီလား (သို့မဟုတ်) ဝန်ထမ်းများအားလုံး ပြည့်နေပါသလား?
-                     </p>
-                     <button 
-                         type="button" 
-                         onClick={(e) => {
-                             e.stopPropagation();
-                             const tomorrowStr = getTomorrowStr();
-                             setFormData({ ...formData, therapist: null, therapist2: null, date: tomorrowStr, time: '' });
-                             setAlertMessage(`ရွေးချယ်မည့်ရက်အား မနက်ဖြန် (${tomorrowStr}) သို့ ပြောင်းလဲလိုက်ပါသည်။ ဝန်ထမ်းကို ဆက်လက်ရွေးချယ်ပါ။`);
-                             window.scrollTo({ top: 0, behavior: 'smooth' });
-                         }}
-                         className="inline-flex items-center px-6 py-3 bg-[#123524] text-[#D4AF37] font-bold text-sm rounded-lg hover:bg-[#1a4a32] shadow-md transition"
-                     >
+                     <p className="text-sm font-bold text-gray-700 mb-3 leading-relaxed">ဒီနေ့အတွက် ဘိုကင်ယူနိုင်သည့်အချိန်ကျော်လွန်သွားပြီလား (သို့မဟုတ်) ဝန်ထမ်းများအားလုံး ပြည့်နေပါသလား?</p>
+                     <button type="button" onClick={(e) => { e.stopPropagation(); const tomorrowStr = getTomorrowStr(); setFormData({ ...formData, therapist: null, therapist2: null, date: tomorrowStr, time: '' }); setAlertMessage(`ရွေးချယ်မည့်ရက်အား မနက်ဖြန် (${tomorrowStr}) သို့ ပြောင်းလဲလိုက်ပါသည်။ ဝန်ထမ်းကို ဆက်လက်ရွေးချယ်ပါ။`); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="inline-flex items-center px-6 py-3 bg-[#123524] text-[#D4AF37] font-bold text-sm rounded-lg hover:bg-[#1a4a32] shadow-md transition">
                          <CalendarPlus className="w-5 h-5 mr-2" /> နောက်ရက်အတွက် ဘိုကင်ကြိုယူရန် နှိပ်ပါ
                      </button>
                  </div>
@@ -1511,9 +1176,7 @@ export function CustomerBookingWizard({
   return (
     <div>
       <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
-
       {renderStepper()}
-
       {step === 1 && (isTherapistFirst ? renderTherapistSelection(1) : renderServiceSelection(1))}
       {step === 2 && (isTherapistFirst ? renderServiceSelection(2) : renderTherapistSelection(2))}
 
@@ -1530,12 +1193,7 @@ export function CustomerBookingWizard({
             {staffClockIn && formData.date === todayStr ? (
                 <div className="bg-yellow-50 p-5 rounded-lg border border-yellow-200 mb-4 animate-fade-in">
                     <label className="block mb-2 text-sm font-bold flex items-center text-yellow-800"><Clock className="w-4 h-4 mr-2" /> Service Start Time (ဧည့်သည်ရောက်ရှိချိန်)</label>
-                    <input 
-                       type="time" 
-                       value={formData.time}
-                       onChange={(e) => setFormData({...formData, time: e.target.value})}
-                       className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-white mb-2 font-bold text-center tracking-wider text-lg"
-                    />
+                    <input type="time" value={formData.time} onChange={(e) => setFormData({...formData, time: e.target.value})} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-white mb-2 font-bold text-center tracking-wider text-lg" />
                     <p className="text-[10px] text-yellow-700 font-semibold text-center mt-1">အမှန်တကယ် စတင်သည့်အချိန်ကို ပြင်ဆင်ရွေးချယ်နိုင်ပါသည်။</p>
                 </div>
             ) : (
@@ -1545,17 +1203,11 @@ export function CustomerBookingWizard({
                         {availableTimeSlots.map(t => {
                             const state = checkSlotState(t);
                             const displayTime = t.includes("to") ? t.split(" to ")[0].trim() : t;
-                            
                             return (
-                                <button 
-                                   key={t} 
-                                   type="button" 
-                                   disabled={!formData.date} 
+                                <button key={t} type="button" disabled={!formData.date} 
                                    onClick={() => {
                                        if (!state.available) {
-                                           let neededSlots = 2;
-                                           const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-
+                                           let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
                                            if (fixedDetails) {
                                                const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
                                                let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
@@ -1565,15 +1217,12 @@ export function CustomerBookingWizard({
                                                const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i);
                                                if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
                                            }
-
                                            const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
                                            const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim());
                                            let nextAvailable = '';
-                                           
                                            for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
                                                let durationFree = true;
                                                const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
-                                               
                                                for(let j=0; j < neededSlots; j++) {
                                                    const subSlot = ALL_TIME_SLOTS[i+j];
                                                    if(!subSlot) { durationFree = false; break; }
@@ -1585,38 +1234,23 @@ export function CustomerBookingWizard({
                                                if (durationFree && formData.therapist) {
                                                    const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date);
                                                    const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-                                                   for (const slot of testSlots) {
-                                                       if (tBlocked.has(slot)) { durationFree = false; break; }
-                                                   }
+                                                   for (const slot of testSlots) { if (tBlocked.has(slot)) { durationFree = false; break; } }
                                                }
                                                if (durationFree && formData.therapist2) {
                                                    const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date);
                                                    const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-                                                   for (const slot of testSlots) {
-                                                       if (tBlocked2.has(slot)) { durationFree = false; break; }
-                                                   }
+                                                   for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } }
                                                }
-                                               if (durationFree) {
-                                                   nextAvailable = ALL_TIME_SLOTS[i];
-                                                   break;
-                                               }
+                                               if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
                                            }
-
-                                           if (nextAvailable) {
-                                               setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`);
-                                           } else {
-                                               setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`);
-                                           }
+                                           if (nextAvailable) { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`); } 
+                                           else { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`); }
                                            return;
                                        }
                                        handleTimeSlotClick(t, state);
                                    }} 
                                    className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${
-                                       formData.time === t || formData.time.startsWith(`${displayTime} to`)
-                                       ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' 
-                                       : (!state.available) 
-                                           ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through cursor-not-allowed' 
-                                           : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'
+                                       formData.time === t || formData.time.startsWith(`${displayTime} to`) ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : (!state.available) ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through cursor-not-allowed' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]'
                                    }`}
                                 >
                                    {displayTime}
@@ -1624,32 +1258,19 @@ export function CustomerBookingWizard({
                             )
                         })}
                     </div>
-                    
                     {formData.time && currentFixedDetails && (
                         <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm animate-fade-in text-center">
-                            <p className="text-sm text-green-800 font-bold mb-1 flex items-center justify-center">
-                                <Clock className="w-4 h-4 mr-2" /> ဝန်ဆောင်မှု ရရှိမည့် အချိန်
-                            </p>
-                            <p className="text-lg text-green-700 font-bold tracking-wide">
-                                {formData.time.split(' to ')[0].trim()} မှ {currentFixedDetails.end}{currentFixedDetails.nextDay ? ' (နောက်ရက်)' : ''} အထိ
-                            </p>
-                            <p className="text-xs text-green-600 font-semibold mt-1">
-                                (စုစုပေါင်း ကြာချိန် - {calculateTimeDiff(formData.time.split(' to ')[0].trim(), currentFixedDetails.end, currentFixedDetails.nextDay)})
-                            </p>
-                            <p className="text-[10px] text-green-600/80 mt-2 border-t border-green-200/50 pt-2">
-                                * အချိန်ကျော်လွန်ပြီးမှ ဘိုကင်ယူပါက ပြီးဆုံးမည့်အချိန်ထိသာ ဝန်ဆောင်မှုရရှိပါမည်။
-                            </p>
+                            <p className="text-sm text-green-800 font-bold mb-1 flex items-center justify-center"><Clock className="w-4 h-4 mr-2" /> ဝန်ဆောင်မှု ရရှိမည့် အချိန်</p>
+                            <p className="text-lg text-green-700 font-bold tracking-wide">{formData.time.split(' to ')[0].trim()} မှ {currentFixedDetails.end}{currentFixedDetails.nextDay ? ' (နောက်ရက်)' : ''} အထိ</p>
+                            <p className="text-xs text-green-600 font-semibold mt-1">(စုစုပေါင်း ကြာချိန် - {calculateTimeDiff(formData.time.split(' to ')[0].trim(), currentFixedDetails.end, currentFixedDetails.nextDay)})</p>
+                            <p className="text-[10px] text-green-600/80 mt-2 border-t border-green-200/50 pt-2">* အချိန်ကျော်လွန်ပြီးမှ ဘိုကင်ယူပါက ပြီးဆုံးမည့်အချိန်ထိသာ ဝန်ဆောင်မှုရရှိပါမည်။</p>
                         </div>
                     )}
-                    
                     {!currentFixedDetails && isSelectedNightService && (
-                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-[11px] sm:text-xs font-bold text-center flex items-center justify-center animate-fade-in shadow-sm">
-                            <Clock className="w-4 h-4 mr-2"/> ဝန်ဆောင်မှုသည် နောက်ရက် မနက် ၈:၀၀ နာရီတွင် ပြီးဆုံးပါမည်။
-                        </div>
+                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-[11px] sm:text-xs font-bold text-center flex items-center justify-center animate-fade-in shadow-sm"><Clock className="w-4 h-4 mr-2"/> ဝန်ဆောင်မှုသည် နောက်ရက် မနက် ၈:၀၀ နာရီတွင် ပြီးဆုံးပါမည်။</div>
                     )}
                 </>
             )}
-
             {availableTimeSlots.length === 0 && formData.date && !(staffClockIn && formData.date === todayStr) && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
           </div>
           <div className="mt-8 flex justify-between"><button type="button" onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button type="button" disabled={!formData.date || !formData.time.trim()} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
@@ -1664,57 +1285,30 @@ export function CustomerBookingWizard({
             <h3 className="text-sm font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3>
             <div className="space-y-4">
               <div className="flex justify-between items-start">
-                <div>
-                  <div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/> {formData.selectedItem?.name || 'Unknown Service'}</div>
-                  {formData.selectedItem?.duration && <div className="text-sm text-gray-500 ml-6">{formData.selectedItem.duration}</div>}
-                </div>
+                <div><div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/> {formData.selectedItem?.name || 'Unknown Service'}</div>{formData.selectedItem?.duration && <div className="text-sm text-gray-500 ml-6">{formData.selectedItem.duration}</div>}</div>
                 <div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price)}</div>
               </div>
               {formData.isVvipUpgrade && !formData.selectedItem?.vvipIncluded && (
-                <div className="flex justify-between items-start pt-2 border-t border-gray-50">
-                  <div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div>
-                  <div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice((Number(formData.selectedItem?.vvipPrice) || 0) - (Number(formData.selectedItem?.price) || 0))}</div>
-                </div>
+                <div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div><div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice((Number(formData.selectedItem?.vvipPrice) || 0) - (Number(formData.selectedItem?.price) || 0))}</div></div>
               )}
               {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
               
-              <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50">
-                  <User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> 
-                  {formData.therapist && formData.therapist2 && (formData.selectedItem?.name || '').toLowerCase().includes('four hands') 
-                      ? `${formData.therapist.name} & ${formData.therapist2.name}` 
-                      : (formData.therapist ? formData.therapist.name : 'Any Available Therapist')}
-              </div>
+              <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist && formData.therapist2 && (formData.selectedItem?.name || '').toLowerCase().includes('four hands') ? `${formData.therapist.name} & ${formData.therapist2.name}` : (formData.therapist ? formData.therapist.name : 'Any Available Therapist')}</div>
               <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
             </div>
             
             <div className="mt-6 pt-4 border-t-2 border-gray-100">
-                <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
-                    <span className="font-semibold">Subtotal</span>
-                    <span className="font-bold">{formatPrice(calculateSubTotal())}</span>
-                </div>
+                <div className="flex justify-between items-center text-sm text-gray-600 mb-2"><span className="font-semibold">Subtotal</span><span className="font-bold">{formatPrice(calculateSubTotal())}</span></div>
                 {finalDiscountPercent > 0 && (
-                    <div className="flex justify-between items-center text-sm text-green-600 mb-2 bg-green-50 px-2 py-1.5 rounded border border-green-200 shadow-sm animate-fade-in">
-                        <span className="font-bold flex items-center"><Percent className="w-3 h-3 mr-1"/> {discountLabel}</span>
-                        <span className="font-bold">-{formatPrice(calculateDiscountAmount())}</span>
-                    </div>
+                    <div className="flex justify-between items-center text-sm text-green-600 mb-2 bg-green-50 px-2 py-1.5 rounded border border-green-200 shadow-sm animate-fade-in"><span className="font-bold flex items-center"><Percent className="w-3 h-3 mr-1"/> {discountLabel}</span><span className="font-bold">-{formatPrice(calculateDiscountAmount())}</span></div>
                 )}
-                <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50">
-                    <span className="font-bold text-gray-800">Final Total Price</span>
-                    <span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span>
-                </div>
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50"><span className="font-bold text-gray-800">Final Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div>
             </div>
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
              <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Special Request (Optional)</h3>
-             <textarea 
-               name="specialRequest" 
-               value={formData.specialRequest || ''} 
-               onChange={handleChange} 
-               placeholder="Write any special requests or notes here..." 
-               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" 
-               rows={3}
-             />
+             <textarea name="specialRequest" value={formData.specialRequest || ''} onChange={handleChange} placeholder="Write any special requests or notes here..." className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" rows={3} />
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
@@ -1727,7 +1321,6 @@ export function CustomerBookingWizard({
 
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
             <h3 className="text-sm font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Deposit Payment</h3>
-            
             {isStaffMode ? (
               <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
                   <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
@@ -1737,7 +1330,6 @@ export function CustomerBookingWizard({
               <>
                 <div className="relative mb-4">
                   <label className="block mb-2 text-sm font-semibold text-gray-700" style={{ color: THEME.primary }}>ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
-
                   <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm">
                     {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" loading="lazy" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
                     <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
@@ -1758,14 +1350,12 @@ export function CustomerBookingWizard({
                     </div>
                   </div>
                 )}
-                
                 {selectedPaymentConfig && (
                   <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in">
                      <p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p>
                      <div className="text-2xl font-mono font-bold text-red-700 mt-1">{formattedCountdown}</div>
                   </div>
                 )}
-
                 <div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div>
               </>
             )}
@@ -1992,12 +1582,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       const finalServiceName = upcomingServices.join('၊ '); 
 
       if (isCurrentlyActive) {
-          return { 
-              label: 'In Service (Active)', 
-              mm: 'ဝန်ဆောင်မှုပေးနေပါသည်', 
-              color: 'bg-orange-100 text-orange-700 border-orange-200',
-              activeService: activeServiceName
-          };
+          return { label: 'In Service (Active)', mm: 'ဝန်ဆောင်မှုပေးနေပါသည်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: activeServiceName };
       }
 
       if (upcomingServices.length > 0 || hasNightBooking) {
@@ -2065,9 +1650,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-2">
                        {generateTimeline(viewingDetails.name).map((block, idx) => (
                             <div key={idx} className={`p-3 rounded-xl border flex items-center justify-between shadow-sm transition-colors ${block.state === 'Available' ? 'bg-green-50 border-green-200' : block.state === 'Booked' ? 'bg-blue-50 border-blue-200' : block.state === 'Buffer' ? 'bg-orange-50 border-orange-200' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
-                                <div className="text-xs font-mono font-bold text-gray-700 w-[45%]">
-                                    {block.startSlot} - {block.endTime}
-                                </div>
+                                <div className="text-xs font-mono font-bold text-gray-700 w-[45%]">{block.startSlot} - {block.endTime}</div>
                                 <div className="w-[55%] flex justify-end">
                                     {block.state === 'Available' && <span className="text-green-700 font-bold text-[10px] uppercase flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> အားပါသည်</span>}
                                     {block.state === 'Booked' && <span className="text-blue-700 font-bold text-[10px] uppercase leading-tight flex items-center text-right"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse"></span> {block.service}</span>}
@@ -2100,17 +1683,9 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
                        <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
-                          <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>
-                              {status.label}
-                          </span>
-                          {status.activeService && (
-                              <span className="block pb-1 mb-1 border-b text-current opacity-90 leading-snug" style={{ borderColor: 'currentColor' }}>
-                                 {status.activeService}
-                              </span>
-                          )}
-                          <span className="font-semibold block opacity-90 leading-snug">
-                              {status.mm}
-                          </span>
+                          <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>{status.label}</span>
+                          {status.activeService && (<span className="block pb-1 mb-1 border-b text-current opacity-90 leading-snug" style={{ borderColor: 'currentColor' }}>{status.activeService}</span>)}
+                          <span className="font-semibold block opacity-90 leading-snug">{status.mm}</span>
                        </div>
                    </div>
                    <div className="flex flex-col space-y-2 ml-2 flex-shrink-0">
@@ -2139,9 +1714,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
 
                      return (
                          <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
-                             <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">
-                                {idx + 1}
-                             </div>
+                             <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">{idx + 1}</div>
                              <div className={`w-full aspect-[3/4] bg-gray-100 relative ${isFullyBooked ? 'grayscale opacity-80' : ''}`}>
                                  {t.images && t.images.length > 0 ? <img src={t.images[0]} loading="lazy" className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
                              </div>
@@ -2230,19 +1803,14 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                      </div>
                      <div className="flex flex-col items-end">
                         <StatusBadge status={b.status} cancelReason={b.cancelReason} />
-                        
                         {b.originalPrice && b.originalPrice > b.totalPrice ? (
                             <div className="mt-2 text-right">
-                               <div className="flex items-center justify-end space-x-1 mb-0.5">
-                                  <span className="text-[9px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span>
-                                  <span className="text-[9px] font-bold text-red-500">-{b.discountPercent}%</span>
-                               </div>
+                               <div className="flex items-center justify-end space-x-1 mb-0.5"><span className="text-[9px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span><span className="text-[9px] font-bold text-red-500">-{b.discountPercent}%</span></div>
                                <div className="font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
                             </div>
                         ) : (
                             <div className="font-bold mt-2 text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
                         )}
-
                         <div className="text-[10px] text-gray-400 mt-1 flex items-center">{isExpanded ? <><ChevronUp className="w-3 h-3 mr-1"/> Less</> : <><ChevronDown className="w-3 h-3 mr-1"/> More</>}</div>
                      </div>
                   </div>
@@ -2254,17 +1822,12 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
                            <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">TXID</span><span className="text-sm font-mono font-bold text-gray-800 tracking-widest">{b.txId}</span></div>
                            <div className="bg-white p-3 rounded-lg border border-gray-100"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">PAYMENT</span><span className="text-sm font-bold text-gray-800">{b.paymentMethod}</span></div>
                         </div>
-                        
                         {b.discountLabel && (
                             <div className="bg-green-50 p-3 rounded-lg border border-green-100 mb-4 flex items-center">
                                 <Award className="w-4 h-4 text-green-600 mr-2"/>
-                                <div>
-                                    <span className="text-[10px] uppercase font-bold text-green-700 block mb-0.5">Applied Discount</span>
-                                    <span className="text-sm text-green-800 font-bold">{b.discountLabel}</span>
-                                </div>
+                                <div><span className="text-[10px] uppercase font-bold text-green-700 block mb-0.5">Applied Discount</span><span className="text-sm text-green-800 font-bold">{b.discountLabel}</span></div>
                             </div>
                         )}
-
                         {b.specialRequest && <div className="bg-white p-3 rounded-lg border border-gray-100 mb-4"><span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">SPECIAL REQUEST NOTE</span><span className="text-sm text-gray-700 italic">{b.specialRequest}</span></div>}
                         <div className="flex justify-between items-center text-xs text-gray-400 font-semibold px-1"><span>Booked: {new Date(b.createdAt).toLocaleDateString()}</span><span className="text-[#123524] text-sm">Total: {formatPrice(b.totalPrice)}</span></div>
                      </div>
@@ -2278,18 +1841,392 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
   );
 }
 
-// ==========================================
-// COMPONENT: AuthRequest
-// ==========================================
+// 🌟 UPDATED: CustomerProfile 🌟
+export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [userDocId, setUserDocId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const [formData, setFormData] = useState({ name: '', password: '', dob: '' });
+  const [saving, setSaving] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
+
+  // History Modal States
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [userBookings, setUserBookings] = useState<any[]>([]);
+
+  const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
+
+  useEffect(() => {
+    if (!userPhone) return;
+    const fetchBookings = async () => {
+       try {
+           const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
+           const snap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', currentMonthPrefix + '-01')));
+           const data: any[] = [];
+           snap.forEach(d => {
+               const raw = d.data();
+               const decPhone = decryptText(raw.phone) || raw.phone;
+               if (decPhone === userPhone) {
+                   data.push({ status: raw.status, discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined, date: raw.date });
+               }
+           });
+           setUserBookings(data);
+       } catch(e) {}
+    };
+    fetchBookings();
+  }, [userPhone]);
+
+  const fetchHistory = async () => {
+      setLoadingHistory(true);
+      try {
+          const snap = await getDocs(collection(db, 'point_history'));
+          const data: any[] = [];
+          snap.forEach(doc => {
+              const raw = doc.data();
+              const decPhone = decryptText(raw.phone) || raw.phone;
+              if (decPhone === userPhone) {
+                  data.push({ id: doc.id, amount: Number(decryptText(raw.amount) || raw.amount), pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned), type: decryptText(raw.type) || raw.type, date: raw.date, createdAt: raw.createdAt });
+              }
+          });
+          data.sort((a, b) => b.createdAt - a.createdAt);
+          setHistory(data);
+      } catch (e) { console.error(e); }
+      setLoadingHistory(false);
+  };
+
+  const parsePoints = (pts: any) => {
+      if (pts === undefined || pts === null) return 0;
+      if (typeof pts === 'number') return pts;
+      const dec = decryptText(pts);
+      const val = parseInt(dec || pts, 10);
+      return isNaN(val) ? 0 : val;
+  };
+
+  useEffect(() => {
+    if (!userPhone) return;
+    const fetchUser = async () => {
+      try {
+          const snap = await getDocs(collection(db, 'users'));
+          let foundUser = null;
+          let docId = null;
+          let maxPts = -1;
+          
+          snap.forEach(d => {
+             const data = d.data();
+             try {
+                 const decPhone = decryptText(data.phone) || d.id;
+                 if (decPhone === userPhone || d.id === userPhone) {
+                     const pts = parsePoints(data.points);
+                     if (pts > maxPts) {
+                         maxPts = pts;
+                         foundUser = data;
+                         docId = d.id;
+                     }
+                 }
+             } catch(e) {}
+          });
+          
+          if (foundUser) {
+              setProfile({ 
+                  ...(foundUser as any), 
+                  name: decryptText((foundUser as any).name) || '', 
+                  password: decryptText((foundUser as any).password) || '', 
+                  phone: userPhone,
+                  points: maxPts,
+                  dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
+              });
+              setFormData({ 
+                  name: decryptText((foundUser as any).name) || '', 
+                  password: decryptText((foundUser as any).password) || '',
+                  dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || ''
+              });
+              setUserDocId(docId);
+          } else {
+              setProfile({ name: 'Walk-in Guest', phone: userPhone, points: 0, dob: '', password: '' } as any);
+              setFormData({ name: '', password: '', dob: '' });
+          }
+      } catch(err) {
+          console.error("Error fetching profile", err);
+      } finally {
+          setLoading(false);
+      }
+    };
+    
+    const loadBackgroundHistory = async () => {
+        try {
+            const snap = await getDocs(collection(db, 'point_history'));
+            const data: any[] = [];
+            snap.forEach(doc => {
+                const raw = doc.data();
+                const decPhone = decryptText(raw.phone) || raw.phone;
+                if (decPhone === userPhone) {
+                    data.push({ id: doc.id, amount: Number(decryptText(raw.amount) || raw.amount), pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned), type: decryptText(raw.type) || raw.type, date: raw.date, createdAt: raw.createdAt });
+                }
+            });
+            data.sort((a, b) => b.createdAt - a.createdAt);
+            setHistory(data);
+        } catch (e) {}
+    };
+
+    fetchUser();
+    loadBackgroundHistory();
+  }, [userPhone]);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      if (userDocId) {
+          await updateDoc(doc(db, 'users', userDocId), { 
+              name: encryptText(formData.name), 
+              password: encryptText(formData.password),
+              dob: encryptText(formData.dob)
+          });
+      } else {
+          const newDocRef = await addDoc(collection(db, 'users'), {
+              phone: encryptText(userPhone),
+              name: encryptText(formData.name),
+              password: encryptText(formData.password),
+              dob: encryptText(formData.dob),
+              points: encryptText('0'),
+              createdAt: Date.now()
+          });
+          setUserDocId(newDocRef.id);
+      }
+      setProfile({ ...profile!, name: formData.name, password: formData.password, dob: formData.dob } as any);
+      setEditMode(false);
+      setAlertMessage("Profile အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။");
+    } catch (e) { setAlertMessage("Error updating profile."); }
+    setSaving(false);
+  };
+
+  if (!userPhone) return <AuthRequest onLoginSuccess={onLoginSuccess} title="View Profile" />;
+  if (loading) return <div className="text-center py-10 font-bold text-gray-500">Loading Profile...</div>;
+
+  const sortedTiers = [...(vipSettings.tiers || FALLBACK_VIP_SETTINGS.tiers)].sort((a,b) => a.requiredPoints - b.requiredPoints);
+  const currentPoints = profile?.points || 0;
+  
+  let userTier = null; let nextTier = null;
+  for (let i = 0; i < sortedTiers.length; i++) {
+      if (currentPoints >= sortedTiers[i].requiredPoints) { userTier = sortedTiers[i]; }
+      if (currentPoints < sortedTiers[i].requiredPoints && !nextTier) { nextTier = sortedTiers[i]; }
+  }
+
+  const progressPercent = nextTier ? Math.min(100, (currentPoints / nextTier.requiredPoints) * 100) : 100;
+  const pointsNeeded = nextTier ? nextTier.requiredPoints - currentPoints : 0;
+
+  const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
+  const monthlyPoints = history.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((sum, h) => sum + h.pointsEarned, 0);
+  
+  const isBdayMonth = () => {
+      if (!profile?.dob) return false;
+      const dobParts = profile.dob.split('-');
+      const currentParts = getLocalTodayStr().split('-');
+      return dobParts[1] === currentParts[1];
+  };
+
+  return (
+    <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0">
+      <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
+      
+      {showHistory && (
+          <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center sm:items-center sm:p-4 animate-fade-in" onClick={() => setShowHistory(false)}>
+              <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[85vh] sm:h-auto sm:max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
+                  <div className="bg-[#123524] p-5 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+                      <h3 className="text-[#D4AF37] font-bold text-base flex items-center"><History className="w-5 h-5 mr-2" /> Points History</h3>
+                      <button onClick={() => setShowHistory(false)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-5 h-5"/></button>
+                  </div>
+                  <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-3 pb-8">
+                      {loadingHistory ? (
+                          <div className="text-center py-10 text-gray-500 font-bold text-sm animate-pulse">Loading History...</div>
+                      ) : history.length === 0 ? (
+                          <div className="text-center py-10 text-gray-400 font-bold text-sm">Point ရရှိထားသော မှတ်တမ်းမရှိသေးပါ။</div>
+                      ) : (
+                          history.map((h, i) => (
+                              <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between hover:border-[#D4AF37]/50 transition">
+                                  <div className="flex items-center">
+                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${h.type.includes('Online') ? 'bg-blue-50 text-blue-500' : 'bg-green-50 text-green-500'}`}>
+                                          {h.type.includes('Online') ? <CalendarPlus className="w-5 h-5"/> : <Home className="w-5 h-5"/>}
+                                      </div>
+                                      <div>
+                                          <div className="font-bold text-[#123524] text-sm">{h.type}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                                          <div className="text-[10px] font-semibold text-gray-600 mt-1">Amount: {formatPrice(h.amount)}</div>
+                                      </div>
+                                  </div>
+                                  <div className="text-right">
+                                      <div className="text-lg font-black text-green-600">+{h.pointsEarned}</div>
+                                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Points</div>
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      <div className="text-center mb-6"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>My Profile</h2></div>
+
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center mb-6">
+        <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-4 text-[#D4AF37] relative shadow-sm">
+            {userTier ? <Crown className="w-10 h-10" style={{ color: userTier.colorTheme }} /> : <User className="w-10 h-10" />}
+        </div>
+
+        {!editMode ? (
+          <>
+            <h3 className="text-xl font-bold text-gray-800">{profile?.name || 'Walk-in Guest'}</h3>
+            <p className="text-sm font-bold text-gray-500 mt-1 mb-4 flex items-center justify-center"><Phone className="w-4 h-4 mr-1" /> {profile?.phone}</p>
+            
+            {userTier && (
+                <div className="mb-6 inline-flex items-center px-4 py-1.5 rounded-full text-xs font-bold text-white shadow-sm border border-white/20" style={{ backgroundColor: userTier.colorTheme }}>
+                    <Award className="w-4 h-4 mr-1.5"/> {userTier.name} ({userTier.discountPercent}%)
+                </div>
+            )}
+            
+            <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 flex flex-col items-center justify-center shadow-sm relative overflow-hidden group">
+                    <Star className="w-16 h-16 absolute -top-4 -right-4 text-yellow-500 opacity-10 group-hover:scale-110 transition-transform" />
+                    <span className="text-[10px] text-yellow-700 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1"/> My VIP Points</span>
+                    <span className="text-3xl font-black text-[#123524] mb-3">{currentPoints}</span>
+                    <button onClick={() => { setShowHistory(true); fetchHistory(); }} className="px-4 py-1.5 bg-yellow-200 text-yellow-800 rounded-full text-[10px] font-bold shadow-sm hover:bg-yellow-300 transition flex items-center">
+                        <History className="w-3 h-3 mr-1"/> View History
+                    </button>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex flex-col items-center justify-center shadow-sm">
+                    <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest flex items-center mb-1"><Gift className="w-3 h-3 mr-1"/> Birthday</span>
+                    <span className="text-sm font-bold text-blue-900 mt-1">{(profile as any)?.dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
+                </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 shadow-sm relative overflow-hidden text-left">
+                <h4 className="text-xs font-bold text-gray-800 mb-3 flex items-center"><Target className="w-4 h-4 mr-1.5 text-[#D4AF37]"/> VIP Progress</h4>
+                {nextTier ? (
+                    <>
+                        <div className="flex justify-between items-end mb-1.5">
+                            <span className="text-[10px] font-bold text-gray-500">Current: {currentPoints} Pts</span>
+                            <span className="text-[10px] font-bold text-[#D4AF37] text-right max-w-[120px] truncate" title={nextTier.name}>{nextTier.name} ({nextTier.requiredPoints} Pts)</span>
+                        </div>
+                        <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-[#D4AF37] transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%` }}></div>
+                        </div>
+                        <p className="text-[10px] text-gray-500 font-semibold mt-2.5 text-center leading-relaxed">
+                            <span className="font-bold text-[#123524]">{nextTier.name}</span> ဖြစ်ရန် လိုအပ်သော ပွိုင့်: <span className="font-bold text-red-500">{pointsNeeded} Pts</span>
+                        </p>
+                    </>
+                ) : (
+                    <div className="text-center p-2 border-b border-gray-100 mb-4 pb-4">
+                        <Crown className="w-8 h-8 text-[#D4AF37] mx-auto mb-2" />
+                        <p className="text-xs font-bold text-[#123524] leading-relaxed">ဂုဏ်ယူပါသည်။ သင်သည် အမြင့်ဆုံး VIP အဆင့်သို့ ရောက်ရှိနေပါပြီ။</p>
+                    </div>
+                )}
+
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-100 flex justify-between items-center">
+                    <span className="text-[11px] font-bold text-gray-600 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5 text-gray-400"/> ယခုလအတွင်း စုဆောင်းထားသောပွိုင့်</span>
+                    <span className="text-sm font-black text-[#123524]">{monthlyPoints} Pts</span>
+                </div>
+
+                {isBdayMonth() && userTier && (
+                    <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                        <h5 className="text-[11px] font-bold text-blue-800 mb-2 flex items-center"><Gift className="w-4 h-4 mr-1.5"/> Birthday Month Bonus</h5>
+                        <p className="text-[10px] text-blue-700 font-semibold mb-3 leading-relaxed">ယခုလသည် သင့်မွေးနေ့လဖြစ်သောကြောင့် အထူးခံစားခွင့် ရရှိနေပါသည်။</p>
+                        {(userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) ? (
+                            <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
+                                <span className="text-[10px] text-gray-600 font-bold">Base (20%) + Monthly ({monthlyPoints}%)</span>
+                                <span className="text-sm font-black text-blue-600">{Math.min(100, 20 + monthlyPoints)}% OFF</span>
+                            </div>
+                        ) : (
+                            <div className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
+                                <span className="text-[10px] text-gray-600 font-bold">VIP Standard Birthday</span>
+                                <span className="text-sm font-black text-blue-600">50% OFF</span>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {!userTier && (() => {
+                    const nextTarget = Math.floor(monthlyPoints / 10) * 10 + 10; 
+                    const actualTarget = nextTarget > 50 ? 50 : nextTarget;
+                    const ptsNeededForTarget = actualTarget - monthlyPoints;
+                    const basePoint = actualTarget - 10;
+                    const targetProgressPercent = ((monthlyPoints - basePoint) / 10) * 100;
+                    const possibleTiers = [10, 20, 30, 40];
+                    const availableRewards: number[] = []; const usedRewards: number[] = [];
+                    
+                    possibleTiers.forEach(tier => {
+                        if (monthlyPoints >= tier) {
+                            const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
+                            const isUsed = userBookings.some(b => b.discountLabel === rewardLabel && b.date && b.date.startsWith(currentMonthPrefix) && b.status !== 'cancelled');
+                            if (isUsed) { usedRewards.push(tier); } else { availableRewards.push(tier); }
+                        }
+                    });
+
+                    return (
+                        <div className="mt-4 pt-4 border-t border-gray-100 animate-fade-in">
+                            <div className="mb-4">
+                                <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center"><Target className="w-3 h-3 mr-1 text-green-600"/> Monthly Target Rewards (Pre-Jade)</h5>
+                                <div className="flex justify-between items-end mb-1.5">
+                                    <span className="text-[9px] font-bold text-gray-500">Target Bonus: {actualTarget}% Off</span>
+                                    <span className="text-[9px] font-bold text-green-600">{actualTarget} Pts</span>
+                                </div>
+                                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2">
+                                    <div className="h-full rounded-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div>
+                                </div>
+                                <p className="text-[9px] text-gray-500 font-semibold text-center"><span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span></p>
+                            </div>
+
+                            {(availableRewards.length > 0 || usedRewards.length > 0) && (
+                                <div className="space-y-2 pt-2 border-t border-gray-100">
+                                    <h5 className="text-[11px] font-bold text-[#123524] mb-3 flex items-center mt-2"><Award className="w-3 h-3 mr-1 text-[#D4AF37]"/> Target Rewards Status</h5>
+                                    {availableRewards.map(tier => (
+                                        <div key={`avail-${tier}`} className="bg-green-50 text-green-700 p-2.5 rounded-lg text-[10px] font-bold border border-green-200 flex items-center justify-between shadow-sm"><span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1.5 text-green-600"/> {tier}% Discount ခံစားခွင့်</span><span className="bg-green-100 px-2 py-1 rounded text-green-800 shadow-sm">၁ ကြိမ် ရရှိထားပါသည်</span></div>
+                                    ))}
+                                    {usedRewards.map(tier => (
+                                        <div key={`used-${tier}`} className="bg-gray-50 text-gray-500 p-2.5 rounded-lg text-[10px] font-bold border border-gray-200 flex items-center justify-between opacity-75"><span className="flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> {tier}% Discount ခံစားခွင့်</span><span className="bg-gray-200 px-2 py-1 rounded text-gray-600">အသုံးပြုပြီးပါပြီ</span></div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
+            </div>
+
+            <div className={`text-[10px] rounded-full px-3 py-1.5 inline-block font-bold mb-6 w-full ${profile?.password ? 'text-green-600 bg-green-50' : 'text-gray-500 bg-gray-100'}`}>
+              {profile?.password ? '✅ Account Secured (Password Set)' : '⚠️ No Password Set (Auto-Login)'}
+            </div>
+            <button onClick={() => setEditMode(true)} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center"><Edit className="w-4 h-4 mr-2" /> Edit Profile Details</button>
+          </>
+        ) : (
+          <form onSubmit={handleSave} className="text-left space-y-4">
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name</label><input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" required /></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth (For Birthday Bonus)</label><input type="date" value={formData.dob} onChange={e => setFormData({ ...formData, dob: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" /></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Set Password (Optional)</label><input type="text" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="Leave blank for no password" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37]" /></div>
+            <div className="flex space-x-2 pt-2">
+              <button type="button" onClick={() => setEditMode(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200">Cancel</button>
+              <button type="submit" disabled={saving} className="flex-1 py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{saving ? 'Saving...' : 'Save'}</button>
+            </div>
+          </form>
+        )}
+      </div>
+      <button onClick={onLogout} className="w-full py-3 bg-red-50 text-red-600 rounded-lg font-bold border border-red-100 hover:bg-red-100 transition flex justify-center items-center"><LogOut className="w-4 h-4 mr-2" /> Log Out</button>
+    </div>
+  );
+}
+
 export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone: string) => void, title: string }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleNext = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setLoading(true);
+    e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true);
     try {
       const snap = await getDocs(collection(db, 'users'));
       let found = false;
@@ -2333,6 +2270,23 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
     finally { setLoading(false); }
   };
 
+  const handleResetPassword = async () => {
+     setLoading(true); setError(''); setSuccessMsg('');
+     try {
+         const snap = await getDocs(collection(db, 'users'));
+         let targetId = null;
+         snap.forEach(d => {
+             const decPhone = decryptText(d.data().phone) || d.id;
+             if (decPhone === phone.trim()) targetId = d.id;
+         });
+         if (targetId) {
+             await updateDoc(doc(db, 'users', targetId), { resetRequested: true });
+             setSuccessMsg('Admin ထံသို့ စကားဝှက်အသစ်တောင်းဆိုမှု ပို့ပြီးပါပြီ။ မကြာမီ ဆက်သွယ်ပေးပါမည်။');
+         }
+     } catch (e) { setError('Error requesting reset.'); }
+     setLoading(false);
+  };
+
   return (
     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in px-4 sm:px-8">
       <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><KeyRound className="w-8 h-8" /></div>
@@ -2346,12 +2300,126 @@ export function AuthRequest({ onLoginSuccess, title }: { onLoginSuccess: (phone:
           <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Checking...' : 'Next'}</button>
         </form>
       ) : (
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4 flex flex-col">
           <input required type="password" placeholder="Enter Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
           {error && <div className="text-xs font-bold text-red-500">{error}</div>}
+          {successMsg && <div className="text-xs font-bold text-green-600 bg-green-50 p-2 rounded border border-green-200">{successMsg}</div>}
+          
           <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Logging in...' : 'Login'}</button>
+          
+          {!successMsg && (
+             <button type="button" onClick={handleResetPassword} disabled={loading} className="text-xs text-blue-600 underline font-bold mt-2 hover:text-blue-800">
+                စကားဝှက်မေ့နေပါသလား? (Forgot Password)
+             </button>
+          )}
         </form>
       )}
+    </div>
+  );
+}
+
+export default function CustomerApp({ appData }: { appData: AppData }) {
+  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
+     const searchParams = new URLSearchParams(window.location.search);
+     const view = searchParams.get('view');
+     if (view === 'therapists') return 'therapists';
+     if (view === 'dashboard') return 'dashboard';
+     return 'book';
+  });
+  
+  const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
+  const [hasNoti, setHasNoti] = useState(false);
+  const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
+  const prevStatuses = useRef<Record<string, string>>({});
+  const isFirstLoad = useRef(true);
+
+  const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
+  useEffect(() => {
+      const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
+          if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
+      });
+      return () => unsub();
+  }, []);
+  const mergedAppData = { ...appData, vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS };
+
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
+
+  useEffect(() => {
+    if (!userPhone) return;
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(50));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      let changed = false;
+      snap.docs.forEach((doc) => {
+        const raw = doc.data();
+        const bPhone = decryptText(raw.phone) || raw.phone;
+        if (bPhone === userPhone) {
+          const oldStatus = prevStatuses.current[doc.id];
+          if (oldStatus && oldStatus !== raw.status) changed = true;
+          prevStatuses.current[doc.id] = raw.status;
+        }
+      });
+      if (!isFirstLoad.current && changed) {
+        if (activeTab !== 'history') setHasNoti(true);
+        const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
+        if (audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); }
+      }
+      isFirstLoad.current = false;
+    });
+    return () => unsubscribe();
+  }, [userPhone, activeTab]);
+
+  useEffect(() => { if (activeTab === 'history') setHasNoti(false); }, [activeTab]);
+
+  const handleInteraction = () => {
+    const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
+    if (audioEl && audioEl.paused) { audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {}); }
+  };
+
+  const handleDashboardBook = (t: TherapistProfile) => { setPrefillTherapist(t); setActiveTab('therapists'); };
+
+  const baseTabs = [
+    { id: 'book', label: 'Book Now', icon: CalendarPlus }, 
+    { id: 'therapists', label: 'View Therapists', icon: User },
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, 
+    { id: 'history', label: 'My Bookings', icon: History }
+  ] as const;
+
+  const vipSettings = mergedAppData.vipSettings;
+  const tabs = vipSettings.isActive 
+      ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }]
+      : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
+
+  return (
+    <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
+      <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
+      
+      <div className="flex sm:hidden justify-end mb-2 pr-2">
+         <span className="text-[10px] text-[#123524] font-bold flex items-center animate-pulse">
+            ဘေးသို့ဆွဲကြည့်ပါ <span className="text-[#D4AF37] ml-1 tracking-tighter font-black">&gt;&gt;</span>
+         </span>
+      </div>
+
+      <div className="flex justify-start sm:justify-center items-center space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide snap-x snap-mandatory relative">
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
+              className={`snap-start relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
+              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+              <span className="text-center whitespace-nowrap">{tab.label}</span>
+              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
+              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
+            </button>
+          )
+        })}
+      </div>
+      
+      {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
+      {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
+      {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
+      {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
+      {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
+      {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
     </div>
   );
 }
