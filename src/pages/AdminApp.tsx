@@ -6,7 +6,6 @@ import { encryptText, decryptText } from '../security';
 import CryptoJS from 'crypto-js'; 
 
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle } from 'lucide-react';
-// 👈 shared ထဲမှ uploadBase64ToStorage ကို အသစ်ထပ်ထည့်ထားပါသည်
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -347,7 +346,6 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   const [history, setHistory] = useState<any[]>([]);
   const [historySearch, setHistorySearch] = useState('');
 
-  // States for handling manual target reward redemptions
   const [selectedUserMonthlyPoints, setSelectedUserMonthlyPoints] = useState(0);
   const [selectedUserUsedRewards, setSelectedUserUsedRewards] = useState<string[]>([]);
   const [userBookings, setUserBookings] = useState<any[]>([]);
@@ -374,7 +372,6 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   
   useEffect(() => { fetchUsers(); }, []);
 
-  // Fetch History for Super Admin Table & Target Calculation
   useEffect(() => {
       const q = query(collection(db, 'point_history'), orderBy('createdAt', 'desc'));
       const unsub = onSnapshot(q, (snap) => {
@@ -413,18 +410,15 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
       return () => { unsub(); unsubB(); };
   }, []);
 
-  // Fetch user specific Monthly data when selected
   useEffect(() => {
       if (!selectedUser) return;
       const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
       
-      // 1. Calculate Monthly Points from History
       const mPts = history
           .filter(h => h.phone === selectedUser.phone && h.date && h.date.startsWith(currentMonthPrefix))
           .reduce((sum, h) => sum + h.pointsEarned, 0);
       setSelectedUserMonthlyPoints(mPts);
 
-      // 2. Extract Used Rewards
       const used: string[] = [];
       userBookings
           .filter(b => b.phone === selectedUser.phone && b.date && b.date.startsWith(currentMonthPrefix) && b.status !== 'cancelled')
@@ -464,7 +458,6 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
 
          alert(`✅ ${earnedPoints} Points အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ (စုစုပေါင်း - ${newTotal} Pts)`);
          
-         // Re-fetch everything to make sure state updates immediately
          await fetchUsers();
          const updatedUser = users.find(u => u.docId === selectedUser.docId);
          if (updatedUser) setSelectedUser({ ...updatedUser, points: newTotal });
@@ -536,7 +529,6 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
       
       const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
       try {
-          // Add a dummy booking record to mark it as used
           await addDoc(collection(db, 'bookings'), {
               phone: encryptText(selectedUser.phone),
               name: encryptText(selectedUser.name || 'Unknown'),
@@ -625,7 +617,6 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
                               <button type="submit" disabled={processing || earnedPoints <= 0} className="w-full py-4 bg-[#D4AF37] text-white rounded-xl font-bold text-base shadow-md hover:bg-yellow-600 transition disabled:opacity-50 flex justify-center items-center">{processing ? 'Processing...' : 'CONFIRM & ADD POINTS'}</button>
                           </form>
 
-                          {/* 🌟 Target Rewards Management for Selected User 🌟 */}
                           {!userTier && (
                               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mt-2 flex-shrink-0">
                                   <h4 className="font-bold text-sm text-[#123524] mb-3 flex items-center">
@@ -665,7 +656,6 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
               </div>
           </div>
 
-          {/* 🌟 Points History Table (Super Admin Only) 🌟 */}
           {adminRole === 'super_admin' && (
               <div className="mt-8 pt-6 border-t border-gray-100 animate-fade-in">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
@@ -820,7 +810,8 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
              name: decryptText(raw.name) || raw.name, 
              password: decryptText(raw.password) || raw.password,
              points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10),
-             dob: decryptText(raw.dob) || raw.dob || ''
+             dob: decryptText(raw.dob) || raw.dob || '',
+             resetRequested: raw.resetRequested || false
           });
       });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -839,7 +830,8 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           name: encryptText(editForm.name), 
           password: encryptText(editForm.password),
           dob: encryptText(editForm.dob),
-          points: encryptText(editForm.points.toString())
+          points: encryptText(editForm.points.toString()),
+          resetRequested: false // 🚀 Clear reset request once updated
       });
       alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။'); 
       setEditingUser(null); 
@@ -921,7 +913,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" required /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth</label><input type="date" value={editForm.dob} onChange={e=>setEditForm({...editForm, dob: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Total Points <span className="text-[9px] text-orange-500">(Fix total points here if sync failed)</span></label><input type="number" value={editForm.points} onChange={e=>setEditForm({...editForm, points: Number(e.target.value)})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none font-bold" required /></div>
-                 <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Leave blank for no password" className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">New Password (စကားဝှက်အသစ် ပြောင်းရန်)</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Enter new password" className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
                  <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold hover:bg-gray-200">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold hover:bg-green-900">Save</button></div>
                </form>
             </div>
@@ -971,11 +963,19 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
                      {userTier && <span className="text-[10px] px-2 py-0.5 rounded font-bold text-white shadow-sm flex items-center" style={{ backgroundColor: userTier.colorTheme }}><Award className="w-3 h-3 mr-1"/> {userTier.name} ({userTier.discountPercent}%)</span>}
                  </div>
              </td>
-             <td className="p-3">{u.password ? <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span> : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>}</td>
+             <td className="p-3">
+               {u.resetRequested ? (
+                   <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-1 rounded flex w-fit items-center border border-red-200 animate-pulse"><AlertCircle className="w-3 h-3 mr-1" /> Reset Requested</span>
+               ) : u.password ? (
+                   <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span>
+               ) : (
+                   <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>
+               )}
+             </td>
              <td className="p-3 text-right">
                  <div className="flex items-center justify-end space-x-2">
-                     <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '', points: u.points || 0 }); }} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Edit Info'}>
-                         <Edit className="w-3 h-3 mr-1"/> Edit Info
+                     <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '', points: u.points || 0 }); }} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? (u.resetRequested ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-50 text-blue-600 hover:bg-blue-100') : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Edit Info'}>
+                         <Edit className="w-3 h-3 mr-1"/> {u.resetRequested ? 'Reset Password' : 'Edit Info'}
                      </button>
                      <button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}>
                          <Trash2 className="w-3 h-3 mr-1"/> Delete
@@ -1047,7 +1047,6 @@ function AdminManagementList() {
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 relative">
-      
       {editingAdmin && (
           <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
               <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full animate-fade-in">
@@ -1133,7 +1132,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [newSecretKey, setNewSecretKey] = useState('');
   const [migratingKey, setMigratingKey] = useState(false);
 
-  // 🌟 Toggle State for Settings Sections 🌟
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const toggleSection = (sec: string) => setExpandedSection(prev => prev === sec ? null : sec);
 
@@ -1235,7 +1233,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     } catch (e) { alert('Update error.'); } setSavingCategory(null);
   };
 
-  // 🌟 (၄) နေရာလုံးကို Storage Upload ဖြင့် အစားထိုးထားသည် 🌟
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); const fileName = `logo_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'branding', fileName); setLocalBranding({ ...localBranding, logoUrl: imageUrl }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const fileName = `pay_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'payments', fileName); const updated = [...localPaymentMethods]; updated[idx].logoUrl = imageUrl; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const fileName = `install_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'install_steps', fileName); const updated = [...localInstallSteps]; updated[idx].imageUrl = imageUrl; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
@@ -1277,8 +1274,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
   return (
     <div className="space-y-6">
-
-      {/* --- VIP PROGRAM SETTINGS SECTION --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#D4AF37]">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
@@ -1396,7 +1391,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
          )}
       </div>
 
-      {/* --- ENCRYPTION KEY SECTION --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-orange-500">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
              <div>
@@ -1429,7 +1423,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           )}
       </div>
 
-      {/* --- PROMOTION SECTION --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-green-600">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -1480,7 +1473,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           )}
       </div>
 
-      {/* --- INSTRUCTIONS SECTION --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-500">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -1526,7 +1518,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           )}
       </div>
 
-      {/* --- BRANDING SECTION --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -1587,7 +1578,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           )}
       </div>
 
-      {/* --- PAYMENT SECTION --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-400">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -1627,7 +1617,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           )}
       </div>
 
-      {/* --- THERAPISTS SECTION --- */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-red-500">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -1683,7 +1672,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           )}
       </div>
 
-      {/* --- CATEGORIES MAP --- */}
       {localCategories.map((cat, cIdx) => (
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 border-l-4 border-l-[#123524]">
           <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
