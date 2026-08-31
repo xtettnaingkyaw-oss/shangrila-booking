@@ -1871,11 +1871,13 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 
 // 🌟 THE COMPONENT THAT RENDERS THE TABS AND MAIN VIEW (Moved to bottom) 🌟
 export default function CustomerApp({ appData }: { appData: AppData }) {
-  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
+const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
      const searchParams = new URLSearchParams(window.location.search);
      const view = searchParams.get('view');
+     
      if (view === 'therapists') return 'therapists';
      if (view === 'dashboard') return 'dashboard';
+     if (view === 'vip') return 'vip';
      return 'book';
   });
   
