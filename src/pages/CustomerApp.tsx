@@ -6,6 +6,9 @@ import { encryptText, decryptText } from '../security';
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
+// ==========================================
+// CONSTANTS & HELPERS
+// ==========================================
 const FALLBACK_VIP_SETTINGS = {
   isActive: true,
   rules: [
@@ -23,12 +26,22 @@ const FALLBACK_VIP_SETTINGS = {
   ]
 };
 
-const ICON_MAP: Record<string, any> = { massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors };
+const ICON_MAP: Record<string, any> = {
+  massage: Sparkles, scrub: Droplets, waxing: Scissors, hotel: Home, facial: Droplets, manicure: Scissors, pedicure: Scissors,
+};
 
 const ALL_TIME_SLOTS = ["6:00 AM", "6:30 AM", "7:00 AM", "7:30 AM", "8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM", "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"];
 
-const getLocalTodayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
-export const getTomorrowStr = () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const getLocalTodayStr = () => {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
+export const getTomorrowStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
 
 export const getFixedServiceDetails = (serviceName: string | undefined | null) => {
     if (!serviceName) return null;
@@ -44,15 +57,19 @@ export const calculateTimeDiff = (startStr: string, endStr: string, isNextDay: b
     const getMins = (tStr: string) => {
         const match = tStr.match(/(\d+):(\d+)\s+(AM|PM)/i);
         if(!match) return 0;
-        let h = parseInt(match[1]); const m = parseInt(match[2]);
+        let h = parseInt(match[1]);
+        const m = parseInt(match[2]);
         if(match[3].toUpperCase() === 'PM' && h < 12) h += 12;
         if(match[3].toUpperCase() === 'AM' && h === 12) h = 0;
         return h * 60 + m;
     };
-    let startMins = getMins(startStr); let endMins = getMins(endStr);
+    let startMins = getMins(startStr);
+    let endMins = getMins(endStr);
     if (isNextDay) endMins += 24 * 60;
     if (endMins < startMins) endMins += 24 * 60; 
-    const diff = endMins - startMins; const hrs = Math.floor(diff / 60); const mins = diff % 60;
+    const diff = endMins - startMins;
+    const hrs = Math.floor(diff / 60);
+    const mins = diff % 60;
     if (hrs === 0) return `${mins} မိနစ်`;
     return `${hrs} နာရီ ${mins > 0 ? mins + ' မိနစ်' : ''}`;
 };
@@ -74,18 +91,22 @@ function getSlotsCoveredByInterval(startTimeMillis: number, endTimeMillis: numbe
     const [y, m, d] = dateStr.split('-');
     if (!y || !m || !d) return blocked;
     const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
-    const startOfDay = dateObj.setHours(0, 0, 0, 0); const endOfDay = dateObj.setHours(23, 59, 59, 999);
+    const startOfDay = dateObj.setHours(0, 0, 0, 0);
+    const endOfDay = dateObj.setHours(23, 59, 59, 999);
     if (endTimeMillis <= startOfDay || startTimeMillis >= endOfDay) return blocked;
     ALL_TIME_SLOTS.forEach(slot => {
         if (slot.includes("to")) return; 
         const slotTime = new Date(Number(y), Number(m) - 1, Number(d));
         const [time, ampm] = slot.split(' ');
         let [sh, sm] = time.split(':').map(Number);
-        if (ampm === 'PM' && sh < 12) sh += 12; if (ampm === 'AM' && sh === 12) sh = 0;
+        if (ampm === 'PM' && sh < 12) sh += 12;
+        if (ampm === 'AM' && sh === 12) sh = 0;
         slotTime.setHours(sh, sm, 0, 0);
         const slotTimeMillis = slotTime.getTime();
         const nextSlotTimeMillis = slotTimeMillis + (30 * 60 * 1000); 
-        if ((startTimeMillis < nextSlotTimeMillis) && (endTimeMillis > slotTimeMillis)) { blocked.add(slot); }
+        if ((startTimeMillis < nextSlotTimeMillis) && (endTimeMillis > slotTimeMillis)) {
+            blocked.add(slot);
+        }
     });
     return blocked;
 }
@@ -97,14 +118,24 @@ export function getSlotsFromTimeText(t: string, neededSlotsByDuration: number): 
         const end = endRaw ? endRaw.replace(" (Next Day)", "") : "";
         const sIdx = ALL_TIME_SLOTS.indexOf(start.trim());
         let eIdx = ALL_TIME_SLOTS.indexOf(end.trim());
-        if (endRaw && (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx))) { eIdx = ALL_TIME_SLOTS.length; }
+        if (endRaw && (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx))) {
+            eIdx = ALL_TIME_SLOTS.length;
+        }
         const slots = [];
-        if (sIdx !== -1) { for (let i = sIdx; i < eIdx; i++) { if (ALL_TIME_SLOTS[i]) slots.push(ALL_TIME_SLOTS[i]); } }
+        if (sIdx !== -1) {
+            for (let i = sIdx; i < eIdx; i++) {
+                if (ALL_TIME_SLOTS[i]) slots.push(ALL_TIME_SLOTS[i]);
+            }
+        }
         return slots;
     } else {
         const sIdx = ALL_TIME_SLOTS.indexOf(t.trim());
         const slots = [];
-        if (sIdx !== -1) { for (let i = 0; i < neededSlotsByDuration; i++) { if (ALL_TIME_SLOTS[sIdx + i]) slots.push(ALL_TIME_SLOTS[sIdx + i]); } }
+        if (sIdx !== -1) {
+            for (let i = 0; i < neededSlotsByDuration; i++) {
+                if (ALL_TIME_SLOTS[sIdx + i]) slots.push(ALL_TIME_SLOTS[sIdx + i]);
+            }
+        }
         return slots;
     }
 }
@@ -118,7 +149,9 @@ export function getBookingCoveredSlots(b: Booking): string[] {
     if (b.status === 'in_progress' && b.startTimeMillis) {
         let end = Math.max(Date.now(), b.expectedEndTimeMillis || Date.now());
         if (isNight) {
-            const d = new Date(b.startTimeMillis); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); 
+            const d = new Date(b.startTimeMillis);
+            d.setDate(d.getDate() + 1);
+            d.setHours(8, 0, 0, 0); 
             end = Math.max(end, d.getTime());
         }
         slots = Array.from(getSlotsCoveredByInterval(b.startTimeMillis, end, b.date || ''));
@@ -127,19 +160,34 @@ export function getBookingCoveredSlots(b: Booking): string[] {
             const startStr = b.time.split(" to ")[0].trim();
             let sIdx = ALL_TIME_SLOTS.indexOf(startStr);
             if (sIdx === -1) sIdx = ALL_TIME_SLOTS.indexOf(b.time.trim());
-            if (sIdx !== -1) { for (let i = sIdx; i < ALL_TIME_SLOTS.length; i++) { slots.push(ALL_TIME_SLOTS[i]); } }
+            if (sIdx !== -1) {
+                for (let i = sIdx; i < ALL_TIME_SLOTS.length; i++) {
+                    slots.push(ALL_TIME_SLOTS[i]);
+                }
+            }
         } else if (b.time.includes("to")) {
             const [start, endRaw] = b.time.split(" to ");
             const end = endRaw ? endRaw.replace(" (Next Day)", "").trim() : "";
             const sIdx = ALL_TIME_SLOTS.indexOf(start.trim());
             let eIdx = ALL_TIME_SLOTS.indexOf(end);
-            if (endRaw && (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx))) { eIdx = ALL_TIME_SLOTS.length; }
-            if (sIdx !== -1) { for (let i = sIdx; i < eIdx; i++) { if (ALL_TIME_SLOTS[i]) slots.push(ALL_TIME_SLOTS[i]); } }
+            if (endRaw && (endRaw.includes("Next Day") || (eIdx !== -1 && eIdx <= sIdx))) {
+                eIdx = ALL_TIME_SLOTS.length;
+            }
+            if (sIdx !== -1) {
+                for (let i = sIdx; i < eIdx; i++) {
+                    if (ALL_TIME_SLOTS[i]) slots.push(ALL_TIME_SLOTS[i]);
+                }
+            }
         } else {
-            let neededSlots = 2; const match = (b.service || '').match(/(\d+)\s*Mins/i);
+            let neededSlots = 2;
+            const match = (b.service || '').match(/(\d+)\s*Mins/i);
             if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
             const sIdx = ALL_TIME_SLOTS.indexOf(b.time.trim());
-            if (sIdx !== -1) { for (let i = 0; i < neededSlots; i++) { if (ALL_TIME_SLOTS[sIdx + i]) slots.push(ALL_TIME_SLOTS[sIdx + i]); } }
+            if (sIdx !== -1) {
+                for (let i = 0; i < neededSlots; i++) {
+                    if (ALL_TIME_SLOTS[sIdx + i]) slots.push(ALL_TIME_SLOTS[sIdx + i]);
+                }
+            }
         }
     }
     return slots;
@@ -153,6 +201,9 @@ const parsePoints = (pts: any) => {
     return isNaN(val) ? 0 : val;
 };
 
+// ==========================================
+// COMMON UI COMPONENTS
+// ==========================================
 const XCircleIcon = ({className}:any) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 
 export function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: string }) {
@@ -261,7 +312,7 @@ export function AuthRequest({
          if (targetId) {
              await updateDoc(doc(db, 'users', targetId), { 
                  resetRequested: true,
-                 resetContact: encryptText(contactInfo.trim()) 
+                 resetContact: encryptText(contactInfo.trim()) // Save contact info encrypted
              });
              setSuccessMsg('Admin ထံသို့ စကားဝှက်အသစ်တောင်းဆိုမှု ပို့ပြီးပါပြီ။ မကြာမီ ဆက်သွယ်ပေးပါမည်။');
              setTimeout(() => { setStep(1); setSuccessMsg(''); setContactInfo(''); setPassword(''); }, 6000);
@@ -486,7 +537,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   }, [todayStr]);
 
   const getNextSlotTime = (slot: string) => {
-      if (slot.includes("to")) return slot.split(" to ")[1];
+      if (slot.includes("to")) { return slot.split(" to ")[1]; }
       const idx = ALL_TIME_SLOTS.indexOf(slot);
       if (idx !== -1 && idx < ALL_TIME_SLOTS.length - 1) return ALL_TIME_SLOTS[idx + 1];
       if (idx === ALL_TIME_SLOTS.length - 1) return "11:30 PM";
@@ -868,6 +919,14 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
       setLoadingHistory(false);
   };
 
+  const parsePoints = (pts: any) => {
+      if (pts === undefined || pts === null) return 0;
+      if (typeof pts === 'number') return pts;
+      const dec = decryptText(pts);
+      const val = parseInt(dec || pts, 10);
+      return isNaN(val) ? 0 : val;
+  };
+
   useEffect(() => {
     if (!userPhone) return;
     const fetchUser = async () => {
@@ -883,7 +942,11 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                  const decPhone = decryptText(data.phone) || d.id;
                  if (decPhone === userPhone || d.id === userPhone) {
                      const pts = parsePoints(data.points);
-                     if (pts > maxPts) { maxPts = pts; foundUser = data; docId = d.id; }
+                     if (pts > maxPts) {
+                         maxPts = pts;
+                         foundUser = data;
+                         docId = d.id;
+                     }
                  }
              } catch(e) {}
           });
@@ -1172,6 +1235,260 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
         )}
       </div>
       <button onClick={onLogout} className="w-full py-3 bg-red-50 text-red-600 rounded-lg font-bold border border-red-100 hover:bg-red-100 transition flex justify-center items-center"><LogOut className="w-4 h-4 mr-2" /> Log Out</button>
+    </div>
+  );
+}
+
+export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [viewingDetails, setViewingDetails] = useState<TherapistProfile | null>(null);
+  const todayStr = getLocalTodayStr();
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+     const timer = setInterval(() => setNow(new Date()), 60000); 
+     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
+    const unsub = onSnapshot(q, (snap) => {
+        const arr: Booking[] = [];
+        snap.forEach(d => {
+            const raw = d.data();
+            arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking);
+        });
+        setBookings(arr);
+    });
+    return () => unsub();
+  }, [todayStr]);
+
+  const getNextSlotTime = (slot: string) => {
+      if (slot.includes("to")) return slot.split(" to ")[1];
+      const idx = ALL_TIME_SLOTS.indexOf(slot);
+      if (idx !== -1 && idx < ALL_TIME_SLOTS.length - 1) return ALL_TIME_SLOTS[idx + 1];
+      if (idx === ALL_TIME_SLOTS.length - 1) return "11:30 PM";
+      return slot;
+  };
+
+  const generateTimeline = (therapistName: string) => {
+      const tBookings = bookings.filter(b => b.therapist === therapistName && b.date === todayStr && b.status !== 'cancelled' && b.status !== 'completed');
+      const coveredMap = new Map<string, { service: string, status: string }>();
+
+      tBookings.forEach(b => {
+           const cleanServiceName = (b.service || '').split('(')[0].trim();
+           const coveredSlots = getBookingCoveredSlots(b);
+           coveredSlots.forEach(slot => { coveredMap.set(slot, { service: cleanServiceName, status: 'Booked' }); });
+           
+           if (coveredSlots.length > 0) {
+               const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
+               if (firstIdx > 0 && !coveredMap.has(ALL_TIME_SLOTS[firstIdx - 1])) { coveredMap.set(ALL_TIME_SLOTS[firstIdx - 1], { service: 'နားချိန် (Rest)', status: 'Buffer' }); }
+               const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
+               if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1 && !coveredMap.has(ALL_TIME_SLOTS[lastIdx + 1])) { coveredMap.set(ALL_TIME_SLOTS[lastIdx + 1], { service: 'နားချိန် (Rest)', status: 'Buffer' }); }
+           }
+      });
+
+      const rawSlots = ALL_TIME_SLOTS.map(slot => {
+          const covered = coveredMap.get(slot);
+          if (covered) return { slot, state: covered.status, service: covered.service };
+          const [timePart, ampm] = slot.split(' ');
+          let [h, m] = timePart.split(':').map(Number);
+          if (ampm === 'PM' && h < 12) h += 12; if (ampm === 'AM' && h === 12) h = 0;
+          const slotTime = new Date(); slotTime.setHours(h, m, 0, 0);
+          if (slotTime <= now) return { slot, state: 'Past', service: '' };
+          return { slot, state: 'Available', service: '' };
+      });
+
+      const merged = [];
+      if (rawSlots.length === 0) return [];
+      let currentBlock = { startSlot: rawSlots[0].slot, endSlot: rawSlots[0].slot, state: rawSlots[0].state, service: rawSlots[0].service };
+
+      for (let i = 1; i < rawSlots.length; i++) {
+          const curr = rawSlots[i];
+          if (curr.state === currentBlock.state && curr.service === currentBlock.service) { currentBlock.endSlot = curr.slot; } 
+          else { merged.push(currentBlock); currentBlock = { startSlot: curr.slot, endSlot: curr.slot, state: curr.state, service: curr.service }; }
+      }
+      merged.push(currentBlock);
+
+      return merged.map(b => {
+          let endTime = getNextSlotTime(b.endSlot);
+          if (b.state === 'Booked') {
+             const matchingNB = tBookings.find(bk => (bk.service || '').split('(')[0].trim() === b.service);
+             if (matchingNB) {
+                 if (matchingNB.time && matchingNB.time.includes("Next Day")) { endTime = "8:00 AM (Next Day)"; } 
+                 else if (matchingNB.status === 'in_progress' && matchingNB.expectedEndTimeMillis) {
+                     const endD = new Date(matchingNB.expectedEndTimeMillis);
+                     if (endD.getHours() === 8 && endD.getDate() !== new Date().getDate()) { endTime = "8:00 AM (Next Day)"; }
+                 }
+             }
+          }
+          return { ...b, endTime };
+      });
+  };
+
+  const getTherapistStatus = (tName: string) => {
+      let blockedNow = new Set<string>();
+      let isCurrentlyActive = false; let activeServiceName = ''; let upcomingServices: string[] = []; let hasNightBooking = false;
+      const currentHour = now.getHours(); const isPast6PM = currentHour >= 18;
+      
+      bookings.forEach(b => {
+          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr || b.therapist !== tName) return;
+          const cleanServiceName = (b.service || '').split('(')[0].trim();
+          const serviceLower = cleanServiceName.toLowerCase();
+          const isNight = serviceLower.includes('night') || serviceLower.includes('24 hour') || serviceLower.includes('day and night');
+          const coveredSlots = getBookingCoveredSlots(b);
+          
+          if (coveredSlots.length > 0) {
+              coveredSlots.forEach(slot => blockedNow.add(slot));
+              const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
+              if (firstIdx > 0) blockedNow.add(ALL_TIME_SLOTS[firstIdx - 1]); 
+              const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
+              if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blockedNow.add(ALL_TIME_SLOTS[lastIdx + 1]); 
+          }
+
+          if (b.status === 'in_progress') {
+               isCurrentlyActive = true; activeServiceName = cleanServiceName;
+               if (isNight || (b.expectedEndTimeMillis && new Date(b.expectedEndTimeMillis).getHours() === 8 && new Date(b.expectedEndTimeMillis).getDate() !== new Date().getDate())) { hasNightBooking = true; }
+          } else {
+               if (coveredSlots.some(slot => {
+                   const [timePart, ampm] = slot.split(' ');
+                   let [h, m] = timePart.split(':').map(Number);
+                   if (ampm === 'PM' && h < 12) h += 12; if (ampm === 'AM' && h === 12) h = 0;
+                   const slotTime = new Date(); slotTime.setHours(h, m, 0, 0);
+                   return slotTime > now;
+               })) {
+                   if (!upcomingServices.includes(cleanServiceName)) { upcomingServices.push(cleanServiceName); }
+                   if (isNight) hasNightBooking = true;
+               }
+          }
+      });
+
+      const finalServiceName = upcomingServices.join('၊ '); 
+      if (isCurrentlyActive) return { label: 'In Service (Active)', mm: 'ဝန်ဆောင်မှုပေးနေပါသည်', color: 'bg-orange-100 text-orange-700 border-orange-200', activeService: activeServiceName };
+      if (upcomingServices.length > 0 || hasNightBooking) {
+          if (hasNightBooking) {
+              if (isPast6PM) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
+              return { label: 'Night Full / Day Available', mm: finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်။ နေ့ပိုင်းရပါသေးသည်။` : 'ညပိုင်းပြည့်၊ နေ့ပိုင်းရပါသေးတယ်', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', activeService: '' };
+          }
+          let mmText = finalServiceName ? `${finalServiceName} ဘိုကင်ယူထားပါသည်` : 'အချိန်တချို့ ယူထားပါတယ်';
+          return { label: 'Partially Booked', mm: mmText, color: 'bg-blue-100 text-blue-700 border-blue-200', activeService: '' }; 
+      }
+
+      let futureSlotsTotal = 0; let futureSlotsBooked = 0;
+      const endLimitIdx = ALL_TIME_SLOTS.indexOf("11:00 PM");
+      for (let i = 0; i <= endLimitIdx; i++) {
+          const slot = ALL_TIME_SLOTS[i]; const [timePart, ampm] = slot.split(' ');
+          let [h, m] = timePart.split(':').map(Number);
+          if (ampm === 'PM' && h < 12) h += 12; if (ampm === 'AM' && h === 12) h = 0;
+          const slotTime = new Date(); slotTime.setHours(h, m, 0, 0);
+          if (slotTime > now) { futureSlotsTotal++; if (blockedNow.has(slot)) futureSlotsBooked++; }
+      }
+      
+      const isShopFull = futureSlotsTotal > 0 && futureSlotsBooked === futureSlotsTotal;
+      if (isShopFull || (futureSlotsTotal === 0 && hasNightBooking)) return { label: 'Fully Booked For Today', mm: 'ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ', color: 'bg-red-100 text-red-700 border-red-200', activeService: '' };
+      return { label: 'Available Now', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
+  };
+
+  const bookingCounts: Record<string, number> = {};
+  bookings.forEach(b => { if (b.status !== 'cancelled') { bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1; } });
+  const top5Therapists = [...appData.therapists].sort((a, b) => {
+     const countA = bookingCounts[a.name] || 0; const countB = bookingCounts[b.name] || 0;
+     if (countA !== countB) return countB - countA; 
+     return (a.order || 0) - (b.order || 0);
+  }).slice(0, 5);
+
+  return (
+    <div className="animate-fade-in px-2 sm:px-0 relative">
+       {viewingDetails && (
+           <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingDetails(null)}>
+               <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
+                   <div className="bg-[#123524] p-4 flex items-center justify-between">
+                       <div className="flex items-center">
+                           {viewingDetails.images[0] ? <img src={viewingDetails.images[0]} loading="lazy" className="w-10 h-10 rounded-full object-cover mr-3 border border-[#D4AF37]"/> : <User className="w-10 h-10 rounded-full p-2 bg-gray-100 text-gray-400 mr-3"/>}
+                           <div><h3 className="text-[#D4AF37] font-bold text-sm tracking-wide">{viewingDetails.name}'s Schedule</h3><p className="text-[10px] text-gray-300 font-semibold mt-0.5">Today ({getLocalTodayStr()})</p></div>
+                       </div>
+                       <button onClick={() => setViewingDetails(null)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-5 h-5"/></button>
+                   </div>
+                   <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-2">
+                       {generateTimeline(viewingDetails.name).map((block, idx) => (
+                            <div key={idx} className={`p-3 rounded-xl border flex items-center justify-between shadow-sm transition-colors ${block.state === 'Available' ? 'bg-green-50 border-green-200' : block.state === 'Booked' ? 'bg-blue-50 border-blue-200' : block.state === 'Buffer' ? 'bg-orange-50 border-orange-200' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
+                                <div className="text-xs font-mono font-bold text-gray-700 w-[45%]">{block.startSlot} - {block.endTime}</div>
+                                <div className="w-[55%] flex justify-end">
+                                    {block.state === 'Available' && <span className="text-green-700 font-bold text-[10px] uppercase flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> အားပါသည်</span>}
+                                    {block.state === 'Booked' && <span className="text-blue-700 font-bold text-[10px] uppercase leading-tight flex items-center text-right"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse"></span> {block.service}</span>}
+                                    {block.state === 'Buffer' && <span className="text-orange-600 font-bold text-[10px] uppercase leading-tight flex items-center text-right"><Clock className="w-3 h-3 mr-1"/> {block.service}</span>}
+                                    {block.state === 'Past' && <span className="text-gray-500 font-bold text-[10px] uppercase flex items-center"><Clock className="w-3 h-3 mr-1"/> ကျော်လွန်သွားပါပြီ</span>}
+                                </div>
+                            </div>
+                       ))}
+                   </div>
+               </div>
+           </div>
+       )}
+
+       <div className="text-center mb-8">
+         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Today's Availability</h2>
+         <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
+       </div>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {appData.therapists.map(t => {
+             const status = getTherapistStatus(t.name);
+             const isAvailable = status.label === 'Available Now';
+             const isPartiallyBooked = status.label === 'Partially Booked' || status.label === 'In Service (Active)';
+             const isFullyBooked = status.label.includes('Fully Booked');
+
+             return (
+                <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
+                   <div className={`w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border object-cover ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale opacity-80' : 'border-orange-200'}`}>
+                       {t.images && t.images.length > 0 ? <img src={t.images[0]} loading="lazy" className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
+                   </div>
+                   <div className="flex-1">
+                       <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
+                       <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
+                          <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>{status.label}</span>
+                          {status.activeService && (<span className="block pb-1 mb-1 border-b text-current opacity-90 leading-snug" style={{ borderColor: 'currentColor' }}>{status.activeService}</span>)}
+                          <span className="font-semibold block opacity-90 leading-snug">{status.mm}</span>
+                       </div>
+                   </div>
+                   <div className="flex flex-col space-y-2 ml-2 flex-shrink-0">
+                       <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>Book Now</button>
+                       <button onClick={() => setViewingDetails(t)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200"><Clock className="w-3 h-3 mr-1" /> အချိန်ဇယား</button>
+                   </div>
+                </div>
+             )
+          })}
+       </div>
+
+       {top5Therapists.length > 0 && (
+         <div className="mt-14 pt-8 border-t-2 border-gray-100">
+             <div className="text-center mb-6">
+                 <h2 className="text-2xl font-bold flex items-center justify-center" style={{ color: THEME.primary }}><Crown className="w-6 h-6 mr-2 text-yellow-500"/> Our Top 5 Therapists</h2>
+                 <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ)</p>
+             </div>
+             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                 {top5Therapists.map((t, idx) => {
+                     const status = getTherapistStatus(t.name);
+                     const isFullyBooked = status.label.includes('Fully Booked');
+
+                     return (
+                         <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
+                             <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">{idx + 1}</div>
+                             <div className={`w-full aspect-[3/4] bg-gray-100 relative ${isFullyBooked ? 'grayscale opacity-80' : ''}`}>
+                                 {t.images && t.images.length > 0 ? <img src={t.images[0]} loading="lazy" className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
+                             </div>
+                             <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
+                                 <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
+                                 <div className="flex flex-col space-y-2 mt-auto">
+                                     <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}</button>
+                                     <button onClick={() => setViewingDetails(t)} className={`w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200' : 'bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200'}`}><Clock className="w-3 h-3 mr-1"/> အချိန်ဇယား</button>
+                                 </div>
+                             </div>
+                         </div>
+                     );
+                 })}
+             </div>
+         </div>
+       )}
     </div>
   );
 }
