@@ -1,7 +1,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth'; // Firebase Auth
-import { db, auth } from './firebase'; // Auth ကို Import လုပ်ထားပါသည်
+import { db, auth } from './firebase'; 
 import { Download, X, MapPin, Phone, LogOut, DatabaseBackup } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
 
@@ -117,29 +117,25 @@ function MainApp() {
     if (searchParams.get('mode') === 'admin') setAppMode('admin');
     else if (searchParams.get('mode') === 'staff') setAppMode('staff');
 
-    // Auth ဝင်ပြီးမှသာ Data ကို ဆွဲယူရန် delay အနည်းငယ်ထားပါသည်
-    const timeout = setTimeout(() => {
-      const initData = async () => {
+    const initData = async () => {
+      try {
+        // 🚀 Optimization: Use Promise.all to fetch both settings and therapists concurrently
+        const [settingsSnap, therapistsSnap] = await Promise.all([
+            getDoc(doc(db, 'settings', 'appData')).catch(err => { console.warn(err); return null; }),
+            getDocs(query(collection(db, 'therapists'), orderBy('order', 'asc'))).catch(err => { console.warn(err); return null; })
+        ]);
+
         let loadedData: Partial<AppData> = {}; 
         let loadedTherapists: TherapistProfile[] = [];
 
-        try {
-          const docRef = doc(db, 'settings', 'appData'); 
-          const snap = await getDoc(docRef);
-          if (snap.exists()) loadedData = snap.data() || {};
-        } catch (err) {
-          console.warn("Could not fetch settings:", err);
-          setDbError(true);
+        if (settingsSnap && settingsSnap.exists()) {
+            loadedData = settingsSnap.data() || {};
+        } else if (!settingsSnap) {
+            setDbError(true);
         }
 
-        try {
-          const tQuery = query(collection(db, 'therapists'), orderBy('order', 'asc')); 
-          const tSnap = await getDocs(tQuery);
-          if (!tSnap.empty) { 
-              tSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); 
-          }
-        } catch (err) {
-          console.warn("Could not fetch therapists:", err);
+        if (therapistsSnap && !therapistsSnap.empty) {
+            therapistsSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile));
         }
 
         const finalCategories = Array.isArray(loadedData.categories) && loadedData.categories.length > 0 ? loadedData.categories : DEFAULT_CATEGORIES;
@@ -157,11 +153,14 @@ function MainApp() {
             promotion: finalPromotion, 
             installSteps: finalInstallSteps 
         });
-      };
-      initData();
-    }, 500); // 500ms delay for anonymous auth to complete
-
-    return () => clearTimeout(timeout);
+      } catch (err) {
+        console.error("Critical Database Error:", err);
+        setDbError(true);
+      }
+    };
+    
+    // 🚀 Optimization: Removed artificial 500ms setTimeout to load data instantly
+    initData();
   }, []);
 
   useEffect(() => {
@@ -253,7 +252,7 @@ function MainApp() {
         <Suspense fallback={
             <div className="text-center py-20 font-bold text-[#123524] flex flex-col items-center">
                 <div className="w-10 h-10 border-4 border-[#123524] border-t-[#D4AF37] rounded-full animate-spin mb-4"></div>
-                Loading Component...
+                Loading App Module...
             </div>
         }>
             {appMode === 'admin' ? (
