@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
+// 🚀 Optimization: Added where, orderBy, limit for efficient querying
+import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, getDoc, setDoc, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 
@@ -260,7 +261,8 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 
   useEffect(() => {
     if (!userPhone) return;
-    const q = query(collection(db, 'bookings'));
+    // 🚀 Optimization: Limit listener to recent bookings to save reads
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(50));
     const unsubscribe = onSnapshot(q, (snap) => {
       let changed = false;
       snap.docs.forEach((doc) => {
@@ -480,7 +482,6 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
    );
 }
 
-
 // ==========================================
 // CUSTOMER BOOKING WIZARD
 // ==========================================
@@ -550,7 +551,8 @@ export function CustomerBookingWizard({
   }, [formData.selectedItem]);
 
   useEffect(() => {
-      const q = query(collection(db, 'bookings'));
+      // 🚀 Optimization: Fetch ONLY today's and future bookings to calculate availability
+      const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
       const unsub = onSnapshot(q, (snap) => {
           const arr: Booking[] = [];
           snap.forEach(d => {
@@ -568,7 +570,7 @@ export function CustomerBookingWizard({
           setAllBookings(arr);
       });
       return () => unsub();
-  }, []);
+  }, [todayStr]);
 
   useEffect(() => {
       if (!userPhone) return;
@@ -615,10 +617,10 @@ export function CustomerBookingWizard({
   }, [userPhone]);
 
   useEffect(() => {
-     if (preselectedStaff && !formData.therapist) {
-         const t = appData.therapists.find(staff => staff.name === preselectedStaff);
-         if (t) setFormData(prev => ({...prev, therapist: t}));
-     }
+      if (preselectedStaff && !formData.therapist) {
+          const t = appData.therapists.find(staff => staff.name === preselectedStaff);
+          if (t) setFormData(prev => ({...prev, therapist: t}));
+      }
   }, [preselectedStaff, appData.therapists, formData.therapist]);
 
   useEffect(() => {
@@ -677,7 +679,6 @@ export function CustomerBookingWizard({
       let oneTimeLabel = '';
       const possibleTiers = [40, 30, 20, 10]; 
       
-      // Only check Target Bonus if they are not VIP yet
       if (!userTier) {
           for (const tier of possibleTiers) {
               if (monthlyPts >= tier) {
@@ -1014,7 +1015,8 @@ export function CustomerBookingWizard({
     setLoading(true);
     
     try {
-      const freshSnap = await getDocs(query(collection(db, 'bookings')));
+      // 🚀 Optimization: Fetch fresh snapshot restricted to recent bookings
+      const freshSnap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', todayStr)));
       const freshBookings: Booking[] = [];
       freshSnap.forEach(d => {
          const raw = d.data();
@@ -1433,7 +1435,8 @@ export function CustomerBookingWizard({
                   <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-70' : ''}`}>
                     {hasImage ? (
                       <>
-                        <img src={therapist.images[0]} alt={therapist.name} className="w-full h-full object-cover object-top" />
+                        {/* 🚀 Optimization: Added lazy loading to images to save bandwidth */}
+                        <img src={therapist.images[0]} alt={therapist.name} loading="lazy" className="w-full h-full object-cover object-top" />
                         {therapist.images.length > 1 && (
                           <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/90 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1 px-1 rounded flex flex-col items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30 leading-tight">
                             <div className="flex items-center"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</div>
@@ -1720,13 +1723,13 @@ export function CustomerBookingWizard({
                   <label className="block mb-2 text-sm font-semibold text-gray-700" style={{ color: THEME.primary }}>ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
 
                   <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm">
-                    {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
+                    {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" loading="lazy" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
                     <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
                   </div>
                   {paymentDropdownOpen && (
                     <><div className="fixed inset-0 z-40" onClick={() => setPaymentDropdownOpen(false)}></div>
                       <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-lg shadow-xl overflow-hidden border border-[#1a4a32]">
-                        {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" className="w-7 h-7 mr-3 object-contain bg-white rounded-sm p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
+                        {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" loading="lazy" className="w-7 h-7 mr-3 object-contain bg-white rounded-sm p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
                       </div></>
                   )}
                 </div>
@@ -1779,7 +1782,8 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
             <div className="aspect-[3/4] relative overflow-hidden bg-gray-50">
               {t.images.length > 0 ? (
                 <>
-                  <img src={t.images[0]} alt={t.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                  {/* 🚀 Optimization: Added lazy loading to gallery images */}
+                  <img src={t.images[0]} alt={t.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-transparent to-transparent opacity-80"></div>
                 </>
               ) : (
@@ -1815,7 +1819,8 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'bookings'));
+    // 🚀 Optimization: Fetch ONLY today's and future bookings to calculate slots
+    const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
     const unsub = onSnapshot(q, (snap) => {
         const arr: Booking[] = [];
         snap.forEach(d => {
@@ -1832,7 +1837,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
         setBookings(arr);
     });
     return () => unsub();
-  }, []);
+  }, [todayStr]);
 
   const getNextSlotTime = (slot: string) => {
       if (slot.includes("to")) {
@@ -2035,7 +2040,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
                    <div className="bg-[#123524] p-4 flex items-center justify-between">
                        <div className="flex items-center">
-                           {viewingDetails.images[0] ? <img src={viewingDetails.images[0]} className="w-10 h-10 rounded-full object-cover mr-3 border border-[#D4AF37]"/> : <User className="w-10 h-10 rounded-full p-2 bg-gray-100 text-gray-400 mr-3"/>}
+                           {viewingDetails.images[0] ? <img src={viewingDetails.images[0]} loading="lazy" className="w-10 h-10 rounded-full object-cover mr-3 border border-[#D4AF37]"/> : <User className="w-10 h-10 rounded-full p-2 bg-gray-100 text-gray-400 mr-3"/>}
                            <div>
                                <h3 className="text-[#D4AF37] font-bold text-sm tracking-wide">{viewingDetails.name}'s Schedule</h3>
                                <p className="text-[10px] text-gray-300 font-semibold mt-0.5">Today ({getLocalTodayStr()})</p>
@@ -2076,7 +2081,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
              return (
                 <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
                    <div className={`w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border object-cover ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale opacity-80' : 'border-orange-200'}`}>
-                       {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
+                       {t.images && t.images.length > 0 ? <img src={t.images[0]} loading="lazy" className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
                    </div>
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
@@ -2124,7 +2129,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                                 {idx + 1}
                              </div>
                              <div className={`w-full aspect-[3/4] bg-gray-100 relative ${isFullyBooked ? 'grayscale opacity-80' : ''}`}>
-                                 {t.images && t.images.length > 0 ? <img src={t.images[0]} className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
+                                 {t.images && t.images.length > 0 ? <img src={t.images[0]} loading="lazy" className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
                              </div>
                              <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
                                  <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
@@ -2159,7 +2164,8 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
     if (!userPhone) return;
     const fetchMyBookings = async () => {
       try {
-        const q = query(collection(db, 'bookings'));
+        // 🚀 Optimization: Limit history size if requested, here keeping reasonable load.
+        const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
         const snap = await getDocs(q);
         const data: Booking[] = [];
         snap.forEach((doc) => {
@@ -2180,7 +2186,6 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
               } as Booking);
           }
         });
-        data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setBookings(data);
       } catch (e) { console.error(e); }
       setLoading(false);
@@ -2282,7 +2287,9 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
     if (!userPhone) return;
     const fetchBookings = async () => {
        try {
-           const snap = await getDocs(query(collection(db, 'bookings')));
+           // 🚀 Optimization: Only fetch target rewards for this month to save reads
+           const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
+           const snap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', currentMonthPrefix + '-01')));
            const data: any[] = [];
            snap.forEach(d => {
                const raw = d.data();
