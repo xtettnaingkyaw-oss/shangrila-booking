@@ -1056,6 +1056,9 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   );
 }
 
+// ==========================================
+// CUSTOMER BOOKING WIZARD & TABS
+// ==========================================
 export function CustomerBookingWizard({ appData, userPhone = '', onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff }: { appData: AppData, userPhone?: string, onBooked?: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string }) {
   const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
   const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
@@ -1380,6 +1383,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   };
   const formattedCountdown = useCountdown(isStaffMode ? 0 : 15, handleCountdownExpire);
 
+  // 🚀 Core Booking Processing Function
   const processBooking = async (phoneToUse: string) => {
       setLoading(true);
       try {
@@ -1699,12 +1703,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
         <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4">
            <div className="relative w-full max-w-sm">
               <button onClick={() => { setShowAuthModal(false); setLoading(false); }} className="absolute -top-12 right-0 text-white hover:text-red-400 p-2"><X className="w-8 h-8"/></button>
-              <AuthRequest
-                 title="အကောင့်ရှိပြီးသားဖြစ်နေပါသည်"
-                 prefilledPhone={authModalPhone}
-                 skipToPassword={authModalHasPassword}
-                 onLoginSuccess={(loggedInPhone) => { setShowAuthModal(false); setVerifiedPhone(loggedInPhone); processBooking(loggedInPhone); }}
-              />
+              <AuthRequest title="အကောင့်ရှိပြီးသားဖြစ်နေပါသည်" prefilledPhone={authModalPhone} skipToPassword={authModalHasPassword} onLoginSuccess={(loggedInPhone) => { setShowAuthModal(false); setVerifiedPhone(loggedInPhone); processBooking(loggedInPhone); }} />
            </div>
         </div>
       )}
@@ -1715,10 +1714,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 
       {step === 3 && (
         <div className="animate-fade-in px-2 sm:px-0">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2>
-            <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p>
-          </div>
+          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
             <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
             <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
@@ -1873,6 +1869,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   );
 }
 
+// 🌟 THE COMPONENT THAT RENDERS THE TABS AND MAIN VIEW (Moved to bottom) 🌟
 export default function CustomerApp({ appData }: { appData: AppData }) {
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
      const searchParams = new URLSearchParams(window.location.search);
@@ -1905,8 +1902,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
     const unsubscribe = onSnapshot(q, (snap) => {
       let changed = false;
       snap.docs.forEach((doc) => {
-        const raw = doc.data();
-        const bPhone = decryptText(raw.phone) || raw.phone;
+        const raw = doc.data(); const bPhone = decryptText(raw.phone) || raw.phone;
         if (bPhone === userPhone) {
           const oldStatus = prevStatuses.current[doc.id];
           if (oldStatus && oldStatus !== raw.status) changed = true;
@@ -1940,33 +1936,35 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
   ] as const;
 
   const vipSettings = mergedAppData.vipSettings;
-  const tabs = vipSettings.isActive 
-      ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }]
-      : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
+  const tabs = vipSettings.isActive ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }] : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
 
   return (
     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
       
-      <div className="flex sm:hidden justify-end mb-2 pr-2">
-         <span className="text-[10px] text-[#123524] font-bold flex items-center animate-pulse">
-            ဘေးသို့ဆွဲကြည့်ပါ <span className="text-[#D4AF37] ml-1 tracking-tighter font-black">&gt;&gt;</span>
-         </span>
-      </div>
-
-      <div className="flex justify-start sm:justify-center items-center space-x-2 mb-10 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto scrollbar-hide snap-x snap-mandatory relative">
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-              className={`snap-start relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-sm border border-gray-200' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
-              <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 ${isActive ? 'text-[#D4AF37]' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
-              <span className="text-center whitespace-nowrap">{tab.label}</span>
-              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
-              {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
-            </button>
-          )
-        })}
+      {/* 🌟 STICKY TAB NAVIGATION BAR 🌟 */}
+      <div className="sticky top-[48px] z-[90] bg-gray-50/90 backdrop-blur-xl pt-2 pb-3 px-4 -mx-4 sm:px-0 sm:mx-0 mb-8 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.1)] transition-all duration-300">
+         <div className="max-w-2xl mx-auto">
+            <div className="flex sm:hidden justify-end mb-1 pr-1">
+               <span className="text-[9px] text-[#123524] font-bold flex items-center animate-pulse bg-white/80 px-2 py-0.5 rounded-full border border-gray-200 shadow-sm">
+                  ဘေးသို့ဆွဲကြည့်ပါ <span className="text-[#D4AF37] ml-1 tracking-tighter font-black">&gt;&gt;</span>
+               </span>
+            </div>
+            <div className="flex justify-start sm:justify-center items-center space-x-2 bg-white/95 p-1.5 sm:p-2 rounded-2xl shadow-sm border border-gray-200/80 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
+                    className={`snap-start relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-md border border-gray-200 transform scale-[1.02]' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
+                    <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 transition-all duration-300 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-sm' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+                    <span className="text-center whitespace-nowrap">{tab.label}</span>
+                    {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
+                    {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
+                  </button>
+                )
+              })}
+            </div>
+         </div>
       </div>
       
       {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
