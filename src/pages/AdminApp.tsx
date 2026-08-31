@@ -5,7 +5,7 @@ import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle } from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -49,10 +49,7 @@ export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppD
   };
 
   if (!loggedInAdmin) {
-    return <AdminLogin onLogin={(user) => { 
-        sessionStorage.setItem('shangrila_admin', user); 
-        setLoggedInAdmin(user); 
-    }} />;
+    return <AdminLogin onLogin={(user) => { sessionStorage.setItem('shangrila_admin', user); setLoggedInAdmin(user); }} />;
   }
   return <AdminDashboard appData={mergedAppData} onSettingsUpdated={onSettingsUpdated} loggedInAdmin={loggedInAdmin} onLogout={handleLogout} />;
 }
@@ -67,15 +64,12 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
     e.preventDefault(); setLoading(true); setError('');
     try {
       if (username === 'admin' && password === 'admin123') {
-          try {
-              await signInWithEmailAndPassword(auth, 'admin@shangrila.com', password);
-          } catch (e: any) {
+          try { await signInWithEmailAndPassword(auth, 'admin@shangrila.com', password); } 
+          catch (e: any) {
               await createUserWithEmailAndPassword(auth, 'admin@shangrila.com', password);
               await addDoc(collection(db, 'admins'), { username: encryptText('admin'), password: encryptText('admin123'), role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'points', 'admins', 'settings'] });
           }
-          onLogin('admin');
-          setLoading(false);
-          return;
+          onLogin('admin'); setLoading(false); return;
       }
       await signInWithEmailAndPassword(auth, `${username.toLowerCase()}@shangrila.com`, password);
       onLogin(username);
@@ -102,6 +96,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
   const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'points' | 'admins' | 'settings'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const [resetRequestCount, setResetRequestCount] = useState(0);
   const [adminRole, setAdminRole] = useState<'super_admin' | 'custom'>('super_admin');
   const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
   const [roleLoaded, setRoleLoaded] = useState(false);
@@ -113,8 +108,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
               const allAdmins = await getDocs(collection(db, 'admins'));
               let matchedAdmin: LocalAdminProfile | null = null;
               allAdmins.forEach(d => {
-                 const raw = d.data();
-                 const decUser = decryptText(raw.username) || d.id;
+                 const raw = d.data(); const decUser = decryptText(raw.username) || d.id;
                  if (decUser.toLowerCase() === loggedInAdmin.toLowerCase()) matchedAdmin = raw as LocalAdminProfile;
               });
               if (matchedAdmin) {
@@ -130,21 +124,24 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
   }, [loggedInAdmin, tab]);
 
   useEffect(() => {
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+        let rCount = 0;
+        snap.forEach(d => { if (d.data().resetRequested) rCount++; });
+        setResetRequestCount(rCount);
+    });
+    return () => unsubUsers();
+  }, []);
+
+  useEffect(() => {
     const q = query(collection(db, 'bookings'));
     const unsubscribe = onSnapshot(q, (snap) => {
       const data: Booking[] = []; let currentPendingCount = 0;
       snap.forEach((doc) => { 
           const raw = doc.data();
           const b = { 
-             id: doc.id, 
-             ...raw, 
-             name: decryptText(raw.name) || raw.name, 
-             phone: decryptText(raw.phone) || raw.phone, 
-             txId: decryptText(raw.txId) || raw.txId, 
-             specialRequest: decryptText(raw.specialRequest) || raw.specialRequest,
-             originalPrice: raw.originalPrice ? Number(decryptText(raw.originalPrice)) : undefined,
-             discountPercent: raw.discountPercent ? Number(decryptText(raw.discountPercent)) : undefined,
-             discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
+             id: doc.id, ...raw, name: decryptText(raw.name) || raw.name, phone: decryptText(raw.phone) || raw.phone, txId: decryptText(raw.txId) || raw.txId, 
+             specialRequest: decryptText(raw.specialRequest) || raw.specialRequest, originalPrice: raw.originalPrice ? Number(decryptText(raw.originalPrice)) : undefined,
+             discountPercent: raw.discountPercent ? Number(decryptText(raw.discountPercent)) : undefined, discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
              vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
           } as Booking; 
           data.push(b); if (b.status === 'pending') currentPendingCount++; 
@@ -173,7 +170,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
       <div className="flex flex-wrap justify-center items-center gap-2 mb-6 scrollbar-hide overflow-x-auto p-1 mt-6 sm:mt-0 px-4 sm:px-0">
         {hasAccess('bookings') && (<button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><CalendarPlus className="w-4 h-4 mr-2" /> Bookings {pendingCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{pendingCount}</span>}</button>)}
         {hasAccess('reports') && (<button onClick={() => setTab('reports')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'reports' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><BarChart2 className="w-4 h-4 mr-2" /> Staff History</button>)}
-        {hasAccess('users') && (<button onClick={() => setTab('users')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users</button>)}
+        {hasAccess('users') && (<button onClick={() => setTab('users')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users {resetRequestCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{resetRequestCount}</span>}</button>)}
         {hasAccess('points') && (<button onClick={() => setTab('points')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'points' ? 'bg-yellow-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Star className="w-4 h-4 mr-2" /> Point Mgmt</button>)}
         {hasAccess('admins') && (<button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('settings')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>)}
@@ -204,37 +201,19 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         const earnedPts = Math.floor(b.totalPrice / 35000);
         try {
             const usersSnap = await getDocs(collection(db, 'users'));
-            let targetDocId = null;
-            let currentPts = 0;
+            let targetDocId = null; let currentPts = 0;
             usersSnap.forEach(d => {
-                const uData = d.data();
-                const decPhone = decryptText(uData.phone) || d.id;
-                if (decPhone === b.phone) {
-                    targetDocId = d.id;
-                    currentPts = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10);
-                }
+                const uData = d.data(); const decPhone = decryptText(uData.phone) || d.id;
+                if (decPhone === b.phone) { targetDocId = d.id; currentPts = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10); }
             });
             if (targetDocId) {
-                await updateDoc(doc(db, 'users', targetDocId), { 
-                    points: encryptText((currentPts + earnedPts).toString()) 
-                });
-                
-                await addDoc(collection(db, 'point_history'), {
-                    phone: encryptText(b.phone),
-                    amount: encryptText(b.totalPrice.toString()),
-                    pointsEarned: encryptText(earnedPts.toString()),
-                    invoiceNo: encryptText(b.txId || 'Online'),
-                    type: encryptText('Online Booking'),
-                    date: getLocalTodayStr(),
-                    createdAt: Date.now()
-                });
-
+                await updateDoc(doc(db, 'users', targetDocId), { points: encryptText((currentPts + earnedPts).toString()) });
+                await addDoc(collection(db, 'point_history'), { phone: encryptText(b.phone), amount: encryptText(b.totalPrice.toString()), pointsEarned: encryptText(earnedPts.toString()), invoiceNo: encryptText(b.txId || 'Online'), type: encryptText('Online Booking'), date: getLocalTodayStr(), createdAt: Date.now() });
                 updateData.pointsAdded = true;
                 alert(`✅ Booking Confirmed! Customer ထံသို့ Point (${earnedPts} Pts) အလိုအလျောက် ပေါင်းထည့်ပေးလိုက်ပါပြီ။`);
             }
         } catch (e) { console.error("Error adding points:", e); }
     }
-
     try { await updateDoc(doc(db, 'bookings', b.id!), updateData); } catch (e) { alert("Error Update"); }
   };
 
@@ -245,34 +224,19 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
 
   const handleExportExcel = () => {
       const headers = ['Booking ID', 'Customer Name', 'Phone', 'Service', 'Therapist', 'Date', 'Time', 'Total Price (Ks)', 'Original Price (Ks)', 'Discount Percent (%)', 'Discount Label', 'Payment Method', 'Transaction ID', 'Status', 'Special Request', 'Booking Date'];
-      const rows = bookings.map(b => [
-          b.id || '', `"${b.name || ''}"`, `"${b.phone || ''}"`, `"${b.service || ''}"`, `"${b.therapist || ''}"`,
-          b.date || '', b.time || '', b.totalPrice || 0, b.originalPrice || '', b.discountPercent || '',
-          b.discountLabel ? `"${b.discountLabel}"` : '', b.paymentMethod || '', b.txId || '', b.status || '',
-          `"${b.specialRequest || ''}"`, new Date(b.createdAt).toLocaleString()
-      ]);
+      const rows = bookings.map(b => [ b.id || '', `"${b.name || ''}"`, `"${b.phone || ''}"`, `"${b.service || ''}"`, `"${b.therapist || ''}"`, b.date || '', b.time || '', b.totalPrice || 0, b.originalPrice || '', b.discountPercent || '', b.discountLabel ? `"${b.discountLabel}"` : '', b.paymentMethod || '', b.txId || '', b.status || '', `"${b.specialRequest || ''}"`, new Date(b.createdAt).toLocaleString() ]);
       const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `Bookings_Report_${getLocalTodayStr()}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url); link.setAttribute('download', `Bookings_Report_${getLocalTodayStr()}.csv`); link.style.visibility = 'hidden';
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
-          <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
-              <CalendarPlus className="mr-2 text-yellow-500" /> Booking Requests
-          </h2>
+          <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><CalendarPlus className="mr-2 text-yellow-500" /> Booking Requests</h2>
           <div className="flex items-center space-x-3 w-full sm:w-auto">
-              <button onClick={handleExportExcel} className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm">
-                 <Download className="w-4 h-4 mr-1.5" /> Export Excel
-              </button>
+              <button onClick={handleExportExcel} className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm"><Download className="w-4 h-4 mr-1.5" /> Export Excel</button>
               <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-bold border border-yellow-200">Total: {bookings.length}</span>
           </div>
       </div>
@@ -284,37 +248,20 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
             {bookings.map((b) => (
               <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                 <td className="p-3">
-                    <div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div>
-                    <div className="text-xs text-gray-500">{b.phone || '-'}</div>
-                    {b.vipTierName ? (
-                        <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-sm">
-                            <Crown className="w-3 h-3 mr-1 text-yellow-600" /> {b.vipTierName}
-                        </div>
-                    ) : (b.discountPercent && b.discountPercent > 0) ? (
-                        <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-sm">
-                            <Sparkles className="w-3 h-3 mr-1 text-green-600" /> Promo Active
-                        </div>
-                    ) : null}
+                    <div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div>
+                    {b.vipTierName ? (<div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-sm"><Crown className="w-3 h-3 mr-1 text-yellow-600" /> {b.vipTierName}</div>) : (b.discountPercent && b.discountPercent > 0) ? (<div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-sm"><Sparkles className="w-3 h-3 mr-1 text-green-600" /> Promo Active</div>) : null}
                 </td>
                 <td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>{b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}</td>
                 <td className="p-3 text-sm text-gray-700"><div className="font-semibold text-[#123524]">{b.date || '-'}</div><div className="text-gray-600 text-xs mt-1">{b.time || '-'}</div></td>
                 <td className="p-3">
-                    <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div>
-                    <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-1">{b.paymentMethod || 'Unknown'}</div>
+                    <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div><div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-1">{b.paymentMethod || 'Unknown'}</div>
                     {b.originalPrice && b.originalPrice > b.totalPrice ? (
                         <div className="mt-2 p-1.5 bg-green-50 border border-green-100 rounded-md w-max">
-                           <div className="flex items-center space-x-2 mb-0.5">
-                              <span className="text-[10px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span>
-                              <span className="text-[9px] font-bold text-red-500 bg-red-100 px-1 py-0.5 rounded">-{b.discountPercent}%</span>
-                           </div>
-                           <div className="font-bold text-[#123524] text-sm">
-                              {formatPrice(b.totalPrice)}
-                           </div>
+                           <div className="flex items-center space-x-2 mb-0.5"><span className="text-[10px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span><span className="text-[9px] font-bold text-red-500 bg-red-100 px-1 py-0.5 rounded">-{b.discountPercent}%</span></div>
+                           <div className="font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
                            {b.discountLabel && <div className="text-[8.5px] text-green-700 font-semibold mt-1 uppercase tracking-wider">{b.discountLabel.replace(/ \(\d+%\)/, '')}</div>}
                         </div>
-                    ) : (
-                        <div className="mt-1.5 font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
-                    )}
+                    ) : (<div className="mt-1.5 font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>)}
                 </td>
                 <td className="p-3">
                   <select value={b.status} onChange={(e) => handleStatusChange(b, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
@@ -334,99 +281,40 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
 }
 
 function AdminPointManagement({ adminRole, appData }: { adminRole: string, appData: AppData }) {
-  const [users, setUsers] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
-  
-  const [amount, setAmount] = useState<number | ''>('');
-  const [invoiceNo, setInvoiceNo] = useState('');
-  const [processing, setProcessing] = useState(false);
-  
-  const [history, setHistory] = useState<any[]>([]);
-  const [historySearch, setHistorySearch] = useState('');
-
-  const [selectedUserMonthlyPoints, setSelectedUserMonthlyPoints] = useState(0);
-  const [selectedUserUsedRewards, setSelectedUserUsedRewards] = useState<string[]>([]);
-  const [userBookings, setUserBookings] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]); const [search, setSearch] = useState(''); const [loading, setLoading] = useState(true); const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [amount, setAmount] = useState<number | ''>(''); const [invoiceNo, setInvoiceNo] = useState(''); const [processing, setProcessing] = useState(false);
+  const [history, setHistory] = useState<any[]>([]); const [historySearch, setHistorySearch] = useState('');
+  const [selectedUserMonthlyPoints, setSelectedUserMonthlyPoints] = useState(0); const [selectedUserUsedRewards, setSelectedUserUsedRewards] = useState<string[]>([]); const [userBookings, setUserBookings] = useState<any[]>([]);
 
   const fetchUsers = async () => {
     try {
-      const snap = await getDocs(collection(db, 'users'));
-      const data: any[] = [];
-      snap.forEach(doc => {
-          const raw = doc.data();
-          data.push({ 
-             docId: doc.id, 
-             ...raw, 
-             phone: decryptText(raw.phone) || doc.id, 
-             name: decryptText(raw.name) || raw.name, 
-             points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10)
-          });
-      });
-      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setUsers(data);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+      const snap = await getDocs(collection(db, 'users')); const data: any[] = [];
+      snap.forEach(doc => { const raw = doc.data(); data.push({ docId: doc.id, ...raw, phone: decryptText(raw.phone) || doc.id, name: decryptText(raw.name) || raw.name, points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10) }); });
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); setUsers(data);
+    } catch (e) { console.error(e); } setLoading(false);
   };
-  
   useEffect(() => { fetchUsers(); }, []);
 
   useEffect(() => {
-      const q = query(collection(db, 'point_history'), orderBy('createdAt', 'desc'));
-      const unsub = onSnapshot(q, (snap) => {
+      const unsub = onSnapshot(query(collection(db, 'point_history'), orderBy('createdAt', 'desc')), (snap) => {
           const data: any[] = [];
-          snap.forEach(doc => {
-              const raw = doc.data();
-              data.push({
-                  id: doc.id,
-                  phone: decryptText(raw.phone) || raw.phone,
-                  amount: Number(decryptText(raw.amount) || raw.amount),
-                  pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned),
-                  invoiceNo: raw.invoiceNo ? decryptText(raw.invoiceNo) : '-',
-                  type: decryptText(raw.type) || raw.type,
-                  date: raw.date,
-                  createdAt: raw.createdAt
-              });
-          });
+          snap.forEach(doc => { const raw = doc.data(); data.push({ id: doc.id, phone: decryptText(raw.phone) || raw.phone, amount: Number(decryptText(raw.amount) || raw.amount), pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned), invoiceNo: raw.invoiceNo ? decryptText(raw.invoiceNo) : '-', type: decryptText(raw.type) || raw.type, date: raw.date, createdAt: raw.createdAt }); });
           setHistory(data);
       });
-
-      const qB = query(collection(db, 'bookings'));
-      const unsubB = onSnapshot(qB, (snap) => {
+      const unsubB = onSnapshot(query(collection(db, 'bookings')), (snap) => {
           const data: any[] = [];
-          snap.forEach(d => {
-             const raw = d.data();
-             data.push({
-                 phone: decryptText(raw.phone) || raw.phone,
-                 status: raw.status,
-                 date: raw.date,
-                 discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined
-             });
-          });
+          snap.forEach(d => { const raw = d.data(); data.push({ phone: decryptText(raw.phone) || raw.phone, status: raw.status, date: raw.date, discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined }); });
           setUserBookings(data);
       });
-
       return () => { unsub(); unsubB(); };
   }, []);
 
   useEffect(() => {
-      if (!selectedUser) return;
-      const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
-      
-      const mPts = history
-          .filter(h => h.phone === selectedUser.phone && h.date && h.date.startsWith(currentMonthPrefix))
-          .reduce((sum, h) => sum + h.pointsEarned, 0);
+      if (!selectedUser) return; const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
+      const mPts = history.filter(h => h.phone === selectedUser.phone && h.date && h.date.startsWith(currentMonthPrefix)).reduce((sum, h) => sum + h.pointsEarned, 0);
       setSelectedUserMonthlyPoints(mPts);
-
       const used: string[] = [];
-      userBookings
-          .filter(b => b.phone === selectedUser.phone && b.date && b.date.startsWith(currentMonthPrefix) && b.status !== 'cancelled')
-          .forEach(b => {
-              if (b.discountLabel && b.discountLabel.includes('Target Bonus')) {
-                  used.push(b.discountLabel);
-              }
-          });
+      userBookings.filter(b => b.phone === selectedUser.phone && b.date && b.date.startsWith(currentMonthPrefix) && b.status !== 'cancelled').forEach(b => { if (b.discountLabel && b.discountLabel.includes('Target Bonus')) { used.push(b.discountLabel); } });
       setSelectedUserUsedRewards(used);
   }, [selectedUser, history, userBookings]);
 
@@ -435,126 +323,55 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   const earnedPoints = Math.floor(Number(amount) / 35000) || 0;
 
   const handleAddPoints = async (e: React.FormEvent) => {
-     e.preventDefault();
-     if (!selectedUser) return;
-     if (earnedPoints <= 0) return alert('သုံးစွဲငွေသည် အနည်းဆုံး ၃၅,၀၀၀ ကျပ် ရှိရပါမည်။');
-     if (!invoiceNo.trim()) return alert('Invoice Number ထည့်ပေးပါ။');
+     e.preventDefault(); if (!selectedUser) return; if (earnedPoints <= 0) return alert('သုံးစွဲငွေသည် အနည်းဆုံး ၃၅,၀၀၀ ကျပ် ရှိရပါမည်။'); if (!invoiceNo.trim()) return alert('Invoice Number ထည့်ပေးပါ။');
      if (!window.confirm(`${selectedUser.name || selectedUser.phone} သို့ ${earnedPoints} Points ထည့်သွင်းမည် သေချာပါသလား?`)) return;
-
      setProcessing(true);
      try {
          const newTotal = (selectedUser.points || 0) + earnedPoints;
          await updateDoc(doc(db, 'users', selectedUser.docId), { points: encryptText(newTotal.toString()) });
-         
-         await addDoc(collection(db, 'point_history'), {
-              phone: encryptText(selectedUser.phone),
-              amount: encryptText(amount.toString()),
-              pointsEarned: encryptText(earnedPoints.toString()),
-              invoiceNo: encryptText(invoiceNo),
-              type: encryptText('Walk-in / Direct'),
-              date: getLocalTodayStr(),
-              createdAt: Date.now()
-         });
-
+         await addDoc(collection(db, 'point_history'), { phone: encryptText(selectedUser.phone), amount: encryptText(amount.toString()), pointsEarned: encryptText(earnedPoints.toString()), invoiceNo: encryptText(invoiceNo), type: encryptText('Walk-in / Direct'), date: getLocalTodayStr(), createdAt: Date.now() });
          alert(`✅ ${earnedPoints} Points အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ (စုစုပေါင်း - ${newTotal} Pts)`);
-         
-         await fetchUsers();
-         const updatedUser = users.find(u => u.docId === selectedUser.docId);
-         if (updatedUser) setSelectedUser({ ...updatedUser, points: newTotal });
-
-         setAmount(''); 
-         setInvoiceNo('');
-     } catch(e) { alert('Error adding points.'); }
-     setProcessing(false);
+         await fetchUsers(); const updatedUser = users.find(u => u.docId === selectedUser.docId); if (updatedUser) setSelectedUser({ ...updatedUser, points: newTotal });
+         setAmount(''); setInvoiceNo('');
+     } catch(e) { alert('Error adding points.'); } setProcessing(false);
   };
 
   const handleDeleteHistory = async (hId: string, phone: string, pointsEarned: string | number) => {
       if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
       if (!window.confirm(`ဤမှတ်တမ်းကိုဖျက်၍ Customer ထံမှ ${pointsEarned} Points ကို ပြန်နှုတ်မည် သေချာပါသလား?`)) return;
-
       try {
-          const targetUser = users.find(u => u.phone === phone);
-          let newTotal = 0;
+          const targetUser = users.find(u => u.phone === phone); let newTotal = 0;
           if (targetUser) {
-              const currentPoints = targetUser.points || 0;
-              const ptsToDeduct = Number(pointsEarned) || 0;
-              newTotal = Math.max(0, currentPoints - ptsToDeduct);
+              newTotal = Math.max(0, (targetUser.points || 0) - (Number(pointsEarned) || 0));
               await updateDoc(doc(db, 'users', targetUser.docId), { points: encryptText(newTotal.toString()) });
           } else {
               const snap = await getDocs(collection(db, 'users'));
-              snap.forEach(d => {
-                  const uData = d.data();
-                  const decPhone = decryptText(uData.phone) || d.id;
-                  if (decPhone === phone) {
-                      const currentPoints = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10);
-                      const ptsToDeduct = Number(pointsEarned) || 0;
-                      newTotal = Math.max(0, currentPoints - ptsToDeduct);
-                      updateDoc(doc(db, 'users', d.id), { points: encryptText(newTotal.toString()) });
-                  }
-              });
+              snap.forEach(d => { const uData = d.data(); const decPhone = decryptText(uData.phone) || d.id; if (decPhone === phone) { newTotal = Math.max(0, parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10) - (Number(pointsEarned) || 0)); updateDoc(doc(db, 'users', d.id), { points: encryptText(newTotal.toString()) }); } });
           }
-          await deleteDoc(doc(db, 'point_history', hId));
-          alert(`✅ မှတ်တမ်းကို ဖျက်ပြီး Customer ထံမှ ${pointsEarned} Points ပြန်နှုတ်လိုက်ပါပြီ။`);
-          
-          await fetchUsers();
-          if (selectedUser && selectedUser.phone === phone) {
-             setSelectedUser({ ...selectedUser, points: newTotal });
-          }
-      } catch (e) {
-          console.error(e);
-          alert('Error deleting record.');
-      }
+          await deleteDoc(doc(db, 'point_history', hId)); alert(`✅ မှတ်တမ်းကို ဖျက်ပြီး Customer ထံမှ ${pointsEarned} Points ပြန်နှုတ်လိုက်ပါပြီ။`);
+          await fetchUsers(); if (selectedUser && selectedUser.phone === phone) { setSelectedUser({ ...selectedUser, points: newTotal }); }
+      } catch (e) { alert('Error deleting record.'); }
   };
 
   const handleExportHistory = () => {
       const headers = ['Record ID', 'Date & Time', 'Customer Phone', 'Invoice / TxID', 'Amount (Ks)', 'Points Added', 'Source'];
-      const rows = filteredHistory.map(h => [
-          h.id || '', `"${new Date(h.createdAt).toLocaleString()}"`, `"${h.phone}"`, `"${h.invoiceNo}"`, h.amount || 0, h.pointsEarned || 0, `"${h.type}"`
-      ]);
+      const rows = filteredHistory.map(h => [ h.id || '', `"${new Date(h.createdAt).toLocaleString()}"`, `"${h.phone}"`, `"${h.invoiceNo}"`, h.amount || 0, h.pointsEarned || 0, `"${h.type}"` ]);
       const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `Point_History_Report_${getLocalTodayStr()}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url); link.setAttribute('download', `Point_History_Report_${getLocalTodayStr()}.csv`); link.style.visibility = 'hidden';
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
   const handleRedeemReward = async (tier: number) => {
-      if (!selectedUser) return;
-      if (!window.confirm(`ဤ Customer အတွက် ${tier}% Target Reward ကို အသုံးပြုပြီးဖြစ်ကြောင်း သတ်မှတ်မည် သေချာပါသလား?`)) return;
-      
+      if (!selectedUser) return; if (!window.confirm(`ဤ Customer အတွက် ${tier}% Target Reward ကို အသုံးပြုပြီးဖြစ်ကြောင်း သတ်မှတ်မည် သေချာပါသလား?`)) return;
       const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
       try {
-          await addDoc(collection(db, 'bookings'), {
-              phone: encryptText(selectedUser.phone),
-              name: encryptText(selectedUser.name || 'Unknown'),
-              service: `Walk-in Reward Redemption (${tier}%)`,
-              therapist: '-',
-              date: getLocalTodayStr(),
-              time: 'Walk-in',
-              status: 'completed',
-              discountLabel: encryptText(rewardLabel),
-              totalPrice: 0,
-              createdAt: Date.now()
-          });
-          alert('Reward အသုံးပြုပြီးကြောင်း မှတ်တမ်းတင်ပြီးပါပြီ။');
-          setSelectedUserUsedRewards([...selectedUserUsedRewards, rewardLabel]);
-      } catch(e) {
-          console.error(e);
-          alert('Error updating reward status.');
-      }
+          await addDoc(collection(db, 'bookings'), { phone: encryptText(selectedUser.phone), name: encryptText(selectedUser.name || 'Unknown'), service: `Walk-in Reward Redemption (${tier}%)`, therapist: '-', date: getLocalTodayStr(), time: 'Walk-in', status: 'completed', discountLabel: encryptText(rewardLabel), totalPrice: 0, createdAt: Date.now() });
+          alert('Reward အသုံးပြုပြီးကြောင်း မှတ်တမ်းတင်ပြီးပါပြီ။'); setSelectedUserUsedRewards([...selectedUserUsedRewards, rewardLabel]);
+      } catch(e) { alert('Error updating reward status.'); }
   };
 
-  const getTier = (points: number) => {
-     if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null;
-     const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
-     return sortedTiers.find(t => points >= t.requiredPoints);
-  };
-
+  const getTier = (points: number) => { if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null; const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
   const userTier = selectedUser ? getTier(selectedUser.points || 0) : null;
 
   return (
@@ -586,63 +403,28 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
                               <div className="text-sm text-gray-300 font-mono mb-4">{selectedUser.phone}</div>
                               <div className="flex flex-col gap-2">
                                   {userTier && (
-                                      <div className="flex items-center w-fit px-2.5 py-1 rounded font-bold text-[10px] shadow-sm text-white" style={{ backgroundColor: userTier.colorTheme }}>
-                                          <Crown className="w-3 h-3 mr-1.5" /> {userTier.name}
-                                      </div>
+                                      <div className="flex items-center w-fit px-2.5 py-1 rounded font-bold text-[10px] shadow-sm text-white" style={{ backgroundColor: userTier.colorTheme }}><Crown className="w-3 h-3 mr-1.5" /> {userTier.name}</div>
                                   )}
-                                  <div className="flex items-center space-x-2 bg-black/20 p-2.5 rounded-lg w-fit border border-white/10">
-                                      <Award className="w-4 h-4 text-[#D4AF37]"/>
-                                      <span className="text-sm font-semibold">Total Accumulated: <span className="font-bold text-[#D4AF37] text-lg">{selectedUser.points || 0} Pts</span></span>
-                                  </div>
+                                  <div className="flex items-center space-x-2 bg-black/20 p-2.5 rounded-lg w-fit border border-white/10"><Award className="w-4 h-4 text-[#D4AF37]"/><span className="text-sm font-semibold">Total Accumulated: <span className="font-bold text-[#D4AF37] text-lg">{selectedUser.points || 0} Pts</span></span></div>
                               </div>
                           </div>
-                          
                           <form onSubmit={handleAddPoints} className="mb-6 flex-shrink-0">
-                              <div className="mb-4">
-                                  <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Enter Invoice Amount (MMK)</label>
-                                  <div className="relative">
-                                      <input type="number" required value={amount} onChange={(e) => setAmount(Number(e.target.value) || '')} placeholder="e.g. 70000" className="w-full pl-6 pr-16 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xl font-black text-[#123524]" />
-                                      <span className="absolute right-6 top-4 font-bold text-gray-400">Ks</span>
-                                  </div>
-                              </div>
-
-                              <div className="mb-6">
-                                  <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Invoice Number</label>
-                                  <div className="relative">
-                                      <input type="text" required value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="e.g. INV-20260830-01" className="w-full pl-6 pr-4 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-sm font-bold text-[#123524]" />
-                                  </div>
-                              </div>
-
+                              <div className="mb-4"><label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Enter Invoice Amount (MMK)</label><div className="relative"><input type="number" required value={amount} onChange={(e) => setAmount(Number(e.target.value) || '')} placeholder="e.g. 70000" className="w-full pl-6 pr-16 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xl font-black text-[#123524]" /><span className="absolute right-6 top-4 font-bold text-gray-400">Ks</span></div></div>
+                              <div className="mb-6"><label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Invoice Number</label><div className="relative"><input type="text" required value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="e.g. INV-20260830-01" className="w-full pl-6 pr-4 py-4 border-2 border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-sm font-bold text-[#123524]" /></div></div>
                               <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center mb-6"><p className="text-xs font-bold text-green-700 uppercase tracking-widest mb-2">Points to be Added</p><div className="text-4xl font-black text-green-600 mb-2">+{earnedPoints}</div><p className="text-[10px] text-green-600/80 font-semibold">(စနစ်မှ သတ်မှတ်ထားသော ၃၅,၀၀၀ ကျပ် = ၁ ပွိုင့် နှုန်းဖြင့် တွက်ချက်ထားပါသည်)</p></div>
                               <button type="submit" disabled={processing || earnedPoints <= 0} className="w-full py-4 bg-[#D4AF37] text-white rounded-xl font-bold text-base shadow-md hover:bg-yellow-600 transition disabled:opacity-50 flex justify-center items-center">{processing ? 'Processing...' : 'CONFIRM & ADD POINTS'}</button>
                           </form>
-
                           {!userTier && (
                               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mt-2 flex-shrink-0">
-                                  <h4 className="font-bold text-sm text-[#123524] mb-3 flex items-center">
-                                      <Gift className="w-4 h-4 mr-2 text-green-600"/> Monthly Target Rewards (Pre-Jade)
-                                  </h4>
-                                  <div className="text-xs text-gray-500 mb-4 bg-white p-2.5 rounded-lg border border-gray-100 shadow-sm">
-                                      ယခုလအတွင်း စုဆောင်းထားသောပွိုင့်: <strong className="text-green-600 text-sm ml-1">{selectedUserMonthlyPoints} Pts</strong>
-                                  </div>
+                                  <h4 className="font-bold text-sm text-[#123524] mb-3 flex items-center"><Gift className="w-4 h-4 mr-2 text-green-600"/> Monthly Target Rewards (Pre-Jade)</h4>
+                                  <div className="text-xs text-gray-500 mb-4 bg-white p-2.5 rounded-lg border border-gray-100 shadow-sm">ယခုလအတွင်း စုဆောင်းထားသောပွိုင့်: <strong className="text-green-600 text-sm ml-1">{selectedUserMonthlyPoints} Pts</strong></div>
                                   <div className="space-y-2">
                                       {[10, 20, 30, 40, 50].map(tier => {
-                                          const isUnlocked = selectedUserMonthlyPoints >= tier;
-                                          const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
-                                          const isUsed = selectedUserUsedRewards.includes(rewardLabel);
-                                          
+                                          const isUnlocked = selectedUserMonthlyPoints >= tier; const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`; const isUsed = selectedUserUsedRewards.includes(rewardLabel);
                                           return (
                                               <div key={tier} className="flex justify-between items-center p-3 rounded-lg border border-gray-200 bg-white shadow-sm">
                                                   <span className="text-xs font-bold text-gray-700">{tier} Pts = {tier}% OFF</span>
-                                                  {!isUnlocked ? (
-                                                      <span className="text-[10px] text-gray-400 font-semibold bg-gray-100 px-3 py-1.5 rounded">Locked</span>
-                                                  ) : isUsed ? (
-                                                      <span className="text-[10px] text-gray-500 font-bold bg-gray-100 px-3 py-1.5 rounded flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> Used</span>
-                                                  ) : (
-                                                      <button type="button" onClick={() => handleRedeemReward(tier)} className="text-[10px] font-bold bg-green-50 text-green-700 hover:bg-green-100 px-4 py-1.5 rounded shadow-sm border border-green-200 transition whitespace-nowrap">
-                                                          Mark as Used
-                                                      </button>
-                                                  )}
+                                                  {!isUnlocked ? (<span className="text-[10px] text-gray-400 font-semibold bg-gray-100 px-3 py-1.5 rounded">Locked</span>) : isUsed ? (<span className="text-[10px] text-gray-500 font-bold bg-gray-100 px-3 py-1.5 rounded flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1.5"/> Used</span>) : (<button type="button" onClick={() => handleRedeemReward(tier)} className="text-[10px] font-bold bg-green-50 text-green-700 hover:bg-green-100 px-4 py-1.5 rounded shadow-sm border border-green-200 transition whitespace-nowrap">Mark as Used</button>)}
                                               </div>
                                           )
                                       })}
@@ -650,54 +432,24 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
                               </div>
                           )}
                       </div>
-                  ) : (
-                      <div className="flex-1 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-10 text-gray-400 bg-gray-50/50"><UserCircle className="w-16 h-16 mb-4 opacity-30" /><p className="text-sm font-bold">Please select a customer from the list first</p></div>
-                  )}
+                  ) : (<div className="flex-1 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center p-10 text-gray-400 bg-gray-50/50"><UserCircle className="w-16 h-16 mb-4 opacity-30" /><p className="text-sm font-bold">Please select a customer from the list first</p></div>)}
               </div>
           </div>
-
           {adminRole === 'super_admin' && (
               <div className="mt-8 pt-6 border-t border-gray-100 animate-fade-in">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                       <h3 className="text-lg font-bold text-gray-800 flex items-center"><History className="w-5 h-5 mr-2 text-[#D4AF37]" /> Points History Record</h3>
-                      <div className="flex items-center space-x-3 w-full sm:w-auto">
-                          <div className="relative w-full sm:w-64">
-                              <input type="text" placeholder="Search phone or invoice..." value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-xs font-semibold" />
-                              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
-                          </div>
-                          <button onClick={handleExportHistory} className="flex-shrink-0 justify-center items-center flex px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm">
-                             <Download className="w-4 h-4 mr-1.5" /> Export
-                          </button>
-                      </div>
+                      <div className="flex items-center space-x-3 w-full sm:w-auto"><div className="relative w-full sm:w-64"><input type="text" placeholder="Search phone or invoice..." value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-xs font-semibold" /><Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" /></div><button onClick={handleExportHistory} className="flex-shrink-0 justify-center items-center flex px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm"><Download className="w-4 h-4 mr-1.5" /> Export</button></div>
                   </div>
                   <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse min-w-[800px]">
-                          <thead>
-                              <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
-                                  <th className="p-3 pb-4">Date & Time</th>
-                                  <th className="p-3 pb-4">Customer Phone</th>
-                                  <th className="p-3 pb-4">Invoice / TxID</th>
-                                  <th className="p-3 pb-4">Amount</th>
-                                  <th className="p-3 pb-4">Points Added</th>
-                                  <th className="p-3 pb-4">Source</th>
-                                  <th className="p-3 pb-4 text-right">Action</th>
-                              </tr>
-                          </thead>
+                          <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">Customer Phone</th><th className="p-3 pb-4">Invoice / TxID</th><th className="p-3 pb-4">Amount</th><th className="p-3 pb-4">Points Added</th><th className="p-3 pb-4">Source</th><th className="p-3 pb-4 text-right">Action</th></tr></thead>
                           <tbody>
                               {filteredHistory.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-gray-400">No point history found.</td></tr>}
                               {filteredHistory.map((h) => (
                                   <tr key={h.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
-                                      <td className="p-3 text-gray-600">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short'})}</td>
-                                      <td className="p-3 font-bold text-gray-800 font-mono tracking-wider">{h.phone}</td>
-                                      <td className="p-3 font-mono font-semibold text-gray-700">{h.invoiceNo}</td>
-                                      <td className="p-3 font-semibold text-[#123524]">{formatPrice(h.amount)}</td>
-                                      <td className="p-3 font-black text-green-600">+{h.pointsEarned} Pts</td>
-                                      <td className="p-3"><span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider ${h.type.includes('Online') ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'}`}>{h.type}</span></td>
-                                      <td className="p-3 text-right">
-                                          <button onClick={() => handleDeleteHistory(h.id, h.phone, h.pointsEarned)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition inline-flex" title="Delete & Deduct">
-                                              <Trash2 className="w-4 h-4"/>
-                                          </button>
-                                      </td>
+                                      <td className="p-3 text-gray-600">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short'})}</td><td className="p-3 font-bold text-gray-800 font-mono tracking-wider">{h.phone}</td><td className="p-3 font-mono font-semibold text-gray-700">{h.invoiceNo}</td><td className="p-3 font-semibold text-[#123524]">{formatPrice(h.amount)}</td><td className="p-3 font-black text-green-600">+{h.pointsEarned} Pts</td><td className="p-3"><span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider ${h.type.includes('Online') ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'}`}>{h.type}</span></td>
+                                      <td className="p-3 text-right"><button onClick={() => handleDeleteHistory(h.id, h.phone, h.pointsEarned)} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition inline-flex" title="Delete & Deduct"><Trash2 className="w-4 h-4"/></button></td>
                                   </tr>
                               ))}
                           </tbody>
@@ -712,23 +464,15 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
 function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
    const [view, setView] = useState<'dashboard' | 'service' | 'outpass'>('dashboard');
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
-   const todayStr = getLocalTodayStr();
-   const [now, setNow] = useState(Date.now());
+   const todayStr = getLocalTodayStr(); const [now, setNow] = useState(Date.now());
    useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 15000); return () => clearInterval(timer); }, []);
-   useEffect(() => {
-       const unsub = onSnapshot(query(collection(db, 'outpasses'), orderBy('outTimeMillis', 'desc')), snap => {
-           const arr: OutPass[] = []; snap.forEach(d => arr.push({id: d.id, ...d.data()} as OutPass)); setOutpasses(arr);
-       }); return () => unsub();
-   }, []);
+   useEffect(() => { const unsub = onSnapshot(query(collection(db, 'outpasses'), orderBy('outTimeMillis', 'desc')), snap => { const arr: OutPass[] = []; snap.forEach(d => arr.push({id: d.id, ...d.data()} as OutPass)); setOutpasses(arr); }); return () => unsub(); }, []);
    const formatMillis = (millis: number | undefined) => { if (!millis) return '-'; const date = new Date(millis); return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
-   const formatSecondsAdmin = (totalSeconds: number | undefined) => {
-       if (totalSeconds === undefined) return '00:00'; const isNegative = totalSeconds < 0; const absSecs = Math.abs(totalSeconds); const h = Math.floor(absSecs / 3600); const m = Math.floor((absSecs % 3600) / 60); const s = Math.floor(absSecs % 60); return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-   };
+   const formatSecondsAdmin = (totalSeconds: number | undefined) => { if (totalSeconds === undefined) return '00:00'; const isNegative = totalSeconds < 0; const absSecs = Math.abs(totalSeconds); const h = Math.floor(absSecs / 3600); const m = Math.floor((absSecs % 3600) / 60); const s = Math.floor(absSecs % 60); return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; };
    const handleDeleteBooking = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
-   const activeBookings = bookings.filter(b => b.status === 'in_progress');
-   const activeOutpasses = outpasses.filter(o => o.status === 'out');
+   const activeBookings = bookings.filter(b => b.status === 'in_progress'); const activeOutpasses = outpasses.filter(o => o.status === 'out');
 
    return (
        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -750,8 +494,7 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                              {activeBookings.map(b => {
                                  const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
                                  const isLate = b.expectedEndTimeMillis ? now > b.expectedEndTimeMillis : false;
-                                 let lateText = 'OVERTIME (LATE)';
-                                 if (isLate && b.expectedEndTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - b.expectedEndTimeMillis) / 1000))}`;
+                                 let lateText = 'OVERTIME (LATE)'; if (isLate && b.expectedEndTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - b.expectedEndTimeMillis) / 1000))}`;
                                  return (
                                      <div key={b.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : (isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200')} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}><div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : (isOutcall ? 'bg-blue-500' : 'bg-orange-500')} animate-pulse`}></div><div className="flex justify-between items-start mb-2"><div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{b.therapist}</div><span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : (isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>{isLate ? lateText : (isOutcall ? 'Outcall' : 'In Room')}</span></div><div className="text-sm font-semibold text-gray-800 truncate mb-1" title={b.service}>{b.service.split('(')[0]}</div><div className="text-xs text-gray-500 mb-4 flex items-center"><User className="w-3 h-3 mr-1 text-gray-400" />Cust: {b.name}</div><div className={`flex justify-between items-center text-xs border-t pt-3 ${isLate ? 'border-red-200' : (isOutcall ? 'border-blue-200/50' : 'border-orange-200/50')}`}><div className="text-gray-500"><span className="font-bold text-gray-600">Start:</span> {formatMillis(b.startTimeMillis)}</div><div className="text-gray-500"><span className="font-bold text-gray-600">End:</span> <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>{formatMillis(b.expectedEndTimeMillis)}</span></div></div></div>
                                  );
@@ -765,8 +508,7 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                              {activeOutpasses.map(o => {
                                  const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
-                                 let lateText = 'OVERTIME (LATE)';
-                                 if (isLate && o.expectedInTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - o.expectedInTimeMillis) / 1000))}`;
+                                 let lateText = 'OVERTIME (LATE)'; if (isLate && o.expectedInTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - o.expectedInTimeMillis) / 1000))}`;
                                  return (
                                      <div key={o.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}><div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div><div className="flex justify-between items-start mb-2"><div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div><span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>{isLate ? lateText : 'Out Pass'}</span></div><div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div><div className={`flex justify-between items-center text-xs border-t ${isLate ? 'border-red-200' : 'border-purple-200/50'} pt-3`}><div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div><div className="text-gray-500"><span className="font-bold text-gray-600">Return:</span> <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>{formatMillis(o.expectedInTimeMillis)}</span></div></div></div>
                                  );
@@ -793,7 +535,6 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [editForm, setEditForm] = useState({ name: '', password: '', dob: '', points: 0 });
-  
   const [creatingUser, setCreatingUser] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', phone: '', password: '', dob: '' });
 
@@ -804,64 +545,32 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
       snap.forEach(doc => {
           const raw = doc.data();
           data.push({ 
-             docId: doc.id, 
-             ...raw, 
-             phone: decryptText(raw.phone) || doc.id, 
-             name: decryptText(raw.name) || raw.name, 
-             password: decryptText(raw.password) || raw.password,
-             points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10),
-             dob: decryptText(raw.dob) || raw.dob || '',
-             resetRequested: raw.resetRequested || false
+             docId: doc.id, ...raw, phone: decryptText(raw.phone) || doc.id, name: decryptText(raw.name) || raw.name, password: decryptText(raw.password) || raw.password,
+             points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10), dob: decryptText(raw.dob) || raw.dob || '',
+             resetRequested: raw.resetRequested || false, resetContact: raw.resetContact ? decryptText(raw.resetContact) : ''
           });
       });
-      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setUsers(data);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); setUsers(data);
+    } catch (e) { console.error(e); } setLoading(false);
   };
   
   useEffect(() => { fetchUsers(); }, []);
 
   const handleUpdateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser) return;
+    e.preventDefault(); if (!editingUser) return;
     try {
-      await updateDoc(doc(db, 'users', editingUser.docId), { 
-          name: encryptText(editForm.name), 
-          password: encryptText(editForm.password),
-          dob: encryptText(editForm.dob),
-          points: encryptText(editForm.points.toString()),
-          resetRequested: false // 🚀 Clear reset request once updated
-      });
-      alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။'); 
-      setEditingUser(null); 
-      fetchUsers();
+      await updateDoc(doc(db, 'users', editingUser.docId), { name: encryptText(editForm.name), password: encryptText(editForm.password), dob: encryptText(editForm.dob), points: encryptText(editForm.points.toString()), resetRequested: false, resetContact: encryptText('') });
+      alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။'); setEditingUser(null); fetchUsers();
     } catch (e) { alert('Error updating user'); }
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const exists = users.some(u => u.phone === createForm.phone.trim());
-    if (exists) {
-        alert("ဤဖုန်းနံပါတ်ဖြင့် အကောင့်ရှိပြီးသားဖြစ်ပါသည်။");
-        return;
-    }
+    e.preventDefault(); const exists = users.some(u => u.phone === createForm.phone.trim());
+    if (exists) { alert("ဤဖုန်းနံပါတ်ဖြင့် အကောင့်ရှိပြီးသားဖြစ်ပါသည်။"); return; }
     try {
-        await addDoc(collection(db, 'users'), {
-            phone: encryptText(createForm.phone.trim()),
-            name: encryptText(createForm.name),
-            password: encryptText(createForm.password),
-            dob: encryptText(createForm.dob),
-            points: encryptText('0'),
-            createdAt: Date.now()
-        });
-        alert('User အသစ် ဖန်တီးပြီးပါပြီ။');
-        setCreatingUser(false);
-        setCreateForm({ name: '', phone: '', password: '', dob: '' });
-        fetchUsers();
-    } catch (e) {
-        alert('Error creating user');
-    }
+        await addDoc(collection(db, 'users'), { phone: encryptText(createForm.phone.trim()), name: encryptText(createForm.name), password: encryptText(createForm.password), dob: encryptText(createForm.dob), points: encryptText('0'), createdAt: Date.now() });
+        alert('User အသစ် ဖန်တီးပြီးပါပြီ။'); setCreatingUser(false); setCreateForm({ name: '', phone: '', password: '', dob: '' }); fetchUsers();
+    } catch (e) { alert('Error creating user'); }
   };
 
   const handleDeleteUser = async (docId: string, phone: string) => {
@@ -872,35 +581,14 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
 
   const handleExportUsers = () => {
       const headers = ['User ID', 'Phone (Login ID)', 'Name', 'DOB', 'Total Points', 'VIP Tier', 'Joined Date'];
-      const rows = users.map(u => {
-          const tier = getTier(u.points);
-          return [
-              u.docId || '', 
-              `"${u.phone || ''}"`, 
-              `"${u.name || ''}"`, 
-              `"${u.dob || ''}"`, 
-              u.points || 0, 
-              tier ? `"${tier.name}"` : 'None',
-              u.createdAt ? `"${new Date(u.createdAt).toLocaleString()}"` : ''
-          ];
-      });
+      const rows = users.map(u => { const tier = getTier(u.points); return [ u.docId || '', `"${u.phone || ''}"`, `"${u.name || ''}"`, `"${u.dob || ''}"`, u.points || 0, tier ? `"${tier.name}"` : 'None', u.createdAt ? `"${new Date(u.createdAt).toLocaleString()}"` : '' ]; });
       const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `Users_Report_${getLocalTodayStr()}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url); link.setAttribute('download', `Users_Report_${getLocalTodayStr()}.csv`); link.style.visibility = 'hidden';
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
-  const getTier = (points: number) => {
-     if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null;
-     const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints);
-     return sortedTiers.find(t => points >= t.requiredPoints);
-  };
+  const getTier = (points: number) => { if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null; const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
 
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Users...</div>;
 
@@ -908,12 +596,19 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 relative">
       {editingUser && (
          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full"><h3 className="text-lg font-bold mb-4 text-[#123524]">Edit User ({editingUser.phone})</h3>
+            <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full animate-fade-in"><h3 className="text-lg font-bold mb-4 text-[#123524] flex items-center"><Edit className="w-5 h-5 mr-2 text-[#D4AF37]"/> Edit User ({editingUser.phone})</h3>
+               {editingUser.resetRequested && (
+                   <div className="bg-red-50 p-3 rounded-lg border border-red-200 mb-4">
+                       <h4 className="text-xs font-bold text-red-700 mb-1 flex items-center"><AlertCircle className="w-4 h-4 mr-1"/> Password Reset Request</h4>
+                       <p className="text-[10px] text-red-600 font-semibold mb-2">Customer က Password အသစ်တောင်းဆိုထားပါသည်။ အောက်ပါအကောင့်သို့ ဆက်သွယ်ပြီး Password အသစ်ပေးပို့ပါ။</p>
+                       <div className="flex items-center text-xs font-bold text-gray-800 bg-white p-2 rounded border border-red-100"><MessageCircle className="w-4 h-4 mr-2 text-blue-500"/> {editingUser.resetContact}</div>
+                   </div>
+               )}
                <form onSubmit={handleUpdateUser} className="space-y-4">
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" required /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth</label><input type="date" value={editForm.dob} onChange={e=>setEditForm({...editForm, dob: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Total Points <span className="text-[9px] text-orange-500">(Fix total points here if sync failed)</span></label><input type="number" value={editForm.points} onChange={e=>setEditForm({...editForm, points: Number(e.target.value)})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none font-bold" required /></div>
-                 <div><label className="block text-xs font-bold text-gray-500 mb-1">New Password (စကားဝှက်အသစ် ပြောင်းရန်)</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Enter new password" className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">New Password (စကားဝှက်အသစ် ပြောင်းရန်)</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Enter new password" className={`w-full p-2 border rounded outline-none font-bold ${editingUser.resetRequested ? 'border-red-400 focus:border-red-500 bg-red-50/30' : 'focus:border-[#D4AF37]'}`} /></div>
                  <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold hover:bg-gray-200">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold hover:bg-green-900">Save</button></div>
                </form>
             </div>
@@ -938,12 +633,8 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
           <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
           <div className="flex space-x-2 items-center w-full sm:w-auto">
-              <button onClick={handleExportUsers} className="flex-shrink-0 justify-center items-center flex px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-sm font-bold hover:bg-green-100 transition shadow-sm">
-                  <Download className="w-4 h-4 mr-1.5" /> Export Excel
-              </button>
-              <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm">
-                  <PlusCircle className="w-4 h-4 mr-1.5" /> Add New User
-              </button>
+              <button onClick={handleExportUsers} className="flex-shrink-0 justify-center items-center flex px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-sm font-bold hover:bg-green-100 transition shadow-sm"><Download className="w-4 h-4 mr-1.5" /> Export Excel</button>
+              <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm"><PlusCircle className="w-4 h-4 mr-1.5" /> Add New User</button>
               <span className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold border border-gray-200 whitespace-nowrap">Total: {users.length}</span>
           </div>
       </div>
@@ -953,33 +644,20 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
          return (
          <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition">
              <td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td>
-             <td className="p-3">
-                 <div className="font-bold text-gray-800">{u.name || '-'}</div>
-                 {u.dob && <div className="text-[10px] text-gray-500 mt-0.5 flex items-center"><Gift className="w-3 h-3 mr-1"/> {u.dob}</div>}
-             </td>
-             <td className="p-3">
-                 <div className="flex items-center space-x-2">
-                     <span className="font-bold text-gray-800 text-lg">{u.points || 0} Pts</span>
-                     {userTier && <span className="text-[10px] px-2 py-0.5 rounded font-bold text-white shadow-sm flex items-center" style={{ backgroundColor: userTier.colorTheme }}><Award className="w-3 h-3 mr-1"/> {userTier.name} ({userTier.discountPercent}%)</span>}
-                 </div>
-             </td>
+             <td className="p-3"><div className="font-bold text-gray-800">{u.name || '-'}</div>{u.dob && <div className="text-[10px] text-gray-500 mt-0.5 flex items-center"><Gift className="w-3 h-3 mr-1"/> {u.dob}</div>}</td>
+             <td className="p-3"><div className="flex items-center space-x-2"><span className="font-bold text-gray-800 text-lg">{u.points || 0} Pts</span>{userTier && <span className="text-[10px] px-2 py-0.5 rounded font-bold text-white shadow-sm flex items-center" style={{ backgroundColor: userTier.colorTheme }}><Award className="w-3 h-3 mr-1"/> {userTier.name} ({userTier.discountPercent}%)</span>}</div></td>
              <td className="p-3">
                {u.resetRequested ? (
-                   <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-1 rounded flex w-fit items-center border border-red-200 animate-pulse"><AlertCircle className="w-3 h-3 mr-1" /> Reset Requested</span>
-               ) : u.password ? (
-                   <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span>
-               ) : (
-                   <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>
-               )}
+                   <div className="flex flex-col gap-1">
+                       <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-1 rounded flex w-fit items-center border border-red-200 animate-pulse"><AlertCircle className="w-3 h-3 mr-1" /> Reset Requested</span>
+                       <span className="text-[9px] text-gray-500 font-semibold flex items-center"><MessageCircle className="w-3 h-3 mr-1"/> {u.resetContact}</span>
+                   </div>
+               ) : u.password ? (<span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span>) : (<span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>)}
              </td>
              <td className="p-3 text-right">
                  <div className="flex items-center justify-end space-x-2">
-                     <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '', points: u.points || 0 }); }} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? (u.resetRequested ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-50 text-blue-600 hover:bg-blue-100') : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Edit Info'}>
-                         <Edit className="w-3 h-3 mr-1"/> {u.resetRequested ? 'Reset Password' : 'Edit Info'}
-                     </button>
-                     <button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}>
-                         <Trash2 className="w-3 h-3 mr-1"/> Delete
-                     </button>
+                     <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '', points: u.points || 0 }); }} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? (u.resetRequested ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-50 text-blue-600 hover:bg-blue-100') : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Edit Info'}><Edit className="w-3 h-3 mr-1"/> {u.resetRequested ? 'Reset Password' : 'Edit Info'}</button>
+                     <button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button>
                  </div>
              </td>
          </tr>
@@ -990,53 +668,27 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
 }
 
 function AdminManagementList() {
-  const [admins, setAdmins] = useState<LocalAdminProfile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [admins, setAdmins] = useState<LocalAdminProfile[]>([]); const [loading, setLoading] = useState(true);
   const [newAdmin, setNewAdmin] = useState<{username: string, password: string, role: 'super_admin'|'custom', permissions: string[]}>({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'settings'] });
-  
   const [editingAdmin, setEditingAdmin] = useState<LocalAdminProfile | null>(null);
 
   const fetchAdmins = async () => {
-    try {
-      const snap = await getDocs(collection(db, 'admins'));
-      const data: LocalAdminProfile[] = [];
-      snap.forEach(doc => { const raw = doc.data(); data.push({ docId: doc.id, ...raw, username: decryptText(raw.username) || doc.id, password: decryptText(raw.password) || raw.password }); });
-      setAdmins(data);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+    try { const snap = await getDocs(collection(db, 'admins')); const data: LocalAdminProfile[] = []; snap.forEach(doc => { const raw = doc.data(); data.push({ docId: doc.id, ...raw, username: decryptText(raw.username) || doc.id, password: decryptText(raw.password) || raw.password }); }); setAdmins(data); } catch (e) { console.error(e); } setLoading(false);
   };
   useEffect(() => { fetchAdmins(); }, []);
 
   const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault(); if(!newAdmin.username || !newAdmin.password) return;
-    try {
-      await createUserWithEmailAndPassword(secondaryAuth, `${newAdmin.username.toLowerCase()}@shangrila.com`, newAdmin.password);
-      await addDoc(collection(db, 'admins'), { username: encryptText(newAdmin.username), password: encryptText(newAdmin.password), role: newAdmin.role, permissions: newAdmin.role === 'super_admin' ? ['bookings', 'reports', 'users', 'points', 'admins', 'settings'] : newAdmin.permissions });
-      setNewAdmin({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'points', 'settings'] }); fetchAdmins();
-    } catch (e) { alert('Error adding admin. It may already exist in Auth.'); }
+    try { await createUserWithEmailAndPassword(secondaryAuth, `${newAdmin.username.toLowerCase()}@shangrila.com`, newAdmin.password); await addDoc(collection(db, 'admins'), { username: encryptText(newAdmin.username), password: encryptText(newAdmin.password), role: newAdmin.role, permissions: newAdmin.role === 'super_admin' ? ['bookings', 'reports', 'users', 'points', 'admins', 'settings'] : newAdmin.permissions }); setNewAdmin({ username: '', password: '', role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'points', 'settings'] }); fetchAdmins(); } catch (e) { alert('Error adding admin. It may already exist in Auth.'); }
   };
 
   const handleUpdateAdmin = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!editingAdmin || !editingAdmin.docId) return;
-      try {
-          await updateDoc(doc(db, 'admins', editingAdmin.docId), {
-              username: encryptText(editingAdmin.username || ''),
-              password: encryptText(editingAdmin.password || ''),
-              role: editingAdmin.role,
-              permissions: editingAdmin.role === 'super_admin' ? ['bookings', 'reports', 'users', 'points', 'admins', 'settings'] : editingAdmin.permissions
-          });
-          alert('Admin updated successfully.');
-          setEditingAdmin(null);
-          fetchAdmins();
-      } catch (e) {
-          alert('Error updating admin.');
-      }
+      e.preventDefault(); if (!editingAdmin || !editingAdmin.docId) return;
+      try { await updateDoc(doc(db, 'admins', editingAdmin.docId), { username: encryptText(editingAdmin.username || ''), password: encryptText(editingAdmin.password || ''), role: editingAdmin.role, permissions: editingAdmin.role === 'super_admin' ? ['bookings', 'reports', 'users', 'points', 'admins', 'settings'] : editingAdmin.permissions }); alert('Admin updated successfully.'); setEditingAdmin(null); fetchAdmins(); } catch (e) { alert('Error updating admin.'); }
   };
 
   const handleDeleteAdmin = async (docId: string, username: string) => {
-    if (admins.length <= 1) { alert("အနည်းဆုံး Admin တစ်ယောက် ကျန်ရှိရပါမည်။"); return; }
-    if (!window.confirm(`Admin [${username}] ကို ဖျက်မည် သေချာပါသလား?`)) return;
+    if (admins.length <= 1) { alert("အနည်းဆုံး Admin တစ်ယောက် ကျန်ရှိရပါမည်။"); return; } if (!window.confirm(`Admin [${username}] ကို ဖျက်မည် သေချာပါသလား?`)) return;
     try { await deleteDoc(doc(db, 'admins', docId)); fetchAdmins(); } catch (e) { alert('Error deleting admin'); }
   };
 
@@ -1049,38 +701,11 @@ function AdminManagementList() {
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 relative">
       {editingAdmin && (
           <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-              <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full animate-fade-in">
-                  <h3 className="text-lg font-bold mb-4 text-[#123524] flex items-center"><Edit className="w-5 h-5 mr-2 text-[#D4AF37]"/> Edit Admin</h3>
+              <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full animate-fade-in"><h3 className="text-lg font-bold mb-4 text-[#123524] flex items-center"><Edit className="w-5 h-5 mr-2 text-[#D4AF37]"/> Edit Admin</h3>
                   <form onSubmit={handleUpdateAdmin} className="space-y-4">
                       <div><label className="block text-xs font-bold text-gray-500 mb-1">Username</label><input type="text" value={editingAdmin.username} onChange={e=>setEditingAdmin({...editingAdmin, username: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" required /></div>
                       <div><label className="block text-xs font-bold text-gray-500 mb-1">Password</label><input type="text" value={editingAdmin.password} onChange={e=>setEditingAdmin({...editingAdmin, password: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" minLength={6} required /></div>
-                      
-                      <div className="w-full mt-4 border-t border-gray-200 pt-4">
-                          <label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label>
-                          <div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3">
-                              <label className="flex items-center space-x-2 text-sm font-bold cursor-pointer">
-                                  <input type="radio" checked={editingAdmin.role === 'super_admin'} onChange={() => setEditingAdmin({...editingAdmin, role: 'super_admin'})} className="w-4 h-4 accent-[#123524]" />
-                                  <span className="text-[#123524]">Super Admin</span>
-                              </label>
-                              <label className="flex items-center space-x-2 text-sm font-bold cursor-pointer">
-                                  <input type="radio" checked={editingAdmin.role === 'custom'} onChange={() => setEditingAdmin({...editingAdmin, role: 'custom'})} className="w-4 h-4 accent-[#123524]" />
-                                  <span className="text-[#123524]">Custom Role</span>
-                              </label>
-                          </div>
-                          {editingAdmin.role === 'custom' && (
-                              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in">
-                                  <div className="flex flex-wrap gap-4">
-                                      {['bookings', 'reports', 'users', 'points', 'settings'].map(tab => (
-                                          <label key={tab} className="flex items-center space-x-2 text-xs font-bold cursor-pointer bg-white px-3 py-2 rounded border border-gray-100 hover:bg-gray-50 transition">
-                                              <input type="checkbox" checked={(editingAdmin.permissions||[]).includes(tab)} onChange={() => handleEditCheckboxChange(tab)} className="w-4 h-4 accent-[#123524]" />
-                                              <span className="capitalize">{tab === 'reports' ? 'Staff History' : tab === 'points' ? 'Point Mgmt' : tab}</span>
-                                          </label>
-                                      ))}
-                                  </div>
-                              </div>
-                          )}
-                      </div>
-
+                      <div className="w-full mt-4 border-t border-gray-200 pt-4"><label className="block text-xs font-bold text-gray-500 mb-2">Admin Role Permissions</label><div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 mb-3"><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={editingAdmin.role === 'super_admin'} onChange={() => setEditingAdmin({...editingAdmin, role: 'super_admin'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Super Admin</span></label><label className="flex items-center space-x-2 text-sm font-bold cursor-pointer"><input type="radio" checked={editingAdmin.role === 'custom'} onChange={() => setEditingAdmin({...editingAdmin, role: 'custom'})} className="w-4 h-4 accent-[#123524]" /><span className="text-[#123524]">Custom Role</span></label></div>{editingAdmin.role === 'custom' && (<div className="bg-gray-50 p-4 rounded-lg border border-gray-200 shadow-sm animate-fade-in"><div className="flex flex-wrap gap-4">{['bookings', 'reports', 'users', 'points', 'settings'].map(tab => (<label key={tab} className="flex items-center space-x-2 text-xs font-bold cursor-pointer bg-white px-3 py-2 rounded border border-gray-100 hover:bg-gray-50 transition"><input type="checkbox" checked={(editingAdmin.permissions||[]).includes(tab)} onChange={() => handleEditCheckboxChange(tab)} className="w-4 h-4 accent-[#123524]" /><span className="capitalize">{tab === 'reports' ? 'Staff History' : tab === 'points' ? 'Point Mgmt' : tab}</span></label>))}</div></div>)}</div>
                       <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingAdmin(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold hover:bg-gray-200">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold hover:bg-green-900">Save</button></div>
                   </form>
               </div>
@@ -1094,10 +719,7 @@ function AdminManagementList() {
         <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-[#123524] text-white rounded font-bold flex items-center justify-center mt-4 shadow-md hover:bg-green-900 transition"><PlusCircle className="w-5 h-5 mr-2"/> Add New Admin</button>
       </form>
       <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[600px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Username & Role</th><th className="p-3 pb-4">Password</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{admins.map((a, idx) => (<tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition"><td className="p-3"><div className="font-bold text-gray-800 flex items-center text-sm"><User className="w-4 h-4 mr-2 text-gray-400"/> {a.username}</div><div className="mt-1.5">{a.role === 'super_admin' || !a.role ? (<span className="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-purple-200">Super Admin</span>) : (<div className="flex flex-wrap gap-1 mt-1">{a.permissions?.map(p => <span key={p} className="text-[9px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded uppercase tracking-wider">{p === 'reports' ? 'Staff History' : p === 'points' ? 'Point Mgmt' : p}</span>)}</div>)}</div></td><td className="p-3 font-mono text-sm text-gray-500 flex items-center"><Lock className="w-3 h-3 mr-1"/> {a.password}</td><td className="p-3 text-right">
-          <div className="flex items-center justify-end space-x-2">
-             <button onClick={() => setEditingAdmin(a)} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition inline-flex"><Edit className="w-4 h-4"/></button>
-             <button onClick={() => handleDeleteAdmin(a.docId!, a.username || '')} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button>
-          </div>
+          <div className="flex items-center justify-end space-x-2"><button onClick={() => setEditingAdmin(a)} className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition inline-flex"><Edit className="w-4 h-4"/></button><button onClick={() => handleDeleteAdmin(a.docId!, a.username || '')} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition inline-flex"><Trash2 className="w-4 h-4"/></button></div>
       </td></tr>))}</tbody></table></div>
     </div>
   );
@@ -1109,10 +731,10 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     baseRuleText: appData.vipSettings?.baseRuleText || "သုံးစွဲငွေ ၃၅,၀၀၀ ကျပ် လျှင် = ၁ ပွိုင့် (1 Point)",
     preJadeText: appData.vipSettings?.preJadeText || "Jade Member မဖြစ်မီ (၅၀) ပွိုင့် စုဆောင်းနေစဉ်ကာလအတွင်း (၁)လ အတွင်း ပြည့်မီသော Points များအတွက် အထူး Discount ကို ထပ်ဆောင်းပေးအပ်ပါသည်။",
     preJadeRewards: appData.vipSettings?.preJadeRewards || ['10 Pts = 10% Off', '20 Pts = 20% Off', '30 Pts = 30% Off', '40 Pts = 40% Off', '50 Pts = 50% Off'],
-    cumulativeText: appData.vipSettings?.cumulativeText || "Member အဆင့်များကို အဆင့်မြှင့်တင်ရာတွင် ပွိုင့်များကို သုညမှ ပြန်မစဘဲ ရှိပြီးသားပွိုင့်များအပေါ်တွင် ဆက်လက်ပေါင်းထည့်ပေးမည့် စနစ်ကို အသုံးပြုထားပါသည်။ (ဥပမာ - Jade 50 Pts မှ နောက်ထပ် 50 Pts ထပ်ရပါက စုစုပေါင်း 100 Pts ဖြင့် Gold သို့ တက်သွားပါမည်။)",
+    cumulativeText: appData.vipSettings?.cumulativeText || "Member အဆင့်များကို အဆင့်မြှင့်တင်ရာတွင် ပွိုင့်များကို သုညမှ ပြန်မစဘဲ ရှိပြီးသားပွိုင့်များအပေါ်တွင် ဆက်လက်ပေါင်းထည့်ပေးမည့် စနစ်ကို အသုံးပြုထားပါသည်။",
     instantUpgradeText: appData.vipSettings?.instantUpgradeText || "(တစ်ကြိမ်တည်းဝယ်ယူမှုပြုလုပ်သူများအနေဖြင့် မိမိဝယ်ယူထားသည့်ငွေပမာဏအတိုင်း မိမိကြိုက်နှစ်သက်ရာ Service သို့မဟုတ် Package ကို မိမိဝယ်ယူထားသည့် Member အဆင့်ခံစားခွင့်နှင့်အညီ (၃)လအတွင်း ပြန်လည်သုံးစွဲနိုင်သည်။)",
     birthdayStandardText: appData.vipSettings?.birthdayStandardText || "မည်သည့် VIP (Jade, Gold, Imperial) မဆို မိမိမွေးနေ့တွင် မည်သည့် Service ကိုမဆို 50% Discount ခံစားခွင့်ရရှိမည်။",
-    birthdayImperialText: appData.vipSettings?.birthdayImperialText || "အခြေခံ 20% + မွေးနေ့လတွင် ရရှိထားသော Points အရေအတွက် % ။\n(ဥပမာ - 50 Pts စုဆောင်းထားပါက 20% + 50% = 70% Discount ရရှိမည်)",
+    birthdayImperialText: appData.vipSettings?.birthdayImperialText || "အခြေခံ 20% + မွေးနေ့လတွင် ရရှိထားသော Points အရေအတွက် % ။",
     rules: appData.vipSettings?.rules || DEFAULT_VIP_SETTINGS.rules,
     tiers: appData.vipSettings?.tiers || DEFAULT_VIP_SETTINGS.tiers
   };
@@ -1141,49 +763,13 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       if(!newSecretKey) return alert("Key အသစ် ရိုက်ထည့်ပါ");
       if(newSecretKey.length < 10) return alert("Key အသစ်သည် အနည်းဆုံး စာလုံး ၁၀ လုံးရှိရပါမည်");
       if(!window.confirm("သတိပြုရန်: ဤလုပ်ဆောင်ချက်သည် Database တစ်ခုလုံးရှိ Data များကို Key အသစ်ဖြင့် ပြောင်းလဲမည်ဖြစ်ပါသည်။ သေချာပါသလား?")) return;
-
       setMigratingKey(true);
       try {
-          const reEncrypt = (oldCipher: string) => {
-              if(!oldCipher || !oldCipher.startsWith('U2FsdGVk')) return oldCipher;
-              try {
-                  const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY);
-                  const originalText = bytes.toString(CryptoJS.enc.Utf8);
-                  if(!originalText) return oldCipher;
-                  return CryptoJS.AES.encrypt(originalText, newSecretKey).toString();
-              } catch(e) { return oldCipher; }
-          };
-
-          const uSnap = await getDocs(collection(db, 'users'));
-          const uPromises: any[] = [];
-          uSnap.forEach(d => {
-              const raw = d.data();
-              uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points), dob: reEncrypt(raw.dob) }));
-          });
-          await Promise.all(uPromises);
-
-          const bSnap = await getDocs(collection(db, 'bookings'));
-          const bPromises: any[] = [];
-          bSnap.forEach(d => {
-              const raw = d.data();
-              bPromises.push(updateDoc(doc(db, 'bookings', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), txId: reEncrypt(raw.txId), specialRequest: reEncrypt(raw.specialRequest) }));
-          });
-          await Promise.all(bPromises);
-
-          const aSnap = await getDocs(collection(db, 'admins'));
-          const aPromises: any[] = [];
-          aSnap.forEach(d => {
-              const raw = d.data();
-              aPromises.push(updateDoc(doc(db, 'admins', d.id), { username: reEncrypt(raw.username), password: reEncrypt(raw.password) }));
-          });
-          await Promise.all(aPromises);
-
-          const tPromises: any[] = [];
-          localTherapists.forEach(t => {
-               tPromises.push(updateDoc(doc(db, 'therapists', t.id), { password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString() }));
-          });
-          await Promise.all(tPromises);
-
+          const reEncrypt = (oldCipher: string) => { if(!oldCipher || !oldCipher.startsWith('U2FsdGVk')) return oldCipher; try { const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY); const originalText = bytes.toString(CryptoJS.enc.Utf8); if(!originalText) return oldCipher; return CryptoJS.AES.encrypt(originalText, newSecretKey).toString(); } catch(e) { return oldCipher; } };
+          const uSnap = await getDocs(collection(db, 'users')); const uPromises: any[] = []; uSnap.forEach(d => { const raw = d.data(); uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points), dob: reEncrypt(raw.dob) })); }); await Promise.all(uPromises);
+          const bSnap = await getDocs(collection(db, 'bookings')); const bPromises: any[] = []; bSnap.forEach(d => { const raw = d.data(); bPromises.push(updateDoc(doc(db, 'bookings', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), txId: reEncrypt(raw.txId), specialRequest: reEncrypt(raw.specialRequest) })); }); await Promise.all(bPromises);
+          const aSnap = await getDocs(collection(db, 'admins')); const aPromises: any[] = []; aSnap.forEach(d => { const raw = d.data(); aPromises.push(updateDoc(doc(db, 'admins', d.id), { username: reEncrypt(raw.username), password: reEncrypt(raw.password) })); }); await Promise.all(aPromises);
+          const tPromises: any[] = []; localTherapists.forEach(t => { tPromises.push(updateDoc(doc(db, 'therapists', t.id), { password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString() })); }); await Promise.all(tPromises);
           alert("Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် Key အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
       } catch(e) { console.error(e); alert("Error updating keys"); }
       setMigratingKey(false);
@@ -1192,25 +778,11 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const handleSaveVipSettings = async () => {
     if (!window.confirm(`Are you sure you want to save VIP Program settings?`)) return;
     setSavingCategory('vip_settings');
-    try {
-      await setDoc(doc(db, 'settings', 'appData'), { vipSettings: localVipSettings }, { merge: true });
-      onSettingsUpdated({ ...appData, vipSettings: localVipSettings });
-      alert('VIP Membership Program saved successfully.');
-    } catch (e) { alert('Update error.'); }
-    setSavingCategory(null);
+    try { await setDoc(doc(db, 'settings', 'appData'), { vipSettings: localVipSettings }, { merge: true }); onSettingsUpdated({ ...appData, vipSettings: localVipSettings }); alert('VIP Membership Program saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null);
   };
 
-  const updateVipTier = (tIdx: number, field: string, val: any) => {
-     const updated = [...localVipSettings.tiers];
-     (updated[tIdx] as any)[field] = val;
-     setLocalVipSettings({...localVipSettings, tiers: updated});
-  };
-
-  const updateVipRule = (rIdx: number, val: string) => {
-     const updated = [...localVipSettings.rules];
-     updated[rIdx] = val;
-     setLocalVipSettings({...localVipSettings, rules: updated});
-  };
+  const updateVipTier = (tIdx: number, field: string, val: any) => { const updated = [...localVipSettings.tiers]; (updated[tIdx] as any)[field] = val; setLocalVipSettings({...localVipSettings, tiers: updated}); };
+  const updateVipRule = (rIdx: number, val: string) => { const updated = [...localVipSettings.rules]; updated[rIdx] = val; setLocalVipSettings({...localVipSettings, rules: updated}); };
 
   const handleSaveCategory = async (cIdx: number) => { const cat = localCategories[cIdx]; if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; setSavingCategory(cat.id); try { await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true }); onSettingsUpdated({ ...appData, categories: localCategories }); alert('Saved Successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
   const handleSavePromotion = async () => { if (!window.confirm(`Are you sure you want to save promotion settings?`)) return; setSavingCategory('promotion'); try { await setDoc(doc(db, 'settings', 'appData'), { promotion: localPromotion }, { merge: true }); onSettingsUpdated({ ...appData, promotion: localPromotion }); alert('Promotion settings saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
@@ -1222,13 +794,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     if (!window.confirm(`Are you sure you want to save therapists list and ranking?`)) return; setSavingCategory('therapists');
     try {
       const finalizedTherapists = localTherapists.map((t, idx) => ({ ...t, order: idx }));
-      const tPromises = finalizedTherapists.map((t) => {
-         const decPass = decryptText(t.password) || t.password;
-         if (decPass && decPass.length >= 6) createUserWithEmailAndPassword(secondaryAuth, `${t.id.toLowerCase()}@shangrila.com`, decPass).catch(() => {});
-         return setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order, password: encryptText(t.password || '') });
-      });
-      const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id)));
-      await Promise.all([...tPromises, ...delPromises]);
+      const tPromises = finalizedTherapists.map((t) => { const decPass = decryptText(t.password) || t.password; if (decPass && decPass.length >= 6) createUserWithEmailAndPassword(secondaryAuth, `${t.id.toLowerCase()}@shangrila.com`, decPass).catch(() => {}); return setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order, password: encryptText(t.password || '') }); });
+      const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id))); await Promise.all([...tPromises, ...delPromises]);
       setDeletedTherapistIds([]); setLocalTherapists(finalizedTherapists); alert('Therapists saved successfully.');
     } catch (e) { alert('Update error.'); } setSavingCategory(null);
   };
@@ -1238,25 +805,11 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const fileName = `install_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'install_steps', fileName); const updated = [...localInstallSteps]; updated[idx].imageUrl = imageUrl; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   
   const handleImageUpload = async (tIdx: number, files: FileList | null) => { 
-      if (!files || files.length === 0) return; 
-      const therapist = localTherapists[tIdx]; 
-      if (therapist.images.length + files.length > 5) { alert('Max 5 photos allowed.'); return; } 
-      setUploadingImage(therapist.id); 
-      const newUrls: string[] = []; 
+      if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('Max 5 photos allowed.'); return; } setUploadingImage(therapist.id); const newUrls: string[] = []; 
       try { 
-          for (let i = 0; i < files.length; i++) { 
-              const base64 = await compressImage(files[i], 900, 1200); 
-              const fileName = `${therapist.id}_${Date.now()}_${i}.jpg`;
-              const imageUrl = await uploadBase64ToStorage(base64, 'therapists', fileName);
-              newUrls.push(imageUrl); 
-          } 
-          const updated = [...localTherapists]; 
-          updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; 
-          setLocalTherapists(updated); 
-      } catch (err) { 
-          alert("Upload error."); 
-      } 
-      setUploadingImage(null); 
+          for (let i = 0; i < files.length; i++) { const base64 = await compressImage(files[i], 900, 1200); const fileName = `${therapist.id}_${Date.now()}_${i}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'therapists', fileName); newUrls.push(imageUrl); } 
+          const updated = [...localTherapists]; updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; setLocalTherapists(updated); 
+      } catch (err) { alert("Upload error."); } setUploadingImage(null); 
   };
 
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
@@ -1405,17 +958,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           {expandedSection === 'encryption' && (
               <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
                   <div className="flex flex-col sm:flex-row gap-3 items-center">
-                      <input 
-                          type="text" 
-                          placeholder="Enter New Secret Key" 
-                          value={newSecretKey} 
-                          onChange={(e) => setNewSecretKey(e.target.value)} 
-                          className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:border-orange-500 font-mono text-sm"
-                      />
-                      <button 
-                          disabled={migratingKey} 
-                          onClick={handleChangeSecretKey} 
-                          className="w-full sm:w-auto px-6 py-3 bg-orange-500 text-white rounded-lg font-bold shadow-sm hover:bg-orange-600 transition whitespace-nowrap flex items-center justify-center">
+                      <input type="text" placeholder="Enter New Secret Key" value={newSecretKey} onChange={(e) => setNewSecretKey(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:border-orange-500 font-mono text-sm" />
+                      <button disabled={migratingKey} onClick={handleChangeSecretKey} className="w-full sm:w-auto px-6 py-3 bg-orange-500 text-white rounded-lg font-bold shadow-sm hover:bg-orange-600 transition whitespace-nowrap flex items-center justify-center">
                           {migratingKey ? 'Processing...' : 'Change Key Now'}
                       </button>
                   </div>
@@ -1460,14 +1004,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                           <label className="block text-xs font-bold text-gray-500 mb-1">Other Services Discount (%)</label>
                           <input type="number" value={localPromotion.otherDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, otherDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
                       </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label>
-                          <input type="date" value={localPromotion.startDate} onChange={(e) => setLocalPromotion({...localPromotion, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 mb-1">End Date</label>
-                          <input type="date" value={localPromotion.endDate} onChange={(e) => setLocalPromotion({...localPromotion, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-                      </div>
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label><input type="date" value={localPromotion.startDate} onChange={(e) => setLocalPromotion({...localPromotion, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">End Date</label><input type="date" value={localPromotion.endDate} onChange={(e) => setLocalPromotion({...localPromotion, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
                   </div>
               </div>
           )}
@@ -1499,8 +1037,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                               <div className="flex items-center space-x-4">
                                   <div className="w-20 h-32 bg-gray-200 rounded border border-gray-300 flex items-center justify-center overflow-hidden relative">
                                       {step.imageUrl ? (
-                                          <><img src={step.imageUrl} alt={`Step ${idx+1}`} className="w-full h-full object-cover" />
-                                          <button onClick={() => { const updated = [...localInstallSteps]; updated[idx].imageUrl = ''; setLocalInstallSteps(updated); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"><X className="w-3 h-3"/></button></>
+                                          <><img src={step.imageUrl} alt={`Step ${idx+1}`} className="w-full h-full object-cover" /><button onClick={() => { const updated = [...localInstallSteps]; updated[idx].imageUrl = ''; setLocalInstallSteps(updated); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"><X className="w-3 h-3"/></button></>
                                       ) : (<ImageIcon className="w-6 h-6 text-gray-400" />)}
                                   </div>
                                   <div className="flex-1">
