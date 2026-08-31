@@ -1,6 +1,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth'; // Firebase Auth
+// 🚀 Optimization: Added onAuthStateChanged for proper auth flow
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth'; 
 import { db, auth } from './firebase'; 
 import { Download, X, MapPin, Phone, LogOut, DatabaseBackup } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
@@ -77,13 +78,6 @@ function MainApp() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
 
-  // 🔥 App စဖွင့်သည်နှင့် နောက်ကွယ်မှ Anonymous Login ဝင်ပေးမည့်စနစ် 🔥
-  useEffect(() => {
-    signInAnonymously(auth).catch((error) => {
-       console.error("Firebase Auth Error:", error);
-    });
-  }, []);
-
   useEffect(() => {
     if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) { setIsStandalone(true); }
     const handleBeforeInstallPrompt = (e: any) => { e.preventDefault(); setDeferredPrompt(e); };
@@ -119,7 +113,6 @@ function MainApp() {
 
     const initData = async () => {
       try {
-        // 🚀 Optimization: Use Promise.all to fetch both settings and therapists concurrently
         const [settingsSnap, therapistsSnap] = await Promise.all([
             getDoc(doc(db, 'settings', 'appData')).catch(err => { console.warn(err); return null; }),
             getDocs(query(collection(db, 'therapists'), orderBy('order', 'asc'))).catch(err => { console.warn(err); return null; })
@@ -159,8 +152,19 @@ function MainApp() {
       }
     };
     
-    // 🚀 Optimization: Removed artificial 500ms setTimeout to load data instantly
-    initData();
+    // 🔥 Improved Auth Flow: Wait for Firebase Auth to settle before fetching data
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user) {
+            initData(); // Auth is ready, now fetch data
+        } else {
+            signInAnonymously(auth).catch((error) => {
+                console.error("Firebase Auth Error:", error);
+                setDbError(true);
+            });
+        }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
