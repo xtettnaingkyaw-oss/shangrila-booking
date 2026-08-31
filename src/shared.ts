@@ -134,6 +134,7 @@ export interface Booking {
   expectedEndTimeMillis?: number;
   actualEndTimeMillis?: number;
   overtimeSeconds?: number;
+  pointsAdded?: boolean;
 }
 
 export interface OutPass {
@@ -161,6 +162,8 @@ export interface UserProfile {
 export interface AdminProfile {
   username: string;
   password?: string;
+  role?: 'super_admin' | 'custom';
+  permissions?: string[];
 }
 
 // 🛠️ Utility Functions
