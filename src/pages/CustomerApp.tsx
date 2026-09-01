@@ -1263,13 +1263,21 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
 
             {/* Metrics Grid (Compact Height) */}
             <div className="relative z-10 grid grid-cols-2 gap-3 mb-6">
-                {/* VIP Points Card */}
-                <div className="bg-gradient-to-br from-[#123524] to-[#0a1f14] border border-[#D4AF37]/30 rounded-xl p-3 flex flex-col items-center justify-center shadow-lg relative overflow-hidden group hover:-translate-y-0.5 transition-all duration-300">
-                    <div className="absolute -top-6 -right-6 w-16 h-16 bg-[#D4AF37] opacity-10 rounded-full blur-xl group-hover:opacity-20 transition-opacity"></div>
-                    <span className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1 animate-pulse"/> VIP Points</span>
-                    <span className="text-2xl font-black text-white mb-2 drop-shadow-md tracking-tight">{currentPoints}</span>
-                    <button onClick={() => { setShowHistory(true); fetchHistory(); }} className="w-full py-1.5 bg-gradient-to-r from-[#D4AF37] to-yellow-600 text-[#123524] rounded-lg text-[9px] font-bold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center justify-center tracking-wider uppercase"><History className="w-3 h-3 mr-1"/> History</button>
+                {/* VIP Points Card (Gold Theme) */}
+                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-300 rounded-xl p-3 flex flex-col items-center justify-center shadow-md relative overflow-hidden group hover:-translate-y-0.5 transition-all duration-300">
+                    <Star className="w-12 h-12 absolute -top-3 -right-3 text-yellow-500 opacity-10 group-hover:scale-110 transition-transform" />
+                    <span className="text-[8px] text-yellow-700 font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1 animate-pulse"/> VIP Points</span>
+                    <span className="text-2xl font-black text-[#123524] mb-2 drop-shadow-sm tracking-tight">{currentPoints}</span>
+                    <button onClick={() => { setShowHistory(true); fetchHistory(); }} className="w-full py-1.5 bg-[#123524] text-[#D4AF37] rounded-lg text-[9px] font-bold shadow-sm hover:bg-[#1a4a32] transform hover:-translate-y-0.5 transition-all flex items-center justify-center tracking-wider uppercase"><History className="w-3 h-3 mr-1"/> History</button>
                 </div>
+                {/* Birthday Card (Green Border) */}
+                <div className="bg-white border-2 border-[#123524]/60 rounded-xl p-3 flex flex-col items-center justify-center shadow-md hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden group">
+                    <div className="absolute -bottom-6 -left-6 w-16 h-16 bg-blue-500 opacity-5 rounded-full blur-xl"></div>
+                    <span className="text-[8px] text-blue-600 font-bold uppercase tracking-widest flex items-center mb-1.5"><Gift className="w-3 h-3 mr-1"/> Birthday</span>
+                    <span className="text-[11px] font-black text-[#123524] my-auto bg-blue-50/50 px-2 py-1.5 rounded-lg border border-blue-100/50 w-full text-center">{(profile as any)?.dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
+                    <p className="text-[7.5px] text-gray-400 mt-1.5 font-semibold text-center leading-tight">Special bonuses on your birthday.</p>
+                </div>
+            </div>
                 {/* Birthday Card (Gold Border Added) */}
                 <div className="bg-white border-2 border-[#D4AF37]/50 rounded-xl p-3 flex flex-col items-center justify-center shadow-md hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden group">
                     <div className="absolute -bottom-6 -left-6 w-16 h-16 bg-blue-500 opacity-5 rounded-full blur-xl"></div>
