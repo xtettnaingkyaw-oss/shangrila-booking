@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, updateDoc, doc, query, onSnapshot, where, 
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 // ==========================================
@@ -194,11 +194,17 @@ export function CustomAlert({ message, title = "Shangrila Online Booking", onClo
 }
 
 // ==========================================
-// AUTH REQUEST (LOGIN & FORGOT PASSWORD)
+// AUTH REQUEST (LOGIN, REGISTRATION & FORGOT PASSWORD)
 // ==========================================
 export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipToPassword = false }: { onLoginSuccess: (phone: string) => void, title: string, prefilledPhone?: string, skipToPassword?: boolean }) {
   const [phone, setPhone] = useState(prefilledPhone);
   const [password, setPassword] = useState('');
+  
+  // Registration States
+  const [regName, setRegName] = useState('');
+  const [regDob, setRegDob] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  
   const [contactInfo, setContactInfo] = useState('');
   const [step, setStep] = useState(skipToPassword ? 2 : 1);
   const [loading, setLoading] = useState(false);
@@ -216,7 +222,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
              if (decPhone === phone.trim() || d.id === phone.trim()) { found = true; userPass = decryptText(data.password); }
          } catch(err) {}
       });
-      if (!found) { setError("ဖုန်းနံပါတ် ရှာမတွေ့ပါ။ ဘိုကင်အရင်တင်ပေးပါခင်ဗျာ။"); }
+      if (!found) { setError("NOT_FOUND"); }
       else { if (userPass) { setStep(2); } else { onLoginSuccess(phone.trim()); } }
     } catch (e) { setError("Network Error"); }
     finally { setLoading(false); }
@@ -239,6 +245,36 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
     finally { setLoading(false); }
   };
 
+  const handleRegister = async (e: React.FormEvent) => {
+      e.preventDefault(); setError(''); setLoading(true);
+      try {
+          const snap = await getDocs(collection(db, 'users'));
+          let found = false;
+          snap.forEach(d => {
+             const decPhone = decryptText(d.data().phone) || d.id;
+             if (decPhone === phone.trim() || d.id === phone.trim()) found = true;
+          });
+          
+          if (found) {
+              setError("ဤဖုန်းနံပါတ်ဖြင့် အကောင့်ရှိပြီးသားဖြစ်ပါသည်။ Login ပြန်ဝင်ပေးပါ။");
+          } else {
+              await addDoc(collection(db, 'users'), {
+                  phone: encryptText(phone.trim()),
+                  name: encryptText(regName.trim()),
+                  password: encryptText(regPassword.trim()),
+                  dob: encryptText(regDob),
+                  points: encryptText('0'),
+                  createdAt: Date.now(),
+                  resetRequested: false,
+                  resetContact: encryptText('')
+              });
+              setSuccessMsg("အကောင့်သစ် အောင်မြင်စွာ ဖွင့်လှစ်ပြီးပါပြီ။");
+              setTimeout(() => { onLoginSuccess(phone.trim()); }, 1500);
+          }
+      } catch (err) { setError("Network Error"); }
+      finally { setLoading(false); }
+  };
+
   const handleResetPassword = async (e: React.FormEvent) => {
      e.preventDefault();
      if(!contactInfo.trim()) { setError('ဆက်သွယ်ရန် Viber သို့မဟုတ် Telegram အကောင့် ဖြည့်ပေးပါ။'); return; }
@@ -251,7 +287,10 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
              if (decPhone === phone.trim() || d.id === phone.trim()) targetId = d.id;
          });
          if (targetId) {
-             await updateDoc(doc(db, 'users', targetId), { resetRequested: true, resetContact: encryptText(contactInfo.trim()) });
+             await updateDoc(doc(db, 'users', targetId), { 
+                 resetRequested: true,
+                 resetContact: encryptText(contactInfo.trim())
+             });
              setSuccessMsg('Admin ထံသို့ စကားဝှက်အသစ်တောင်းဆိုမှု ပို့ပြီးပါပြီ။ မကြာမီ ဆက်သွယ်ပေးပါမည်။');
              setTimeout(() => { setStep(1); setSuccessMsg(''); setContactInfo(''); setPassword(''); }, 6000);
          }
@@ -261,14 +300,29 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
 
   return (
     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in px-4 sm:px-8">
-      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><KeyRound className="w-8 h-8" /></div>
-      <h2 className="text-xl font-bold text-gray-800 mb-2">{step === 3 ? 'Reset Password' : 'Login Required'}</h2>
-      <p className="text-xs font-bold text-gray-500 mb-6">{step === 3 ? 'Admin ထံသို့ စကားဝှက်အသစ် တောင်းဆိုရန်' : `${title}`}</p>
+      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]">
+          {step === 4 ? <UserPlus className="w-8 h-8" /> : <KeyRound className="w-8 h-8" />}
+      </div>
+      <h2 className="text-xl font-bold text-gray-800 mb-2">
+          {step === 3 ? 'Reset Password' : step === 4 ? 'Create New Account' : 'Login Required'}
+      </h2>
+      <p className="text-xs font-bold text-gray-500 mb-6">
+          {step === 3 ? 'Admin ထံသို့ စကားဝှက်အသစ် တောင်းဆိုရန်' : step === 4 ? 'သင်၏ အချက်အလက်များ ဖြည့်သွင်းပေးပါ' : `${title}`}
+      </p>
 
       {step === 1 && (
         <form onSubmit={handleNext} className="space-y-4">
           <input required type="tel" placeholder="Enter Phone Number" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
-          {error && <div className="text-xs font-bold text-red-500">{error}</div>}
+          
+          {error === 'NOT_FOUND' ? (
+              <div className="bg-red-50 p-4 rounded-xl border border-red-200 flex flex-col gap-3 animate-fade-in text-left">
+                  <span className="text-xs font-bold text-red-600 leading-relaxed"><AlertCircle className="w-3 h-3 inline mr-1" /> သင့်ထည့်လိုက်သောဖုန်းနံပါတ်ဖြင့် အကောင့်ရှာမတွေ့ပါ။ အကောင့်သစ်တစ်ခု အရင်ဖွင့်ပေးပါခင်ဗျာ။</span>
+                  <button type="button" onClick={() => { setStep(4); setError(''); }} className="px-4 py-3 bg-[#D4AF37] text-white rounded-lg text-sm font-bold shadow-md hover:bg-yellow-600 transition w-full flex items-center justify-center mt-2"><UserPlus className="w-4 h-4 mr-2" /> အကောင့်သစ် ဖွင့်ရန်</button>
+              </div>
+          ) : error && (
+              <div className="text-xs font-bold text-red-500">{error}</div>
+          )}
+
           <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Checking...' : 'Next'}</button>
         </form>
       )}
@@ -278,7 +332,11 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           <input required type="password" placeholder="Enter Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
           {error && <div className="text-xs font-bold text-red-500">{error}</div>}
           <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Logging in...' : 'Login'}</button>
-          <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} className="text-xs text-blue-600 underline font-bold mt-4 hover:text-blue-800">စကားဝှက်မေ့နေပါသလား? (Forgot Password)</button>
+          
+          <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} className="text-xs text-blue-600 underline font-bold mt-4 hover:text-blue-800">
+             စကားဝှက်မေ့နေပါသလား? (Forgot Password)
+          </button>
+          <button type="button" onClick={() => { setStep(1); setError(''); }} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 hover:text-gray-700">အကောင့်ပြောင်းရန်</button>
         </form>
       )}
 
@@ -293,8 +351,36 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           </div>
           {error && <div className="text-xs font-bold text-red-500">{error}</div>}
           {successMsg && <div className="text-xs font-bold text-green-600 bg-green-50 p-3 rounded-lg border border-green-200">{successMsg}</div>}
+          
           {!successMsg && <button type="submit" disabled={loading} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold shadow-md hover:bg-red-700 flex justify-center items-center">{loading ? 'Sending...' : 'Request New Password'}</button>}
           <button type="button" onClick={() => setStep(2)} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 hover:text-gray-700">Cancel & Go Back</button>
+        </form>
+      )}
+
+      {step === 4 && (
+        <form onSubmit={handleRegister} className="space-y-4 flex flex-col text-left animate-fade-in">
+           <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Phone Number (Login ID)</label>
+              <input required type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold" />
+           </div>
+           <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Full Name</label>
+              <input required type="text" value={regName} onChange={e => setRegName(e.target.value)} placeholder="e.g. Aung Aung" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold" />
+           </div>
+           <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth (For Birthday Bonus)</label>
+              <input type="date" value={regDob} onChange={e => setRegDob(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-gray-700" />
+           </div>
+           <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Set Password</label>
+              <input required type="password" value={regPassword} onChange={e => setRegPassword(e.target.value)} placeholder="Create a strong password" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold" />
+           </div>
+           
+           {error && <div className="text-xs font-bold text-red-500 text-center">{error}</div>}
+           {successMsg && <div className="text-xs font-bold text-green-600 bg-green-50 p-3 rounded-lg border border-green-200 text-center">{successMsg}</div>}
+           
+           {!successMsg && <button type="submit" disabled={loading} className="w-full py-3 bg-[#D4AF37] text-[#123524] rounded-lg font-bold shadow-md hover:bg-yellow-500 flex justify-center items-center mt-2 transition">{loading ? 'Creating...' : 'Create Account'}</button>}
+           <button type="button" onClick={() => { setStep(1); setError(''); }} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 hover:text-gray-700 text-center">Cancel & Go Back</button>
         </form>
       )}
     </div>
@@ -1056,825 +1142,11 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   );
 }
 
-// ==========================================
-// CUSTOMER BOOKING WIZARD & TABS
-// ==========================================
-export function CustomerBookingWizard({ appData, userPhone = '', onBooked, forceTherapistFirst = false, initialTherapist = null, isStaffMode = false, staffClockIn = false, staffClockInSuccess, preselectedStaff }: { appData: AppData, userPhone?: string, onBooked?: (phone: string) => void, forceTherapistFirst?: boolean, initialTherapist?: TherapistProfile | null, isStaffMode?: boolean, staffClockIn?: boolean, staffClockInSuccess?: () => void, preselectedStaff?: string }) {
-  const isTherapistFirst = forceTherapistFirst || new URLSearchParams(window.location.search).get('view') === 'therapists';
-  const vipSettings = appData.vipSettings && Object.keys(appData.vipSettings).length > 0 ? appData.vipSettings : FALLBACK_VIP_SETTINGS;
-  const promoTitle = appData.promotion?.title || 'SPECIAL PROMO';
-  
-  const [step, setStep] = useState(() => { if (staffClockIn) return isTherapistFirst ? 2 : 1; return initialTherapist ? 2 : 1; });
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [step]);
-
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, therapist2: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
-  
-  const [loading, setLoading] = useState(false);
-  const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
-  const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [alertMessage, setAlertMessage] = useState('');
-  
-  // 🌟 Auth Modal States (For duplicate phone check)
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authModalPhone, setAuthModalPhone] = useState('');
-  const [authModalHasPassword, setAuthModalHasPassword] = useState(false);
-  const [verifiedPhone, setVerifiedPhone] = useState('');
-
-  const [allBookings, setAllBookings] = useState<Booking[]>([]);
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [pointHistory, setPointHistory] = useState<any[]>([]);
-
-  const stepContainerRef = useRef<HTMLDivElement>(null);
-  const todayStr = getLocalTodayStr();
-
-  const isFourHands = useMemo(() => { return (formData.selectedItem?.name || '').toLowerCase().includes('four hands'); }, [formData.selectedItem]);
-
-  useEffect(() => {
-      const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
-      const unsub = onSnapshot(q, (snap) => {
-          const arr: Booking[] = [];
-          snap.forEach(d => { const raw = d.data(); arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest), discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined } as Booking); });
-          setAllBookings(arr);
-      });
-      return () => unsub();
-  }, [todayStr]);
-
-  useEffect(() => {
-      if (!userPhone) return;
-      const fetchUser = async () => {
-          try {
-              const snap = await getDocs(collection(db, 'users'));
-              let foundUser = null; let maxPts = -1;
-              snap.forEach(d => {
-                  try {
-                      const data = d.data(); const decPhone = decryptText(data.phone) || d.id;
-                      if (decPhone === userPhone || d.id === userPhone) {
-                          const pts = parsePoints(data.points);
-                          if (pts > maxPts) { maxPts = pts; foundUser = data; }
-                      }
-                  } catch (e) {}
-              });
-              if (foundUser) { setUserProfile({ ...(foundUser as any), points: maxPts, dob: decryptText((foundUser as any).dob) || (foundUser as any).dob || '' }); }
-          } catch(e) {}
-      };
-      const fetchPH = async () => {
-          try {
-              const snap = await getDocs(collection(db, 'point_history'));
-              const arr: any[] = [];
-              snap.forEach(d => {
-                  const raw = d.data();
-                  if ((decryptText(raw.phone) || raw.phone) === userPhone) { arr.push({ date: raw.date, pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned || 0) }); }
-              });
-              setPointHistory(arr);
-          } catch (e) {}
-      };
-      fetchUser(); fetchPH();
-  }, [userPhone]);
-
-  useEffect(() => { if (preselectedStaff && !formData.therapist) { const t = appData.therapists.find(staff => staff.name === preselectedStaff); if (t) setFormData(prev => ({...prev, therapist: t})); } }, [preselectedStaff, appData.therapists, formData.therapist]);
-  useEffect(() => { if (staffClockIn && formData.date === todayStr && (!formData.time || !/^\d{1,2}:\d{2}(?::\d{2})?$/.test(formData.time))) { const now = new Date(); const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; setFormData(prev => ({ ...prev, time: hhmm })); } }, [staffClockIn, formData.date, todayStr]);
-
-  const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
-  const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
-  const getTier = (points: number) => { if(!vipSettings.isActive || !vipSettings.tiers) return null; const sortedTiers = [...vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
-  const userTier = getTier(userProfile?.points || 0);
-
-  const checkPromoActive = () => {
-      const promo = appData.promotion; if (!promo?.isActive) return false; if (!promo.startDate || !promo.endDate) return false;
-      const today = new Date(getLocalTodayStr()).getTime(); const sDate = new Date(promo.startDate).getTime(); const eDate = new Date(promo.endDate).getTime();
-      return today >= sDate && today <= eDate;
-  };
-
-  const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id) || false;
-  const promoActive = checkPromoActive();
-  const isBirthday = () => { if (!userProfile?.dob || !formData.date) return false; const dobParts = userProfile.dob.split('-'); const bookParts = formData.date.split('-'); return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; };
-
-  let finalDiscountPercent = 0; let discountLabel = '';
-  if (promoActive) {
-      finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
-      discountLabel = `${promoTitle} (${finalDiscountPercent}%)`;
-  } else if (vipSettings.isActive && userProfile) {
-      const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
-      const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
-      const tierPercent = userTier ? userTier.discountPercent : 0; const tierLabel = userTier ? `VIP Member Discount (${tierPercent}%)` : '';
-      let oneTimePercent = 0; let oneTimeLabel = ''; const possibleTiers = [40, 30, 20, 10]; 
-      if (!userTier) {
-          for (const tier of possibleTiers) {
-              if (monthlyPts >= tier) {
-                  const rewardLabel = `Pre-Jade Target Bonus (${tier}%)`;
-                  const hasUsed = allBookings.some(b => (b.phone === userPhone) && b.discountLabel === rewardLabel && b.date && b.date.startsWith(currentMonthPrefix) && b.status !== 'cancelled');
-                  if (!hasUsed) { oneTimePercent = tier; oneTimeLabel = rewardLabel; break; }
-              }
-          }
-      }
-      let bdayPercent = 0; let bdayLabel = '';
-      if (userTier && isBirthday()) {
-          if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) { bdayPercent = Math.min(100, 20 + monthlyPts); bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`; } 
-          else { bdayPercent = 50; bdayLabel = `VIP Birthday Bonus (50%)`; }
-      }
-      if (bdayPercent >= oneTimePercent && bdayPercent >= tierPercent && bdayPercent > 0) { finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; }
-      else if (oneTimePercent >= tierPercent && oneTimePercent > 0) { finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; }
-      else if (tierPercent > 0) { finalDiscountPercent = tierPercent; discountLabel = tierLabel; }
-  }
-
-  const calculateSubTotal = () => {
-    if (!formData.selectedItem) return 0;
-    const basePrice = Number(formData.selectedItem.price) || 0; const vvipPrice = Number(formData.selectedItem.vvipPrice) || 0;
-    return formData.isVvipUpgrade && vvipPrice > 0 && !formData.selectedItem.vvipIncluded ? vvipPrice : basePrice;
-  };
-  const calculateDiscountAmount = () => { return (calculateSubTotal() * finalDiscountPercent) / 100; };
-  const calculateTotal = () => { return calculateSubTotal() - calculateDiscountAmount(); };
-
-  const getRoomUsageMap = (selectedDate: string, bookingsArray: Booking[]) => {
-      const usage = new Map<string, { vip: number, normal: number }>();
-      ALL_TIME_SLOTS.forEach(s => usage.set(s, { vip: 0, normal: 0 }));
-      bookingsArray.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed') return; if (b.date !== selectedDate) return;
-          const serviceLower = (b.service || '').toLowerCase(); const isBookingOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
-          if (isBookingOutcall) return; 
-          const isVip = serviceLower.includes('vvip'); const coveredSlots = getBookingCoveredSlots(b); 
-          coveredSlots.forEach(slot => { const current = usage.get(slot); if (current) { if (isVip) current.vip += 1; else current.normal += 1; usage.set(slot, current); } });
-      });
-      return usage;
-  };
-
-  const roomUsageMap = useMemo(() => getRoomUsageMap(formData.date || todayStr, allBookings), [allBookings, formData.date, todayStr]);
-
-  const currentRoomUsage = useMemo(() => {
-      let vip = 0; let normal = 0; const now = new Date(); let currentSlot = "";
-      for (let i = ALL_TIME_SLOTS.length - 1; i >= 0; i--) {
-          const slot = ALL_TIME_SLOTS[i]; const [tPart, ampm] = slot.split(' '); let [h, m] = tPart.split(':').map(Number);
-          if (ampm === 'PM' && h < 12) h += 12; if (ampm === 'AM' && h === 12) h = 0;
-          const slotTime = new Date(); slotTime.setHours(h, m, 0, 0);
-          if (now >= slotTime) { currentSlot = slot; break; }
-      }
-      allBookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr) return; 
-          const serviceLower = (b.service || '').toLowerCase(); if (serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home')) return;
-          const isVip = serviceLower.includes('vvip'); const coveredSlots = getBookingCoveredSlots(b);
-          if (currentSlot && coveredSlots.includes(currentSlot)) { if (isVip) vip++; else normal++; }
-      });
-      return { vip, normal, total: vip + normal };
-  }, [allBookings, todayStr]);
-
-  const isVipCurrentlyFull = currentRoomUsage.vip >= 3 || currentRoomUsage.total >= 5;
-  const disableVvipToggle = !formData.selectedItem?.vvipPrice || isVipCurrentlyFull;
-
-  const getBlockedSlots = (bookings: Booking[], selectedTherapistName: string, selectedDate: string) => {
-      const blocked = new Set<string>();
-      if (!selectedTherapistName || selectedTherapistName === 'Any Available Therapist') return blocked; 
-      bookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== selectedDate || !b.therapist.includes(selectedTherapistName)) return;
-          const coveredSlots = getBookingCoveredSlots(b);
-          if (coveredSlots.length > 0) {
-              coveredSlots.forEach(slot => blocked.add(slot));
-              const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]); if (firstIdx > 0) blocked.add(ALL_TIME_SLOTS[firstIdx - 1]);
-              const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]); if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1) blocked.add(ALL_TIME_SLOTS[lastIdx + 1]);
-          }
-      });
-      return blocked;
-  };
-
-  const checkSlotState = (t: string) => {
-      let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-      if (fixedDetails) {
-          const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
-          if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length; neededSlots = Math.max(1, endIdx - startIdx);
-      } else if (formData.selectedItem) {
-          const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-      }
-      const actualTestStr = t.includes("to") ? `${t.split(' to ')[0].trim()} to ${t.split(' to ')[1]}` : t;
-      const coveredSlotsForT = getSlotsFromTimeText(actualTestStr, neededSlots);
-      if (coveredSlotsForT.length === 0) return { available: false, reason: 'invalid' };
-      if (formData.therapist) {
-          const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date || todayStr);
-          for (const slot of coveredSlotsForT) { if (tBlocked.has(slot)) return { available: false, reason: 'therapist' }; }
-      }
-      if (formData.therapist2) {
-          const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date || todayStr);
-          for (const slot of coveredSlotsForT) { if (tBlocked2.has(slot)) return { available: false, reason: 'therapist' }; }
-      }
-      const serviceLower = (formData.selectedItem?.name || '').toLowerCase();
-      const isCurrentOutcall = serviceLower.includes('outcall') || serviceLower.includes('hotel') || serviceLower.includes('home');
-      if (!isCurrentOutcall) {
-          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
-          for (const slot of coveredSlotsForT) {
-               const usage = roomUsageMap.get(slot) || { vip: 0, normal: 0 }; const totalUsed = usage.vip + usage.normal;
-               if (isUserVip && (usage.vip >= 3 || totalUsed >= 5)) return { available: false, reason: 'room' };
-               if (!isUserVip && (usage.normal >= 2 || totalUsed >= 5)) return { available: false, reason: 'room' };
-          }
-      }
-      return { available: true, reason: '' };
-  };
-
-  const handleTimeSlotClick = (t: string, state: { available: boolean, reason: string }) => {
-      if (!formData.date) return;
-      if (state.reason === 'therapist') { setAlertMessage("ရွေးချယ်ထားသော ဝန်ထမ်းသည် ဤအချိန်တွင် ဘိုကင်ရှိနေပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။"); return; }
-      if (state.reason === 'room') {
-          const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
-          let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-          if (fixedDetails) {
-              const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
-              if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length; neededSlots = Math.max(1, endIdx - startIdx);
-          } else if (formData.selectedItem) {
-              const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-          }
-          const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let nextAvailable = '';
-          for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
-              let durationFree = true;
-              const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
-              for(let j=0; j < neededSlots; j++) {
-                  const subSlot = ALL_TIME_SLOTS[i+j]; if(!subSlot) { durationFree = false; break; }
-                  const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 }; const subTotal = subUsage.vip + subUsage.normal;
-                  if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
-                  if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
-              }
-              if (durationFree && formData.therapist) {
-                  const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-                  for (const slot of testSlots) { if (tBlocked.has(slot)) { durationFree = false; break; } }
-              }
-              if (durationFree && formData.therapist2) {
-                  const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-                  for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } }
-              }
-              if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
-          }
-          if (nextAvailable) { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`); } 
-          else { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`); }
-          return;
-      }
-      if (state.available) {
-          const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-          if (fixedDetails) { setFormData({ ...formData, time: `${t} to ${fixedDetails.end}${fixedDetails.nextDay ? ' (Next Day)' : ''}` }); } 
-          else if ((formData.selectedItem?.name || '').toLowerCase().includes("night")) { setFormData({ ...formData, time: `${t} to 8:00 AM (Next Day)` }); } 
-          else { setFormData({ ...formData, time: t }); }
-      }
-  };
-
-  const getAvailableTimeSlots = (targetDateOverride?: string) => {
-    let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("11:00 PM") + 1);
-    if (formData.selectedItem) {
-        const fixedDetails = getFixedServiceDetails(formData.selectedItem.name);
-        if (fixedDetails) {
-            let startIndex = ALL_TIME_SLOTS.indexOf(fixedDetails.start); let endIndex = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
-            if (fixedDetails.nextDay || endIndex === -1) endIndex = ALL_TIME_SLOTS.length; allowedSlots = ALL_TIME_SLOTS.slice(Math.max(0, startIndex), endIndex);
-        } else {
-            const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
-            const serviceName = (formData.selectedItem.name || '').toLowerCase(); const isNightService = serviceName.includes("night");
-            if (isHotelService) {
-              if (serviceName.includes("outcall")) { allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1); } 
-              else if (isNightService) { allowedSlots = ["7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"]; }
-            } else { allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1); }
-        }
-    }
-    const targetDate = targetDateOverride || formData.date || todayStr;
-    if (targetDate === todayStr) {
-        const now = new Date();
-        allowedSlots = allowedSlots.filter(slot => {
-            let timeStr = slot; if (slot.includes("to")) timeStr = slot.split(" to ")[0].trim(); 
-            const match = timeStr.match(/(\d+):(\d+)\s+(AM|PM)/i);
-            if (match) {
-                let h = parseInt(match[1]); const m = parseInt(match[2]); const ampm = match[3].toUpperCase();
-                if (ampm === 'PM' && h < 12) h += 12; if (ampm === 'AM' && h === 12) h = 0;
-                const slotTime = new Date(); slotTime.setHours(h, m, 0, 0); return slotTime > now; 
-            }
-            return true; 
-        });
-    }
-    return allowedSlots;
-  };
-
-  const availableTimeSlots = getAvailableTimeSlots();
-  const isSelectedNightService = (formData.selectedItem?.name || '').toLowerCase().includes("night");
-  const currentFixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-
-  const getMinMaxDates = () => {
-    const d = new Date(); const minDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    d.setDate(d.getDate() + 3); const maxDateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    return { minDateStr, maxDateStr };
-  }
-  const { minDateStr, maxDateStr } = getMinMaxDates();
-
-  const isTherapistFullForDate = (tName: string, dateToCheck: string) => {
-      const allowedSlots = getAvailableTimeSlots(dateToCheck);
-      let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-      if (fixedDetails) neededSlots = 1; 
-      else if (formData.selectedItem) { const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30); }
-      const tBlocked = getBlockedSlots(allBookings, tName, dateToCheck);
-      for (const t of allowedSlots) {
-           const actualTestStr = t.includes("to") ? `${t.split(' to ')[0].trim()} to ${t.split(' to ')[1]}` : t;
-           const covered = getSlotsFromTimeText(actualTestStr, neededSlots);
-           let overlap = false; for (const slot of covered) { if (tBlocked.has(slot)) { overlap = true; break; } }
-           if (!overlap) return false; 
-      }
-      return true;
-  };
-
-  const handleCopy = (text: string) => { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); setAlertMessage('Copied!'); } else { setAlertMessage("Copying manually required: " + text); } };
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => { setFormData({ ...formData, [e.target.name]: e.target.value }); };
-  const handleNextStep = (nextStep: number) => { setStep(nextStep); };
-
-  const handleCountdownExpire = () => {
-     if (isStaffMode) return;
-     setAlertMessage("ငွေပေးချေရန် သတ်မှတ်ချိန် (၁၅) မိနစ် ကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ ဘိုကင် အသစ်ပြန်လည်တင်ပေးပါ။");
-     setStep(1); setFormData({ name: '', phone: userPhone, selectedItem: null, isVvipUpgrade: false, therapist: null, therapist2: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
-  };
-  const formattedCountdown = useCountdown(isStaffMode ? 0 : 15, handleCountdownExpire);
-
-  // 🚀 Core Booking Processing Function
-  const processBooking = async (phoneToUse: string) => {
-      setLoading(true);
-      try {
-          const freshSnap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', todayStr)));
-          const freshBookings: Booking[] = [];
-          freshSnap.forEach(d => { const raw = d.data(); freshBookings.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking); });
-          
-          let isOverlap = false; const timeRegex = /^\d{1,2}:\d{2}(?::\d{2})?$/;
-          const isStaffImmediate = staffClockIn && formData.date === todayStr && timeRegex.test(formData.time || '');
-          let fluidStartTimeMillis = Date.now(); let expectedEndTimeMillis = Date.now(); let durationMins = 60; let finalTimeStr = formData.time;
-          const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-
-          if (formData.selectedItem && !fixedDetails) { const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) durationMins = parseInt(match[1]) || 60; }
-
-          if (isStaffImmediate) {
-              const timeParts = (formData.time || "00:00").split(':'); const h = Number(timeParts[0]) || 0; const m = Number(timeParts[1]) || 0;
-              const ampm = h >= 12 ? 'PM' : 'AM'; const hrs12 = h % 12 || 12; finalTimeStr = `${hrs12}:${m.toString().padStart(2, '0')} ${ampm}`;
-              const dateParts = (formData.date || todayStr).split('-'); const startDateTime = new Date(Number(dateParts[0]), Number(dateParts[1])-1, Number(dateParts[2]));
-              startDateTime.setHours(h, m, 0, 0); fluidStartTimeMillis = startDateTime.getTime(); 
-              
-              if (fixedDetails) {
-                  finalTimeStr = `${finalTimeStr} to ${fixedDetails.end}${fixedDetails.nextDay ? ' (Next Day)' : ''}`;
-                  const endParts = fixedDetails.end.split(' '); const [endHStr, endMStr] = (endParts[0] || '00:00').split(':'); const endAmPm = endParts[1] || 'AM';
-                  let endH = parseInt(endHStr) || 0; if(endAmPm === 'PM' && endH < 12) endH += 12; if(endAmPm === 'AM' && endH === 12) endH = 0;
-                  const endDateTime = new Date(startDateTime); endDateTime.setHours(endH, parseInt(endMStr) || 0, 0, 0);
-                  if (fixedDetails.nextDay || endDateTime < startDateTime) endDateTime.setDate(endDateTime.getDate() + 1);
-                  expectedEndTimeMillis = endDateTime.getTime();
-              } else if ((formData.selectedItem?.name || '').toLowerCase().includes("night")) {
-                  const nextDay = new Date(startDateTime); nextDay.setDate(nextDay.getDate() + 1); nextDay.setHours(8, 0, 0, 0); expectedEndTimeMillis = nextDay.getTime();
-              } else { expectedEndTimeMillis = fluidStartTimeMillis + (durationMins * 60 * 1000); }
-
-              const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
-              const blockedNow2 = formData.therapist2 ? getBlockedSlots(freshBookings, formData.therapist2.name, formData.date || '') : new Set();
-              const coveredForImmediate = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date || ''));
-              for (const slot of coveredForImmediate) { if (blockedNow.has(slot) || blockedNow2.has(slot)) { isOverlap = true; break; } }
-          } else {
-              let neededSlots = 2; 
-              if (fixedDetails) {
-                  const startIdx = ALL_TIME_SLOTS.indexOf((formData.time || '').split(' to ')[0].trim()); let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
-                  if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length; neededSlots = Math.max(1, endIdx - startIdx);
-              } else if (formData.selectedItem) {
-                  const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-              }
-              const actualTestStr = (formData.time || '').includes("to") ? `${(formData.time || '').split(' to ')[0].trim()} to ${(formData.time || '').split(' to ')[1]}` : (formData.time || '');
-              const coveredSlots = getSlotsFromTimeText(actualTestStr, neededSlots);
-              const blockedNow = getBlockedSlots(freshBookings, formData.therapist?.name || '', formData.date || '');
-              const blockedNow2 = formData.therapist2 ? getBlockedSlots(freshBookings, formData.therapist2.name, formData.date || '') : new Set();
-              for (const slot of coveredSlots) { if (blockedNow.has(slot) || blockedNow2.has(slot)) { isOverlap = true; break; } }
-          }
-
-          if (isOverlap) { setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်သည် အခြားသူ ဘိုကင်တင်ထားသည်နှင့် ထပ်နေပါသည်။ ကျေးဇူးပြု၍ အချိန် ပြန်ရွေးပေးပါ။"); setLoading(false); return; }
-
-          const serviceLowerNameForCheck = (formData.selectedItem?.name || '').toLowerCase();
-          const isCurrentOutcall = serviceLowerNameForCheck.includes('outcall') || serviceLowerNameForCheck.includes('hotel') || serviceLowerNameForCheck.includes('home');
-          if (!isCurrentOutcall) {
-              const freshRoomUsage = getRoomUsageMap(formData.date || todayStr, freshBookings);
-              const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded;
-              let neededSlots = 2;
-              if (fixedDetails) {
-                  const startIdx = ALL_TIME_SLOTS.indexOf((formData.time || '').split(' to ')[0].trim()); let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
-                  if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length; neededSlots = Math.max(1, endIdx - startIdx);
-              } else if (formData.selectedItem) {
-                  const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30);
-              }
-              let coveredSlotsToCheck: string[] = [];
-              if (isStaffImmediate) coveredSlotsToCheck = Array.from(getSlotsCoveredByInterval(fluidStartTimeMillis, expectedEndTimeMillis, formData.date || ''));
-              else {
-                  const actualTestStr = (formData.time || '').includes("to") ? `${(formData.time || '').split(' to ')[0].trim()} to ${(formData.time || '').split(' to ')[1]}` : (formData.time || '');
-                  coveredSlotsToCheck = getSlotsFromTimeText(actualTestStr, neededSlots);
-              }
-              let isRoomOverlap = false;
-              for (const slotName of coveredSlotsToCheck) {
-                  const usage = freshRoomUsage.get(slotName) || { vip: 0, normal: 0 }; const totalUsed = usage.vip + usage.normal;
-                  if (isUserVip) { if (usage.vip >= 3 || totalUsed >= 5) { isRoomOverlap = true; break; } }
-                  else { if (usage.normal >= 2 || totalUsed >= 5) { isRoomOverlap = true; break; } }
-              }
-              if (isRoomOverlap) { setAlertMessage("ဆောရီးပါ.. သင်ရွေးချယ်ထားသော အချိန်တွင် အခန်းပြည့်သွားပါသည်။ အခြားအချိန် ရွေးချယ်ပေးပါ။"); setLoading(false); return; }
-          }
-
-          if (isNaN(expectedEndTimeMillis)) expectedEndTimeMillis = fluidStartTimeMillis + (60 * 60 * 1000);
-
-          let combinedTherapistName = formData.therapist?.name || 'Any Available Therapist';
-          if (isFourHands && formData.therapist && formData.therapist2) { combinedTherapistName = `${formData.therapist.name} & ${formData.therapist2.name}`; } 
-          else if (isFourHands && formData.therapist) { combinedTherapistName = `${formData.therapist.name} & (Any Available)`; }
-
-          const dataToSave: any = {
-            name: encryptText(formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest')), 
-            phone: encryptText(phoneToUse),
-            service: `${formData.selectedItem?.name || ''} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`.trim(),
-            therapist: combinedTherapistName,
-            date: formData.date || todayStr, time: finalTimeStr || '00:00', paymentMethod: isStaffMode ? 'Cash Payment in Shop' : (formData.paymentMethod || '-'), 
-            txId: encryptText(isStaffMode ? 'CASH' : (formData.txId || '-')), totalPrice: Number(calculateTotal()) || 0, status: isStaffImmediate ? 'in_progress' : (isStaffMode ? 'approved' : 'pending'), 
-            createdAt: Date.now(), specialRequest: encryptText(formData.specialRequest || ''), originalPrice: encryptText(calculateSubTotal().toString()), discountPercent: encryptText(finalDiscountPercent.toString()),
-            discountLabel: encryptText(discountLabel || ''), vipTierName: encryptText(userTier ? userTier.name : ''), ...(isStaffImmediate && { startTimeMillis: Number(fluidStartTimeMillis) || Date.now(), expectedEndTimeMillis: Number(expectedEndTimeMillis) || Date.now() })
-          };
-
-          Object.keys(dataToSave).forEach(key => dataToSave[key] === undefined ? delete dataToSave[key] : {});
-          await addDoc(collection(db, 'bookings'), dataToSave);
-          setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
-      } catch (error: any) { console.error(error); setAlertMessage("Error: " + (error.message || "Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။")); }
-      setLoading(false);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isStaffMode && formData.txId.length !== 6) { setAlertMessage("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
-    setLoading(true);
-    try {
-      if (formData.phone && formData.phone.trim() !== '') {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        let userRefId: string | null = null; let hasName = false; let maxPts = -1; let exactPhoneMatch = false; let userHasPassword = false;
-        usersSnap.forEach(d => {
-          try {
-              const decPhone = decryptText(d.data().phone) || d.id;
-              if (decPhone === formData.phone.trim() || d.id === formData.phone.trim()) {
-                 exactPhoneMatch = true; if (decryptText(d.data().password)) userHasPassword = true;
-                 const pts = parsePoints(d.data().points);
-                 if (pts > maxPts) { maxPts = pts; userRefId = d.id; hasName = !!decryptText(d.data().name); }
-              }
-          } catch(e) {}
-        });
-
-        if (exactPhoneMatch && !isStaffMode && userPhone !== formData.phone.trim() && verifiedPhone !== formData.phone.trim()) {
-            setAuthModalPhone(formData.phone.trim()); setAuthModalHasPassword(userHasPassword); setShowAuthModal(true); setLoading(false); return;
-        }
-
-        if (!userRefId) {
-          await addDoc(collection(db, 'users'), { phone: encryptText(formData.phone.trim()), name: encryptText(formData.name || ''), password: encryptText(''), points: encryptText('0'), dob: encryptText(''), createdAt: Date.now() });
-        } else if (!hasName) { await updateDoc(doc(db, 'users', userRefId), { name: encryptText(formData.name || '') }); }
-      }
-      processBooking(formData.phone.trim());
-    } catch (error: any) { console.error(error); setAlertMessage("Error checking database."); setLoading(false); }
-  };
-
-  if (successMsg) {
-    return (
-      <div className="bg-white p-10 rounded-2xl shadow-lg text-center border border-gray-100 max-w-lg mx-auto mt-10 animate-fade-in">
-        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="w-10 h-10 text-green-600" /></div>
-        <h2 className="text-2xl font-bold mb-3" style={{ color: THEME.primary }}>Booking Confirmed!</h2>
-        <p className="text-gray-600 mb-8 leading-relaxed font-semibold">{successMsg}</p>
-        <button onClick={() => { 
-           if (staffClockInSuccess) { staffClockInSuccess(); return; }
-           if (isStaffMode) { setStep(1); setFormData({ name: 'Walk-in Guest', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: initialTherapist, therapist2: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' }); setSuccessMsg(''); window.scrollTo({ top: 0, behavior: 'smooth' }); } 
-           else { setSuccessMsg(''); if (onBooked) onBooked(formData.phone); }
-        }} className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>
-           {staffClockIn ? 'Finish' : (isStaffMode ? 'နောက်ထပ် ဘိုကင်တင်မည် (Add Another)' : 'မှတ်တမ်းကြည့်ရန် (View History)')}
-        </button>
-      </div>
-    );
-  }
-
-  const steps = isTherapistFirst ? [{ num: 1, label: 'THERAPIST', icon: User }, { num: 2, label: 'SERVICE', icon: Sparkles }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard }] : [{ num: 1, label: 'SERVICE', icon: Sparkles }, { num: 2, label: 'THERAPIST', icon: User }, { num: 3, label: 'DATE & TIME', icon: Calendar }, { num: 4, label: 'CONFIRM', icon: CreditCard }];
-  const renderStepper = () => (
-    <div ref={stepContainerRef} className="flex items-center justify-center mb-10 w-full max-w-lg mx-auto scroll-mt-6">
-      {steps.map((s, idx) => {
-        const isCompleted = step > s.num; const isActive = step === s.num;
-        return (
-          <React.Fragment key={s.num}>
-            <div className="flex flex-col items-center relative z-10">
-              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all duration-300 border-2 ${isCompleted ? 'bg-[#D4AF37] border-[#D4AF37] text-white' : isActive ? 'bg-[#123524] border-[#123524] text-white' : 'bg-white border-gray-200 text-gray-400'}`}>{isCompleted ? <Check className="w-5 h-5" /> : <s.icon className="w-4 h-4 sm:w-5 sm:h-5" />}</div>
-              <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider font-bold mt-2 absolute -bottom-5 w-24 text-center ${isActive ? 'text-[#123524]' : 'text-gray-400'}`}>{s.label}</span>
-            </div>
-            {idx < steps.length - 1 && <div className={`flex-1 h-[2px] mx-1 transition-colors duration-300 ${isCompleted ? 'bg-[#D4AF37]' : 'bg-gray-200'}`} />}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-
-  const renderServiceSelection = (currentStep: number) => (
-    <div className="animate-fade-in px-2 sm:px-0">
-      {promoActive && (
-        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between">
-           <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div><div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-           <div className="relative z-10 flex items-center">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0"><Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" /></div>
-              <div><div className="flex items-center gap-2 mb-0.5"><h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-sm tracking-wide uppercase flex items-center"><Sparkles className="w-3 h-3 mr-1" /> {promoTitle}</h4><span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap ml-2">Limited Time</span></div><div className="text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span></div></div>
-           </div>
-           <div className="relative z-10 flex flex-col gap-1.5 ml-3">
-               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm"><span className="flex items-center"><Home className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Hotel</span> <span className="text-[#D4AF37] ml-2">{appData.promotion?.hotelDiscountPercent}% OFF</span></div>
-               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm"><span className="flex items-center"><Activity className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Other</span><span className="text-[#D4AF37] ml-2">{appData.promotion?.otherDiscountPercent}% OFF</span></div>
-           </div>
-        </div>
-      )}
-
-      <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
-      <div className="space-y-4">{appData.categories.map(category => {
-        const CategoryIcon = ICON_MAP[category.id] || Activity;
-        return (
-          <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition"><div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>{activeCategory === category.id ? <ChevronUp className="w-6 h-6" style={{ color: THEME.primary }} /> : <ChevronDown className="w-6 h-6" style={{ color: THEME.primary }} />}</div>
-            {activeCategory === category.id && (
-              <div className="p-2 border-t border-gray-100 bg-gray-50/50">{category.items.map(s => (
-                <div key={s.id} onClick={() => setFormData({ ...formData, selectedItem: s, isVvipUpgrade: false, time: '', therapist2: null })} className={`flex justify-between items-center p-4 my-2 mx-2 rounded-lg cursor-pointer border transition-all duration-200 ${formData.selectedItem?.id === s.id ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
-                  <div><div className="font-bold text-gray-800 text-sm">{s.name}</div>{s.duration && <div className="text-xs text-gray-500 mt-1">{s.duration}</div>}</div><div className="font-bold text-sm" style={{ color: THEME.primary }}>{formatPrice(s.price)}</div>
-                </div>
-              ))}</div>
-            )}
-          </div>
-        )
-      })}</div>
-      
-      <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
-        <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (isVipCurrentlyFull ? '🚫 လတ်တလော VIP အခန်းပြည့်နေပါသည်' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available')))}</div></div></div>
-        {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <input type="checkbox" checked={formData.isVvipUpgrade} disabled={disableVvipToggle} onChange={(e) => setFormData({ ...formData, isVvipUpgrade: e.target.checked, time: '' })} className="w-6 h-6 accent-[#D4AF37] cursor-pointer disabled:opacity-50" />}
-      </div>
-
-      <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
-        {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-        <button type="button" disabled={!formData.selectedItem} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>
-          {isTherapistFirst && currentStep === 2 ? 'CONTINUE TO DATE & TIME' : 'CONTINUE TO THERAPIST'} <ChevronRight className="w-5 h-5 ml-2" />
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderTherapistSelection = (currentStep: number) => {
-      let globalCheckDate = formData.date;
-      if (!globalCheckDate) { const now = new Date(); if (now.getHours() >= 23) { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); globalCheckDate = tmrw.getFullYear() + '-' + String(tmrw.getMonth() + 1).padStart(2, '0') + '-' + String(tmrw.getDate()).padStart(2, '0'); } else { globalCheckDate = todayStr; } }
-      const allFullyBooked = appData.therapists.length > 0 && appData.therapists.every(t => isTherapistFullForDate(t.name, globalCheckDate));
-      const isSelectionIncomplete = isFourHands && formData.therapist !== null && formData.therapist2 === null; const isAnySelected = formData.therapist === null;
-
-      return (
-        <div className="animate-fade-in relative px-2 sm:px-0">
-          {viewGallery && (
-            <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in">
-              <button type="button" onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
-              <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden py-10 px-0 sm:px-10">
-                <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="w-full h-full object-contain drop-shadow-2xl" />
-                {viewGallery.images.length > 1 && (
-                  <>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 sm:left-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" /></button>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 sm:right-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" /></button>
-                  </>
-                )}
-              </div>
-              <div className="absolute bottom-6 text-white font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full z-[110]">{viewGallery.index + 1} / {viewGallery.images.length}</div>
-            </div>
-          )}
-
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>{isFourHands ? '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်း ၂ ယောက်ကို ရွေးချယ်ပါ)' : '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)'}</p></div>
-          <div onClick={() => setFormData({ ...formData, therapist: null, therapist2: null, time: '' })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
-              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div>
-              <div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {appData.therapists.map((therapist) => {
-              const isSelected1 = formData.therapist?.id === therapist.id; const isSelected2 = formData.therapist2?.id === therapist.id; const isSelected = isSelected1 || isSelected2;
-              const hasImage = therapist.images && therapist.images.length > 0; const isFull = isTherapistFullForDate(therapist.name, globalCheckDate);
-              const fullTextEn = globalCheckDate === todayStr ? "Fully Booked For Today" : "Fully Booked"; const fullTextMm = globalCheckDate === todayStr ? "(ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ)" : "(ဘိုကင်ပြည့်သွားပါပြီ)";
-
-              return (
-                <div key={therapist.id} onClick={() => {
-                    if (isFull) return;
-                    if (isFourHands) {
-                        if (isSelected1) { setFormData({ ...formData, therapist: formData.therapist2, therapist2: null, time: '' }); } 
-                        else if (isSelected2) { setFormData({ ...formData, therapist2: null, time: '' }); } 
-                        else if (!formData.therapist) { setFormData({ ...formData, therapist: therapist, time: '' }); } 
-                        else if (!formData.therapist2) { setFormData({ ...formData, therapist2: therapist, time: '' }); } 
-                        else { setFormData({ ...formData, therapist2: therapist, time: '' }); }
-                    } else { setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' }); }
-                }} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
-                  
-                  {isFull && (<div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"><div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500"><div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div><div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div></div></div>)}
-
-                  {isSelected1 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">1</div>}
-                  {isSelected2 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">2</div>}
-                  {isSelected && !isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-white w-6 h-6 rounded-full flex items-center justify-center z-30 shadow-md border-2 border-white"><Check className="w-4 h-4"/></div>}
-
-                  <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-70' : ''}`}>
-                    {hasImage ? (
-                      <>
-                        <img src={therapist.images[0]} alt={therapist.name} loading="lazy" className="w-full h-full object-cover object-top" />
-                        {therapist.images.length > 1 && (
-                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/90 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1 px-1 rounded flex flex-col items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30 leading-tight">
-                            <div className="flex items-center"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</div><div className="text-[8px] mt-0.5 text-[#D4AF37]/80">(နောက်ထပ်ပုံများကြည့်ရန်)</div>
-                          </button>
-                        )}
-                      </>
-                    ) : (<div className="flex flex-col items-center"><User className="w-12 h-12 text-[#123524]" /></div>)}
-                  </div>
-                  <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-600' : 'text-gray-800'}`}>{therapist.name}</div>
-                  <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
-                  
-                  {isTherapistFirst && !isFourHands && (
-                    <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>Book Now {!isFull && <ChevronRight className="w-3 h-3 ml-1" />}</button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          
-          <div className={`mt-8 flex flex-col gap-4`}>
-             <div className={`flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} w-full`}>
-                {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-                <button type="button" disabled={(!isAnySelected && isSelectionIncomplete) || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition shadow-md flex items-center w-full sm:w-auto justify-center ${((!isAnySelected && isSelectionIncomplete) || allFullyBooked) ? 'bg-gray-300 cursor-not-allowed' : 'hover:opacity-90'}`} style={!((!isAnySelected && isSelectionIncomplete) || allFullyBooked) ? { backgroundColor: THEME.primary } : {}}>
-                  {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
-                </button>
-             </div>
-             {(!formData.date || formData.date === todayStr) && allFullyBooked && (
-                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-center shadow-sm w-full animate-fade-in mt-4">
-                     <p className="text-sm font-bold text-gray-700 mb-3 leading-relaxed">ဒီနေ့အတွက် ဘိုကင်ယူနိုင်သည့်အချိန်ကျော်လွန်သွားပြီလား (သို့မဟုတ်) ဝန်ထမ်းများအားလုံး ပြည့်နေပါသလား?</p>
-                     <button type="button" onClick={(e) => { e.stopPropagation(); const tomorrowStr = getTomorrowStr(); setFormData({ ...formData, therapist: null, therapist2: null, date: tomorrowStr, time: '' }); setAlertMessage(`ရွေးချယ်မည့်ရက်အား မနက်ဖြန် (${tomorrowStr}) သို့ ပြောင်းလဲလိုက်ပါသည်။ ဝန်ထမ်းကို ဆက်လက်ရွေးချယ်ပါ။`); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="inline-flex items-center px-6 py-3 bg-[#123524] text-[#D4AF37] font-bold text-sm rounded-lg hover:bg-[#1a4a32] shadow-md transition"><CalendarPlus className="w-5 h-5 mr-2" /> နောက်ရက်အတွက် ဘိုကင်ကြိုယူရန် နှိပ်ပါ</button>
-                 </div>
-             )}
-          </div>
-        </div>
-      );
-  };
-
-  return (
-    <div>
-      <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
-      
-      {showAuthModal && (
-        <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4">
-           <div className="relative w-full max-w-sm">
-              <button onClick={() => { setShowAuthModal(false); setLoading(false); }} className="absolute -top-12 right-0 text-white hover:text-red-400 p-2"><X className="w-8 h-8"/></button>
-              <AuthRequest title="အကောင့်ရှိပြီးသားဖြစ်နေပါသည်" prefilledPhone={authModalPhone} skipToPassword={authModalHasPassword} onLoginSuccess={(loggedInPhone) => { setShowAuthModal(false); setVerifiedPhone(loggedInPhone); processBooking(loggedInPhone); }} />
-           </div>
-        </div>
-      )}
-
-      {renderStepper()}
-      {step === 1 && (isTherapistFirst ? renderTherapistSelection(1) : renderServiceSelection(1))}
-      {step === 2 && (isTherapistFirst ? renderServiceSelection(2) : renderTherapistSelection(2))}
-
-      {step === 3 && (
-        <div className="animate-fade-in px-2 sm:px-0">
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
-            <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
-            
-            {staffClockIn && formData.date === todayStr ? (
-                <div className="bg-yellow-50 p-5 rounded-lg border border-yellow-200 mb-4 animate-fade-in">
-                    <label className="block mb-2 text-sm font-bold flex items-center text-yellow-800"><Clock className="w-4 h-4 mr-2" /> Service Start Time (ဧည့်သည်ရောက်ရှိချိန်)</label>
-                    <input type="time" value={formData.time} onChange={(e) => setFormData({...formData, time: e.target.value})} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-white mb-2 font-bold text-center tracking-wider text-lg" />
-                    <p className="text-[10px] text-yellow-700 font-semibold text-center mt-1">အမှန်တကယ် စတင်သည့်အချိန်ကို ပြင်ဆင်ရွေးချယ်နိုင်ပါသည်။</p>
-                </div>
-            ) : (
-                <>
-                    <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
-                    <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
-                        {availableTimeSlots.map(t => {
-                            const state = checkSlotState(t); const displayTime = t.includes("to") ? t.split(" to ")[0].trim() : t;
-                            return (
-                                <button key={t} type="button" disabled={!formData.date} 
-                                   onClick={() => {
-                                       if (!state.available) {
-                                           let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-                                           if (fixedDetails) { const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end); if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length; neededSlots = Math.max(1, endIdx - startIdx); } 
-                                           else if (formData.selectedItem) { const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30); }
-                                           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded; const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let nextAvailable = '';
-                                           for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
-                                               let durationFree = true; const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
-                                               for(let j=0; j < neededSlots; j++) {
-                                                   const subSlot = ALL_TIME_SLOTS[i+j]; if(!subSlot) { durationFree = false; break; }
-                                                   const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 }; const subTotal = subUsage.vip + subUsage.normal;
-                                                   if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
-                                                   if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
-                                               }
-                                               if (durationFree && formData.therapist) { const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots); for (const slot of testSlots) { if (tBlocked.has(slot)) { durationFree = false; break; } } }
-                                               if (durationFree && formData.therapist2) { const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots); for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } } }
-                                               if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
-                                           }
-                                           if (nextAvailable) { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`); } else { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`); } return;
-                                       }
-                                       handleTimeSlotClick(t, state);
-                                   }} 
-                                   className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${ formData.time === t || formData.time.startsWith(`${displayTime} to`) ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : (!state.available) ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through cursor-not-allowed' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]' }`}>
-                                   {displayTime}
-                                </button>
-                            )
-                        })}
-                    </div>
-                    {formData.time && currentFixedDetails && (
-                        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm animate-fade-in text-center">
-                            <p className="text-sm text-green-800 font-bold mb-1 flex items-center justify-center"><Clock className="w-4 h-4 mr-2" /> ဝန်ဆောင်မှု ရရှိမည့် အချိန်</p>
-                            <p className="text-lg text-green-700 font-bold tracking-wide">{formData.time.split(' to ')[0].trim()} မှ {currentFixedDetails.end}{currentFixedDetails.nextDay ? ' (နောက်ရက်)' : ''} အထိ</p>
-                            <p className="text-xs text-green-600 font-semibold mt-1">(စုစုပေါင်း ကြာချိန် - {calculateTimeDiff(formData.time.split(' to ')[0].trim(), currentFixedDetails.end, currentFixedDetails.nextDay)})</p>
-                            <p className="text-[10px] text-green-600/80 mt-2 border-t border-green-200/50 pt-2">* အချိန်ကျော်လွန်ပြီးမှ ဘိုကင်ယူပါက ပြီးဆုံးမည့်အချိန်ထိသာ ဝန်ဆောင်မှုရရှိပါမည်။</p>
-                        </div>
-                    )}
-                    {!currentFixedDetails && isSelectedNightService && (<div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-[11px] sm:text-xs font-bold text-center flex items-center justify-center animate-fade-in shadow-sm"><Clock className="w-4 h-4 mr-2"/> ဝန်ဆောင်မှုသည် နောက်ရက် မနက် ၈:၀၀ နာရီတွင် ပြီးဆုံးပါမည်။</div>)}
-                </>
-            )}
-            {availableTimeSlots.length === 0 && formData.date && !(staffClockIn && formData.date === todayStr) && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
-          </div>
-          <div className="mt-8 flex justify-between"><button type="button" onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button type="button" disabled={!formData.date || !formData.time.trim()} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
-        </div>
-      )}
-
-      {step === 4 && (
-        <form onSubmit={handleSubmit} className="animate-fade-in pb-10 px-2 sm:px-0">
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး အတည်ပြုပေးပါ)</p></div>
-          
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <h3 className="text-sm font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-start">
-                <div><div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/> {formData.selectedItem?.name || 'Unknown Service'}</div>{formData.selectedItem?.duration && <div className="text-sm text-gray-500 ml-6">{formData.selectedItem.duration}</div>}</div>
-                <div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price)}</div>
-              </div>
-              {formData.isVvipUpgrade && !formData.selectedItem?.vvipIncluded && (
-                <div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div><div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice((Number(formData.selectedItem?.vvipPrice) || 0) - (Number(formData.selectedItem?.price) || 0))}</div></div>
-              )}
-              {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
-              
-              <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist && formData.therapist2 && (formData.selectedItem?.name || '').toLowerCase().includes('four hands') ? `${formData.therapist.name} & ${formData.therapist2.name}` : (formData.therapist ? formData.therapist.name : 'Any Available Therapist')}</div>
-              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
-            </div>
-            
-            <div className="mt-6 pt-4 border-t-2 border-gray-100">
-                <div className="flex justify-between items-center text-sm text-gray-600 mb-2"><span className="font-semibold">Subtotal</span><span className="font-bold">{formatPrice(calculateSubTotal())}</span></div>
-                {finalDiscountPercent > 0 && (
-                    <div className="flex justify-between items-center text-sm text-green-600 mb-2 bg-green-50 px-2 py-1.5 rounded border border-green-200 shadow-sm animate-fade-in"><span className="font-bold flex items-center"><Percent className="w-3 h-3 mr-1"/> {discountLabel}</span><span className="font-bold">-{formatPrice(calculateDiscountAmount())}</span></div>
-                )}
-                <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50"><span className="font-bold text-gray-800">Final Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-             <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Special Request (Optional)</h3>
-             <textarea name="specialRequest" value={formData.specialRequest || ''} onChange={handleChange} placeholder="Write any special requests or notes here..." className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" rows={3} />
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Your Information</h3>
-            <div className="space-y-4">
-              <div><label className="block mb-1 text-sm font-semibold text-gray-700">Full Name</label><input required type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g. Aung Aung" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" /></div>
-              <div><label className="block mb-1 text-sm font-semibold text-gray-700">Phone Number {isStaffMode ? '' : '(Login ID အဖြစ်အသုံးပြုရန်)'}</label><input required={!isStaffMode} type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="e.g. 09-xxxxxxxxx" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" /></div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <h3 className="text-sm font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Deposit Payment</h3>
-            {isStaffMode ? (
-              <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
-                  <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
-                  <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm and Start Now" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
-              </div>
-            ) : (
-              <>
-                <div className="relative mb-4">
-                  <label className="block mb-2 text-sm font-semibold text-gray-700" style={{ color: THEME.primary }}>ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
-                  <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm">
-                    {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" loading="lazy" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
-                    <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
-                  </div>
-                  {paymentDropdownOpen && (
-                    <><div className="fixed inset-0 z-40" onClick={() => setPaymentDropdownOpen(false)}></div>
-                      <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-lg shadow-xl overflow-hidden border border-[#1a4a32]">
-                        {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" loading="lazy" className="w-7 h-7 mr-3 object-contain bg-white rounded-sm p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
-                      </div></>
-                  )}
-                </div>
-                {selectedPaymentConfig && (
-                  <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in">
-                    <p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက် ({formatPrice(calculateTotal() / 2)})</strong> စရံငွေအား {selectedPaymentConfig.name} သို့ လွှဲပေးပါ။</p>
-                    <div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100">
-                      <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountNumber}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountNumber)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
-                      <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountName}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountName)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
-                    </div>
-                  </div>
-                )}
-                {selectedPaymentConfig && (
-                  <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in"><p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p><div className="text-2xl font-mono font-bold text-red-700 mt-1">{formattedCountdown}</div></div>
-                )}
-                <div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div>
-              </>
-            )}
-          </div>
-
-          <div className="mt-8 flex justify-between">
-            <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
-            <button disabled={loading || (!isStaffMode && !formData.paymentMethod)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : (staffClockIn && formData.date === todayStr ? 'CONFIRM AND START NOW' : 'CONFIRM BOOKING')}</button>
-          </div>
-        </form>
-      )}
-    </div>
-  );
-}
-
-// 🌟 THE COMPONENT THAT RENDERS THE TABS AND MAIN VIEW (Moved to bottom) 🌟
+// 🌟 MAIN COMPONENT (Render Tabs and Customer Wizard) 🌟
 export default function CustomerApp({ appData }: { appData: AppData }) {
-const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
+  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
      const searchParams = new URLSearchParams(window.location.search);
      const view = searchParams.get('view');
-     
      if (view === 'therapists') return 'therapists';
      if (view === 'dashboard') return 'dashboard';
      if (view === 'vip') return 'vip';
@@ -1945,7 +1217,7 @@ const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' |
       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
       
       {/* 🌟 STICKY TAB NAVIGATION BAR 🌟 */}
-      <div className="sticky top-[48px] z-[90] bg-gray-50/90 backdrop-blur-xl pt-2 pb-3 px-4 -mx-4 sm:px-0 sm:mx-0 mb-8 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.1)] transition-all duration-300">
+      <div className="sticky top-[48px] sm:top-[60px] z-[90] bg-gray-50/90 backdrop-blur-xl pt-2 pb-3 px-4 -mx-4 sm:px-0 sm:mx-0 mb-8 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.1)] transition-all duration-300">
          <div className="max-w-2xl mx-auto">
             <div className="flex sm:hidden justify-end mb-1 pr-1">
                <span className="text-[9px] text-[#123524] font-bold flex items-center animate-pulse bg-white/80 px-2 py-0.5 rounded-full border border-gray-200 shadow-sm">
