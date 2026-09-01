@@ -1193,7 +1193,7 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   const isBdayMonth = () => { if (!profile?.dob) return false; const dobParts = profile.dob.split('-'); const currentParts = getLocalTodayStr().split('-'); return dobParts[1] === currentParts[1]; };
 
   return (
-    <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0 relative z-10 pb-8">
+    <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0 relative z-10 pb-12">
       <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
       
       {/* 🌟 History Modal */}
@@ -1246,7 +1246,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
         {/* Profile Avatar */}
         <div className="relative z-10 w-20 h-20 bg-gradient-to-br from-[#123524] to-[#1a4a32] rounded-full mx-auto flex items-center justify-center mb-4 shadow-[0_4px_20px_rgba(18,53,36,0.4)] border-[2px] border-[#D4AF37]/50 group transition-all duration-500 hover:scale-105">
             <div className="absolute inset-0 rounded-full bg-[#D4AF37] opacity-0 group-hover:opacity-20 transition-opacity duration-500 blur-md"></div>
-            {/* VIP Crown လေးကို အမည်းအစား အမြဲတမ်း ရွှေရောင် (Gold) အဖြစ် ထင်ရှားအောင် ပြင်ဆင်ထားသည် */}
             {userTier ? <Crown className="w-8 h-8 drop-shadow-md text-[#D4AF37]" /> : <User className="w-8 h-8 text-[#D4AF37]" />}
         </div>
         
@@ -1272,14 +1271,6 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                 </div>
                 {/* Birthday Card (Green Border) */}
                 <div className="bg-white border-2 border-[#123524]/60 rounded-xl p-3 flex flex-col items-center justify-center shadow-md hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden group">
-                    <div className="absolute -bottom-6 -left-6 w-16 h-16 bg-blue-500 opacity-5 rounded-full blur-xl"></div>
-                    <span className="text-[8px] text-blue-600 font-bold uppercase tracking-widest flex items-center mb-1.5"><Gift className="w-3 h-3 mr-1"/> Birthday</span>
-                    <span className="text-[11px] font-black text-[#123524] my-auto bg-blue-50/50 px-2 py-1.5 rounded-lg border border-blue-100/50 w-full text-center">{(profile as any)?.dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
-                    <p className="text-[7.5px] text-gray-400 mt-1.5 font-semibold text-center leading-tight">Special bonuses on your birthday.</p>
-                </div>
-            </div>
-                {/* Birthday Card (Gold Border Added) */}
-                <div className="bg-white border-2 border-[#D4AF37]/50 rounded-xl p-3 flex flex-col items-center justify-center shadow-md hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden group">
                     <div className="absolute -bottom-6 -left-6 w-16 h-16 bg-blue-500 opacity-5 rounded-full blur-xl"></div>
                     <span className="text-[8px] text-blue-600 font-bold uppercase tracking-widest flex items-center mb-1.5"><Gift className="w-3 h-3 mr-1"/> Birthday</span>
                     <span className="text-[11px] font-black text-[#123524] my-auto bg-blue-50/50 px-2 py-1.5 rounded-lg border border-blue-100/50 w-full text-center">{(profile as any)?.dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
