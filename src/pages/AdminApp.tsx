@@ -547,7 +547,9 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           data.push({ 
              docId: doc.id, ...raw, phone: decryptText(raw.phone) || doc.id, name: decryptText(raw.name) || raw.name, password: decryptText(raw.password) || raw.password,
              points: parseInt(decryptText(raw.points as string) || (raw.points as string) || '0', 10), dob: decryptText(raw.dob) || raw.dob || '',
-             resetRequested: raw.resetRequested || false, resetContact: raw.resetContact ? decryptText(raw.resetContact) : ''
+             resetRequested: raw.resetRequested || false, 
+             resetOtp: raw.resetOtp ? decryptText(raw.resetOtp) : '',
+             otpApproved: raw.otpApproved || false
           });
       });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); setUsers(data);
@@ -559,7 +561,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault(); if (!editingUser) return;
     try {
-      await updateDoc(doc(db, 'users', editingUser.docId), { name: encryptText(editForm.name), password: encryptText(editForm.password), dob: encryptText(editForm.dob), points: encryptText(editForm.points.toString()), resetRequested: false, resetContact: encryptText('') });
+      await updateDoc(doc(db, 'users', editingUser.docId), { name: encryptText(editForm.name), password: encryptText(editForm.password), dob: encryptText(editForm.dob), points: encryptText(editForm.points.toString()) });
       alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။'); setEditingUser(null); fetchUsers();
     } catch (e) { alert('Error updating user'); }
   };
@@ -577,6 +579,15 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
     if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
     if (!window.confirm(`User [${phone}] ကို အပြီးတိုင် ဖျက်မည် သေချာပါသလား?`)) return;
     try { await deleteDoc(doc(db, 'users', docId)); fetchUsers(); } catch (e) { alert('Error deleting user'); }
+  };
+
+  const handleApproveOTP = async (docId: string) => {
+      if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ခွင့်ပြုနိုင်ပါသည်။'); return; }
+      try {
+          await updateDoc(doc(db, 'users', docId), { otpApproved: true });
+          alert('OTP အတည်ပြုပြီးပါပြီ။ User ဘက်တွင် စကားဝှက်အသစ် ပြောင်းနိုင်ပါပြီ။');
+          fetchUsers();
+      } catch(e) { alert('Error approving OTP'); }
   };
 
   const handleExportUsers = () => {
@@ -597,18 +608,11 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
       {editingUser && (
          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
             <div className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full animate-fade-in"><h3 className="text-lg font-bold mb-4 text-[#123524] flex items-center"><Edit className="w-5 h-5 mr-2 text-[#D4AF37]"/> Edit User ({editingUser.phone})</h3>
-               {editingUser.resetRequested && (
-                   <div className="bg-red-50 p-3 rounded-lg border border-red-200 mb-4">
-                       <h4 className="text-xs font-bold text-red-700 mb-1 flex items-center"><AlertCircle className="w-4 h-4 mr-1"/> Password Reset Request</h4>
-                       <p className="text-[10px] text-red-600 font-semibold mb-2">Customer က Password အသစ်တောင်းဆိုထားပါသည်။ အောက်ပါအကောင့်သို့ ဆက်သွယ်ပြီး Password အသစ်ပေးပို့ပါ။</p>
-                       <div className="flex items-center text-xs font-bold text-gray-800 bg-white p-2 rounded border border-red-100"><MessageCircle className="w-4 h-4 mr-2 text-blue-500"/> {editingUser.resetContact}</div>
-                   </div>
-               )}
                <form onSubmit={handleUpdateUser} className="space-y-4">
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Name</label><input type="text" value={editForm.name} onChange={e=>setEditForm({...editForm, name: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" required /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth</label><input type="date" value={editForm.dob} onChange={e=>setEditForm({...editForm, dob: e.target.value})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none" /></div>
                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Total Points <span className="text-[9px] text-orange-500">(Fix total points here if sync failed)</span></label><input type="number" value={editForm.points} onChange={e=>setEditForm({...editForm, points: Number(e.target.value)})} className="w-full p-2 border rounded focus:border-[#D4AF37] outline-none font-bold" required /></div>
-                 <div><label className="block text-xs font-bold text-gray-500 mb-1">New Password (စကားဝှက်အသစ် ပြောင်းရန်)</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Enter new password" className={`w-full p-2 border rounded outline-none font-bold ${editingUser.resetRequested ? 'border-red-400 focus:border-red-500 bg-red-50/30' : 'focus:border-[#D4AF37]'}`} /></div>
+                 <div><label className="block text-xs font-bold text-gray-500 mb-1">New Password (စကားဝှက်အသစ် ပြောင်းရန်)</label><input type="text" value={editForm.password} onChange={e=>setEditForm({...editForm, password: e.target.value})} placeholder="Enter new password" className="w-full p-2 border rounded outline-none font-bold focus:border-[#D4AF37]" /></div>
                  <div className="flex space-x-2 pt-2"><button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded font-bold hover:bg-gray-200">Cancel</button><button type="submit" className="flex-1 py-2 bg-[#123524] text-white rounded font-bold hover:bg-green-900">Save</button></div>
                </form>
             </div>
@@ -639,7 +643,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           </div>
       </div>
       
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name & DOB</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => {
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name & DOB</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security / OTP Request</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => {
          const userTier = getTier(u.points);
          return (
          <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition">
@@ -649,14 +653,19 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
              <td className="p-3">
                {u.resetRequested ? (
                    <div className="flex flex-col gap-1">
-                       <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-1 rounded flex w-fit items-center border border-red-200 animate-pulse"><AlertCircle className="w-3 h-3 mr-1" /> Reset Requested</span>
-                       <span className="text-[9px] text-gray-500 font-semibold flex items-center"><MessageCircle className="w-3 h-3 mr-1"/> {u.resetContact}</span>
+                       <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-1 rounded flex w-fit items-center border border-red-200 animate-pulse"><AlertCircle className="w-3 h-3 mr-1" /> Password Reset Req</span>
+                       {u.resetOtp && <span className="text-[10px] font-mono bg-yellow-50 text-yellow-800 font-bold px-2 py-1 rounded border border-yellow-200">OTP: {u.resetOtp}</span>}
+                       {!u.otpApproved ? (
+                           <button onClick={() => handleApproveOTP(u.docId)} disabled={adminRole !== 'super_admin'} className={`text-[9px] text-white font-bold px-2 py-1 rounded mt-1 w-fit transition shadow-sm ${adminRole === 'super_admin' ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-300'}`}>Approve OTP</button>
+                       ) : (
+                           <span className="text-[9px] text-green-600 font-bold mt-1">✓ OTP Approved</span>
+                       )}
                    </div>
                ) : u.password ? (<span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span>) : (<span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>)}
              </td>
              <td className="p-3 text-right">
                  <div className="flex items-center justify-end space-x-2">
-                     <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '', points: u.points || 0 }); }} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? (u.resetRequested ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-50 text-blue-600 hover:bg-blue-100') : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Edit Info'}><Edit className="w-3 h-3 mr-1"/> {u.resetRequested ? 'Reset Password' : 'Edit Info'}</button>
+                     <button onClick={() => { setEditingUser(u); setEditForm({ name: u.name || '', password: u.password || '', dob: u.dob || '', points: u.points || 0 }); }} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Edit Info'}><Edit className="w-3 h-3 mr-1"/> Edit Info</button>
                      <button onClick={() => handleDeleteUser(u.docId, u.phone)} disabled={adminRole !== 'super_admin'} className={`p-1.5 rounded transition font-bold text-[10px] flex items-center ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete'}><Trash2 className="w-3 h-3 mr-1"/> Delete</button>
                  </div>
              </td>
