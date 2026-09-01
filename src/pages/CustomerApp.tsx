@@ -452,7 +452,10 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
                   
                   {brandingData && (
                       <div className="mt-5 pt-5 border-t border-blue-200/50">
-                          <p className="text-[10px] text-blue-800 font-bold mb-3">စောင့်ဆိုင်းရချိန်ကြာမြင့်နေပါက Admin အား အမြန်ဆုံးဆက်သွယ်ရန်</p>
+                          <p className="text-[10px] text-blue-800 font-bold mb-3 leading-relaxed">
+    စောင့်ဆိုင်းရချိန်ကြာမြင့်နေပါက<br />
+    Admin အား အမြန်ဆုံးဆက်သွယ်ရန်
+</p>
                           <div className="flex flex-col gap-2.5">
                               {(brandingData.phone1 || brandingData.phone2) && (
                                   <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#123524] bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
