@@ -194,7 +194,7 @@ export function CustomAlert({ message, title = "Shangrila Online Booking", onClo
 }
 
 // ==========================================
-// AUTH REQUEST (LOGIN, FORGOT PASSWORD & REGISTER)
+// AUTH REQUEST (LOGIN, FORGOT PASSWORD & REGISTER) - LUXURY UI
 // ==========================================
 export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipToPassword = false }: { onLoginSuccess: (phone: string) => void, title: string, prefilledPhone?: string, skipToPassword?: boolean }) {
   const [phone, setPhone] = useState(prefilledPhone);
@@ -223,7 +223,6 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       });
       
       if (!found) { 
-          // အကောင့်မရှိရင် Error Message ပြမည်
           setError("သင်ထည့်လိုက်သောဖုန်းနံပါတ်ဖြင့် အကောင့်ရှာမတွေ့ပါ။ အောက်ပါ 'အကောင့်သစ်ဖွင့်ရန်' ခလုတ်ကို နှိပ်ပေးပါ။"); 
       }
       else { 
@@ -287,43 +286,47 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
               createdAt: Date.now()
           });
           setSuccessMsg('အကောင့်သစ် အောင်မြင်စွာ ဖွင့်ပြီးပါပြီ။');
-          
-          // အကောင့်ဖွင့်ပြီးတာနဲ့ Auto Login လုပ်ပေးမည်
-          setTimeout(() => {
-              onLoginSuccess(phone.trim());
-          }, 1500);
-      } catch (err) {
-          setError('Error creating account.');
-      }
+          setTimeout(() => { onLoginSuccess(phone.trim()); }, 1500);
+      } catch (err) { setError('Error creating account.'); }
       setLoading(false);
   };
 
   return (
-    <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in px-4 sm:px-8">
-      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]">
-          {step === 4 ? <UserPlus className="w-8 h-8" /> : <KeyRound className="w-8 h-8" />}
+    <div className="relative bg-white p-8 sm:p-10 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#D4AF37]/20 max-w-sm mx-auto text-center mt-8 mb-12 animate-fade-in overflow-hidden">
+      {/* Luxury Background Glow Effects */}
+      <div className="absolute -top-16 -right-16 w-40 h-40 bg-[#D4AF37] opacity-10 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-[#123524] opacity-[0.03] rounded-full blur-3xl pointer-events-none"></div>
+
+      <div className="relative z-10 w-20 h-20 bg-gradient-to-br from-[#123524] to-[#1a4a32] rounded-full mx-auto flex items-center justify-center mb-6 shadow-lg border-2 border-[#D4AF37]/40 group transition-all duration-500 hover:scale-105">
+          <div className="absolute inset-0 rounded-full bg-[#D4AF37] opacity-0 group-hover:opacity-20 transition-opacity duration-500 blur-md"></div>
+          {step === 4 ? <UserPlus className="w-8 h-8 text-[#D4AF37]" /> : <KeyRound className="w-8 h-8 text-[#D4AF37]" />}
       </div>
-      <h2 className="text-xl font-bold text-gray-800 mb-2">
+      
+      <h2 className="relative z-10 text-2xl font-bold text-[#123524] mb-2 tracking-wide font-serif">
           {step === 3 ? 'Reset Password' : step === 4 ? 'Create Account' : 'Login Required'}
       </h2>
-      <p className="text-xs font-bold text-gray-500 mb-6">
-          {step === 3 ? 'Admin ထံသို့ စကားဝှက်အသစ် တောင်းဆိုရန်' : step === 4 ? 'သင်၏ အချက်အလက်များကို ဖြည့်သွင်းပါ' : title}
+      <p className="relative z-10 text-[11px] font-bold text-[#D4AF37] mb-8 uppercase tracking-widest">
+          {step === 3 ? 'Request new password' : step === 4 ? 'Join the exclusive club' : title}
       </p>
 
       {step === 1 && (
-        <form onSubmit={handleNext} className="space-y-4 flex flex-col">
-          <input required type="tel" placeholder="Enter Phone Number" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
+        <form onSubmit={handleNext} className="relative z-10 space-y-5 flex flex-col">
+          <div className="relative group">
+            <input required type="tel" placeholder="Enter Phone Number" value={phone} onChange={e => setPhone(e.target.value)} 
+                   className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-center tracking-wider text-[#123524] shadow-inner" />
+          </div>
           
-          {error && <div className="text-xs font-bold text-red-500 leading-relaxed">{error}</div>}
+          {error && <div className="text-xs font-bold text-red-500 leading-relaxed bg-red-50 p-3 rounded-xl border border-red-100 animate-slide-up">{error}</div>}
           
-          <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition">
-              {loading ? 'Checking...' : 'Next'}
+          <button type="submit" disabled={loading} 
+                  className="w-full py-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] hover:from-[#0d261a] hover:to-[#123524] transform hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-center tracking-widest uppercase text-xs">
+              {loading ? 'Authenticating...' : 'Continue'} <ChevronRight className="w-4 h-4 ml-2 opacity-80"/>
           </button>
 
-          {/* အကောင့်သစ်ဖွင့်ရန် အမြဲတမ်းပေါ်မည့် အပိုင်း */}
-          <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-[11px] font-bold text-gray-500 mb-3 leading-relaxed">User Account မရှိသေးပါက အကောင့်သစ်တစ်ခု အရင်ပြုလုပ်ပါ</p>
-              <button type="button" onClick={() => { setStep(4); setError(''); }} disabled={loading} className="w-full py-2.5 bg-gray-50 text-[#123524] border border-gray-200 rounded-lg font-bold shadow-sm hover:bg-gray-100 transition flex items-center justify-center text-sm">
+          <div className="mt-6 pt-6 border-t border-gray-100">
+              <p className="text-[10px] font-semibold text-gray-500 mb-4 leading-relaxed uppercase tracking-wider">New to Shangri-La?</p>
+              <button type="button" onClick={() => { setStep(4); setError(''); }} disabled={loading} 
+                      className="w-full py-3.5 bg-gradient-to-r from-yellow-50 to-white text-[#123524] border border-[#D4AF37]/50 rounded-xl font-bold shadow-sm hover:shadow-md hover:from-yellow-100 hover:to-yellow-50 transition-all duration-300 flex items-center justify-center text-sm transform hover:-translate-y-0.5">
                   <UserPlus className="w-4 h-4 mr-2 text-[#D4AF37]" /> အကောင့်သစ်ဖွင့်ရန်
               </button>
           </div>
@@ -331,60 +334,75 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       )}
       
       {step === 2 && (
-        <form onSubmit={handleLogin} className="space-y-4 flex flex-col">
-          <input required type="password" placeholder="Enter Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
-          {error && <div className="text-xs font-bold text-red-500">{error}</div>}
-          <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition">{loading ? 'Logging in...' : 'Login'}</button>
-          <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} className="text-xs text-blue-600 underline font-bold mt-4 hover:text-blue-800">စကားဝှက်မေ့နေပါသလား? (Forgot Password)</button>
+        <form onSubmit={handleLogin} className="relative z-10 space-y-5 flex flex-col animate-slide-up">
+          <input required type="password" placeholder="Enter Password" value={password} onChange={e => setPassword(e.target.value)} 
+                 className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-center tracking-wider text-[#123524] shadow-inner" />
+          {error && <div className="text-xs font-bold text-red-500 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
+          
+          <button type="submit" disabled={loading} 
+                  className="w-full py-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] transform hover:-translate-y-0.5 transition-all duration-300 tracking-widest uppercase text-xs">
+              {loading ? 'Logging in...' : 'Secure Login'}
+          </button>
+          <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} className="text-xs text-gray-500 font-semibold mt-4 hover:text-[#D4AF37] transition-colors">စကားဝှက်မေ့နေပါသလား? (Forgot Password)</button>
         </form>
       )}
 
       {step === 3 && (
-        <form onSubmit={handleResetPassword} className="space-y-4 flex flex-col">
+        <form onSubmit={handleResetPassword} className="relative z-10 space-y-5 flex flex-col animate-slide-up">
           <div className="text-left">
-             <label className="block text-xs font-bold text-gray-600 mb-1">ဆက်သွယ်ရန် (Viber သို့မဟုတ် Telegram ဖုန်းနံပါတ်)</label>
+             <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Contact Info (Viber / Telegram)</label>
              <div className="relative">
-                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><MessageCircle className="w-4 h-4 text-gray-400" /></div>
-                 <input required type="text" placeholder="e.g. 09-xxxxxxxxx (Viber)" value={contactInfo} onChange={e => setContactInfo(e.target.value)} className="w-full pl-10 pr-3 py-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-sm" />
+                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><MessageCircle className="w-4 h-4 text-[#D4AF37]" /></div>
+                 <input required type="text" placeholder="e.g. 09-xxxxxxxxx" value={contactInfo} onChange={e => setContactInfo(e.target.value)} 
+                        className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-sm shadow-inner" />
              </div>
           </div>
-          {error && <div className="text-xs font-bold text-red-500">{error}</div>}
-          {successMsg && <div className="text-xs font-bold text-green-600 bg-green-50 p-3 rounded-lg border border-green-200">{successMsg}</div>}
-          {!successMsg && <button type="submit" disabled={loading} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold shadow-md hover:bg-red-700 flex justify-center items-center transition">{loading ? 'Sending...' : 'Request New Password'}</button>}
-          <button type="button" onClick={() => setStep(2)} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 hover:text-gray-700">Cancel & Go Back</button>
+          {error && <div className="text-xs font-bold text-red-500 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
+          {successMsg && <div className="text-xs font-bold text-[#123524] bg-green-50 p-4 rounded-xl border border-green-200">{successMsg}</div>}
+          {!successMsg && (
+             <button type="submit" disabled={loading} 
+                     className="w-full py-4 bg-red-600/90 text-white rounded-xl font-bold shadow-md hover:bg-red-700 hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex justify-center items-center tracking-widest uppercase text-xs">
+                 {loading ? 'Sending...' : 'Request New Password'}
+             </button>
+          )}
+          <button type="button" onClick={() => setStep(2)} disabled={loading} className="text-xs text-gray-500 font-bold mt-2 hover:text-[#123524] transition-colors">Cancel & Go Back</button>
         </form>
       )}
 
       {step === 4 && (
-        <form onSubmit={handleRegister} className="space-y-4 flex flex-col text-left animate-slide-up">
+        <form onSubmit={handleRegister} className="relative z-10 space-y-4 flex flex-col text-left animate-slide-up">
           <div>
-            <label className="block text-xs font-bold text-gray-500 mb-1">Phone Number (Login ID)</label>
-            <input type="tel" value={phone} disabled className="w-full p-3 bg-gray-100 border border-gray-200 rounded-lg outline-none font-bold text-gray-500 cursor-not-allowed text-center tracking-wider" />
+            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Phone Number (Login ID)</label>
+            <input type="tel" value={phone} disabled className="w-full p-3.5 bg-gray-100 border border-gray-200 rounded-xl outline-none font-bold text-gray-400 cursor-not-allowed text-center tracking-wider" />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 mb-1">Full Name (နာမည်) <span className="text-red-500">*</span></label>
-            <input required type="text" placeholder="e.g. Aung Aung" value={regForm.name} onChange={e => setRegForm({...regForm, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-sm" />
+            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Full Name <span className="text-red-500">*</span></label>
+            <input required type="text" placeholder="e.g. Aung Aung" value={regForm.name} onChange={e => setRegForm({...regForm, name: e.target.value})} 
+                   className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-sm shadow-inner" />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth (မွေးနေ့) - Optional</label>
-            <input type="date" value={regForm.dob} onChange={e => setRegForm({...regForm, dob: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-sm text-gray-700" />
-            <p className="text-[10px] text-gray-400 mt-1">မွေးနေ့ အထူးခံစားခွင့် (Birthday Bonus) များရရှိရန် ထည့်ပေးပါ။</p>
+            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Date of Birth (Optional)</label>
+            <input type="date" value={regForm.dob} onChange={e => setRegForm({...regForm, dob: e.target.value})} 
+                   className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-sm text-[#123524] shadow-inner" />
+            <p className="text-[9px] text-[#D4AF37] font-semibold mt-1.5">မွေးနေ့ အထူးခံစားခွင့် (Birthday Bonus) များရရှိရန် ထည့်ပေးပါ။</p>
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 mb-1">Password (စကားဝှက်) <span className="text-red-500">*</span></label>
-            <input required type="password" placeholder="အနည်းဆုံး ၆ လုံး ထည့်သွင်းပါ" minLength={6} value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-center font-bold tracking-widest" />
+            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Password <span className="text-red-500">*</span></label>
+            <input required type="password" placeholder="အနည်းဆုံး ၆ လုံး ထည့်ပါ" minLength={6} value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value})} 
+                   className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all text-center font-bold tracking-widest shadow-inner" />
           </div>
           
-          {error && <div className="text-xs font-bold text-red-500 text-center">{error}</div>}
-          {successMsg && <div className="text-xs font-bold text-green-600 bg-green-50 p-3 rounded-lg border border-green-200 text-center">{successMsg}</div>}
+          {error && <div className="text-xs font-bold text-red-500 text-center bg-red-50 p-2.5 rounded-lg border border-red-100">{error}</div>}
+          {successMsg && <div className="text-xs font-bold text-[#123524] bg-green-50 p-3 rounded-xl border border-green-200 text-center shadow-sm">{successMsg}</div>}
           
           {!successMsg && (
-             <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center mt-2">
-                 {loading ? 'Creating Account...' : 'Create Account'}
+             <button type="submit" disabled={loading} 
+                     className="w-full py-4 mt-2 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] transform hover:-translate-y-0.5 transition-all duration-300 flex justify-center items-center tracking-widest uppercase text-xs">
+                 {loading ? 'Creating Profile...' : 'Complete Registration'}
              </button>
           )}
           {!successMsg && (
-             <button type="button" onClick={() => { setStep(1); setError(''); }} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 text-center hover:text-gray-700 transition">
+             <button type="button" onClick={() => { setStep(1); setError(''); }} disabled={loading} className="text-xs text-gray-400 font-bold mt-3 text-center hover:text-[#123524] transition-colors uppercase tracking-wider">
                  Cancel & Go Back
              </button>
           )}
