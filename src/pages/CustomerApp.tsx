@@ -194,19 +194,25 @@ export function CustomAlert({ message, title = "Shangrila Online Booking", onClo
 }
 
 // ==========================================
-// AUTH REQUEST (LOGIN & FORGOT PASSWORD)
+// AUTH REQUEST (LOGIN, FORGOT PASSWORD & REGISTER)
 // ==========================================
 export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipToPassword = false }: { onLoginSuccess: (phone: string) => void, title: string, prefilledPhone?: string, skipToPassword?: boolean }) {
   const [phone, setPhone] = useState(prefilledPhone);
   const [password, setPassword] = useState('');
   const [contactInfo, setContactInfo] = useState('');
+  
+  // Registration Form State
+  const [regForm, setRegForm] = useState({ name: '', dob: '', password: '' });
+  const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
+
+  // Steps: 1=Phone, 2=Login, 3=Reset, 4=Register
   const [step, setStep] = useState(skipToPassword ? 2 : 1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   const handleNext = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true);
+    e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true); setShowRegisterPrompt(false);
     try {
       const snap = await getDocs(collection(db, 'users'));
       let found = false; let userPass = '';
@@ -216,8 +222,16 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
              if (decPhone === phone.trim() || d.id === phone.trim()) { found = true; userPass = decryptText(data.password); }
          } catch(err) {}
       });
-      if (!found) { setError("ဖုန်းနံပါတ် ရှာမတွေ့ပါ။ ဘိုကင်အရင်တင်ပေးပါခင်ဗျာ။"); }
-      else { if (userPass) { setStep(2); } else { onLoginSuccess(phone.trim()); } }
+      
+      if (!found) { 
+          // အကောင့်မရှိရင် Error Message အသစ်ပြပြီး Register ခလုတ်ဖော်ပြမည်
+          setError("သင်ထည့်လိုက်သောဖုန်းနံပါတ်ဖြင့် အကောင့်ရှာမတွေ့ပါ။ အကောင့်သစ်တစ်ခု အရင် ပြုလုပ်ပေးပါခင်ဗျာ။"); 
+          setShowRegisterPrompt(true);
+      }
+      else { 
+          if (userPass) { setStep(2); } 
+          else { onLoginSuccess(phone.trim()); } 
+      }
     } catch (e) { setError("Network Error"); }
     finally { setLoading(false); }
   };
@@ -259,17 +273,60 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
      setLoading(false);
   };
 
+  const handleRegister = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!regForm.name.trim()) { setError('နာမည်ထည့်ပေးပါခင်ဗျာ။'); return; }
+      if (!regForm.password.trim() || regForm.password.length < 6) { setError('စကားဝှက် (Password) အနည်းဆုံး ၆ လုံး ထည့်ပေးပါ။'); return; }
+
+      setLoading(true); setError('');
+      try {
+          await addDoc(collection(db, 'users'), {
+              phone: encryptText(phone.trim()),
+              name: encryptText(regForm.name.trim()),
+              password: encryptText(regForm.password),
+              dob: encryptText(regForm.dob),
+              points: encryptText('0'),
+              createdAt: Date.now()
+          });
+          setSuccessMsg('အကောင့်သစ် အောင်မြင်စွာ ဖွင့်ပြီးပါပြီ။');
+          
+          // အကောင့်ဖွင့်ပြီးတာနဲ့ Auto Login လုပ်ပေးမည်
+          setTimeout(() => {
+              onLoginSuccess(phone.trim());
+          }, 1500);
+      } catch (err) {
+          setError('Error creating account.');
+      }
+      setLoading(false);
+  };
+
   return (
     <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 max-w-sm mx-auto text-center mt-10 animate-fade-in px-4 sm:px-8">
-      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]"><KeyRound className="w-8 h-8" /></div>
-      <h2 className="text-xl font-bold text-gray-800 mb-2">{step === 3 ? 'Reset Password' : 'Login Required'}</h2>
-      <p className="text-xs font-bold text-gray-500 mb-6">{step === 3 ? 'Admin ထံသို့ စကားဝှက်အသစ် တောင်းဆိုရန်' : `${title}`}</p>
+      <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-6 text-[#123524]">
+          {step === 4 ? <UserPlus className="w-8 h-8" /> : <KeyRound className="w-8 h-8" />}
+      </div>
+      <h2 className="text-xl font-bold text-gray-800 mb-2">
+          {step === 3 ? 'Reset Password' : step === 4 ? 'Create Account' : 'Login Required'}
+      </h2>
+      <p className="text-xs font-bold text-gray-500 mb-6">
+          {step === 3 ? 'Admin ထံသို့ စကားဝှက်အသစ် တောင်းဆိုရန်' : step === 4 ? 'သင်၏ အချက်အလက်များကို ဖြည့်သွင်းပါ' : title}
+      </p>
 
       {step === 1 && (
-        <form onSubmit={handleNext} className="space-y-4">
+        <form onSubmit={handleNext} className="space-y-4 flex flex-col">
           <input required type="tel" placeholder="Enter Phone Number" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
-          {error && <div className="text-xs font-bold text-red-500">{error}</div>}
-          <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Checking...' : 'Next'}</button>
+          
+          {error && <div className="text-xs font-bold text-red-500 leading-relaxed">{error}</div>}
+          
+          {showRegisterPrompt ? (
+              <button type="button" onClick={() => { setStep(4); setError(''); }} disabled={loading} className="w-full py-3 bg-[#D4AF37] text-white rounded-lg font-bold shadow-md hover:bg-yellow-600 transition flex items-center justify-center">
+                  <UserPlus className="w-4 h-4 mr-2" /> အကောင့်သစ်ဖွင့်ရန် နှိပ်ပါ
+              </button>
+          ) : (
+              <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition">
+                  {loading ? 'Checking...' : 'Next'}
+              </button>
+          )}
         </form>
       )}
       
@@ -277,7 +334,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
         <form onSubmit={handleLogin} className="space-y-4 flex flex-col">
           <input required type="password" placeholder="Enter Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider" />
           {error && <div className="text-xs font-bold text-red-500">{error}</div>}
-          <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900">{loading ? 'Logging in...' : 'Login'}</button>
+          <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition">{loading ? 'Logging in...' : 'Login'}</button>
           <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} className="text-xs text-blue-600 underline font-bold mt-4 hover:text-blue-800">စကားဝှက်မေ့နေပါသလား? (Forgot Password)</button>
         </form>
       )}
@@ -293,8 +350,45 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           </div>
           {error && <div className="text-xs font-bold text-red-500">{error}</div>}
           {successMsg && <div className="text-xs font-bold text-green-600 bg-green-50 p-3 rounded-lg border border-green-200">{successMsg}</div>}
-          {!successMsg && <button type="submit" disabled={loading} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold shadow-md hover:bg-red-700 flex justify-center items-center">{loading ? 'Sending...' : 'Request New Password'}</button>}
+          {!successMsg && <button type="submit" disabled={loading} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold shadow-md hover:bg-red-700 flex justify-center items-center transition">{loading ? 'Sending...' : 'Request New Password'}</button>}
           <button type="button" onClick={() => setStep(2)} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 hover:text-gray-700">Cancel & Go Back</button>
+        </form>
+      )}
+
+      {/* အကောင့်သစ်ဖန်တီးရန် Form အပိုင်း */}
+      {step === 4 && (
+        <form onSubmit={handleRegister} className="space-y-4 flex flex-col text-left animate-slide-up">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1">Phone Number (Login ID)</label>
+            <input type="tel" value={phone} disabled className="w-full p-3 bg-gray-100 border border-gray-200 rounded-lg outline-none font-bold text-gray-500 cursor-not-allowed text-center tracking-wider" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1">Full Name (နာမည်) <span className="text-red-500">*</span></label>
+            <input required type="text" placeholder="e.g. Aung Aung" value={regForm.name} onChange={e => setRegForm({...regForm, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1">Date of Birth (မွေးနေ့) - Optional</label>
+            <input type="date" value={regForm.dob} onChange={e => setRegForm({...regForm, dob: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-sm text-gray-700" />
+            <p className="text-[10px] text-gray-400 mt-1">မွေးနေ့ အထူးခံစားခွင့် (Birthday Bonus) များရရှိရန် ထည့်ပေးပါ။</p>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1">Password (စကားဝှက်) <span className="text-red-500">*</span></label>
+            <input required type="password" placeholder="အနည်းဆုံး ၆ လုံး ထည့်သွင်းပါ" minLength={6} value={regForm.password} onChange={e => setRegForm({...regForm, password: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-center font-bold tracking-widest" />
+          </div>
+          
+          {error && <div className="text-xs font-bold text-red-500 text-center">{error}</div>}
+          {successMsg && <div className="text-xs font-bold text-green-600 bg-green-50 p-3 rounded-lg border border-green-200 text-center">{successMsg}</div>}
+          
+          {!successMsg && (
+             <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex justify-center items-center mt-2">
+                 {loading ? 'Creating Account...' : 'Create Account'}
+             </button>
+          )}
+          {!successMsg && (
+             <button type="button" onClick={() => { setStep(1); setError(''); setShowRegisterPrompt(true); }} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 text-center hover:text-gray-700 transition">
+                 Cancel & Go Back
+             </button>
+          )}
         </form>
       )}
     </div>
