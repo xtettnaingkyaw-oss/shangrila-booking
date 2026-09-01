@@ -199,29 +199,60 @@ export function CustomAlert({ message, title = "Shangrila Online Booking", onClo
 export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipToPassword = false }: { onLoginSuccess: (phone: string) => void, title: string, prefilledPhone?: string, skipToPassword?: boolean }) {
   const [phone, setPhone] = useState(prefilledPhone);
   const [password, setPassword] = useState('');
-  const [contactInfo, setContactInfo] = useState('');
   
   // Registration Form State
   const [regForm, setRegForm] = useState({ name: '', dob: '', password: '' });
 
-  // Steps: 1=Phone, 2=Login, 3=Reset, 4=Register
+  // Reset Password State (OTP System)
+  const [userId, setUserId] = useState<string | null>(null);
+  const [otpState, setOtpState] = useState<'none' | 'waiting' | 'approved'>('none');
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Steps: 1=Phone, 2=Login, 3=Reset Request, 4=Register, 5=Set New Password
   const [step, setStep] = useState(skipToPassword ? 2 : 1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Real-time listener for Admin's OTP Approval
+  useEffect(() => {
+      if (step === 3 && otpState === 'waiting' && userId) {
+          const unsub = onSnapshot(doc(db, 'users', userId), (docSnap) => {
+              if (docSnap.exists()) {
+                  const data = docSnap.data();
+                  if (data.resetRequested && data.otpApproved) {
+                      setGeneratedOtp(decryptText(data.resetOtp) || '');
+                      setOtpState('approved');
+                  }
+              }
+          });
+          return () => unsub();
+      }
+  }, [step, otpState, userId]);
+
   const handleNext = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true);
     try {
       const snap = await getDocs(collection(db, 'users'));
-      let found = false; let userPass = '';
+      let found = false; let userPass = ''; let foundId = null;
       snap.forEach(d => {
          try {
              const data = d.data(); const decPhone = decryptText(data.phone) || d.id;
-             if (decPhone === phone.trim() || d.id === phone.trim()) { found = true; userPass = decryptText(data.password); }
+             if (decPhone === phone.trim() || d.id === phone.trim()) { 
+                 found = true; userPass = decryptText(data.password); foundId = d.id;
+                 if (data.resetRequested) {
+                     if (data.otpApproved) {
+                         setOtpState('approved'); setGeneratedOtp(decryptText(data.resetOtp) || '');
+                     } else { setOtpState('waiting'); }
+                 } else { setOtpState('none'); }
+             }
          } catch(err) {}
       });
       
+      setUserId(foundId);
+
       if (!found) { 
           setError("သင်ထည့်လိုက်သောဖုန်းနံပါတ်ဖြင့် အကောင့်ရှာမတွေ့ပါ။ အောက်ပါ 'အကောင့်သစ်ဖွင့်ရန်' ခလုတ်ကို နှိပ်ပေးပါ။"); 
       }
@@ -250,24 +281,40 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
     finally { setLoading(false); }
   };
 
-  const handleResetPassword = async (e: React.FormEvent) => {
-     e.preventDefault();
-     if(!contactInfo.trim()) { setError('ဆက်သွယ်ရန် Viber သို့မဟုတ် Telegram အကောင့် ဖြည့်ပေးပါ။'); return; }
-     setLoading(true); setError(''); setSuccessMsg('');
-     try {
-         const snap = await getDocs(collection(db, 'users'));
-         let targetId = null;
-         snap.forEach(d => {
-             const decPhone = decryptText(d.data().phone) || d.id;
-             if (decPhone === phone.trim() || d.id === phone.trim()) targetId = d.id;
-         });
-         if (targetId) {
-             await updateDoc(doc(db, 'users', targetId), { resetRequested: true, resetContact: encryptText(contactInfo.trim()) });
-             setSuccessMsg('Admin ထံသို့ စကားဝှက်အသစ်တောင်းဆိုမှု ပို့ပြီးပါပြီ။ မကြာမီ ဆက်သွယ်ပေးပါမည်။');
-             setTimeout(() => { setStep(1); setSuccessMsg(''); setContactInfo(''); setPassword(''); }, 6000);
-         }
-     } catch (e) { setError('Error requesting reset.'); }
-     setLoading(false);
+  const handleRequestOTP = async () => {
+      if (!userId) return;
+      setLoading(true); setError('');
+      try {
+          const otp = Math.floor(100000 + Math.random() * 900000).toString();
+          await updateDoc(doc(db, 'users', userId), {
+              resetRequested: true,
+              resetOtp: encryptText(otp),
+              otpApproved: false
+          });
+          setGeneratedOtp(otp);
+          setOtpState('waiting');
+      } catch (e) { setError('Error requesting OTP.'); }
+      setLoading(false);
+  };
+
+  const handleSetNewPassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!userId) return;
+      if (newPassword.length < 6) { setError('စကားဝှက် အနည်းဆုံး ၆ လုံး ထည့်ပါ။'); return; }
+      if (newPassword !== confirmPassword) { setError('စကားဝှက်များ တူညီမှုမရှိပါ။ ပြန်စစ်ဆေးပေးပါ။'); return; }
+      
+      setLoading(true); setError('');
+      try {
+          await updateDoc(doc(db, 'users', userId), {
+              password: encryptText(newPassword),
+              resetRequested: false,
+              resetOtp: '',
+              otpApproved: false
+          });
+          setSuccessMsg('စကားဝှက်အသစ် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။');
+          setTimeout(() => { onLoginSuccess(phone.trim()); }, 1500);
+      } catch (e) { setError('Error updating password.'); }
+      setLoading(false);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -278,16 +325,16 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       setLoading(true); setError('');
       try {
           const snap = await getDocs(collection(db, 'users'));
-          let phoneExists = false;
+          let phoneExists = false; let foundId = null;
           snap.forEach(d => {
              try {
-                 const data = d.data(); 
-                 const decPhone = decryptText(data.phone) || d.id;
-                 if (decPhone === phone.trim() || d.id === phone.trim()) { phoneExists = true; }
+                 const data = d.data(); const decPhone = decryptText(data.phone) || d.id;
+                 if (decPhone === phone.trim() || d.id === phone.trim()) { phoneExists = true; foundId = d.id; }
              } catch(err) {}
           });
 
           if (phoneExists) {
+              setUserId(foundId);
               setError('သင်ထည့်လိုက်သော ဖုန်းနံပါတ်ဖြင့်ပြုလုပ်ထားသော User Account ရှိပြီးသားဖြစ်ပါသည်။ ကျေးဇူးပြု၍ Login ဝင်ပါ (သို့မဟုတ်) Password မေ့နေပါသလား။');
               setLoading(false);
               return;
@@ -309,20 +356,19 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
 
   return (
     <div className="relative bg-white p-8 sm:p-10 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#D4AF37]/20 max-w-sm mx-auto text-center mt-8 mb-12 animate-fade-in overflow-hidden">
-      {/* Luxury Background Glow Effects */}
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-[#D4AF37] opacity-10 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-[#123524] opacity-[0.03] rounded-full blur-3xl pointer-events-none"></div>
 
       <div className="relative z-10 w-20 h-20 bg-gradient-to-br from-[#123524] to-[#1a4a32] rounded-full mx-auto flex items-center justify-center mb-6 shadow-lg border-2 border-[#D4AF37]/40 group transition-all duration-500 hover:scale-105">
           <div className="absolute inset-0 rounded-full bg-[#D4AF37] opacity-0 group-hover:opacity-20 transition-opacity duration-500 blur-md"></div>
-          {step === 4 ? <UserPlus className="w-8 h-8 text-[#D4AF37]" /> : <KeyRound className="w-8 h-8 text-[#D4AF37]" />}
+          {step === 4 ? <UserPlus className="w-8 h-8 text-[#D4AF37]" /> : step === 5 ? <ShieldCheck className="w-8 h-8 text-[#D4AF37]" /> : <KeyRound className="w-8 h-8 text-[#D4AF37]" />}
       </div>
       
       <h2 className="relative z-10 text-2xl font-bold text-[#123524] mb-2 tracking-wide font-serif">
-          {step === 3 ? 'Reset Password' : step === 4 ? 'Create Account' : 'Login Required'}
+          {step === 3 ? 'Reset Password' : step === 4 ? 'Create Account' : step === 5 ? 'New Password' : 'Login Required'}
       </h2>
       <p className="relative z-10 text-[11px] font-bold text-[#D4AF37] mb-8 uppercase tracking-widest">
-          {step === 3 ? 'Request new password' : step === 4 ? 'Join the exclusive club' : title}
+          {step === 3 ? 'Request OTP' : step === 4 ? 'Join the exclusive club' : step === 5 ? 'Secure your account' : title}
       </p>
 
       {step === 1 && (
@@ -360,7 +406,6 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
               {loading ? 'Logging in...' : 'Secure Login'}
           </button>
           
-          {/* 🌟 Forgot Password Section (Text and Button Separated) */}
           <div className="mt-4 pt-5 border-t border-gray-100">
               <p className="text-[10px] font-bold text-[#D4AF37] mb-3 leading-relaxed uppercase tracking-wider">
                   စကားဝှက်မေ့နေပါသလား? (Forgot Password)
@@ -374,25 +419,40 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       )}
 
       {step === 3 && (
-        <form onSubmit={handleResetPassword} className="relative z-10 space-y-5 flex flex-col animate-slide-up">
-          <div className="text-left">
-             <label className="block text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider">Contact Info (Viber / Telegram)</label>
-             <div className="relative">
-                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><MessageCircle className="w-4 h-4 text-[#D4AF37]" /></div>
-                 <input required type="text" placeholder="e.g. 09-xxxxxxxxx" value={contactInfo} onChange={e => setContactInfo(e.target.value)} 
-                        className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-sm shadow-inner" />
-             </div>
-          </div>
-          {error && <div className="text-xs font-bold text-red-500 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
-          {successMsg && <div className="text-xs font-bold text-[#123524] bg-green-50 p-4 rounded-xl border border-green-200">{successMsg}</div>}
-          {!successMsg && (
-             <button type="submit" disabled={loading} 
-                     className="w-full py-4 bg-red-600/90 text-white rounded-xl font-bold shadow-md hover:bg-red-700 hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex justify-center items-center tracking-widest uppercase text-xs">
-                 {loading ? 'Sending...' : 'Request New Password'}
-             </button>
-          )}
-          <button type="button" onClick={() => setStep(2)} disabled={loading} className="text-xs text-gray-500 font-bold mt-2 hover:text-[#123524] transition-colors">Cancel & Go Back</button>
-        </form>
+        <div className="relative z-10 space-y-5 flex flex-col animate-slide-up">
+           {otpState === 'none' && (
+              <>
+                <div className="text-left bg-yellow-50 border border-[#D4AF37]/30 p-4 rounded-xl shadow-inner">
+                   <p className="text-xs font-bold text-[#123524] mb-2 leading-relaxed text-center">စကားဝှက်အသစ် ပြန်လည်သတ်မှတ်ရန်အတွက် Admin ထံမှ တစ်ခါသုံးကုဒ် (OTP) တောင်းခံရန် လိုအပ်ပါသည်။</p>
+                </div>
+                <button type="button" onClick={handleRequestOTP} disabled={loading} className="w-full py-4 bg-red-600/90 text-white rounded-xl font-bold shadow-md hover:bg-red-700 transition flex justify-center items-center uppercase tracking-widest text-xs">
+                    {loading ? 'Requesting...' : 'Admin ထံမှ OTP တောင်းခံရန်'}
+                </button>
+              </>
+           )}
+           
+           {otpState === 'waiting' && (
+              <div className="bg-blue-50 border border-blue-200 p-6 rounded-xl text-center shadow-sm">
+                  <div className="animate-spin text-blue-500 w-8 h-8 mx-auto mb-3"><ShieldAlert className="w-8 h-8" /></div>
+                  <p className="text-xs font-bold text-blue-800 mb-1">OTP တောင်းဆိုထားပါသည်</p>
+                  <p className="text-[10px] text-blue-600 font-semibold">Admin မှ အတည်ပြုပေးရန် စောင့်ဆိုင်းနေပါသည်...</p>
+              </div>
+           )}
+
+           {otpState === 'approved' && (
+              <div className="bg-green-50 border border-green-200 p-6 rounded-xl text-center shadow-sm">
+                  <p className="text-[10px] font-bold text-green-700 uppercase mb-2">Admin မှ အတည်ပြုပြီးပါပြီ</p>
+                  <p className="text-xs text-green-800 font-semibold mb-3">သင့်၏ တစ်ခါသုံးစကားဝှက် (OTP) မှာ</p>
+                  <div className="text-4xl font-black tracking-widest text-[#123524] mb-5">{generatedOtp}</div>
+                  <button type="button" onClick={() => setStep(5)} className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-md hover:bg-[#1a4a32] transition flex justify-center items-center text-xs uppercase tracking-wider">
+                      Login ဝင်ပြီး စကားဝှက်အသစ်လုပ်ရန်
+                  </button>
+              </div>
+           )}
+
+           {error && <div className="text-xs font-bold text-red-500 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
+           <button type="button" onClick={() => setStep(2)} disabled={loading} className="text-xs text-gray-500 font-bold mt-2 hover:text-[#123524] transition-colors">Cancel & Go Back</button>
+        </div>
       )}
 
       {step === 4 && (
@@ -410,7 +470,6 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
             <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Date of Birth (Optional)</label>
             <input type="date" value={regForm.dob} onChange={e => setRegForm({...regForm, dob: e.target.value})} 
                    className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-sm text-[#123524] shadow-inner" />
-            <p className="text-[9px] text-[#D4AF37] font-semibold mt-1.5">မွေးနေ့ အထူးခံစားခွင့် (Birthday Bonus) များရရှိရန် ထည့်ပေးပါ။</p>
           </div>
           <div>
             <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Password <span className="text-red-500">*</span></label>
@@ -418,17 +477,15 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
                    className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all text-center font-bold tracking-widest shadow-inner" />
           </div>
           
-          {/* 🌟 New Error Display with Actions for Existing Account */}
           {error && (
-              <div className="bg-red-50 p-4 rounded-xl border border-red-200 animate-slide-up shadow-sm mt-2">
-                  <div className="text-[11px] font-bold text-red-500 text-center leading-relaxed">{error}</div>
-                  
+              <div className="bg-red-50 p-4 rounded-xl border border-red-200 animate-slide-up shadow-sm mt-2 text-center">
+                  <div className="text-xs font-bold text-red-500 leading-relaxed">{error}</div>
                   {error.includes('ရှိပြီးသားဖြစ်ပါသည်') && (
                       <div className="flex flex-col gap-2 mt-4">
-                          <button type="button" onClick={() => { setStep(2); setError(''); }} className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-lg font-bold shadow-sm hover:bg-[#1a4a32] transition text-xs flex justify-center items-center">
+                          <button type="button" onClick={() => { setStep(2); setError(''); }} className="w-full py-3.5 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-sm hover:bg-[#1a4a32] transition text-xs flex justify-center items-center uppercase tracking-widest">
                               Login ဝင်ပါ
                           </button>
-                          <button type="button" onClick={() => { setStep(3); setError(''); }} className="w-full py-3 bg-yellow-50 text-[#D4AF37] border border-[#D4AF37]/50 rounded-lg font-bold shadow-sm hover:bg-yellow-100 transition text-xs flex justify-center items-center">
+                          <button type="button" onClick={() => { setStep(3); setError(''); }} className="w-full py-3.5 bg-yellow-50 text-[#D4AF37] border border-[#D4AF37]/50 rounded-xl font-bold shadow-sm hover:bg-yellow-100 transition text-xs flex justify-center items-center uppercase tracking-widest">
                               <KeyRound className="w-3.5 h-3.5 mr-1.5" /> Password အသစ် Request လုပ်ရန်
                           </button>
                       </div>
@@ -447,6 +504,30 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           {!successMsg && (
              <button type="button" onClick={() => { setStep(1); setError(''); }} disabled={loading} className="text-xs text-gray-400 font-bold mt-3 text-center hover:text-[#123524] transition-colors uppercase tracking-wider">
                  Cancel & Go Back
+             </button>
+          )}
+        </form>
+      )}
+
+      {step === 5 && (
+        <form onSubmit={handleSetNewPassword} className="relative z-10 space-y-4 flex flex-col text-left animate-slide-up">
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">New Password <span className="text-red-500">*</span></label>
+            <input required type="password" placeholder="အသစ်ထားမည့် စကားဝှက်" minLength={6} value={newPassword} onChange={e => setNewPassword(e.target.value)} 
+                   className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all text-center font-bold tracking-widest shadow-inner" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Confirm Password <span className="text-red-500">*</span></label>
+            <input required type="password" placeholder="စကားဝှက်ကို ထပ်ရိုက်ပါ" minLength={6} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} 
+                   className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all text-center font-bold tracking-widest shadow-inner" />
+          </div>
+          {error && <div className="text-xs font-bold text-red-500 text-center bg-red-50 p-2.5 rounded-lg border border-red-100">{error}</div>}
+          {successMsg && <div className="text-xs font-bold text-[#123524] bg-green-50 p-3 rounded-xl border border-green-200 text-center shadow-sm">{successMsg}</div>}
+          
+          {!successMsg && (
+             <button type="submit" disabled={loading} 
+                     className="w-full py-4 mt-2 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] transform hover:-translate-y-0.5 transition-all duration-300 flex justify-center items-center tracking-widest uppercase text-xs">
+                 {loading ? 'Saving...' : 'Confirm & Auto Login'}
              </button>
           )}
         </form>
