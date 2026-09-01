@@ -360,11 +360,16 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
               {loading ? 'Logging in...' : 'Secure Login'}
           </button>
           
-          {/* 🌟 New Yellow Box for Forgot Password */}
-          <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} 
-                  className="w-full py-3.5 bg-yellow-50 text-[#D4AF37] border border-[#D4AF37]/50 rounded-xl font-bold shadow-sm hover:shadow-md hover:bg-yellow-100 transition-all duration-300 flex items-center justify-center text-sm transform hover:-translate-y-0.5 mt-2">
-              <KeyRound className="w-4 h-4 mr-2" /> စကားဝှက်မေ့နေပါသလား? (Forgot Password)
-          </button>
+          {/* 🌟 Forgot Password Section (Text and Button Separated) */}
+          <div className="mt-4 pt-5 border-t border-gray-100">
+              <p className="text-[10px] font-bold text-[#D4AF37] mb-3 leading-relaxed uppercase tracking-wider">
+                  စကားဝှက်မေ့နေပါသလား? (Forgot Password)
+              </p>
+              <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} 
+                      className="w-full py-3.5 bg-yellow-50 text-[#D4AF37] border border-[#D4AF37]/50 rounded-xl font-bold shadow-sm hover:shadow-md hover:bg-yellow-100 transition-all duration-300 flex items-center justify-center text-xs transform hover:-translate-y-0.5 uppercase tracking-widest">
+                  <KeyRound className="w-4 h-4 mr-2" /> Request New Password
+              </button>
+          </div>
         </form>
       )}
 
