@@ -1066,10 +1066,7 @@ export function CustomerHistory({ userPhone, onLoginSuccess }: { userPhone: stri
 }
 
 // ==========================================
-// CUSTOMER PROFILE - LUXURY UI
-// ==========================================
-// ==========================================
-// CUSTOMER PROFILE - LUXURY UI
+// CUSTOMER PROFILE - LUXURY UI (COMPACT)
 // ==========================================
 export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }: { appData: AppData, userPhone: string, onLoginSuccess: (phone: string) => void, onLogout: () => void }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -1196,34 +1193,34 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   const isBdayMonth = () => { if (!profile?.dob) return false; const dobParts = profile.dob.split('-'); const currentParts = getLocalTodayStr().split('-'); return dobParts[1] === currentParts[1]; };
 
   return (
-    <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0 relative z-10 pb-12">
+    <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0 relative z-10 pb-8">
       <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
       
       {/* 🌟 History Modal */}
       {showHistory && (
           <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center sm:items-center sm:p-4 animate-fade-in backdrop-blur-sm" onClick={() => setShowHistory(false)}>
               <div className="bg-white w-full sm:max-w-md rounded-t-[2rem] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh] sm:h-auto sm:max-h-[85vh] animate-slide-up border border-[#D4AF37]/20" onClick={e => e.stopPropagation()}>
-                  <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-6 flex items-center justify-between sticky top-0 z-10 shadow-md">
-                      <h3 className="text-[#D4AF37] font-bold text-base flex items-center tracking-wide"><History className="w-5 h-5 mr-2" /> Points History</h3>
-                      <button onClick={() => setShowHistory(false)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-2 rounded-full"><X className="w-5 h-5"/></button>
+                  <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-5 flex items-center justify-between sticky top-0 z-10 shadow-md">
+                      <h3 className="text-[#D4AF37] font-bold text-sm flex items-center tracking-wide"><History className="w-4 h-4 mr-2" /> Points History</h3>
+                      <button onClick={() => setShowHistory(false)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-4 h-4"/></button>
                   </div>
-                  <div className="p-5 overflow-y-auto flex-1 bg-gray-50 space-y-3 pb-8">
-                      {loadingHistory ? (<div className="text-center py-10 text-[#D4AF37] font-bold text-sm animate-pulse tracking-widest uppercase">Loading...</div>) : history.length === 0 ? (<div className="text-center py-10 text-gray-400 font-bold text-sm">Point ရရှိထားသော မှတ်တမ်းမရှိသေးပါ။</div>) : (
+                  <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-2.5 pb-6">
+                      {loadingHistory ? (<div className="text-center py-10 text-[#D4AF37] font-bold text-xs animate-pulse tracking-widest uppercase">Loading...</div>) : history.length === 0 ? (<div className="text-center py-10 text-gray-400 font-bold text-xs">Point ရရှိထားသော မှတ်တမ်းမရှိသေးပါ။</div>) : (
                           history.map((h, i) => (
-                              <div key={i} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:border-[#D4AF37]/50 transition-all hover:shadow-md group">
+                              <div key={i} className="bg-white p-3.5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between hover:border-[#D4AF37]/50 transition-all hover:shadow-md group">
                                   <div className="flex items-center">
-                                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 transition-transform group-hover:scale-105 ${h.type.includes('Online') ? 'bg-blue-50 text-blue-500 border border-blue-100' : 'bg-gradient-to-br from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-sm'}`}>
-                                          {h.type.includes('Online') ? <CalendarPlus className="w-5 h-5"/> : <Home className="w-5 h-5"/>}
+                                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-3 transition-transform group-hover:scale-105 ${h.type.includes('Online') ? 'bg-blue-50 text-blue-500 border border-blue-100' : 'bg-gradient-to-br from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-sm'}`}>
+                                          {h.type.includes('Online') ? <CalendarPlus className="w-4 h-4"/> : <Home className="w-4 h-4"/>}
                                       </div>
                                       <div>
-                                          <div className="font-bold text-[#123524] text-sm mb-1">{h.type}</div>
-                                          <div className="text-[10px] font-semibold text-gray-500">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</div>
-                                          <div className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-wider">Spent: {formatPrice(h.amount)}</div>
+                                          <div className="font-bold text-[#123524] text-xs mb-0.5">{h.type}</div>
+                                          <div className="text-[9px] font-semibold text-gray-500">{new Date(h.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                                          <div className="text-[9px] font-bold text-gray-400 mt-0.5 uppercase tracking-wider">Spent: {formatPrice(h.amount)}</div>
                                       </div>
                                   </div>
                                   <div className="text-right">
-                                      <div className="text-xl font-black text-green-600 drop-shadow-sm">+{h.pointsEarned}</div>
-                                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Points</div>
+                                      <div className="text-lg font-black text-green-600 drop-shadow-sm">+{h.pointsEarned}</div>
+                                      <div className="text-[8px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Points</div>
                                   </div>
                               </div>
                           ))
@@ -1234,87 +1231,90 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
       )}
 
       {/* 🌟 Header */}
-      <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-[#123524] font-serif tracking-wide">My Profile</h2>
-          <div className="w-12 h-1 bg-[#D4AF37] mx-auto rounded-full mt-3"></div>
+      <div className="text-center mb-6">
+          <h2 className="text-xl font-bold text-[#123524] font-serif tracking-wide">My Profile</h2>
+          <div className="w-8 h-1 bg-[#D4AF37] mx-auto rounded-full mt-2"></div>
       </div>
 
-      {/* 🌟 Luxury Profile Card */}
-      <div className="relative bg-white p-8 sm:p-10 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#D4AF37]/20 text-center mb-8 overflow-hidden z-10 transition-all duration-500">
+      {/* 🌟 Luxury Profile Card (Compact) */}
+      <div className="relative bg-white p-6 sm:p-8 rounded-[1.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#D4AF37]/20 text-center mb-6 overflow-hidden z-10 transition-all duration-500">
         
         {/* Background Glows */}
-        <div className="absolute -top-20 -right-20 w-48 h-48 bg-[#D4AF37] opacity-10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-[#123524] opacity-[0.04] rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute -top-16 -right-16 w-40 h-40 bg-[#D4AF37] opacity-10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-[#123524] opacity-[0.04] rounded-full blur-3xl pointer-events-none"></div>
 
         {/* Profile Avatar */}
-        <div className="relative z-10 w-24 h-24 bg-gradient-to-br from-[#123524] to-[#1a4a32] rounded-full mx-auto flex items-center justify-center mb-5 shadow-[0_4px_20px_rgba(18,53,36,0.4)] border-[3px] border-[#D4AF37]/40 group transition-all duration-500 hover:scale-105">
+        <div className="relative z-10 w-20 h-20 bg-gradient-to-br from-[#123524] to-[#1a4a32] rounded-full mx-auto flex items-center justify-center mb-4 shadow-[0_4px_20px_rgba(18,53,36,0.4)] border-[2px] border-[#D4AF37]/50 group transition-all duration-500 hover:scale-105">
             <div className="absolute inset-0 rounded-full bg-[#D4AF37] opacity-0 group-hover:opacity-20 transition-opacity duration-500 blur-md"></div>
-            {userTier ? <Crown className="w-10 h-10 drop-shadow-md" style={{ color: userTier.colorTheme || '#D4AF37' }} /> : <User className="w-10 h-10 text-[#D4AF37]" />}
+            {/* VIP Crown လေးကို အမည်းအစား အမြဲတမ်း ရွှေရောင် (Gold) အဖြစ် ထင်ရှားအောင် ပြင်ဆင်ထားသည် */}
+            {userTier ? <Crown className="w-8 h-8 drop-shadow-md text-[#D4AF37]" /> : <User className="w-8 h-8 text-[#D4AF37]" />}
         </div>
         
         {!editMode ? (
           <div className="animate-fade-in">
-            <h3 className="relative z-10 text-2xl font-bold text-[#123524] mb-1.5 tracking-wide drop-shadow-sm">{profile?.name || 'Walk-in Guest'}</h3>
-            <p className="relative z-10 text-xs font-semibold text-gray-500 mb-6 flex items-center justify-center"><Phone className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]" /> {profile?.phone}</p>
+            <h3 className="relative z-10 text-xl font-bold text-[#123524] mb-1 tracking-wide drop-shadow-sm">{profile?.name || 'Walk-in Guest'}</h3>
+            <p className="relative z-10 text-[10px] font-semibold text-gray-500 mb-4 flex items-center justify-center"><Phone className="w-3 h-3 mr-1.5 text-[#D4AF37]" /> {profile?.phone}</p>
             
             {userTier && (
-                <div className="relative z-10 mb-8 inline-flex items-center px-5 py-2 rounded-full text-xs font-bold text-white shadow-md border border-white/20 transform hover:scale-105 transition-transform cursor-default" style={{ backgroundColor: userTier.colorTheme }}>
-                    <Award className="w-4 h-4 mr-2"/> {userTier.name} ({userTier.discountPercent}%)
+                <div className="relative z-10 mb-6 inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-bold text-white shadow-md border border-white/20 transform hover:scale-105 transition-transform cursor-default" style={{ backgroundColor: userTier.colorTheme }}>
+                    <Award className="w-3.5 h-3.5 mr-1.5"/> {userTier.name} ({userTier.discountPercent}%)
                 </div>
             )}
 
-            {/* Metrics Grid */}
-            <div className="relative z-10 grid grid-cols-2 gap-4 mb-8">
-                <div className="bg-gradient-to-br from-[#123524] to-[#0a1f14] border border-[#D4AF37]/30 rounded-2xl p-5 flex flex-col items-center justify-center shadow-lg relative overflow-hidden group hover:-translate-y-1 transition-all duration-300">
-                    <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] opacity-10 rounded-full blur-2xl group-hover:opacity-20 transition-opacity"></div>
-                    <span className="text-[9px] text-[#D4AF37] font-bold uppercase tracking-widest flex items-center mb-2"><Star className="w-3.5 h-3.5 mr-1.5 animate-pulse"/> VIP Points</span>
-                    <span className="text-3xl sm:text-4xl font-black text-white mb-4 drop-shadow-md tracking-tight">{currentPoints}</span>
-                    <button onClick={() => { setShowHistory(true); fetchHistory(); }} className="w-full py-2.5 bg-gradient-to-r from-[#D4AF37] to-yellow-600 text-[#123524] rounded-xl text-[10px] font-bold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center justify-center tracking-wider uppercase"><History className="w-3.5 h-3.5 mr-1.5"/> History</button>
+            {/* Metrics Grid (Compact Height) */}
+            <div className="relative z-10 grid grid-cols-2 gap-3 mb-6">
+                {/* VIP Points Card */}
+                <div className="bg-gradient-to-br from-[#123524] to-[#0a1f14] border border-[#D4AF37]/30 rounded-xl p-3 flex flex-col items-center justify-center shadow-lg relative overflow-hidden group hover:-translate-y-0.5 transition-all duration-300">
+                    <div className="absolute -top-6 -right-6 w-16 h-16 bg-[#D4AF37] opacity-10 rounded-full blur-xl group-hover:opacity-20 transition-opacity"></div>
+                    <span className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-widest flex items-center mb-1"><Star className="w-3 h-3 mr-1 animate-pulse"/> VIP Points</span>
+                    <span className="text-2xl font-black text-white mb-2 drop-shadow-md tracking-tight">{currentPoints}</span>
+                    <button onClick={() => { setShowHistory(true); fetchHistory(); }} className="w-full py-1.5 bg-gradient-to-r from-[#D4AF37] to-yellow-600 text-[#123524] rounded-lg text-[9px] font-bold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center justify-center tracking-wider uppercase"><History className="w-3 h-3 mr-1"/> History</button>
                 </div>
-                <div className="bg-white border border-gray-100 rounded-2xl p-5 flex flex-col items-center justify-center shadow-[0_4px_15px_rgb(0,0,0,0.03)] hover:shadow-[0_6px_20px_rgb(0,0,0,0.06)] hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group">
-                    <div className="absolute -bottom-6 -left-6 w-20 h-20 bg-blue-500 opacity-5 rounded-full blur-2xl"></div>
-                    <span className="text-[9px] text-blue-500 font-bold uppercase tracking-widest flex items-center mb-3"><Gift className="w-3.5 h-3.5 mr-1.5"/> Birthday</span>
-                    <span className="text-[13px] sm:text-sm font-black text-[#123524] mt-1 bg-blue-50/50 px-3 py-2.5 rounded-xl border border-blue-100/50 w-full text-center">{(profile as any)?.dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
-                    <p className="text-[8px] text-gray-400 mt-4 font-semibold text-center leading-relaxed">Special bonuses on your birthday month.</p>
+                {/* Birthday Card (Gold Border Added) */}
+                <div className="bg-white border-2 border-[#D4AF37]/50 rounded-xl p-3 flex flex-col items-center justify-center shadow-md hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden group">
+                    <div className="absolute -bottom-6 -left-6 w-16 h-16 bg-blue-500 opacity-5 rounded-full blur-xl"></div>
+                    <span className="text-[8px] text-blue-600 font-bold uppercase tracking-widest flex items-center mb-1.5"><Gift className="w-3 h-3 mr-1"/> Birthday</span>
+                    <span className="text-[11px] font-black text-[#123524] my-auto bg-blue-50/50 px-2 py-1.5 rounded-lg border border-blue-100/50 w-full text-center">{(profile as any)?.dob ? new Date((profile as any).dob).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Not Set'}</span>
+                    <p className="text-[7.5px] text-gray-400 mt-1.5 font-semibold text-center leading-tight">Special bonuses on your birthday.</p>
                 </div>
             </div>
 
-            {/* VIP Progress Area */}
-            <div className="relative z-10 bg-gray-50/80 backdrop-blur-sm border border-gray-200/80 rounded-2xl p-6 mb-8 shadow-sm text-left group hover:border-[#D4AF37]/40 transition-colors duration-300">
-                <h4 className="text-[11px] font-bold text-[#123524] mb-5 flex items-center tracking-widest uppercase"><Target className="w-4 h-4 mr-2 text-[#D4AF37]"/> VIP Progress</h4>
+            {/* VIP Progress Area (Compact) */}
+            <div className="relative z-10 bg-gray-50/80 backdrop-blur-sm border border-gray-200/80 rounded-xl p-4 mb-6 shadow-sm text-left group hover:border-[#D4AF37]/40 transition-colors duration-300">
+                <h4 className="text-[10px] font-bold text-[#123524] mb-3 flex items-center tracking-widest uppercase"><Target className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37]"/> VIP Progress</h4>
                 
                 {nextTier ? (
                     <>
-                        <div className="flex justify-between items-end mb-2.5">
-                            <span className="text-[10px] font-bold text-gray-500 bg-white px-2.5 py-1 rounded-md shadow-sm border border-gray-100">Current: {currentPoints}</span>
-                            <span className="text-[10px] font-bold text-[#123524] text-right truncate bg-yellow-50 px-2.5 py-1 rounded-md border border-[#D4AF37]/30 shadow-sm" title={nextTier.name}>{nextTier.name} ({nextTier.requiredPoints})</span>
+                        <div className="flex justify-between items-end mb-2">
+                            <span className="text-[9px] font-bold text-gray-500 bg-white px-2 py-1 rounded shadow-sm border border-gray-100">Current: {currentPoints}</span>
+                            <span className="text-[9px] font-bold text-[#123524] text-right truncate bg-yellow-50 px-2 py-1 rounded border border-[#D4AF37]/30 shadow-sm" title={nextTier.name}>{nextTier.name} ({nextTier.requiredPoints})</span>
                         </div>
-                        <div className="w-full h-3 bg-gray-200/80 rounded-full overflow-hidden shadow-inner p-[1px]">
+                        <div className="w-full h-2 bg-gray-200/80 rounded-full overflow-hidden shadow-inner p-[1px]">
                             <div className="h-full rounded-full bg-gradient-to-r from-yellow-400 via-[#D4AF37] to-yellow-500 transition-all duration-1000 ease-out relative" style={{ width: `${progressPercent}%` }}></div>
                         </div>
-                        <p className="text-[10px] text-gray-500 font-semibold mt-4 text-center leading-relaxed bg-white py-2.5 rounded-xl border border-gray-100"><span className="font-bold text-[#123524]">{nextTier.name}</span> ဖြစ်ရန် လိုအပ်သော ပွိုင့်: <span className="font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded">{pointsNeeded} Pts</span></p>
+                        <p className="text-[9px] text-gray-500 font-semibold mt-3 text-center leading-relaxed bg-white py-1.5 rounded-lg border border-gray-100"><span className="font-bold text-[#123524]">{nextTier.name}</span> ဖြစ်ရန် လိုအပ်သော ပွိုင့်: <span className="font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded">{pointsNeeded} Pts</span></p>
                     </>
                 ) : (
-                    <div className="text-center py-5 bg-gradient-to-b from-yellow-50 to-white rounded-xl border border-[#D4AF37]/20 shadow-sm">
-                        <Crown className="w-10 h-10 text-[#D4AF37] mx-auto mb-3 filter drop-shadow-sm" />
-                        <p className="text-xs font-bold text-[#123524] leading-relaxed px-4">ဂုဏ်ယူပါသည်။ သင်သည် အမြင့်ဆုံး VIP အဆင့်သို့ ရောက်ရှိနေပါပြီ။</p>
+                    <div className="text-center py-3 bg-gradient-to-b from-yellow-50 to-white rounded-lg border border-[#D4AF37]/20 shadow-sm">
+                        <Crown className="w-8 h-8 text-[#D4AF37] mx-auto mb-1 filter drop-shadow-sm" />
+                        <p className="text-[9px] font-bold text-[#123524] leading-relaxed px-2">ဂုဏ်ယူပါသည်။ သင်သည် အမြင့်ဆုံး VIP အဆင့်သို့ ရောက်ရှိနေပါပြီ။</p>
                     </div>
                 )}
                 
-                <div className="mt-5 p-4 bg-white rounded-xl border border-gray-100 flex justify-between items-center shadow-sm">
-                    <span className="text-[10px] font-bold text-gray-500 flex items-center uppercase tracking-wider"><Calendar className="w-3.5 h-3.5 mr-2 text-[#D4AF37]"/> ယခုလ စုဆောင်းပွိုင့်</span>
-                    <span className="text-sm font-black text-[#123524] bg-green-50/80 px-3 py-1.5 rounded-lg border border-green-200 text-green-700">{monthlyPoints} Pts</span>
+                <div className="mt-3 p-2.5 bg-white rounded-lg border border-gray-100 flex justify-between items-center shadow-sm">
+                    <span className="text-[9px] font-bold text-gray-500 flex items-center uppercase tracking-wider"><Calendar className="w-3 h-3 mr-1.5 text-[#D4AF37]"/> ယခုလ စုဆောင်းပွိုင့်</span>
+                    <span className="text-xs font-black text-[#123524] bg-green-50/80 px-2 py-1 rounded-md border border-green-200 text-green-700">{monthlyPoints} Pts</span>
                 </div>
                 
                 {isBdayMonth() && userTier && (
-                    <div className="mt-4 p-5 bg-gradient-to-br from-blue-50 to-white border border-blue-200/60 rounded-xl shadow-sm relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-16 h-16 bg-blue-400 opacity-5 rounded-full blur-xl"></div>
-                        <h5 className="text-[11px] font-bold text-blue-800 mb-2.5 flex items-center tracking-wide uppercase"><Gift className="w-4 h-4 mr-2"/> Birthday Month Bonus</h5>
-                        <p className="text-[10px] text-blue-700 font-semibold mb-4 leading-relaxed opacity-90">ယခုလသည် သင့်မွေးနေ့လဖြစ်သောကြောင့် အထူးခံစားခွင့် ရရှိနေပါသည်။</p>
+                    <div className="mt-3 p-3 bg-gradient-to-br from-blue-50 to-white border border-blue-200/60 rounded-lg shadow-sm relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-12 h-12 bg-blue-400 opacity-5 rounded-full blur-xl"></div>
+                        <h5 className="text-[10px] font-bold text-blue-800 mb-1.5 flex items-center tracking-wide uppercase"><Gift className="w-3.5 h-3.5 mr-1.5"/> Birthday Month Bonus</h5>
+                        <p className="text-[9px] text-blue-700 font-semibold mb-2.5 leading-relaxed opacity-90">ယခုလသည် သင့်မွေးနေ့လဖြစ်သောကြောင့် အထူးခံစားခွင့် ရရှိနေပါသည်။</p>
                         {(userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) ? (
-                            <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-blue-100 shadow-sm"><span className="text-[9px] text-gray-600 font-bold uppercase tracking-wider">Base 20% + Monthly {monthlyPoints}%</span><span className="text-sm font-black text-blue-600">{Math.min(100, 20 + monthlyPoints)}% OFF</span></div>
+                            <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-blue-100 shadow-sm"><span className="text-[8px] text-gray-600 font-bold uppercase tracking-wider">Base 20% + Monthly {monthlyPoints}%</span><span className="text-xs font-black text-blue-600">{Math.min(100, 20 + monthlyPoints)}% OFF</span></div>
                         ) : (
-                            <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-blue-100 shadow-sm"><span className="text-[9px] text-gray-600 font-bold uppercase tracking-wider">VIP Standard Birthday</span><span className="text-sm font-black text-blue-600">50% OFF</span></div>
+                            <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-blue-100 shadow-sm"><span className="text-[8px] text-gray-600 font-bold uppercase tracking-wider">VIP Standard Birthday</span><span className="text-xs font-black text-blue-600">50% OFF</span></div>
                         )}
                     </div>
                 )}
@@ -1330,18 +1330,18 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
                         }
                     });
                     return (
-                        <div className="mt-5 pt-5 border-t border-gray-100/80 animate-fade-in">
-                            <div className="mb-5">
-                                <h5 className="text-[10px] font-bold text-[#123524] mb-4 flex items-center uppercase tracking-wider"><Target className="w-3.5 h-3.5 mr-2 text-green-600"/> Monthly Target Rewards (Pre-Jade)</h5>
-                                <div className="flex justify-between items-end mb-2.5"><span className="text-[9px] font-bold text-gray-500 bg-white px-2 py-1 rounded shadow-sm border border-gray-100">Target: {actualTarget}% Off</span><span className="text-[9px] font-bold text-green-700 bg-green-50 px-2 py-1 rounded shadow-sm border border-green-100">{actualTarget} Pts</span></div>
-                                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden mb-3 shadow-inner"><div className="h-full rounded-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div></div>
-                                <p className="text-[9px] text-gray-500 font-semibold text-center bg-white py-2 rounded-lg border border-gray-50"><span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span></p>
+                        <div className="mt-3 pt-3 border-t border-gray-100/80 animate-fade-in">
+                            <div className="mb-3">
+                                <h5 className="text-[10px] font-bold text-[#123524] mb-2.5 flex items-center uppercase tracking-wider"><Target className="w-3.5 h-3.5 mr-1.5 text-green-600"/> Monthly Target Rewards (Pre-Jade)</h5>
+                                <div className="flex justify-between items-end mb-1.5"><span className="text-[8px] font-bold text-gray-500 bg-white px-2 py-0.5 rounded shadow-sm border border-gray-100">Target: {actualTarget}% Off</span><span className="text-[8px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded shadow-sm border border-green-100">{actualTarget} Pts</span></div>
+                                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mb-2 shadow-inner"><div className="h-full rounded-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-1000 ease-out" style={{ width: `${targetProgressPercent}%` }}></div></div>
+                                <p className="text-[8px] text-gray-500 font-semibold text-center bg-white py-1.5 rounded-md border border-gray-50"><span className="font-bold text-green-600">{actualTarget}% Off</span> ခံစားခွင့်ရရန် လိုအပ်သောပွိုင့်: <span className="font-bold text-red-500">{ptsNeededForTarget} Pts</span></p>
                             </div>
                             {(availableRewards.length > 0 || usedRewards.length > 0) && (
-                                <div className="space-y-2.5 pt-3 border-t border-gray-100/80">
-                                    <h5 className="text-[10px] font-bold text-[#123524] mb-3 flex items-center mt-2 uppercase tracking-wider"><Award className="w-3.5 h-3.5 mr-2 text-[#D4AF37]"/> Rewards Status</h5>
-                                    {availableRewards.map(tier => (<div key={`avail-${tier}`} className="bg-gradient-to-r from-green-50 to-white text-[#123524] p-3 rounded-xl text-[10px] font-bold border border-green-200/60 flex items-center justify-between shadow-sm transform hover:-translate-y-0.5 transition-all"><span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-2 text-green-600"/> {tier}% Discount</span><span className="bg-[#123524] text-[#D4AF37] px-2.5 py-1 rounded-md shadow-sm">၁ ကြိမ် ရရှိထားပါသည်</span></div>))}
-                                    {usedRewards.map(tier => (<div key={`used-${tier}`} className="bg-gray-50 text-gray-400 p-3 rounded-xl text-[10px] font-bold border border-gray-200 flex items-center justify-between opacity-80"><span className="flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-2"/> {tier}% Discount</span><span className="bg-gray-200 text-gray-500 px-2.5 py-1 rounded-md">အသုံးပြုပြီးပါပြီ</span></div>))}
+                                <div className="space-y-2 pt-2 border-t border-gray-100/80">
+                                    <h5 className="text-[9px] font-bold text-[#123524] mb-2 flex items-center mt-1.5 uppercase tracking-wider"><Award className="w-3 h-3 mr-1.5 text-[#D4AF37]"/> Rewards Status</h5>
+                                    {availableRewards.map(tier => (<div key={`avail-${tier}`} className="bg-gradient-to-r from-green-50 to-white text-[#123524] p-2 rounded-lg text-[9px] font-bold border border-green-200/60 flex items-center justify-between shadow-sm transform hover:-translate-y-0.5 transition-all"><span className="flex items-center"><Gift className="w-3 h-3 mr-1.5 text-green-600"/> {tier}% Discount</span><span className="bg-[#123524] text-[#D4AF37] px-2 py-1 rounded-md shadow-sm">၁ ကြိမ် ရရှိထားပါသည်</span></div>))}
+                                    {usedRewards.map(tier => (<div key={`used-${tier}`} className="bg-gray-50 text-gray-400 p-2 rounded-lg text-[9px] font-bold border border-gray-200 flex items-center justify-between opacity-80"><span className="flex items-center"><CheckCircle className="w-3 h-3 mr-1.5"/> {tier}% Discount</span><span className="bg-gray-200 text-gray-500 px-2 py-1 rounded-md">အသုံးပြုပြီးပါပြီ</span></div>))}
                                 </div>
                             )}
                         </div>
@@ -1350,39 +1350,39 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
             </div>
 
             {/* Badges & Edit Button */}
-            <div className="relative z-10 flex flex-col gap-5">
-                <div className={`text-[10px] rounded-xl px-4 py-3 flex items-center justify-center font-bold border transition-colors shadow-sm ${profile?.password ? 'text-green-700 bg-green-50/80 border-green-200' : 'text-gray-500 bg-gray-50/80 border-gray-200'}`}>
-                    {profile?.password ? <><ShieldCheck className="w-4 h-4 mr-2 text-green-500" /> Account Secured (Password Set)</> : <><AlertCircle className="w-4 h-4 mr-2 text-gray-400" /> No Password Set (Auto-Login)</>}
+            <div className="relative z-10 flex flex-col gap-3">
+                <div className={`text-[9px] rounded-lg px-3 py-2.5 flex items-center justify-center font-bold border transition-colors shadow-sm uppercase tracking-wider ${profile?.password ? 'text-green-700 bg-green-50/80 border-green-200' : 'text-gray-500 bg-gray-50/80 border-gray-200'}`}>
+                    {profile?.password ? <><ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-green-500" /> Account Secured (Password Set)</> : <><AlertCircle className="w-3.5 h-3.5 mr-1.5 text-gray-400" /> No Password Set (Auto-Login)</>}
                 </div>
-                <button onClick={() => setEditMode(true)} className="w-full py-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] transform hover:-translate-y-0.5 transition-all duration-300 flex justify-center items-center tracking-widest uppercase text-xs">
-                    <Edit className="w-4 h-4 mr-2" /> Edit Profile Details
+                <button onClick={() => setEditMode(true)} className="w-full py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] transform hover:-translate-y-0.5 transition-all duration-300 flex justify-center items-center tracking-widest uppercase text-[10px]">
+                    <Edit className="w-3.5 h-3.5 mr-1.5" /> Edit Profile Details
                 </button>
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSave} className="relative z-10 text-left space-y-5 animate-slide-up">
+          <form onSubmit={handleSave} className="relative z-10 text-left space-y-4 animate-slide-up">
             <div>
-                <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Full Name <span className="text-red-500">*</span></label>
-                <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-sm text-[#123524] shadow-inner" required />
+                <label className="block text-[9px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Full Name <span className="text-red-500">*</span></label>
+                <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-xs text-[#123524] shadow-inner" required />
             </div>
             <div>
-                <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Date of Birth (For Birthday Bonus)</label>
-                <input type="date" value={formData.dob} onChange={e => setFormData({ ...formData, dob: e.target.value })} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-sm text-gray-700 shadow-inner" />
+                <label className="block text-[9px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Date of Birth (For Birthday Bonus)</label>
+                <input type="date" value={formData.dob} onChange={e => setFormData({ ...formData, dob: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-xs text-gray-700 shadow-inner" />
             </div>
             <div>
-                <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Set Password (Optional)</label>
-                <input type="password" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="Leave blank for auto-login" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-sm tracking-widest text-center shadow-inner" />
+                <label className="block text-[9px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Set Password (Optional)</label>
+                <input type="password" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} placeholder="Leave blank for auto-login" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all font-bold text-xs tracking-widest text-center shadow-inner" />
             </div>
-            <div className="flex space-x-3 pt-4">
-              <button type="button" onClick={() => setEditMode(false)} className="flex-1 py-4 bg-gray-50 text-gray-500 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 hover:text-gray-700 transition-colors uppercase tracking-wider text-[11px]">Cancel</button>
-              <button type="submit" disabled={saving} className="flex-1 py-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] transform hover:-translate-y-0.5 transition-all duration-300 uppercase tracking-widest text-[11px] flex justify-center items-center">{saving ? 'Saving...' : 'Save Changes'}</button>
+            <div className="flex space-x-2.5 pt-3">
+              <button type="button" onClick={() => setEditMode(false)} className="flex-1 py-3.5 bg-gray-50 text-gray-500 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 hover:text-gray-700 transition-colors uppercase tracking-wider text-[10px]">Cancel</button>
+              <button type="submit" disabled={saving} className="flex-1 py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] transform hover:-translate-y-0.5 transition-all duration-300 uppercase tracking-widest text-[10px] flex justify-center items-center">{saving ? 'Saving...' : 'Save Changes'}</button>
             </div>
           </form>
         )}
       </div>
 
-      <button onClick={onLogout} className="w-full py-4 text-red-500 bg-white border border-red-100 rounded-2xl font-bold shadow-sm hover:bg-red-50 hover:border-red-200 transition-all flex justify-center items-center tracking-widest text-[11px] uppercase group">
-          <LogOut className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform" /> Log Out
+      <button onClick={onLogout} className="w-full py-3.5 text-red-500 bg-white border border-red-100 rounded-xl font-bold shadow-sm hover:bg-red-50 hover:border-red-200 transition-all flex justify-center items-center tracking-widest text-[10px] uppercase group">
+          <LogOut className="w-3.5 h-3.5 mr-1.5 group-hover:scale-110 transition-transform" /> Log Out
       </button>
     </div>
   );
