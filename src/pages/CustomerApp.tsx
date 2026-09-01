@@ -324,7 +324,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           </button>
 
           <div className="mt-6 pt-6 border-t border-gray-100">
-              <p className="text-[10px] font-semibold text-gray-500 mb-4 leading-relaxed uppercase tracking-wider">New to Shangri-La?</p>
+              <p className="text-[10px] font-bold text-[#D4AF37] mb-4 leading-relaxed uppercase tracking-wider">New to Shangri-La?</p>
               <button type="button" onClick={() => { setStep(4); setError(''); }} disabled={loading} 
                       className="w-full py-3.5 bg-gradient-to-r from-yellow-50 to-white text-[#123524] border border-[#D4AF37]/50 rounded-xl font-bold shadow-sm hover:shadow-md hover:from-yellow-100 hover:to-yellow-50 transition-all duration-300 flex items-center justify-center text-sm transform hover:-translate-y-0.5">
                   <UserPlus className="w-4 h-4 mr-2 text-[#D4AF37]" /> အကောင့်သစ်ဖွင့်ရန်
