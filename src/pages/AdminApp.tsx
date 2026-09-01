@@ -537,6 +537,9 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
   const [editForm, setEditForm] = useState({ name: '', password: '', dob: '', points: 0 });
   const [creatingUser, setCreatingUser] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', phone: '', password: '', dob: '' });
+  
+  // 🌟 Search အသစ်အတွက်
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchUsers = async () => {
     try {
@@ -552,7 +555,13 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
              otpApproved: raw.otpApproved || false
           });
       });
-      data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); setUsers(data);
+      // 🌟 Sort Logic အသစ်: Request လုပ်ထားသူများကို ထိပ်ဆုံးပို့မည်။ ကျန်တာကို အသစ်ဖွင့်တဲ့အကောင့်စဉ်အတိုင်းပြမည်
+      data.sort((a, b) => {
+          if (a.resetRequested && !b.resetRequested) return -1;
+          if (!a.resetRequested && b.resetRequested) return 1;
+          return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+      setUsers(data);
     } catch (e) { console.error(e); } setLoading(false);
   };
   
@@ -601,6 +610,12 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
 
   const getTier = (points: number) => { if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null; const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
 
+  // 🌟 Filter Users by Search
+  const filteredUsers = users.filter(u => 
+      u.phone.includes(searchQuery) || 
+      (u.name && u.name.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Users...</div>;
 
   return (
@@ -634,19 +649,27 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           </div>
       )}
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+      {/* 🌟 Top Bar With Search */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
           <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
-          <div className="flex space-x-2 items-center w-full sm:w-auto">
-              <button onClick={handleExportUsers} className="flex-shrink-0 justify-center items-center flex px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-sm font-bold hover:bg-green-100 transition shadow-sm"><Download className="w-4 h-4 mr-1.5" /> Export Excel</button>
-              <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm"><PlusCircle className="w-4 h-4 mr-1.5" /> Add New User</button>
-              <span className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold border border-gray-200 whitespace-nowrap">Total: {users.length}</span>
+          
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 items-center w-full md:w-auto">
+              <div className="relative w-full sm:w-60">
+                  <input type="text" placeholder="Search phone or name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] text-sm font-semibold" />
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+              </div>
+              <div className="flex space-x-2 w-full sm:w-auto">
+                  <button onClick={handleExportUsers} className="flex-1 sm:flex-none justify-center items-center flex px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-sm font-bold hover:bg-green-100 transition shadow-sm"><Download className="w-4 h-4 mr-1.5" /> Export</button>
+                  <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm"><PlusCircle className="w-4 h-4 mr-1.5" /> Add New</button>
+              </div>
           </div>
       </div>
       
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name & DOB</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security / OTP Request</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{users.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မရှိသေးပါ။</td></tr>)}{users.map((u, idx) => {
+      {/* 🌟 Users Table */}
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name & DOB</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security / OTP Request</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{filteredUsers.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မတွေ့ပါ။</td></tr>)}{filteredUsers.map((u, idx) => {
          const userTier = getTier(u.points);
          return (
-         <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50 transition">
+         <tr key={idx} className={`border-b hover:bg-gray-50 transition ${u.resetRequested && !u.otpApproved ? 'bg-red-50/30 border-red-100' : 'border-gray-50'}`}>
              <td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td>
              <td className="p-3"><div className="font-bold text-gray-800">{u.name || '-'}</div>{u.dob && <div className="text-[10px] text-gray-500 mt-0.5 flex items-center"><Gift className="w-3 h-3 mr-1"/> {u.dob}</div>}</td>
              <td className="p-3"><div className="flex items-center space-x-2"><span className="font-bold text-gray-800 text-lg">{u.points || 0} Pts</span>{userTier && <span className="text-[10px] px-2 py-0.5 rounded font-bold text-white shadow-sm flex items-center" style={{ backgroundColor: userTier.colorTheme }}><Award className="w-3 h-3 mr-1"/> {userTier.name} ({userTier.discountPercent}%)</span>}</div></td>
@@ -656,7 +679,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
                        <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-1 rounded flex w-fit items-center border border-red-200 animate-pulse"><AlertCircle className="w-3 h-3 mr-1" /> Password Reset Req</span>
                        {u.resetOtp && <span className="text-[10px] font-mono bg-yellow-50 text-yellow-800 font-bold px-2 py-1 rounded border border-yellow-200">OTP: {u.resetOtp}</span>}
                        {!u.otpApproved ? (
-                           <button onClick={() => handleApproveOTP(u.docId)} disabled={adminRole !== 'super_admin'} className={`text-[9px] text-white font-bold px-2 py-1 rounded mt-1 w-fit transition shadow-sm ${adminRole === 'super_admin' ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-300'}`}>Approve OTP</button>
+                           <button onClick={() => handleApproveOTP(u.docId)} disabled={adminRole !== 'super_admin'} className={`text-[9px] text-white font-bold px-3 py-1.5 rounded mt-1 w-fit transition shadow-md ${adminRole === 'super_admin' ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}`}>Approve OTP</button>
                        ) : (
                            <span className="text-[9px] text-green-600 font-bold mt-1">✓ OTP Approved</span>
                        )}
