@@ -277,7 +277,6 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
 
       setLoading(true); setError('');
       try {
-          // ၁။ Database ထဲတွင် ဖုန်းနံပါတ် ရှိ/မရှိ အရင်စစ်ဆေးမည်
           const snap = await getDocs(collection(db, 'users'));
           let phoneExists = false;
           snap.forEach(d => {
@@ -288,14 +287,12 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
              } catch(err) {}
           });
 
-          // ၂။ ရှိပြီးသားဖြစ်နေပါက Error ပြပြီး ရပ်တန့်မည်
           if (phoneExists) {
               setError('သင်ထည့်လိုက်သော ဖုန်းနံပါတ်ဖြင့်ပြုလုပ်ထားသော User Account ရှိပြီးသားဖြစ်ပါသည်။ ကျေးဇူးပြု၍ Login ဝင်ပါ (သို့မဟုတ်) Password မေ့နေပါသလား။');
               setLoading(false);
               return;
           }
 
-          // ၃။ မရှိမှသာ အကောင့်သစ် ဖန်တီးပေးမည်
           await addDoc(collection(db, 'users'), {
               phone: encryptText(phone.trim()),
               name: encryptText(regForm.name.trim()),
@@ -362,7 +359,12 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
                   className="w-full py-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] transform hover:-translate-y-0.5 transition-all duration-300 tracking-widest uppercase text-xs">
               {loading ? 'Logging in...' : 'Secure Login'}
           </button>
-          <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} className="text-xs text-gray-500 font-semibold mt-4 hover:text-[#D4AF37] transition-colors">စကားဝှက်မေ့နေပါသလား? (Forgot Password)</button>
+          
+          {/* 🌟 New Yellow Box for Forgot Password */}
+          <button type="button" onClick={() => { setStep(3); setError(''); setSuccessMsg(''); }} disabled={loading} 
+                  className="w-full py-3.5 bg-yellow-50 text-[#D4AF37] border border-[#D4AF37]/50 rounded-xl font-bold shadow-sm hover:shadow-md hover:bg-yellow-100 transition-all duration-300 flex items-center justify-center text-sm transform hover:-translate-y-0.5 mt-2">
+              <KeyRound className="w-4 h-4 mr-2" /> စကားဝှက်မေ့နေပါသလား? (Forgot Password)
+          </button>
         </form>
       )}
 
@@ -411,10 +413,27 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
                    className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all text-center font-bold tracking-widest shadow-inner" />
           </div>
           
-          {error && <div className="text-xs font-bold text-red-500 text-center bg-red-50 p-2.5 rounded-lg border border-red-100">{error}</div>}
-          {successMsg && <div className="text-xs font-bold text-[#123524] bg-green-50 p-3 rounded-xl border border-green-200 text-center shadow-sm">{successMsg}</div>}
+          {/* 🌟 New Error Display with Actions for Existing Account */}
+          {error && (
+              <div className="bg-red-50 p-4 rounded-xl border border-red-200 animate-slide-up shadow-sm mt-2">
+                  <div className="text-[11px] font-bold text-red-500 text-center leading-relaxed">{error}</div>
+                  
+                  {error.includes('ရှိပြီးသားဖြစ်ပါသည်') && (
+                      <div className="flex flex-col gap-2 mt-4">
+                          <button type="button" onClick={() => { setStep(2); setError(''); }} className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-lg font-bold shadow-sm hover:bg-[#1a4a32] transition text-xs flex justify-center items-center">
+                              Login ဝင်ပါ
+                          </button>
+                          <button type="button" onClick={() => { setStep(3); setError(''); }} className="w-full py-3 bg-yellow-50 text-[#D4AF37] border border-[#D4AF37]/50 rounded-lg font-bold shadow-sm hover:bg-yellow-100 transition text-xs flex justify-center items-center">
+                              <KeyRound className="w-3.5 h-3.5 mr-1.5" /> Password အသစ် Request လုပ်ရန်
+                          </button>
+                      </div>
+                  )}
+              </div>
+          )}
+
+          {successMsg && <div className="text-xs font-bold text-[#123524] bg-green-50 p-3 rounded-xl border border-green-200 text-center shadow-sm mt-2">{successMsg}</div>}
           
-          {!successMsg && (
+          {!successMsg && !error?.includes('ရှိပြီးသားဖြစ်ပါသည်') && (
              <button type="submit" disabled={loading} 
                      className="w-full py-4 mt-2 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] transform hover:-translate-y-0.5 transition-all duration-300 flex justify-center items-center tracking-widest uppercase text-xs">
                  {loading ? 'Creating Profile...' : 'Complete Registration'}
