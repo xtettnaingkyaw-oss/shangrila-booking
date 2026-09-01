@@ -203,7 +203,6 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
   
   // Registration Form State
   const [regForm, setRegForm] = useState({ name: '', dob: '', password: '' });
-  const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
 
   // Steps: 1=Phone, 2=Login, 3=Reset, 4=Register
   const [step, setStep] = useState(skipToPassword ? 2 : 1);
@@ -212,7 +211,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
   const [successMsg, setSuccessMsg] = useState('');
 
   const handleNext = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true); setShowRegisterPrompt(false);
+    e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true);
     try {
       const snap = await getDocs(collection(db, 'users'));
       let found = false; let userPass = '';
@@ -224,9 +223,8 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       });
       
       if (!found) { 
-          // အကောင့်မရှိရင် Error Message အသစ်ပြပြီး Register ခလုတ်ဖော်ပြမည်
-          setError("သင်ထည့်လိုက်သောဖုန်းနံပါတ်ဖြင့် အကောင့်ရှာမတွေ့ပါ။ အကောင့်သစ်တစ်ခု အရင် ပြုလုပ်ပေးပါခင်ဗျာ။"); 
-          setShowRegisterPrompt(true);
+          // အကောင့်မရှိရင် Error Message ပြမည်
+          setError("သင်ထည့်လိုက်သောဖုန်းနံပါတ်ဖြင့် အကောင့်ရှာမတွေ့ပါ။ အောက်ပါ 'အကောင့်သစ်ဖွင့်ရန်' ခလုတ်ကို နှိပ်ပေးပါ။"); 
       }
       else { 
           if (userPass) { setStep(2); } 
@@ -318,15 +316,17 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           
           {error && <div className="text-xs font-bold text-red-500 leading-relaxed">{error}</div>}
           
-          {showRegisterPrompt ? (
-              <button type="button" onClick={() => { setStep(4); setError(''); }} disabled={loading} className="w-full py-3 bg-[#D4AF37] text-white rounded-lg font-bold shadow-md hover:bg-yellow-600 transition flex items-center justify-center">
-                  <UserPlus className="w-4 h-4 mr-2" /> အကောင့်သစ်ဖွင့်ရန် နှိပ်ပါ
+          <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition">
+              {loading ? 'Checking...' : 'Next'}
+          </button>
+
+          {/* အကောင့်သစ်ဖွင့်ရန် အမြဲတမ်းပေါ်မည့် အပိုင်း */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-[11px] font-bold text-gray-500 mb-3 leading-relaxed">User Account မရှိသေးပါက အကောင့်သစ်တစ်ခု အရင်ပြုလုပ်ပါ</p>
+              <button type="button" onClick={() => { setStep(4); setError(''); }} disabled={loading} className="w-full py-2.5 bg-gray-50 text-[#123524] border border-gray-200 rounded-lg font-bold shadow-sm hover:bg-gray-100 transition flex items-center justify-center text-sm">
+                  <UserPlus className="w-4 h-4 mr-2 text-[#D4AF37]" /> အကောင့်သစ်ဖွင့်ရန်
               </button>
-          ) : (
-              <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition">
-                  {loading ? 'Checking...' : 'Next'}
-              </button>
-          )}
+          </div>
         </form>
       )}
       
@@ -355,7 +355,6 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
         </form>
       )}
 
-      {/* အကောင့်သစ်ဖန်တီးရန် Form အပိုင်း */}
       {step === 4 && (
         <form onSubmit={handleRegister} className="space-y-4 flex flex-col text-left animate-slide-up">
           <div>
@@ -385,7 +384,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
              </button>
           )}
           {!successMsg && (
-             <button type="button" onClick={() => { setStep(1); setError(''); setShowRegisterPrompt(true); }} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 text-center hover:text-gray-700 transition">
+             <button type="button" onClick={() => { setStep(1); setError(''); }} disabled={loading} className="text-xs text-gray-500 underline font-bold mt-2 text-center hover:text-gray-700 transition">
                  Cancel & Go Back
              </button>
           )}
