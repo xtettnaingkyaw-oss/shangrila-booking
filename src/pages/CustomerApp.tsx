@@ -277,6 +277,25 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
 
       setLoading(true); setError('');
       try {
+          // ၁။ Database ထဲတွင် ဖုန်းနံပါတ် ရှိ/မရှိ အရင်စစ်ဆေးမည်
+          const snap = await getDocs(collection(db, 'users'));
+          let phoneExists = false;
+          snap.forEach(d => {
+             try {
+                 const data = d.data(); 
+                 const decPhone = decryptText(data.phone) || d.id;
+                 if (decPhone === phone.trim() || d.id === phone.trim()) { phoneExists = true; }
+             } catch(err) {}
+          });
+
+          // ၂။ ရှိပြီးသားဖြစ်နေပါက Error ပြပြီး ရပ်တန့်မည်
+          if (phoneExists) {
+              setError('သင်ထည့်လိုက်သော ဖုန်းနံပါတ်ဖြင့်ပြုလုပ်ထားသော User Account ရှိပြီးသားဖြစ်ပါသည်။ ကျေးဇူးပြု၍ Login ဝင်ပါ (သို့မဟုတ်) Password မေ့နေပါသလား။');
+              setLoading(false);
+              return;
+          }
+
+          // ၃။ မရှိမှသာ အကောင့်သစ် ဖန်တီးပေးမည်
           await addDoc(collection(db, 'users'), {
               phone: encryptText(phone.trim()),
               name: encryptText(regForm.name.trim()),
