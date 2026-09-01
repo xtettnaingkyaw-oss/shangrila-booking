@@ -1971,6 +1971,7 @@ const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' |
      if (view === 'therapists') return 'therapists';
      if (view === 'dashboard') return 'dashboard';
      if (view === 'vip') return 'vip';
+     if (view === 'profile') return 'profile';
      return 'book';
   });
   
