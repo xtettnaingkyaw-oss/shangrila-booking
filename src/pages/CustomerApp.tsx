@@ -2310,47 +2310,47 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const tabs = vipSettings.isActive ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }] : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
 
    return (
-     <div className="w-full" onClick={handleInteraction}>
+     <div className="w-full relative" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
        
-       {/* 🌟 STICKY TAB NAVIGATION BAR (SLIM & RESPONSIVE) 🌟 */}
+       {/* 🌟 LUXURY FLOATING TAB BAR (GLASSMORPHISM PILL) 🌟 */}
        <div 
-         className="sticky top-0 z-[100] w-full bg-white/95 backdrop-blur-xl mb-6 shadow-sm border-b border-gray-200 transition-all duration-300"
-         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+         className="sticky z-[100] w-full px-3 sm:px-0 mb-8 flex justify-center transition-all duration-500"
+         style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
        >
-          <div className="max-w-4xl mx-auto px-2 pb-3">
-             {/* Tab Container */}
-             <div className="w-full overflow-x-auto sm:overflow-visible scrollbar-hide">
-                 {/* PC တွင် sm:w-full နှင့် sm:flex-wrap ထည့်သွင်းပေးထားသောကြောင့် ဘေးဆွဲစရာမလိုဘဲ အချိုးကျကျ နေရာယူပါမည် */}
-                 <div className="flex sm:flex-wrap sm:justify-center items-center gap-2 sm:gap-3 w-max sm:w-full mx-auto px-1">
-                   {tabs.map((tab) => {
-                     const isActive = activeTab === tab.id;
-                     return (
-                       <button 
-                         key={tab.id} 
-                         onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-                         className={`relative flex-shrink-0 flex items-center justify-center py-2.5 px-4 sm:py-2.5 sm:px-5 rounded-full text-[11px] sm:text-sm font-bold transition-all duration-300 ease-out ${
-                           isActive 
-                             ? 'bg-[#123524] text-[#D4AF37] shadow-md border border-[#1a4a32] transform sm:scale-105' 
-                             : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-800 border border-gray-200/60'
-                         }`}
-                       >
-                         <tab.icon className={`flex-shrink-0 w-4 h-4 sm:w-4 sm:h-4 mr-1.5 transition-all duration-300 ${isActive ? 'text-[#D4AF37] drop-shadow-md' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
-                         
-                         <span className={`whitespace-nowrap tracking-wide ${isActive ? 'text-[#D4AF37]' : ''}`}>{tab.label}</span>
-                         
-                         {/* Notification Dots */}
-                         {tab.id === 'history' && hasNoti && (
-                           <>
-                             <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>
-                             <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></span>
-                           </>
-                         )}
-                       </button>
-                     )
-                   })}
-                 </div>
-             </div>
+          {/* Glassmorphism Container */}
+          <div className="max-w-[95vw] sm:max-w-4xl overflow-x-auto scrollbar-hide rounded-[2rem] bg-white/80 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.1)] border border-[#D4AF37]/30 ring-1 ring-white/50">
+              
+              {/* Inner Flex Row */}
+              <div className="flex items-center gap-1 sm:gap-2 p-1.5 min-w-max">
+                {tabs.map((tab) => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button 
+                      key={tab.id} 
+                      onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
+                      className={`relative flex-shrink-0 flex items-center justify-center py-2.5 px-4 sm:py-3 sm:px-5 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-300 ease-out outline-none group ${
+                        isActive 
+                          ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-[0_4px_15px_rgba(18,53,36,0.3)] transform scale-[1.02]' 
+                          : 'text-gray-500 hover:bg-[#D4AF37]/10 hover:text-[#123524]'
+                      }`}
+                    >
+                      <tab.icon className={`flex-shrink-0 w-4 h-4 sm:w-4 sm:h-4 mr-1.5 transition-all duration-300 ${isActive ? 'text-[#D4AF37] drop-shadow-md' : 'text-gray-400 group-hover:text-[#123524]'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+                      
+                      <span className={`whitespace-nowrap tracking-wide ${isActive ? 'text-[#D4AF37]' : ''}`}>{tab.label}</span>
+                      
+                      {/* Notification Dots */}
+                      {tab.id === 'history' && hasNoti && (
+                        <>
+                          <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full shadow-md animate-ping"></span>
+                          <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full shadow-md"></span>
+                        </>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
           </div>
        </div>
        
