@@ -2331,8 +2331,8 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
                    <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
                      className={`snap-start relative flex-1 min-w-max sm:min-w-[90px] flex flex-col sm:flex-row items-center justify-center py-3.5 px-3 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-500 ease-out ${isActive ? 'bg-gradient-to-br from-[#123524] to-[#0a1f14] shadow-[0_4px_15px_rgba(18,53,36,0.4)] border border-[#1a4a32] transform scale-[1.02]' : 'text-gray-500 hover:bg-white hover:text-gray-800 border border-transparent'}`}>
                      
-                     {/* 🌟 flex-shrink-0 ထည့်ထားသောကြောင့် Icon မပျောက်တော့ပါ */}
-                     <tab.icon className={`flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 mb-1.5 sm:mb-0 sm:mr-2 transition-all duration-500 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-md' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+                     {/* 🌟 PC/Tablet တွင် Icon မပျောက်စေရန် min-w နှင့် min-h ထည့်သွင်းထားပါသည် */}
+                     <tab.icon className={`flex-shrink-0 min-w-[16px] min-h-[16px] sm:min-w-[20px] sm:min-h-[20px] mb-1.5 sm:mb-0 sm:mr-2 transition-all duration-500 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-md' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
                      
                      <span className={`text-center whitespace-nowrap tracking-wider ${isActive ? 'text-[#D4AF37]' : ''}`}>{tab.label}</span>
                      {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
@@ -2342,7 +2342,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
                })}
              </div>
           </div>
-  
+       </div>
        
        {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
        {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
