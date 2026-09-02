@@ -1922,7 +1922,6 @@ const renderServiceSelection = (currentStep: number) => (
                 {activeCategory === category.id && (
                     <div className="p-3 sm:p-4 border-t border-gray-100 bg-gray-50/30 grid grid-cols-2 gap-3 sm:gap-4">
                         {(() => {
-                            // 🌟 နာမည်တူသော Service များကို Group ဖွဲ့ခြင်း 🌟
                             const groupedItems = category.items.reduce((acc, item) => {
                                 const name = (item.name || '').trim();
                                 if (!acc[name]) {
@@ -1954,14 +1953,12 @@ const renderServiceSelection = (currentStep: number) => (
                                         } rounded-[1rem] transition-all duration-300 flex flex-col relative overflow-hidden group cursor-pointer`}
                                         onClick={() => setFormData({...formData, selectedItem: displayVariant, isVvipUpgrade: false, time: '', therapist2: null })}
                                     >
-                                        {/* Selected Checkmark */}
                                         {isGroupSelected && (
                                             <div className="absolute top-0 right-0 bg-[#123524] text-[#D4AF37] p-1.5 rounded-bl-xl z-20 shadow-sm">
                                                 <CheckCircle className="w-4 h-4" />
                                             </div>
                                         )}
 
-                                        {/* 🌟 Service Image (Square - 2 Columns) 🌟 */}
                                         <div className="w-full aspect-square bg-gray-50 relative border-b border-gray-100/80 shadow-[inset_0_-2px_10px_rgba(0,0,0,0.02)] flex items-center justify-center p-1.5">
                                             {group.imageUrl ? (
                                                 <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105" />
@@ -1973,7 +1970,6 @@ const renderServiceSelection = (currentStep: number) => (
                                             )}
                                         </div>
 
-                                        {/* 🌟 Service Details 🌟 */}
                                         <div className="p-2.5 sm:p-3 flex flex-col justify-between flex-1">
                                             <div className="mb-2">
                                                 <h4 className={`font-bold text-[11px] sm:text-xs tracking-wide line-clamp-2 leading-tight ${isGroupSelected ? 'text-[#123524]' : 'text-gray-800'}`}>
@@ -1984,7 +1980,6 @@ const renderServiceSelection = (currentStep: number) => (
                                                 </div>
                                             </div>
 
-                                            {/* 🌟 Duration Variants Selection 🌟 */}
                                             <div className="flex flex-wrap gap-1.5 mt-auto mb-2">
                                                 {group.variants.map((v) => {
                                                     const isVariantSelected = formData.selectedItem?.id === v.id;
@@ -2013,7 +2008,7 @@ const renderServiceSelection = (currentStep: number) => (
                                             <details className="group/desc mt-1" onClick={(e) => e.stopPropagation()}>
                                                 <summary className="text-[9px] font-bold text-[#D4AF37] cursor-pointer outline-none list-none flex items-center justify-center py-1.5 border border-[#D4AF37]/30 rounded bg-yellow-50/30 hover:bg-yellow-50 transition-colors [&::-webkit-details-marker]:hidden">
                                                     <Info className="w-3 h-3 mr-1" />
-                                                    <span className="group-open/desc:hidden">ဝန်ဆောင်မှုအကြောင်း ဖတ်ရန်</span>
+                                                    <span className="group-open/desc:hidden">အသေးစိတ်ဖတ်ရန်</span>
                                                     <span className="hidden group-open/desc:inline">အသေးစိတ်ကို ပိတ်ရန်</span>
                                                 </summary>
                                                 <div className="text-[9px] sm:text-[10px] text-gray-600 mt-2 p-2 bg-gray-50 rounded border border-gray-100 leading-relaxed text-center">
@@ -2028,6 +2023,10 @@ const renderServiceSelection = (currentStep: number) => (
                         })()}
                     </div>
                 )}
+              </div>
+            );
+          })}
+      </div>
       
       <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
         <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (isVipCurrentlyFull ? '🚫 လတ်တလော VIP အခန်းပြည့်နေပါသည်' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available')))}</div></div></div>
