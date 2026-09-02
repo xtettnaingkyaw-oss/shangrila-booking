@@ -196,6 +196,7 @@ function MainApp() {
           <h1 className={`font-bold font-serif tracking-wide transition-all duration-300 ${isScrolled ? 'text-lg sm:text-xl' : 'text-2xl'}`} style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'}</h1>
         </div>
         
+        {/* စာလုံးကို ပိုကြီးအောင် text-[10px] sm:text-[11px] သို့ ပြင်ဆင်ထားပါသည် */}
         <p className={`font-bold uppercase tracking-[0.2em] transition-all duration-300 overflow-hidden ${isScrolled ? 'h-0 opacity-0 m-0' : 'h-auto opacity-100 text-[10px] sm:text-[11px] mt-1.5'}`} style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
         
         {!isStandalone && appMode === 'customer' && (
