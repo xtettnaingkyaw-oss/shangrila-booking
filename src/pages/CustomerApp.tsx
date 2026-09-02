@@ -1899,7 +1899,8 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   );
 
 const renderServiceSelection = (currentStep: number) => (
-    <div className="animate-fade-in px-4 sm:px-0">
+    {/* 🌟 1. Double Margin ဖြစ်နေသည့် px-4 အား ဖြုတ်လိုက်ပါသည် (Main Parent တွင် ပါပြီးသားဖြစ်၍ ဖုန်းဘောင်နှင့် အနေတော် ဖြစ်သွားပါမည်) 🌟 */}
+    <div className="animate-fade-in">
       
       {/* 🌟 Description Floating Box (Modal) 🌟 */}
       {viewDesc && (
@@ -1935,15 +1936,23 @@ const renderServiceSelection = (currentStep: number) => (
         </div>
       )}
 
-      <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
+      <div className="text-center mb-6 sm:mb-8">
+        <h2 className="text-xl sm:text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
+        <p className="text-xs sm:text-sm font-bold mt-1.5" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p>
+      </div>
+      
       <div className="space-y-4">
           {appData.categories.map(category => {
             const CategoryIcon = ICON_MAP[category.id] || Activity;
             return (
-              <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition"><div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>{activeCategory === category.id ? <ChevronUp className="w-6 h-6" style={{ color: THEME.primary }} /> : <ChevronDown className="w-6 h-6" style={{ color: THEME.primary }} />}</div>
+              <div key={category.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-3.5 sm:p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
+                  <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>
+                  {activeCategory === category.id ? <ChevronUp className="w-5 h-5" style={{ color: THEME.primary }} /> : <ChevronDown className="w-5 h-5" style={{ color: THEME.primary }} />}
+                </div>
                 {activeCategory === category.id && (
-                    <div className="p-3 sm:p-4 border-t border-gray-100 bg-gray-50/30 grid grid-cols-2 gap-3 sm:gap-4">
+                    {/* 🌟 2. အတွင်းဘောင် (p-2.5) နှင့် ကတ်အကွာအဝေး (gap-2.5) ကို UX အရ အချိုးကျချိန်ညှိထားပါသည် 🌟 */}
+                    <div className="p-2.5 sm:p-4 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-2.5 sm:gap-4">
                         {(() => {
                             const groupedItems = category.items.reduce((acc, item) => {
                                 const name = (item.name || '').trim();
@@ -1971,35 +1980,35 @@ const renderServiceSelection = (currentStep: number) => (
                                         key={gIdx}
                                         className={`w-full text-left bg-white border ${
                                             isGroupSelected 
-                                                ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.02]' 
+                                                ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.01]' 
                                                 : 'border-gray-100 shadow-sm hover:border-[#D4AF37]/60 hover:shadow-md'
                                         } rounded-[1rem] transition-all duration-300 flex flex-col relative overflow-hidden group cursor-pointer`}
                                         onClick={() => setFormData({...formData, selectedItem: displayVariant, isVvipUpgrade: false, time: '', therapist2: null })}
                                     >
                                         {isGroupSelected && (
                                             <div className="absolute top-0 right-0 bg-[#123524] text-[#D4AF37] p-1.5 rounded-bl-xl z-20 shadow-sm">
-                                                <CheckCircle className="w-4 h-4" />
+                                                <CheckCircle className="w-3.5 h-3.5" />
                                             </div>
                                         )}
 
-                                        {/* 🌟 ပုံဘေးက အဖြူရောင်ဘောင်ကို (p-2 sm:p-2.5 ဖြင့်) ပြန်ထားပေးထားပါသည် 🌟 */}
-                                        <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-2 sm:p-2.5">
+                                        {/* 🌟 3. အဖြူဘောင်ကို (p-1.5) သို့ပါးလိုက်ခြင်းဖြင့် ပုံသည် အရင်ကထက် ပိုမိုကြီးမားပြတ်သားသွားပါမည် 🌟 */}
+                                        <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2">
                                             {group.imageUrl ? (
                                                 <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
                                             ) : (
-                                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 rounded-[0.8rem]">
                                                     <Sparkles className="w-5 h-5 mb-1 opacity-40 text-[#D4AF37]" />
                                                     <span className="text-[7px] font-bold uppercase tracking-widest opacity-40">Shangri-La</span>
                                                 </div>
                                             )}
                                         </div>
 
-                                        <div className="p-2.5 sm:p-3 flex flex-col justify-between flex-1">
+                                        <div className="p-2 sm:p-3 flex flex-col justify-between flex-1">
                                             <div className="mb-2">
                                                 <h4 className={`font-bold text-[11px] sm:text-xs tracking-wide line-clamp-2 leading-tight ${isGroupSelected ? 'text-[#123524]' : 'text-gray-800'}`}>
                                                     {group.baseName}
                                                 </h4>
-                                                <div className={`font-black text-xs sm:text-sm mt-1 ${isGroupSelected ? 'text-[#123524]' : 'text-[#D4AF37]'}`}>
+                                                <div className={`font-black text-[11px] sm:text-sm mt-1 ${isGroupSelected ? 'text-[#123524]' : 'text-[#D4AF37]'}`}>
                                                     {displayVariant.price ? `${displayVariant.price.toLocaleString()} Ks` : ''} 
                                                 </div>
                                             </div>
@@ -2015,7 +2024,7 @@ const renderServiceSelection = (currentStep: number) => (
                                                                 e.stopPropagation(); 
                                                                 setFormData({...formData, selectedItem: v, isVvipUpgrade: false, time: '', therapist2: null });
                                                             }}
-                                                            className={`flex-1 flex items-center justify-center px-1.5 py-1.5 rounded border text-[9px] font-bold transition-all ${
+                                                            className={`flex-1 flex items-center justify-center px-1 py-1.5 rounded border text-[9px] font-bold transition-all ${
                                                                 isVariantSelected 
                                                                     ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm' 
                                                                     : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-[#D4AF37]/50'
@@ -2028,7 +2037,6 @@ const renderServiceSelection = (currentStep: number) => (
                                                 })}
                                             </div>
 
-                                            {/* 🌟 Floating Box ခေါ်ရန် Button 🌟 */}
                                             <button 
                                                 type="button" 
                                                 onClick={(e) => {
@@ -2039,7 +2047,6 @@ const renderServiceSelection = (currentStep: number) => (
                                             >
                                                 <Info className="w-3 h-3 mr-1" /> အသေးစိတ်ဖတ်ရန်
                                             </button>
-
                                         </div>
                                     </div>
                                 );
