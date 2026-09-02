@@ -2313,48 +2313,48 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      <div className="w-full relative" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
        
-       {/* 🌟 LUXURY GLASS STICKY TAB BAR 🌟 */}
+       {/* 🌟 ULTRA-COMPACT LUXURY GLASS STICKY TAB BAR 🌟 */}
        <div 
-         className="sticky z-[90] w-full bg-white/70 backdrop-blur-2xl shadow-[0_8px_30px_rgba(0,0,0,0.05)] border-b border-white/50 transition-all duration-300 pt-2 pb-3 mb-6 rounded-b-[1.5rem] sm:rounded-b-[2rem]"
+         className="sticky z-[90] w-full bg-white/70 backdrop-blur-2xl shadow-[0_4px_15px_rgba(0,0,0,0.03)] border-b border-white/40 transition-all duration-300 pt-1 pb-1 mb-4 rounded-b-[1rem]"
          style={{ top: 'calc(53px + env(safe-area-inset-top))' }}
        >
           <div className="max-w-4xl mx-auto flex flex-col items-center">
               
-              {/* 🌟 Swipe Indicator (Green, Bold, Animated >>) 🌟 */}
-              <div className="w-full max-w-[95vw] flex sm:hidden justify-end mb-2 pr-2">
-                  <span className="text-[10px] text-[#123524] font-black flex items-center bg-white/80 px-3 py-1.5 rounded-full border border-[#123524]/20 shadow-sm tracking-widest animate-pulse">
-                     ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-3.5 h-3.5 ml-0.5 text-[#123524]" /><ChevronRight className="w-3.5 h-3.5 -ml-2 text-[#123524]" />
+              {/* Swipe Indicator (Compact & Animated) */}
+              <div className="w-full max-w-[95vw] flex sm:hidden justify-end mb-0.5 pr-1.5">
+                  <span className="text-[8px] text-[#123524] font-black flex items-center bg-white/80 px-2 py-0.5 rounded-full border border-[#123524]/10 shadow-sm tracking-widest animate-pulse">
+                     ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-2.5 h-2.5 ml-0.5 text-[#123524]" /><ChevronRight className="w-2.5 h-2.5 -ml-1.5 text-[#123524]" />
                   </span>
               </div>
 
-              {/* 🌟 STATIONARY GLASS CONTAINER (Box ကြီးမရွေ့တော့ပါ) 🌟 */}
-              <div className="w-full px-3">
-                  <div className="w-full bg-white/40 backdrop-blur-xl border border-white/80 shadow-[inset_0_0_10px_rgba(0,0,0,0.03)] p-1.5 rounded-[1.5rem]">
+              {/* Compact Glass Container */}
+              <div className="w-full px-1.5">
+                  <div className="w-full bg-white/50 backdrop-blur-xl border border-white/80 shadow-[inset_0_0_5px_rgba(0,0,0,0.02)] p-0.5 rounded-xl">
                       
-                      {/* 🌟 SCROLLABLE TRACK (Tab ခလုတ်လေးများသာ ရွေ့ပါမည်) 🌟 */}
-                      <div className="w-full overflow-x-auto scrollbar-hide rounded-[1.2rem]">
-                          <div className="flex sm:flex-wrap sm:justify-center items-center gap-1.5 w-max sm:w-full mx-auto">
+                      {/* 🌟 SCROLLABLE TRACK (touchAction: 'pan-x' ကြောင့် အထက်အောက် လိုက်မရွေ့တော့ပါ) 🌟 */}
+                      <div className="w-full overflow-x-auto scrollbar-hide rounded-lg" style={{ touchAction: 'pan-x' }}>
+                          <div className="flex sm:flex-wrap sm:justify-center items-center gap-1 w-max sm:w-full mx-auto">
                             {tabs.map((tab) => {
                               const isActive = activeTab === tab.id;
                               return (
                                 <button 
                                   key={tab.id} 
                                   onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-                                  className={`relative flex-shrink-0 flex flex-col items-center justify-center py-2.5 px-4 sm:py-3 sm:px-6 min-w-[75px] sm:min-w-[100px] rounded-[1.2rem] text-[10px] sm:text-xs font-bold transition-all duration-300 ease-out outline-none group ${
+                                  className={`relative flex-shrink-0 flex flex-col items-center justify-center py-1.5 px-2.5 sm:py-2 sm:px-4 min-w-[65px] sm:min-w-[80px] rounded-lg text-[9px] sm:text-[10px] font-bold transition-all duration-300 ease-out outline-none group ${
                                     isActive 
-                                      ? 'bg-white text-[#123524] shadow-[0_4px_15px_rgba(0,0,0,0.06)] border border-gray-100 transform scale-[1.02]' 
+                                      ? 'bg-white text-[#123524] shadow-[0_2px_5px_rgba(0,0,0,0.05)] border border-gray-100 transform scale-[1.02]' 
                                       : 'text-gray-500 hover:text-[#123524] hover:bg-white/60 border border-transparent'
                                   }`}
                                 >
-                                  <tab.icon className={`flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 mb-1.5 transition-all duration-300 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-sm' : 'text-gray-400 group-hover:text-gray-600'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+                                  <tab.icon className={`flex-shrink-0 w-4 h-4 sm:w-4 sm:h-4 mb-1 transition-all duration-300 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-sm' : 'text-gray-400 group-hover:text-gray-600'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
                                   
-                                  <span className={`whitespace-nowrap tracking-wide ${isActive ? 'text-[#123524]' : ''}`}>{tab.label}</span>
+                                  <span className={`whitespace-nowrap tracking-wide leading-none ${isActive ? 'text-[#123524]' : ''}`}>{tab.label}</span>
                                   
                                   {/* Notification Dots */}
                                   {tab.id === 'history' && hasNoti && (
                                     <>
-                                      <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-3 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>
-                                      <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-3 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></span>
+                                      <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full shadow-md animate-ping"></span>
+                                      <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full shadow-md"></span>
                                     </>
                                   )}
                                 </button>
