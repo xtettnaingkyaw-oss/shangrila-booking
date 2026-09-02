@@ -16,6 +16,8 @@ export interface MenuItem {
   vvipPrice?: number;
   duration?: string;
   vvipIncluded?: boolean;
+  description?: string;  // 🌟 အသစ်ထပ်ထည့်ရန်
+  imageUrl?: string;     // 🌟 အသစ်ထပ်ထည့်ရန်
 }
 
 export interface MenuCategory {
