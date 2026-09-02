@@ -1912,7 +1912,7 @@ const renderServiceSelection = (currentStep: number) => (
         </div>
       )}
 
-<div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
+      <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
       <div className="space-y-4">
           {appData.categories.map(category => {
             const CategoryIcon = ICON_MAP[category.id] || Activity;
@@ -2023,6 +2023,10 @@ const renderServiceSelection = (currentStep: number) => (
                         })()}
                     </div>
                 )}
+              </div>
+            );
+          })}
+      </div>
       
       <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
         <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (isVipCurrentlyFull ? '🚫 လတ်တလော VIP အခန်းပြည့်နေပါသည်' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available')))}</div></div></div>
