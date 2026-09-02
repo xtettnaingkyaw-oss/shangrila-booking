@@ -1230,15 +1230,15 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
     <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0 relative pb-12">
       <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
       
-      {/* 🌟 History Modal (Z-index ကို 999 ထိ တင်ပေးထားသောကြောင့် အဖြူကွက်ကြီး ဖုံးမနေတော့ပါ) */}
+      {/* 🌟 History Modal (Floating Card Style) ဘောင်ကွယ်ခြင်းပြဿနာ ဖြေရှင်းထားပါသည် */}
       {showHistory && (
-          <div className="fixed inset-0 z-[999] bg-black/60 flex items-end justify-center sm:items-center sm:p-4 animate-fade-in backdrop-blur-sm" onClick={() => setShowHistory(false)}>
-              <div className="bg-white w-full sm:max-w-md rounded-t-[2rem] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh] sm:h-auto sm:max-h-[85vh] animate-slide-up border border-[#D4AF37]/20" onClick={e => e.stopPropagation()}>
-                  <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-5 flex items-center justify-between sticky top-0 z-10 shadow-md">
+          <div className="fixed inset-0 z-[999] bg-black/60 flex items-center justify-center p-4 sm:p-6 animate-fade-in backdrop-blur-sm" onClick={() => setShowHistory(false)}>
+              <div className="bg-white w-full max-w-md rounded-[1.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-slide-up border border-[#D4AF37]/30" onClick={e => e.stopPropagation()}>
+                  <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-4 sm:p-5 flex items-center justify-between sticky top-0 z-10 shadow-md">
                       <h3 className="text-[#D4AF37] font-bold text-sm flex items-center tracking-wide"><History className="w-4 h-4 mr-2" /> Points History</h3>
                       <button onClick={() => setShowHistory(false)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-4 h-4"/></button>
                   </div>
-                  <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-2.5 pb-6">
+                  <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-3 pb-6">
                       {loadingHistory ? (<div className="text-center py-10 text-[#D4AF37] font-bold text-xs animate-pulse tracking-widest uppercase">Loading...</div>) : history.length === 0 ? (<div className="text-center py-10 text-gray-400 font-bold text-xs">Point ရရှိထားသော မှတ်တမ်းမရှိသေးပါ။</div>) : (
                           history.map((h, i) => (
                               <div key={i} className="bg-white p-3.5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between hover:border-[#D4AF37]/50 transition-all hover:shadow-md group">
