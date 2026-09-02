@@ -1397,19 +1397,17 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                 if (file) {
                                                     try {
                                                         setUploadingImage(`service_${cIdx}_${iIdx}`);
-                                                        const base64 = await compressImage(file, 600, 600);
-                                                        const fileName = `service_${Date.now()}.jpg`;
-                                                        const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
-                                                        updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
+                                                        const base64 = await compressImage(file, 400, 400);
+                                                        updateItem(cIdx, iIdx, 'imageUrl', base64);
                                                     } catch (err) {
-                                                        alert("Error uploading image");
+                                                        alert("Error processing image");
                                                     } finally {
                                                         setUploadingImage(null);
                                                     }
                                                 }
                                             }} 
                                         />
-                                        {uploadingImage === `service_${cIdx}_${iIdx}` ? 'Uploading...' : 'Upload Photo'}
+                                        {uploadingImage === `service_${cIdx}_${iIdx}` ? 'Processing...' : 'Upload Photo'}
                                     </label>
                                 </div>
                             </div>
