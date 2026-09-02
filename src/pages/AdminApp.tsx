@@ -1392,30 +1392,24 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                             type="file" 
                                             accept="image/*" 
                                             className="hidden" 
-                                            onChange={(e) => {
+                                            onChange={async (e) => {
                                                 const file = e.target.files?.[0];
                                                 if (file) {
-                                                    const reader = new FileReader();
-                                                    reader.onloadend = () => {
-                                                        updateItem(cIdx, iIdx, 'imageUrl', reader.result as string);
-                                                    };
-                                                    reader.readAsDataURL(file);
+                                                    try {
+                                                        setUploadingImage(`service_${cIdx}_${iIdx}`);
+                                                        const base64 = await compressImage(file, 600, 600);
+                                                        const fileName = `service_${Date.now()}.jpg`;
+                                                        const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
+                                                        updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
+                                                    } catch (err) {
+                                                        alert("Error uploading image");
+                                                    } finally {
+                                                        setUploadingImage(null);
+                                                    }
                                                 }
                                             }} 
                                         />
-                                        Upload Photo
+                                        {uploadingImage === `service_${cIdx}_${iIdx}` ? 'Uploading...' : 'Upload Photo'}
                                     </label>
                                 </div>
                             </div>
-                        </div>
-
-                    </div>
-                  ))}
-                </div>
-               </div>
-           )}
-        </div>
-      ))}
-    </div>
-  );
-}
