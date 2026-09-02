@@ -2313,37 +2313,36 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      <div className="w-full relative" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
        
-       {/* 🌟 COMPACT STICKY TAB BAR (FIXED FOR HEADER OVERLAP) 🌟 */}
-       {/* z-[90] ဖြင့် Header ၏အောက်သို့ ဝင်စေပြီး top: 53px ဖြင့် Header နောက်၌ ကွက်တိကပ်နေစေပါသည် */}
+       {/* 🌟 STICKY TAB BAR WITH ROUNDED BOTTOM CORNERS 🌟 */}
        <div 
-         className="sticky z-[90] w-full bg-white/95 backdrop-blur-xl shadow-sm border-b border-gray-100 transition-all duration-300 pt-1.5 pb-2 mb-6"
+         className="sticky z-[90] w-full bg-white/95 backdrop-blur-xl shadow-[0_4px_20px_rgb(0,0,0,0.05)] border-b border-gray-100 transition-all duration-300 pt-1.5 pb-2.5 mb-6 rounded-b-[1.5rem] sm:rounded-b-[2rem]"
          style={{ top: 'calc(53px + env(safe-area-inset-top))' }}
        >
           <div className="max-w-4xl mx-auto flex flex-col items-center">
               
-              {/* Swipe Indicator (Mobile Only) - Compacted */}
-              <div className="w-full max-w-[95vw] flex sm:hidden justify-end mb-1 pr-1.5">
-                  <span className="text-[8px] text-gray-500 font-bold flex items-center bg-gray-50 px-2 py-1 rounded-full border border-gray-200 shadow-sm tracking-wider">
+              {/* Swipe Indicator (Mobile Only) */}
+              <div className="w-full max-w-[95vw] flex sm:hidden justify-end mb-1 pr-2">
+                  <span className="text-[8px] text-gray-500 font-bold flex items-center bg-gray-50 px-2.5 py-1 rounded-full border border-gray-200 shadow-sm tracking-wider">
                      ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-3 h-3 ml-0.5 text-[#D4AF37]" />
                   </span>
               </div>
 
-              {/* White Container Tabs - Compacted Height */}
+              {/* Tab Container */}
               <div className="w-full overflow-x-auto sm:overflow-visible scrollbar-hide px-2">
-                  <div className="flex sm:flex-wrap sm:justify-center items-center gap-1.5 w-max sm:w-full mx-auto bg-gray-50/80 p-1 rounded-2xl border border-gray-100">
+                  <div className="flex sm:flex-wrap sm:justify-center items-center gap-1.5 w-max sm:w-full mx-auto bg-gray-50/80 p-1.5 rounded-[1.2rem] border border-gray-100">
                     {tabs.map((tab) => {
                       const isActive = activeTab === tab.id;
                       return (
                         <button 
                           key={tab.id} 
                           onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-                          className={`relative flex-shrink-0 flex flex-col items-center justify-center py-1.5 px-3 sm:py-2 sm:px-5 min-w-[70px] sm:min-w-[90px] rounded-xl text-[9px] sm:text-[11px] font-bold transition-all duration-300 ease-out outline-none group ${
+                          className={`relative flex-shrink-0 flex flex-col items-center justify-center py-2 px-3.5 sm:py-2.5 sm:px-5 min-w-[70px] sm:min-w-[90px] rounded-xl text-[9px] sm:text-[11px] font-bold transition-all duration-300 ease-out outline-none group ${
                             isActive 
                               ? 'bg-white text-[#123524] shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-gray-200/60 transform scale-[1.02]' 
                               : 'text-gray-400 hover:text-gray-700 hover:bg-white/50 border border-transparent'
                           }`}
                         >
-                          <tab.icon className={`flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 mb-1 transition-all duration-300 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-sm' : 'text-gray-300 group-hover:text-gray-500'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+                          <tab.icon className={`flex-shrink-0 w-4 h-4 sm:w-5 sm:h-5 mb-1.5 transition-all duration-300 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-sm' : 'text-gray-300 group-hover:text-gray-500'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
                           
                           <span className={`whitespace-nowrap tracking-wide ${isActive ? 'text-[#123524]' : ''}`}>{tab.label}</span>
                           
@@ -2364,7 +2363,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        </div>
        
        {/* 🌟 Main Content Area */}
-       <div className="max-w-2xl mx-auto px-4 sm:px-0">
+       <div className="max-w-2xl mx-auto px-4 sm:px-0 mt-2">
            {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
            {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
            {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
