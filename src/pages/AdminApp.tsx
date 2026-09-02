@@ -1413,3 +1413,16 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                     </label>
                                 </div>
                             </div>
+                        </div>
+
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
