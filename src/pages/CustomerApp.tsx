@@ -471,40 +471,40 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
               </>
            )}
            
+           {/* 🌟 OTP Waiting State with Shop Contacts (Always Visible Background) */}
            {otpState === 'waiting' && (
               <div className="bg-blue-50 border border-blue-200 p-6 rounded-xl text-center shadow-sm">
                   <div className="animate-spin text-blue-500 w-8 h-8 mx-auto mb-3"><ShieldAlert className="w-8 h-8" /></div>
                   <p className="text-xs font-bold text-blue-800 mb-1">OTP တောင်းဆိုထားပါသည်</p>
                   <p className="text-[10px] text-blue-600 font-semibold">Admin မှ အတည်ပြုပေးရန် စောင့်ဆိုင်းနေပါသည်...</p>
                   
-                  {appDataState?.branding && (
-                      <div className="mt-5 pt-5 border-t border-blue-200/50">
-                          <p className="text-[10px] text-blue-800 font-bold mb-3 leading-relaxed">
-                              စောင့်ဆိုင်းရချိန်ကြာမြင့်နေပါက<br />
-                              Admin အား အမြန်ဆုံးဆက်သွယ်ရန်
-                          </p>
-                          <div className="flex flex-col gap-2.5">
-                              {(appDataState.branding.phone1 || appDataState.branding.phone2) && (
-                                  <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#123524] bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
-                                      <Phone className="w-4 h-4 text-[#D4AF37]" /> 
-                                      {appDataState.branding.phone1} {appDataState.branding.phone2 ? ` | ${appDataState.branding.phone2}` : ''}
-                                  </div>
-                              )}
+                  <div className="mt-5 pt-5 border-t border-blue-200/50">
+                      <p className="text-[10px] text-blue-800 font-bold mb-3 leading-relaxed">
+                          စောင့်ဆိုင်းရချိန်ကြာမြင့်နေပါက<br />
+                          Admin အား အမြန်ဆုံးဆက်သွယ်ရန်
+                      </p>
+                      <div className="flex flex-col gap-2.5">
+                          <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#123524] bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
+                              <Phone className="w-4 h-4 text-[#D4AF37]" /> 
+                              {appDataState?.branding?.phone1 || '09-xxxxxxxxx'} {appDataState?.branding?.phone2 ? ` | ${appDataState.branding.phone2}` : ''}
+                          </div>
+                          
+                          {(appDataState?.branding?.telegram || appDataState?.branding?.viber) && (
                               <div className="flex justify-center gap-2">
-                                  {appDataState.branding.telegram && (
+                                  {appDataState?.branding?.telegram && (
                                       <a href={appDataState.branding.telegram} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-1.5 bg-[#0088cc] text-white py-2 px-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#0077b5] transition">
                                           <MessageCircle className="w-3.5 h-3.5" /> Telegram
                                       </a>
                                   )}
-                                  {appDataState.branding.viber && (
+                                  {appDataState?.branding?.viber && (
                                       <a href={appDataState.branding.viber} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-1.5 bg-[#7360f2] text-white py-2 px-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#6650db] transition">
                                           <MessageCircle className="w-3.5 h-3.5" /> Viber
                                       </a>
                                   )}
                               </div>
-                          </div>
+                          )}
                       </div>
-                  )}
+                  </div>
               </div>
            )}
 
