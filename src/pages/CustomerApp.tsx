@@ -2235,112 +2235,118 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 }
 
 // 🌟 THE COMPONENT THAT RENDERS THE TABS AND MAIN VIEW (Moved to bottom) 🌟
+// ==========================================
+// CUSTOMER APP WIDGET (TABS & NAVIGATION)
+// ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
-const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
-     const searchParams = new URLSearchParams(window.location.search);
-     const view = searchParams.get('view');
-     
-     if (view === 'therapists') return 'therapists';
-     if (view === 'dashboard') return 'dashboard';
-     if (view === 'vip') return 'vip';
-     if (view === 'profile') return 'profile';
-     return 'book';
-  });
-  
-  const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
-  const [hasNoti, setHasNoti] = useState(false);
-  const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
-  const prevStatuses = useRef<Record<string, string>>({});
-  const isFirstLoad = useRef(true);
+  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
+       const searchParams = new URLSearchParams(window.location.search);
+       const view = searchParams.get('view');
+       
+       if (view === 'therapists') return 'therapists';
+       if (view === 'dashboard') return 'dashboard';
+       if (view === 'vip') return 'vip';
+       if (view === 'profile') return 'profile';
+       return 'book';
+   });
+    
+   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
+   const [hasNoti, setHasNoti] = useState(false);
+   const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
+   const prevStatuses = useRef<Record<string, string>>({});
+   const isFirstLoad = useRef(true);
 
-  const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
-  useEffect(() => {
-      const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
-          if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
-      });
-      return () => unsub();
-  }, []);
-  const mergedAppData = { ...appData, vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS };
+   const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
+   useEffect(() => {
+       const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
+           if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
+       });
+       return () => unsub();
+   }, []);
+   const mergedAppData = { ...appData, vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS };
 
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
+   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
-  useEffect(() => {
-    if (!userPhone) return;
-    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(50));
-    const unsubscribe = onSnapshot(q, (snap) => {
-      let changed = false;
-      snap.docs.forEach((doc) => {
-        const raw = doc.data(); const bPhone = decryptText(raw.phone) || raw.phone;
-        if (bPhone === userPhone) {
-          const oldStatus = prevStatuses.current[doc.id];
-          if (oldStatus && oldStatus !== raw.status) changed = true;
-          prevStatuses.current[doc.id] = raw.status;
-        }
-      });
-      if (!isFirstLoad.current && changed) {
-        if (activeTab !== 'history') setHasNoti(true);
-        const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
-        if (audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); }
-      }
-      isFirstLoad.current = false;
-    });
-    return () => unsubscribe();
-  }, [userPhone, activeTab]);
+   useEffect(() => {
+     if (!userPhone) return;
+     const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(50));
+     const unsubscribe = onSnapshot(q, (snap) => {
+       let changed = false;
+       snap.docs.forEach((doc) => {
+         const raw = doc.data(); const bPhone = decryptText(raw.phone) || raw.phone;
+         if (bPhone === userPhone) {
+           const oldStatus = prevStatuses.current[doc.id];
+           if (oldStatus && oldStatus !== raw.status) changed = true;
+           prevStatuses.current[doc.id] = raw.status;
+         }
+       });
+       if (!isFirstLoad.current && changed) {
+         if (activeTab !== 'history') setHasNoti(true);
+         const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
+         if (audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); }
+       }
+       isFirstLoad.current = false;
+     });
+     return () => unsubscribe();
+   }, [userPhone, activeTab]);
 
-  useEffect(() => { if (activeTab === 'history') setHasNoti(false); }, [activeTab]);
+   useEffect(() => { if (activeTab === 'history') setHasNoti(false); }, [activeTab]);
 
-  const handleInteraction = () => {
-    const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
-    if (audioEl && audioEl.paused) { audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {}); }
-  };
+   const handleInteraction = () => {
+     const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
+     if (audioEl && audioEl.paused) { audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {}); }
+   };
 
-  const handleDashboardBook = (t: TherapistProfile) => { setPrefillTherapist(t); setActiveTab('therapists'); };
+   const handleDashboardBook = (t: TherapistProfile) => { setPrefillTherapist(t); setActiveTab('therapists'); };
 
-  const baseTabs = [
-    { id: 'book', label: 'Book Now', icon: CalendarPlus }, 
-    { id: 'therapists', label: 'View Therapists', icon: User },
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, 
-    { id: 'history', label: 'My Bookings', icon: History }
-  ] as const;
+   const baseTabs = [
+     { id: 'book', label: 'Book Now', icon: CalendarPlus }, 
+     { id: 'therapists', label: 'View Therapists', icon: User },
+     { id: 'dashboard', label: 'Dashboard', icon: BarChart2 }, 
+     { id: 'history', label: 'My Bookings', icon: History }
+   ] as const;
 
-  const vipSettings = mergedAppData.vipSettings;
-  const tabs = vipSettings.isActive ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }] : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
+   const vipSettings = mergedAppData.vipSettings;
+   const tabs = vipSettings.isActive ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }] : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
 
-  return (
-    <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
-      <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
-      
-      {/* 🌟 STICKY TAB NAVIGATION BAR 🌟 */}
-      <div className="sticky top-[48px] z-[90] bg-gray-50/90 backdrop-blur-xl pt-2 pb-3 px-4 -mx-4 sm:px-0 sm:mx-0 mb-8 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.1)] transition-all duration-300">
-         <div className="max-w-2xl mx-auto">
-            <div className="flex sm:hidden justify-end mb-1 pr-1">
-               <span className="text-[9px] text-[#123524] font-bold flex items-center animate-pulse bg-white/80 px-2 py-0.5 rounded-full border border-gray-200 shadow-sm">
-                  ဘေးသို့ဆွဲကြည့်ပါ <span className="text-[#D4AF37] ml-1 tracking-tighter font-black">&gt;&gt;</span>
-               </span>
-            </div>
-            <div className="flex justify-start sm:justify-center items-center space-x-2 bg-white/95 p-1.5 sm:p-2 rounded-2xl shadow-sm border border-gray-200/80 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
-              {tabs.map((tab) => {
-                const isActive = activeTab === tab.id;
-                return (
-                  <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-                    className={`snap-start relative flex-1 min-w-[75px] sm:min-w-[80px] flex flex-col sm:flex-row items-center justify-center py-3 px-1 sm:px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-300 ${isActive ? 'bg-gray-50 shadow-md border border-gray-200 transform scale-[1.02]' : 'text-gray-500 hover:bg-gray-50/50 hover:text-gray-700'}`} style={{ color: isActive ? THEME.primary : undefined }}>
-                    <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1 sm:mb-0 sm:mr-1.5 transition-all duration-300 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-sm' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
-                    <span className="text-center whitespace-nowrap">{tab.label}</span>
-                    {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
-                    {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
-                  </button>
-                )
-              })}
-            </div>
-         </div>
-      </div>
-      
-      {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
-      {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
-      {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
-      {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
-      {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
-      {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
-    </div>
-  );
+   return (
+     <div className="max-w-2xl mx-auto" onClick={handleInteraction}>
+       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
+       
+       {/* 🌟 STICKY TAB NAVIGATION BAR 🌟 */}
+       <div 
+         className="sticky top-0 z-[100] w-full bg-white/85 backdrop-blur-2xl px-4 -mx-4 sm:mx-0 sm:px-0 mb-8 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border-b border-[#D4AF37]/30 transition-all duration-300"
+         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', paddingBottom: '0.75rem' }}
+       >
+          <div className="max-w-2xl mx-auto">
+             <div className="flex sm:hidden justify-end mb-2.5 pr-1">
+                <span className="text-[9px] text-[#123524] font-bold flex items-center animate-pulse bg-yellow-50 px-2.5 py-1 rounded-full border border-yellow-200 shadow-sm uppercase tracking-wider">
+                   ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-3 h-3 ml-0.5 text-[#D4AF37]" />
+                </span>
+             </div>
+             <div className="flex justify-start sm:justify-center items-center space-x-2 bg-gray-50/80 p-1.5 sm:p-2 rounded-2xl shadow-inner border border-gray-200/80 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
+               {tabs.map((tab) => {
+                 const isActive = activeTab === tab.id;
+                 return (
+                   <button key={tab.id} onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
+                     className={`snap-start relative flex-1 min-w-[75px] sm:min-w-[90px] flex flex-col sm:flex-row items-center justify-center py-3.5 px-2 rounded-xl text-[9px] sm:text-xs md:text-sm font-bold transition-all duration-500 ease-out ${isActive ? 'bg-gradient-to-br from-[#123524] to-[#0a1f14] shadow-[0_4px_15px_rgba(18,53,36,0.4)] border border-[#1a4a32] transform scale-[1.02]' : 'text-gray-500 hover:bg-white hover:text-gray-800 border border-transparent'}`}>
+                     <tab.icon className={`w-4 h-4 sm:w-5 sm:h-5 mb-1.5 sm:mb-0 sm:mr-2 transition-all duration-500 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-md' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+                     <span className={`text-center whitespace-nowrap tracking-wider ${isActive ? 'text-[#D4AF37]' : ''}`}>{tab.label}</span>
+                     {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>}
+                     {tab.id === 'history' && hasNoti && <span className="absolute top-1 right-2 sm:top-2 sm:right-4 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full shadow-md"></span>}
+                   </button>
+                 )
+               })}
+             </div>
+          </div>
+       </div>
+       
+       {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
+       {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
+       {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
+       {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
+       {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
+       {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
+     </div>
+   );
 }
