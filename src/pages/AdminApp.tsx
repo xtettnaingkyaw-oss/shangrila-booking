@@ -1392,20 +1392,43 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                             type="file" 
                                             accept="image/*" 
                                             className="hidden" 
-                                            onChange={async (e) => {
+                                            onChange={(e) => {
                                                 const file = e.target.files?.[0];
                                                 if (file) {
-                                                    try {
-                                                        setUploadingImage(`service_${cIdx}_${iIdx}`);
-                                                        const base64 = await compressImage(file, 600, 600);
-                                                        const fileName = `service_${Date.now()}.jpg`;
-                                                        const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
-                                                        updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
-                                                    } catch (err) {
-                                                        alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။ Internet Connection ကို စစ်ဆေးပါ။");
-                                                    } finally {
-                                                        setUploadingImage(null);
-                                                    }
+                                                    setUploadingImage(`service_${cIdx}_${iIdx}`);
+                                                    const reader = new FileReader();
+                                                    reader.onload = (event) => {
+                                                        const img = new Image();
+                                                        img.onload = () => {
+                                                            const canvas = document.createElement('canvas');
+                                                            const MAX_SIZE = 300; 
+                                                            let width = img.width;
+                                                            let height = img.height;
+
+                                                            if (width > height) {
+                                                                if (width > MAX_SIZE) {
+                                                                    height *= MAX_SIZE / width;
+                                                                    width = MAX_SIZE;
+                                                                }
+                                                            } else {
+                                                                if (height > MAX_SIZE) {
+                                                                    width *= MAX_SIZE / height;
+                                                                    height = MAX_SIZE;
+                                                                }
+                                                            }
+                                                            canvas.width = width;
+                                                            canvas.height = height;
+                                                            const ctx = canvas.getContext('2d');
+                                                            ctx?.drawImage(img, 0, 0, width, height);
+                                                            
+                                                            const tinyBase64 = canvas.toDataURL('image/jpeg', 0.6); 
+                                                            
+                                                            updateItem(cIdx, iIdx, 'imageUrl', tinyBase64);
+                                                            setUploadingImage(null);
+                                                        };
+                                                        img.src = event.target?.result as string;
+                                                    };
+                                                    reader.readAsDataURL(file);
                                                 }
                                             }} 
                                             disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
