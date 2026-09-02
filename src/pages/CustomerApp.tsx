@@ -210,14 +210,21 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
-  // 🌟 Admin Contacts for OTP Waiting State
-  const [brandingData, setBrandingData] = useState<any>(null);
+  // 🌟 App Data for OTP Contacts & Welcome Bonus
+  const [appDataState, setAppDataState] = useState<any>(null);
 
   // Steps: 1=Phone, 2=Login, 3=Reset Request, 4=Register, 5=Set New Password
   const [step, setStep] = useState(skipToPassword ? 2 : 1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // 🌟 Fetch AppData on Mount (For Bonus checking & Contacts)
+  useEffect(() => {
+      getDoc(doc(db, 'settings', 'appData')).then(snap => {
+          if(snap.exists()) setAppDataState(snap.data());
+      });
+  }, []);
 
   // Real-time listener for Admin's OTP Approval
   useEffect(() => {
@@ -234,15 +241,6 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           return () => unsub();
       }
   }, [step, otpState, userId]);
-
-  // 🌟 Fetch Shop Contacts when waiting for OTP
-  useEffect(() => {
-      if (step === 3 && otpState === 'waiting') {
-          getDoc(doc(db, 'settings', 'appData')).then(snap => {
-              if(snap.exists()) setBrandingData(snap.data().branding);
-          });
-      }
-  }, [step, otpState]);
 
   const handleNext = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true);
@@ -329,6 +327,15 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       setLoading(false);
   };
 
+  const checkBonusValid = () => {
+      const bonus = appDataState?.signUpBonus;
+      if (!bonus?.isActive || !bonus.startDate || !bonus.endDate || !bonus.points) return false;
+      const todayMillis = new Date(getLocalTodayStr()).getTime();
+      const sDate = new Date(bonus.startDate).getTime();
+      const eDate = new Date(bonus.endDate).getTime();
+      return todayMillis >= sDate && todayMillis <= eDate;
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!regForm.name.trim()) { setError('နာမည်ထည့်ပေးပါခင်ဗျာ။'); return; }
@@ -352,16 +359,37 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
               return;
           }
 
+          // 🌟 Auto Welcome Bonus Points Logic
+          let startingPoints = 0;
+          let earnedBonus = false;
+          if (checkBonusValid()) {
+              startingPoints = appDataState.signUpBonus.points;
+              earnedBonus = true;
+          }
+
           await addDoc(collection(db, 'users'), {
               phone: encryptText(phone.trim()),
               name: encryptText(regForm.name.trim()),
               password: encryptText(regForm.password),
               dob: encryptText(regForm.dob),
-              points: encryptText('0'),
+              points: encryptText(startingPoints.toString()),
               createdAt: Date.now()
           });
-          setSuccessMsg('အကောင့်သစ် အောင်မြင်စွာ ဖွင့်ပြီးပါပြီ။');
-          setTimeout(() => { onLoginSuccess(phone.trim()); }, 1500);
+
+          if (earnedBonus) {
+              await addDoc(collection(db, 'point_history'), {
+                  phone: encryptText(phone.trim()),
+                  amount: encryptText('0'),
+                  pointsEarned: encryptText(startingPoints.toString()),
+                  invoiceNo: encryptText('Welcome Bonus'),
+                  type: encryptText('Sign-Up Bonus'),
+                  date: getLocalTodayStr(),
+                  createdAt: Date.now()
+              });
+          }
+
+          setSuccessMsg(earnedBonus ? `အကောင့်သစ် ဖွင့်ပြီးပါပြီ။ Welcome Bonus အနေဖြင့် ${startingPoints} Pts လက်ဆောင်ရရှိပါသည်။` : 'အကောင့်သစ် အောင်မြင်စွာ ဖွင့်ပြီးပါပြီ။');
+          setTimeout(() => { onLoginSuccess(phone.trim()); }, 2500);
       } catch (err) { setError('Error creating account.'); }
       setLoading(false);
   };
@@ -443,34 +471,33 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
               </>
            )}
            
-           {/* 🌟 New OTP Waiting State with Shop Contacts */}
            {otpState === 'waiting' && (
               <div className="bg-blue-50 border border-blue-200 p-6 rounded-xl text-center shadow-sm">
                   <div className="animate-spin text-blue-500 w-8 h-8 mx-auto mb-3"><ShieldAlert className="w-8 h-8" /></div>
                   <p className="text-xs font-bold text-blue-800 mb-1">OTP တောင်းဆိုထားပါသည်</p>
                   <p className="text-[10px] text-blue-600 font-semibold">Admin မှ အတည်ပြုပေးရန် စောင့်ဆိုင်းနေပါသည်...</p>
                   
-                  {brandingData && (
+                  {appDataState?.branding && (
                       <div className="mt-5 pt-5 border-t border-blue-200/50">
                           <p className="text-[10px] text-blue-800 font-bold mb-3 leading-relaxed">
-    စောင့်ဆိုင်းရချိန်ကြာမြင့်နေပါက<br />
-    Admin အား အမြန်ဆုံးဆက်သွယ်ရန်
-</p>
+                              စောင့်ဆိုင်းရချိန်ကြာမြင့်နေပါက<br />
+                              Admin အား အမြန်ဆုံးဆက်သွယ်ရန်
+                          </p>
                           <div className="flex flex-col gap-2.5">
-                              {(brandingData.phone1 || brandingData.phone2) && (
+                              {(appDataState.branding.phone1 || appDataState.branding.phone2) && (
                                   <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#123524] bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
                                       <Phone className="w-4 h-4 text-[#D4AF37]" /> 
-                                      {brandingData.phone1} {brandingData.phone2 ? ` | ${brandingData.phone2}` : ''}
+                                      {appDataState.branding.phone1} {appDataState.branding.phone2 ? ` | ${appDataState.branding.phone2}` : ''}
                                   </div>
                               )}
                               <div className="flex justify-center gap-2">
-                                  {brandingData.telegram && (
-                                      <a href={brandingData.telegram} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-1.5 bg-[#0088cc] text-white py-2 px-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#0077b5] transition">
+                                  {appDataState.branding.telegram && (
+                                      <a href={appDataState.branding.telegram} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-1.5 bg-[#0088cc] text-white py-2 px-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#0077b5] transition">
                                           <MessageCircle className="w-3.5 h-3.5" /> Telegram
                                       </a>
                                   )}
-                                  {brandingData.viber && (
-                                      <a href={brandingData.viber} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-1.5 bg-[#7360f2] text-white py-2 px-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#6650db] transition">
+                                  {appDataState.branding.viber && (
+                                      <a href={appDataState.branding.viber} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-1.5 bg-[#7360f2] text-white py-2 px-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#6650db] transition">
                                           <MessageCircle className="w-3.5 h-3.5" /> Viber
                                       </a>
                                   )}
@@ -499,6 +526,13 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
 
       {step === 4 && (
         <form onSubmit={handleRegister} className="relative z-10 space-y-4 flex flex-col text-left animate-slide-up">
+          {checkBonusValid() && (
+              <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-xl mb-1 shadow-sm flex items-center justify-center animate-pulse">
+                  <Gift className="w-4 h-4 text-yellow-600 mr-2 flex-shrink-0" />
+                  <span className="text-[10px] sm:text-xs font-bold text-yellow-800 leading-tight">ယခုပဲ အကောင့်သစ်ဖွင့်ပြီး {appDataState.signUpBonus.points} Points လက်ဆောင်ရယူလိုက်ပါ!</span>
+              </div>
+          )}
+          
           <div>
             <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Phone Number (Login ID)</label>
             <input type="tel" value={phone} disabled className="w-full p-3.5 bg-gray-100 border border-gray-200 rounded-xl outline-none font-bold text-gray-400 cursor-not-allowed text-center tracking-wider" />
@@ -535,7 +569,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
               </div>
           )}
 
-          {successMsg && <div className="text-xs font-bold text-[#123524] bg-green-50 p-3 rounded-xl border border-green-200 text-center shadow-sm mt-2">{successMsg}</div>}
+          {successMsg && <div className="text-xs font-bold text-[#123524] bg-green-50 p-4 rounded-xl border border-green-200 text-center shadow-sm mt-2 flex flex-col items-center"><CheckCircle className="w-6 h-6 text-green-600 mb-2"/> {successMsg}</div>}
           
           {!successMsg && !error?.includes('ရှိပြီးသားဖြစ်ပါသည်') && (
              <button type="submit" disabled={loading} 
