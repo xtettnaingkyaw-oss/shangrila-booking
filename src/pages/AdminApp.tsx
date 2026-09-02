@@ -1329,6 +1329,72 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                        <div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-white px-2 py-1.5 rounded border border-gray-200 w-full shadow-sm"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div>
                        <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div>
                     </div>
+                {/* 🌟 NEW: Description & Image Upload 🌟 */}
+          <div className="col-span-1 lg:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 pt-3 border-t border-gray-200">
+              
+              {/* Description Input */}
+              <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Description (အသေးစိတ်ဖော်ပြချက်)</label>
+                  <textarea 
+                      value={item.description || ''} 
+                      onChange={(e) => {
+                          const newCats = [...localCategories];
+                          newCats[cIdx].items[iIdx].description = e.target.value;
+                          setLocalCategories(newCats);
+                      }} 
+                      className="w-full p-2.5 border border-gray-300 rounded-lg text-xs h-20 resize-none outline-none focus:border-[#D4AF37]" 
+                      placeholder="Service အကြောင်း အသေးစိတ်ရေးရန်..." 
+                  />
+              </div>
+
+              {/* Image Upload Input */}
+              <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Service Image (ပုံ)</label>
+                  <div className="flex items-center gap-3">
+                      {item.imageUrl ? (
+                          <div className="relative w-20 h-20 rounded-xl border border-gray-200 shadow-sm overflow-hidden group">
+                              <img src={item.imageUrl} alt="Service" className="w-full h-full object-cover" />
+                              <button 
+                                  type="button"
+                                  onClick={() => {
+                                      const newCats = [...localCategories];
+                                      newCats[cIdx].items[iIdx].imageUrl = '';
+                                      setLocalCategories(newCats);
+                                  }} 
+                                  className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                  <X className="w-5 h-5 text-white" />
+                              </button>
+                          </div>
+                      ) : (
+                          <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center bg-gray-50 text-gray-400">
+                              <span className="text-xl font-bold">+</span>
+                          </div>
+                      )}
+                      
+                      <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-3 py-2 rounded-lg text-[10px] font-bold border border-gray-200 shadow-sm transition-all uppercase tracking-wider">
+                          <input 
+                              type="file" 
+                              accept="image/*" 
+                              className="hidden" 
+                              onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                      const reader = new FileReader();
+                                      reader.onloadend = () => {
+                                          const newCats = [...localCategories];
+                                          newCats[cIdx].items[iIdx].imageUrl = reader.result as string;
+                                          setLocalCategories(newCats);
+                                      };
+                                      reader.readAsDataURL(file);
+                                  }
+                              }} 
+                          />
+                          Upload Photo
+                      </label>
+                  </div>
+              </div>
+          </div>
                  ))}
                </div>
              </div>
