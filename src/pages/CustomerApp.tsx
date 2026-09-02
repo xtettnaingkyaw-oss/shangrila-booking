@@ -2313,49 +2313,57 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      <div className="w-full relative" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
        
-       {/* 🌟 LUXURY FLOATING TAB BAR (GLASSMORPHISM PILL) 🌟 */}
+       {/* 🌟 ORIGINAL WHITE TAB BAR 🌟 */}
        <div 
-         className="sticky z-[100] w-full px-3 sm:px-0 mb-8 flex justify-center transition-all duration-500"
-         style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
+         className="sticky top-0 z-[100] w-full bg-white/95 backdrop-blur-xl shadow-sm border-b border-gray-100 transition-all duration-300 pb-3 pt-2"
+         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
        >
-          {/* Glassmorphism Container */}
-          <div className="max-w-[95vw] sm:max-w-4xl overflow-x-auto scrollbar-hide rounded-[2rem] bg-white/80 backdrop-blur-xl shadow-[0_8px_30px_rgb(0,0,0,0.1)] border border-[#D4AF37]/30 ring-1 ring-white/50">
+          <div className="max-w-4xl mx-auto flex flex-col items-center">
               
-              {/* Inner Flex Row */}
-              <div className="flex items-center gap-1 sm:gap-2 p-1.5 min-w-max">
-                {tabs.map((tab) => {
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button 
-                      key={tab.id} 
-                      onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-                      className={`relative flex-shrink-0 flex items-center justify-center py-2.5 px-4 sm:py-3 sm:px-5 rounded-full text-[11px] sm:text-xs font-bold transition-all duration-300 ease-out outline-none group ${
-                        isActive 
-                          ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-[0_4px_15px_rgba(18,53,36,0.3)] transform scale-[1.02]' 
-                          : 'text-gray-500 hover:bg-[#D4AF37]/10 hover:text-[#123524]'
-                      }`}
-                    >
-                      <tab.icon className={`flex-shrink-0 w-4 h-4 sm:w-4 sm:h-4 mr-1.5 transition-all duration-300 ${isActive ? 'text-[#D4AF37] drop-shadow-md' : 'text-gray-400 group-hover:text-[#123524]'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
-                      
-                      <span className={`whitespace-nowrap tracking-wide ${isActive ? 'text-[#D4AF37]' : ''}`}>{tab.label}</span>
-                      
-                      {/* Notification Dots */}
-                      {tab.id === 'history' && hasNoti && (
-                        <>
-                          <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full shadow-md animate-ping"></span>
-                          <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full shadow-md"></span>
-                        </>
-                      )}
-                    </button>
-                  )
-                })}
+              {/* Swipe Indicator (Mobile Only) */}
+              <div className="w-full max-w-[95vw] flex sm:hidden justify-end mb-2 pr-1">
+                  <span className="text-[9px] text-gray-500 font-bold flex items-center bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200 shadow-sm tracking-wider">
+                     ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-3.5 h-3.5 ml-1 text-[#D4AF37]" />
+                  </span>
+              </div>
+
+              {/* White Container Tabs */}
+              <div className="w-full overflow-x-auto sm:overflow-visible scrollbar-hide px-3">
+                  <div className="flex sm:flex-wrap sm:justify-center items-center gap-1.5 w-max sm:w-full mx-auto bg-gray-50/60 p-1.5 rounded-[1.5rem] border border-gray-100">
+                    {tabs.map((tab) => {
+                      const isActive = activeTab === tab.id;
+                      return (
+                        <button 
+                          key={tab.id} 
+                          onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
+                          className={`relative flex-shrink-0 flex flex-col items-center justify-center py-2.5 px-4 sm:py-3 sm:px-6 min-w-[80px] sm:min-w-[100px] rounded-[1.2rem] text-[10px] sm:text-xs font-bold transition-all duration-300 ease-out outline-none group ${
+                            isActive 
+                              ? 'bg-white text-[#123524] shadow-[0_2px_12px_rgba(0,0,0,0.06)] border border-gray-200/60 transform scale-[1.02]' 
+                              : 'text-gray-400 hover:text-gray-700 hover:bg-white/50 border border-transparent'
+                          }`}
+                        >
+                          <tab.icon className={`flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 mb-1.5 transition-all duration-300 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-sm' : 'text-gray-300 group-hover:text-gray-500'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+                          
+                          <span className={`whitespace-nowrap tracking-wide ${isActive ? 'text-[#123524]' : ''}`}>{tab.label}</span>
+                          
+                          {/* Notification Dots */}
+                          {tab.id === 'history' && hasNoti && (
+                            <>
+                              <span className="absolute top-2 right-2 sm:top-2.5 sm:right-3 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>
+                              <span className="absolute top-2 right-2 sm:top-2.5 sm:right-3 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></span>
+                            </>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
               </div>
 
           </div>
        </div>
        
        {/* 🌟 Main Content Area */}
-       <div className="max-w-2xl mx-auto px-4 sm:px-0">
+       <div className="max-w-2xl mx-auto px-4 sm:px-0 mt-4">
            {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
            {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
            {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
