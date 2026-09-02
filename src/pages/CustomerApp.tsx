@@ -1899,7 +1899,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   );
 
 const renderServiceSelection = (currentStep: number) => (
-    <div className="animate-fade-in px-2 sm:px-0">
+    <div className="animate-fade-in px-4 sm:px-0">
       
       {/* 🌟 Description Floating Box (Modal) 🌟 */}
       {viewDesc && (
@@ -1982,8 +1982,8 @@ const renderServiceSelection = (currentStep: number) => (
                                             </div>
                                         )}
 
-                                        {/* 🌟 Rounded Image 🌟 */}
-                                        <div className="w-full aspect-square bg-gray-50 relative border-b border-gray-100/80 flex items-center justify-center p-2">
+                                        {/* 🌟 ပုံဘေးက အဖြူရောင်ဘောင်ကို (p-2 sm:p-2.5 ဖြင့်) ပြန်ထားပေးထားပါသည် 🌟 */}
+                                        <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-2 sm:p-2.5">
                                             {group.imageUrl ? (
                                                 <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
                                             ) : (
