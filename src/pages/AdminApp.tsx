@@ -1321,20 +1321,108 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                <div className="space-y-3">
                  {cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
                  {cat.items.map((item, iIdx) => (
-                    <div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center bg-gray-50 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition">
-                       <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label><input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div>
-                       <div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label><input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
-                       <div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label><input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" /></div>
-                       <div className="lg:col-span-2"><label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label><input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" /></div>
-                       <div className="lg:col-span-2 flex items-center px-2 pt-4"><label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-white px-2 py-1.5 rounded border border-gray-200 w-full shadow-sm"><input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free</label></div>
-                       <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div>
-                    </div>
-                 ))}
-               </div>
-             </div>
-          )}
+    <div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-4 border border-gray-200 rounded-xl hover:border-[#D4AF37] transition">
+        
+        {/* Service Name */}
+        <div className="lg:col-span-3">
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label>
+            <input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" />
         </div>
-      ))}
+        
+        {/* Duration/Info */}
+        <div className="lg:col-span-2">
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label>
+            <input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" />
+        </div>
+        
+        {/* Price */}
+        <div className="lg:col-span-2">
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label>
+            <input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" />
+        </div>
+        
+        {/* VVIP Price */}
+        <div className="lg:col-span-2">
+            <label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label>
+            <input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" />
+        </div>
+        
+        {/* VVIP Free Checkbox */}
+        <div className="lg:col-span-2 flex items-center px-2 pt-4">
+            <label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-white px-2 py-1.5 rounded border border-gray-200 w-full shadow-sm">
+                <input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free
+            </label>
+        </div>
+        
+        {/* Delete Button */}
+        <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0">
+            <button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition">
+                <Trash2 className="w-5 h-5" />
+            </button>
+        </div>
+
+        {/* 🌟 NEW: Description & Image Upload (Admin Panel) 🌟 */}
+        <div className="lg:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-200">
+            
+            {/* Description Input */}
+            <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Description (အသေးစိတ်ဖော်ပြချက်)</label>
+                <textarea 
+                    value={item.description || ''} 
+                    onChange={(e) => updateItem(cIdx, iIdx, 'description', e.target.value)} 
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-xs h-20 resize-none outline-none focus:border-[#D4AF37] bg-white" 
+                    placeholder="Service အကြောင်း အသေးစိတ်ရေးရန်..." 
+                />
+            </div>
+
+            {/* Image Upload Input */}
+            <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Service Image (ပုံ)</label>
+                <div className="flex items-center gap-3">
+                    {item.imageUrl ? (
+                        <div className="relative w-20 h-20 rounded-xl border border-gray-200 shadow-sm overflow-hidden group">
+                            <img src={item.imageUrl} alt="Service" className="w-full h-full object-cover" />
+                            <button 
+                                type="button"
+                                onClick={() => updateItem(cIdx, iIdx, 'imageUrl', '')} 
+                                className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <X className="w-5 h-5 text-white" />
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-white text-gray-400 shadow-inner">
+                            <ImageIcon className="w-6 h-6 opacity-40" />
+                        </div>
+                    )}
+                    
+                    <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center">
+                        <input 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                    try {
+                                        const base64 = await compressImage(file, 600, 600);
+                                        const fileName = `service_${Date.now()}.jpg`;
+                                        const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
+                                        updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
+                                    } catch (err) {
+                                        alert("Error uploading image");
+                                    }
+                                }
+                            }} 
+                        />
+                        Upload Photo
+                    </label>
+                </div>
+            </div>
+
+        </div>
+
     </div>
+))}
   );
 }
