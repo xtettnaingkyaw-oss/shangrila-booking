@@ -1896,7 +1896,8 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
     </div>
   );
 
-  const renderServiceSelection = (currentStep: number) => (
+  const renderSer
+    viceSelection = (currentStep: number) => (
     <div className="animate-fade-in px-2 sm:px-0">
       {promoActive && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between">
@@ -1940,22 +1941,22 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
                 </div>
             )}
 
-            {/* Service Image (Catalogue Style) */}
-            <div className="w-full sm:w-[140px] h-[160px] sm:h-[120px] rounded-xl overflow-hidden bg-gray-900 relative flex-shrink-0 border border-gray-100/60 shadow-inner flex items-center justify-center">
-                {s.imageUrl ? (
-                    <img src={s.imageUrl} alt={s.name} className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105" />
-                ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                        <Sparkles className="w-6 h-6 mb-1.5 opacity-40 text-[#D4AF37]" />
-                        <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Shangri-La</span>
-                    </div>
-                )}
-                
-                {/* Duration Overlay on Mobile */}
-                <div className="absolute bottom-2 left-2 sm:hidden bg-white/90 backdrop-blur-sm text-[#123524] text-[9px] font-bold px-2 py-1 rounded-lg flex items-center shadow-sm">
-                    <Clock className="w-3 h-3 mr-1 text-[#D4AF37]" /> {s.duration}
-                </div>
-            </div>
+{/* Service Image (Square Style) */}
+<div className="w-full sm:w-[130px] aspect-square rounded-xl overflow-hidden bg-gray-900 relative flex-shrink-0 border border-gray-100/60 shadow-inner flex items-center justify-center mx-auto sm:mx-0">
+    {s.imageUrl ? (
+        <img src={s.imageUrl} alt={s.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+    ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gradient-to-br from-gray-50 to-gray-100/50">
+            <Sparkles className="w-6 h-6 mb-1.5 opacity-40 text-[#D4AF37]" />
+            <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Shangri-La</span>
+        </div>
+    )}
+    
+    {/* Duration Overlay on Mobile */}
+    <div className="absolute bottom-2 left-2 sm:hidden bg-white/90 backdrop-blur-sm text-[#123524] text-[9px] font-bold px-2 py-1 rounded-lg flex items-center shadow-sm">
+        <Clock className="w-3 h-3 mr-1 text-[#D4AF37]" /> {s.duration}
+    </div>
+</div>
 
             {/* Service Details */}
             <div className="flex-1 flex flex-col justify-center w-full">
