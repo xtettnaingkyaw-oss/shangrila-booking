@@ -1899,7 +1899,8 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   );
 
 const renderServiceSelection = (currentStep: number) => (
-    <div className="animate-fade-in px-4 sm:px-0">
+    {/* 🌟 1. Double Margin ဖြစ်နေသည့် px-4 အား ဖြုတ်လိုက်ပါသည် (Main Parent တွင် ပါပြီးသားဖြစ်၍ ဖုန်းဘောင်နှင့် အနေတော် ဖြစ်သွားပါမည်) 🌟 */}
+    <div className="animate-fade-in">
       
       {/* 🌟 Description Floating Box (Modal) 🌟 */}
       {viewDesc && (
@@ -1935,15 +1936,23 @@ const renderServiceSelection = (currentStep: number) => (
         </div>
       )}
 
-      <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p></div>
+      <div className="text-center mb-6 sm:mb-8">
+        <h2 className="text-xl sm:text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
+        <p className="text-xs sm:text-sm font-bold mt-1.5" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p>
+      </div>
+      
       <div className="space-y-4">
           {appData.categories.map(category => {
             const CategoryIcon = ICON_MAP[category.id] || Activity;
             return (
-              <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition"><div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>{activeCategory === category.id ? <ChevronUp className="w-6 h-6" style={{ color: THEME.primary }} /> : <ChevronDown className="w-6 h-6" style={{ color: THEME.primary }} />}</div>
+              <div key={category.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-3.5 sm:p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
+                  <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>
+                  {activeCategory === category.id ? <ChevronUp className="w-5 h-5" style={{ color: THEME.primary }} /> : <ChevronDown className="w-5 h-5" style={{ color: THEME.primary }} />}
+                </div>
                 {activeCategory === category.id && (
-                    <div className="p-3 sm:p-4 border-t border-gray-100 bg-gray-50/30 grid grid-cols-2 gap-3 sm:gap-4">
+                    {/* 🌟 2. အတွင်းဘောင် (p-2.5) နှင့် ကတ်အကွာအဝေး (gap-2.5) ကို UX အရ အချိုးကျချိန်ညှိထားပါသည် 🌟 */}
+                    <div className="p-2.5 sm:p-4 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-2.5 sm:gap-4">
                         {(() => {
                             const groupedItems = category.items.reduce((acc, item) => {
                                 const name = (item.name || '').trim();
@@ -1971,35 +1980,35 @@ const renderServiceSelection = (currentStep: number) => (
                                         key={gIdx}
                                         className={`w-full text-left bg-white border ${
                                             isGroupSelected 
-                                                ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.02]' 
+                                                ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.01]' 
                                                 : 'border-gray-100 shadow-sm hover:border-[#D4AF37]/60 hover:shadow-md'
                                         } rounded-[1rem] transition-all duration-300 flex flex-col relative overflow-hidden group cursor-pointer`}
                                         onClick={() => setFormData({...formData, selectedItem: displayVariant, isVvipUpgrade: false, time: '', therapist2: null })}
                                     >
                                         {isGroupSelected && (
                                             <div className="absolute top-0 right-0 bg-[#123524] text-[#D4AF37] p-1.5 rounded-bl-xl z-20 shadow-sm">
-                                                <CheckCircle className="w-4 h-4" />
+                                                <CheckCircle className="w-3.5 h-3.5" />
                                             </div>
                                         )}
 
-                                        {/* 🌟 ပုံဘေးက အဖြူရောင်ဘောင်ကို (p-2 sm:p-2.5 ဖြင့်) ပြန်ထားပေးထားပါသည် 🌟 */}
-                                        <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-2 sm:p-2.5">
+                                        {/* 🌟 3. အဖြူဘောင်ကို (p-1.5) သို့ပါးလိုက်ခြင်းဖြင့် ပုံသည် အရင်ကထက် ပိုမိုကြီးမားပြတ်သားသွားပါမည် 🌟 */}
+                                        <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2">
                                             {group.imageUrl ? (
                                                 <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
                                             ) : (
-                                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 rounded-[0.8rem]">
                                                     <Sparkles className="w-5 h-5 mb-1 opacity-40 text-[#D4AF37]" />
                                                     <span className="text-[7px] font-bold uppercase tracking-widest opacity-40">Shangri-La</span>
                                                 </div>
                                             )}
                                         </div>
 
-                                        <div className="p-2.5 sm:p-3 flex flex-col justify-between flex-1">
+                                        <div className="p-2 sm:p-3 flex flex-col justify-between flex-1">
                                             <div className="mb-2">
                                                 <h4 className={`font-bold text-[11px] sm:text-xs tracking-wide line-clamp-2 leading-tight ${isGroupSelected ? 'text-[#123524]' : 'text-gray-800'}`}>
                                                     {group.baseName}
                                                 </h4>
-                                                <div className={`font-black text-xs sm:text-sm mt-1 ${isGroupSelected ? 'text-[#123524]' : 'text-[#D4AF37]'}`}>
+                                                <div className={`font-black text-[11px] sm:text-sm mt-1 ${isGroupSelected ? 'text-[#123524]' : 'text-[#D4AF37]'}`}>
                                                     {displayVariant.price ? `${displayVariant.price.toLocaleString()} Ks` : ''} 
                                                 </div>
                                             </div>
@@ -2015,7 +2024,7 @@ const renderServiceSelection = (currentStep: number) => (
                                                                 e.stopPropagation(); 
                                                                 setFormData({...formData, selectedItem: v, isVvipUpgrade: false, time: '', therapist2: null });
                                                             }}
-                                                            className={`flex-1 flex items-center justify-center px-1.5 py-1.5 rounded border text-[9px] font-bold transition-all ${
+                                                            className={`flex-1 flex items-center justify-center px-1 py-1.5 rounded border text-[9px] font-bold transition-all ${
                                                                 isVariantSelected 
                                                                     ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm' 
                                                                     : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-[#D4AF37]/50'
@@ -2028,7 +2037,6 @@ const renderServiceSelection = (currentStep: number) => (
                                                 })}
                                             </div>
 
-                                            {/* 🌟 Floating Box ခေါ်ရန် Button 🌟 */}
                                             <button 
                                                 type="button" 
                                                 onClick={(e) => {
@@ -2039,7 +2047,6 @@ const renderServiceSelection = (currentStep: number) => (
                                             >
                                                 <Info className="w-3 h-3 mr-1" /> အသေးစိတ်ဖတ်ရန်
                                             </button>
-
                                         </div>
                                     </div>
                                 );
@@ -2065,275 +2072,6 @@ const renderServiceSelection = (currentStep: number) => (
       </div>
     </div>
   );
-
-  const renderTherapistSelection = (currentStep: number) => {
-      let globalCheckDate = formData.date;
-      if (!globalCheckDate) { const now = new Date(); if (now.getHours() >= 23) { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); globalCheckDate = tmrw.getFullYear() + '-' + String(tmrw.getMonth() + 1).padStart(2, '0') + '-' + String(tmrw.getDate()).padStart(2, '0'); } else { globalCheckDate = todayStr; } }
-      const allFullyBooked = appData.therapists.length > 0 && appData.therapists.every(t => isTherapistFullForDate(t.name, globalCheckDate));
-      const isSelectionIncomplete = isFourHands && formData.therapist !== null && formData.therapist2 === null; const isAnySelected = formData.therapist === null;
-
-      return (
-        <div className="animate-fade-in relative px-2 sm:px-0">
-          {viewGallery && (
-            <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in">
-              <button type="button" onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
-              <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden py-10 px-0 sm:px-10">
-                <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="w-full h-full object-contain drop-shadow-2xl" />
-                {viewGallery.images.length > 1 && (
-                  <>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 sm:left-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" /></button>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 sm:right-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" /></button>
-                  </>
-                )}
-              </div>
-              <div className="absolute bottom-6 text-white font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full z-[110]">{viewGallery.index + 1} / {viewGallery.images.length}</div>
-            </div>
-          )}
-
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>{isFourHands ? '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်း ၂ ယောက်ကို ရွေးချယ်ပါ)' : '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)'}</p></div>
-          <div onClick={() => setFormData({ ...formData, therapist: null, therapist2: null, time: '' })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
-              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div>
-              <div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {appData.therapists.map((therapist) => {
-              const isSelected1 = formData.therapist?.id === therapist.id; const isSelected2 = formData.therapist2?.id === therapist.id; const isSelected = isSelected1 || isSelected2;
-              const hasImage = therapist.images && therapist.images.length > 0; const isFull = isTherapistFullForDate(therapist.name, globalCheckDate);
-              const fullTextEn = globalCheckDate === todayStr ? "Fully Booked For Today" : "Fully Booked"; const fullTextMm = globalCheckDate === todayStr ? "(ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ)" : "(ဘိုကင်ပြည့်သွားပါပြီ)";
-
-              return (
-                <div key={therapist.id} onClick={() => {
-                    if (isFull) return;
-                    if (isFourHands) {
-                        if (isSelected1) { setFormData({ ...formData, therapist: formData.therapist2, therapist2: null, time: '' }); } 
-                        else if (isSelected2) { setFormData({ ...formData, therapist2: null, time: '' }); } 
-                        else if (!formData.therapist) { setFormData({ ...formData, therapist: therapist, time: '' }); } 
-                        else if (!formData.therapist2) { setFormData({ ...formData, therapist2: therapist, time: '' }); } 
-                        else { setFormData({ ...formData, therapist2: therapist, time: '' }); }
-                    } else { setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' }); }
-                }} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
-                  
-                  {isFull && (<div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"><div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500"><div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div><div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div></div></div>)}
-
-                  {isSelected1 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">1</div>}
-                  {isSelected2 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">2</div>}
-                  {isSelected && !isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-white w-6 h-6 rounded-full flex items-center justify-center z-30 shadow-md border-2 border-white"><Check className="w-4 h-4"/></div>}
-
-                  <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-70' : ''}`}>
-                    {hasImage ? (
-                      <>
-                        <img src={therapist.images[0]} alt={therapist.name} loading="lazy" className="w-full h-full object-cover object-top" />
-                        {therapist.images.length > 1 && (
-                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/90 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1 px-1 rounded flex flex-col items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30 leading-tight">
-                            <div className="flex items-center"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</div><div className="text-[8px] mt-0.5 text-[#D4AF37]/80">(နောက်ထပ်ပုံများကြည့်ရန်)</div>
-                          </button>
-                        )}
-                      </>
-                    ) : (<div className="flex flex-col items-center"><User className="w-12 h-12 text-[#123524]" /></div>)}
-                  </div>
-                  <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-600' : 'text-gray-800'}`}>{therapist.name}</div>
-                  <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
-                  
-                  {isTherapistFirst && !isFourHands && (
-                    <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>Book Now {!isFull && <ChevronRight className="w-3 h-3 ml-1" />}</button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          
-          <div className={`mt-8 flex flex-col gap-4`}>
-             <div className={`flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} w-full`}>
-                {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-                <button type="button" disabled={(!isAnySelected && isSelectionIncomplete) || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition shadow-md flex items-center w-full sm:w-auto justify-center ${((!isAnySelected && isSelectionIncomplete) || allFullyBooked) ? 'bg-gray-300 cursor-not-allowed' : 'hover:opacity-90'}`} style={!((!isAnySelected && isSelectionIncomplete) || allFullyBooked) ? { backgroundColor: THEME.primary } : {}}>
-                  {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
-                </button>
-             </div>
-             {(!formData.date || formData.date === todayStr) && allFullyBooked && (
-                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-center shadow-sm w-full animate-fade-in mt-4">
-                     <p className="text-sm font-bold text-gray-700 mb-3 leading-relaxed">ဒီနေ့အတွက် ဘိုကင်ယူနိုင်သည့်အချိန်ကျော်လွန်သွားပြီလား (သို့မဟုတ်) ဝန်ထမ်းများအားလုံး ပြည့်နေပါသလား?</p>
-                     <button type="button" onClick={(e) => { e.stopPropagation(); const tomorrowStr = getTomorrowStr(); setFormData({ ...formData, therapist: null, therapist2: null, date: tomorrowStr, time: '' }); setAlertMessage(`ရွေးချယ်မည့်ရက်အား မနက်ဖြန် (${tomorrowStr}) သို့ ပြောင်းလဲလိုက်ပါသည်။ ဝန်ထမ်းကို ဆက်လက်ရွေးချယ်ပါ။`); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="inline-flex items-center px-6 py-3 bg-[#123524] text-[#D4AF37] font-bold text-sm rounded-lg hover:bg-[#1a4a32] shadow-md transition"><CalendarPlus className="w-5 h-5 mr-2" /> နောက်ရက်အတွက် ဘိုကင်ကြိုယူရန် နှိပ်ပါ</button>
-                 </div>
-             )}
-          </div>
-        </div>
-      );
-  };
-
-  return (
-    <div>
-      <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
-      
-      {showAuthModal && (
-        <div className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4">
-           <div className="relative w-full max-w-sm">
-              <button onClick={() => { setShowAuthModal(false); setLoading(false); }} className="absolute -top-12 right-0 text-white hover:text-red-400 p-2"><X className="w-8 h-8"/></button>
-              <AuthRequest title="အကောင့်ရှိပြီးသားဖြစ်နေပါသည်" prefilledPhone={authModalPhone} skipToPassword={authModalHasPassword} onLoginSuccess={(loggedInPhone) => { setShowAuthModal(false); setVerifiedPhone(loggedInPhone); processBooking(loggedInPhone); }} />
-           </div>
-        </div>
-      )}
-
-      {renderStepper()}
-      {step === 1 && (isTherapistFirst ? renderTherapistSelection(1) : renderServiceSelection(1))}
-      {step === 2 && (isTherapistFirst ? renderServiceSelection(2) : renderTherapistSelection(2))}
-
-      {step === 3 && (
-        <div className="animate-fade-in px-2 sm:px-0">
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
-            <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
-            
-            {staffClockIn && formData.date === todayStr ? (
-                <div className="bg-yellow-50 p-5 rounded-lg border border-yellow-200 mb-4 animate-fade-in">
-                    <label className="block mb-2 text-sm font-bold flex items-center text-yellow-800"><Clock className="w-4 h-4 mr-2" /> Service Start Time (ဧည့်သည်ရောက်ရှိချိန်)</label>
-                    <input type="time" value={formData.time} onChange={(e) => setFormData({...formData, time: e.target.value})} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-white mb-2 font-bold text-center tracking-wider text-lg" />
-                    <p className="text-[10px] text-yellow-700 font-semibold text-center mt-1">အမှန်တကယ် စတင်သည့်အချိန်ကို ပြင်ဆင်ရွေးချယ်နိုင်ပါသည်။</p>
-                </div>
-            ) : (
-                <>
-                    <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
-                    <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
-                        {availableTimeSlots.map(t => {
-                            const state = checkSlotState(t); const displayTime = t.includes("to") ? t.split(" to ")[0].trim() : t;
-                            return (
-                                <button key={t} type="button" disabled={!formData.date} 
-                                   onClick={() => {
-                                       if (!state.available) {
-                                           let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-                                           if (fixedDetails) { const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end); if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length; neededSlots = Math.max(1, endIdx - startIdx); } 
-                                           else if (formData.selectedItem) { const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30); }
-                                           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded; const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let nextAvailable = '';
-                                           for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
-                                               let durationFree = true; const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
-                                               for(let j=0; j < neededSlots; j++) {
-                                                   const subSlot = ALL_TIME_SLOTS[i+j]; if(!subSlot) { durationFree = false; break; }
-                                                   const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 }; const subTotal = subUsage.vip + subUsage.normal;
-                                                   if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
-                                                   if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
-                                               }
-                                               if (durationFree && formData.therapist) { const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots); for (const slot of testSlots) { if (tBlocked.has(slot)) { durationFree = false; break; } } }
-                                               if (durationFree && formData.therapist2) { const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots); for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } } }
-                                               if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
-                                           }
-                                           if (nextAvailable) { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`); } else { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`); } return;
-                                       }
-                                       handleTimeSlotClick(t, state);
-                                   }} 
-                                   className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${ formData.time === t || formData.time.startsWith(`${displayTime} to`) ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : (!state.available) ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through cursor-not-allowed' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]' }`}>
-                                   {displayTime}
-                                </button>
-                            )
-                        })}
-                    </div>
-                    {formData.time && currentFixedDetails && (
-                        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm animate-fade-in text-center">
-                            <p className="text-sm text-green-800 font-bold mb-1 flex items-center justify-center"><Clock className="w-4 h-4 mr-2" /> ဝန်ဆောင်မှု ရရှိမည့် အချိန်</p>
-                            <p className="text-lg text-green-700 font-bold tracking-wide">{formData.time.split(' to ')[0].trim()} မှ {currentFixedDetails.end}{currentFixedDetails.nextDay ? ' (နောက်ရက်)' : ''} အထိ</p>
-                            <p className="text-xs text-green-600 font-semibold mt-1">(စုစုပေါင်း ကြာချိန် - {calculateTimeDiff(formData.time.split(' to ')[0].trim(), currentFixedDetails.end, currentFixedDetails.nextDay)})</p>
-                            <p className="text-[10px] text-green-600/80 mt-2 border-t border-green-200/50 pt-2">* အချိန်ကျော်လွန်ပြီးမှ ဘိုကင်ယူပါက ပြီးဆုံးမည့်အချိန်ထိသာ ဝန်ဆောင်မှုရရှိပါမည်။</p>
-                        </div>
-                    )}
-                    {!currentFixedDetails && isSelectedNightService && (<div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-[11px] sm:text-xs font-bold text-center flex items-center justify-center animate-fade-in shadow-sm"><Clock className="w-4 h-4 mr-2"/> ဝန်ဆောင်မှုသည် နောက်ရက် မနက် ၈:၀၀ နာရီတွင် ပြီးဆုံးပါမည်။</div>)}
-                </>
-            )}
-            {availableTimeSlots.length === 0 && formData.date && !(staffClockIn && formData.date === todayStr) && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
-          </div>
-          <div className="mt-8 flex justify-between"><button type="button" onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button type="button" disabled={!formData.date || !formData.time.trim()} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
-        </div>
-      )}
-
-      {step === 4 && (
-        <form onSubmit={handleSubmit} className="animate-fade-in pb-10 px-2 sm:px-0">
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး အတည်ပြုပေးပါ)</p></div>
-          
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <h3 className="text-sm font-bold tracking-widest uppercase mb-5" style={{ color: THEME.gold }}>Booking Summary</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-start">
-                <div><div className="font-bold text-gray-800 flex items-center"><Activity className="w-4 h-4 mr-2 text-yellow-600"/> {formData.selectedItem?.name || 'Unknown Service'}</div>{formData.selectedItem?.duration && <div className="text-sm text-gray-500 ml-6">{formData.selectedItem.duration}</div>}</div>
-                <div className="font-bold text-gray-800 text-sm">{formatPrice(formData.selectedItem?.price)}</div>
-              </div>
-              {formData.isVvipUpgrade && !formData.selectedItem?.vvipIncluded && (
-                <div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold flex items-center text-sm" style={{ color: THEME.gold }}><Crown className="w-4 h-4 mr-2" style={{ color: THEME.gold }}/>VVIP Room Extra Fee</div><div className="font-bold text-sm" style={{ color: THEME.gold }}>+{formatPrice((Number(formData.selectedItem?.vvipPrice) || 0) - (Number(formData.selectedItem?.price) || 0))}</div></div>
-              )}
-              {formData.selectedItem?.vvipIncluded && (<div className="flex justify-between items-start pt-2 border-t border-gray-50"><div className="font-bold text-green-600 flex items-center text-sm"><Crown className="w-4 h-4 mr-2 text-green-500"/>VVIP Master Room</div><div className="font-bold text-green-600 text-sm bg-green-50 px-2 py-0.5 rounded">Included (Free)</div></div>)}
-              
-              <div className="flex items-center text-sm font-bold text-gray-700 pt-2 border-t border-gray-50"><User className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.therapist && formData.therapist2 && (formData.selectedItem?.name || '').toLowerCase().includes('four hands') ? `${formData.therapist.name} & ${formData.therapist2.name}` : (formData.therapist ? formData.therapist.name : 'Any Available Therapist')}</div>
-              <div className="flex items-center text-sm font-bold text-gray-700"><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.gold }} /> {formData.date} at {formData.time}</div>
-            </div>
-            
-            <div className="mt-6 pt-4 border-t-2 border-gray-100">
-                <div className="flex justify-between items-center text-sm text-gray-600 mb-2"><span className="font-semibold">Subtotal</span><span className="font-bold">{formatPrice(calculateSubTotal())}</span></div>
-                {finalDiscountPercent > 0 && (
-                    <div className="flex justify-between items-center text-sm text-green-600 mb-2 bg-green-50 px-2 py-1.5 rounded border border-green-200 shadow-sm animate-fade-in"><span className="font-bold flex items-center"><Percent className="w-3 h-3 mr-1"/> {discountLabel}</span><span className="font-bold">-{formatPrice(calculateDiscountAmount())}</span></div>
-                )}
-                <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50"><span className="font-bold text-gray-800">Final Total Price</span><span className="text-xl font-bold" style={{ color: THEME.gold }}>{formatPrice(calculateTotal())}</span></div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-             <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Special Request (Optional)</h3>
-             <textarea name="specialRequest" value={formData.specialRequest || ''} onChange={handleChange} placeholder="Write any special requests or notes here..." className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" rows={3} />
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <h3 className="text-sm font-bold tracking-widest uppercase mb-4" style={{ color: THEME.gold }}>Your Information</h3>
-            <div className="space-y-4">
-              <div><label className="block mb-1 text-sm font-semibold text-gray-700">Full Name</label><input required type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g. Aung Aung" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" /></div>
-              <div><label className="block mb-1 text-sm font-semibold text-gray-700">Phone Number {isStaffMode ? '' : '(Login ID အဖြစ်အသုံးပြုရန်)'}</label><input required={!isStaffMode} type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="e.g. 09-xxxxxxxxx" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800" /></div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <h3 className="text-sm font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Deposit Payment</h3>
-            {isStaffMode ? (
-              <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
-                  <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
-                  <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm and Start Now" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
-              </div>
-            ) : (
-              <>
-                <div className="relative mb-4">
-                  <label className="block mb-2 text-sm font-semibold text-gray-700" style={{ color: THEME.primary }}>ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
-                  <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm">
-                    {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" loading="lazy" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
-                    <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
-                  </div>
-                  {paymentDropdownOpen && (
-                    <><div className="fixed inset-0 z-40" onClick={() => setPaymentDropdownOpen(false)}></div>
-                      <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-lg shadow-xl overflow-hidden border border-[#1a4a32]">
-                        {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" loading="lazy" className="w-7 h-7 mr-3 object-contain bg-white rounded-sm p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
-                      </div></>
-                  )}
-                </div>
-                {selectedPaymentConfig && (
-                  <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in">
-                    <p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက် ({formatPrice(calculateTotal() / 2)})</strong> စရံငွေအား {selectedPaymentConfig.name} သို့ လွှဲပေးပါ။</p>
-                    <div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100">
-                      <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountNumber}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountNumber)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
-                      <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountName}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountName)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
-                    </div>
-                  </div>
-                )}
-                {selectedPaymentConfig && (
-                  <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in"><p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p><div className="text-2xl font-mono font-bold text-red-700 mt-1">{formattedCountdown}</div></div>
-                )}
-                <div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div>
-              </>
-            )}
-          </div>
-
-          <div className="mt-8 flex justify-between">
-            <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
-            <button disabled={loading || (!isStaffMode && !formData.paymentMethod)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : (staffClockIn && formData.date === todayStr ? 'CONFIRM AND START NOW' : 'CONFIRM BOOKING')}</button>
-          </div>
-        </form>
-      )}
-    </div>
-  );
-}
 
 // 🌟 THE COMPONENT THAT RENDERS THE TABS AND MAIN VIEW (Moved to bottom) 🌟
 // ==========================================
