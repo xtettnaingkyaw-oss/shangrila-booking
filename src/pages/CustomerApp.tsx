@@ -645,82 +645,89 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                <section>
                    <h3 className="font-bold text-[#123524] text-base mb-4 flex items-center"><Star className="w-5 h-5 mr-2 text-[#D4AF37]"/> Member အဆင့်များနှင့် ခံစားခွင့်များ</h3>
                    <div className="space-y-4">
-                       {sortedTiers.map(tier => (
-                           <div key={tier.id} className="relative rounded-2xl p-5 overflow-hidden shadow-sm border border-gray-100 transition-all hover:shadow-md" style={{ backgroundColor: tier.colorTheme, color: tier.colorTheme === '#D4AF37' ? '#123524' : '#fff' }}>
-                               <div className="absolute top-0 right-0 w-24 h-24 bg-white opacity-[0.08] rounded-full -mr-5 -mt-5"></div>
-                               <div className="flex justify-between items-center relative z-10 mb-4 border-b border-white/20 pb-3">
-                                   <div><h4 className="font-bold text-[17px] tracking-wide">{tier.name}</h4><p className="text-[11px] mt-1 opacity-90 font-semibold">{tier.requiredPoints} Points Required</p></div>
-                                   <div className="text-right"><div className="text-3xl font-black">{tier.discountPercent}%</div><div className="text-[9px] uppercase font-bold tracking-widest mt-0.5 opacity-80">Discount</div></div>
-                               </div>
-                               <div className="relative z-10 flex items-center justify-between text-[11px] font-semibold bg-black/10 px-3 py-2 rounded-lg">
-                                   <span className="opacity-90">တစ်ကြိမ်တည်း ဝယ်ယူပါက</span><span className="font-bold">{tier.instantUpgrade}</span>
-                               </div>
-                           </div>
-                       ))}
-                   </div>
-               </section>
+    {appData.categories.map(category => {
+        const CategoryIcon = ICON_MAP[category.id] || Activity;
+        return (
+            <div key={category.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 overflow-hidden mb-4">
+                
+                {/* Category Title Header */}
+                <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 sm:p-5 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center">
+                        <CategoryIcon className={`w-5 h-5 mr-3 transition-colors ${activeCategory === category.id ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
+                        <h3 className={`font-bold text-base sm:text-lg tracking-wide ${activeCategory === category.id ? 'text-[#123524]' : 'text-gray-800'}`}>{category.title}</h3>
+                    </div>
+                    <ChevronDown className={`w-5 h-5 transition-transform duration-300 ${activeCategory === category.id ? 'rotate-180 text-[#D4AF37]' : 'text-gray-400'}`} />
+                </div>
+                
+                {/* 🌟 Service Items (Catalogue UI) 🌟 */}
+                {activeCategory === category.id && (
+                    <div className="p-3 sm:p-4 border-t border-gray-100 bg-gray-50/30">
+                        {category.items.map((s) => {
+                            const isSelected = formData.selectedItem?.id === s.id;
+                            return (
+                                <button
+                                    key={s.id}
+                                    onClick={() => setFormData({...formData, selectedItem: s, isVvipUpgrade: false, time: '', therapist2: null })}
+                                    className={`w-full text-left bg-white border ${
+                                        isSelected 
+                                            ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.01]' 
+                                            : 'border-gray-100 shadow-sm hover:border-[#D4AF37]/60 hover:shadow-md'
+                                    } rounded-[1.2rem] p-3 sm:p-4 mb-4 transition-all duration-300 flex flex-col sm:flex-row gap-3 sm:gap-4 relative overflow-hidden group`}
+                                >
+                                    {/* Selected Checkmark */}
+                                    {isSelected && (
+                                        <div className="absolute top-0 right-0 bg-[#123524] text-[#D4AF37] p-1.5 rounded-bl-xl z-10 shadow-sm">
+                                            <CheckCircle2 className="w-4 h-4" />
+                                        </div>
+                                    )}
 
-               <section>
-                   <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] rounded-2xl p-5 shadow-sm text-white relative overflow-hidden">
-                       <Target className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-5" />
-                       <h3 className="font-bold text-[#D4AF37] text-sm mb-3 flex items-center relative z-10">လစဉ် Target Rewards (Pre-Jade)</h3>
-                       <p className="text-[11px] text-gray-300 leading-relaxed mb-4 relative z-10 font-semibold">{preJadeTxt}</p>
-                       <ul className="space-y-2 relative z-10">
-                           {preJadeRws.map((r: string, i: number) => (
-                               <li key={i} className="flex justify-between items-center bg-white/10 px-3 py-2 rounded-lg text-xs font-bold border border-white/5">
-                                   <span>{r.split('=')[0]}</span><span className="text-[#D4AF37]">{r.split('=')[1]} (၁ ကြိမ်)</span>
-                               </li>
-                           ))}
-                       </ul>
-                   </div>
-               </section>
+                                    {/* Service Image */}
+                                    <div className="w-full sm:w-[130px] h-[150px] sm:h-[110px] rounded-xl overflow-hidden bg-gray-50 relative flex-shrink-0 border border-gray-100/60 shadow-inner">
+                                        {s.imageUrl ? (
+                                            <img src={s.imageUrl} alt={s.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                                        ) : (
+                                            <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gradient-to-br from-gray-50 to-gray-100/50">
+                                                <Sparkles className="w-6 h-6 mb-1.5 opacity-40 text-[#D4AF37]" />
+                                                <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Shangri-La</span>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Duration Overlay on Mobile */}
+                                        <div className="absolute bottom-2 left-2 sm:hidden bg-white/90 backdrop-blur-sm text-[#123524] text-[9px] font-bold px-2 py-1 rounded-lg flex items-center shadow-sm">
+                                            <Clock className="w-3 h-3 mr-1 text-[#D4AF37]" /> {s.duration}
+                                        </div>
+                                    </div>
 
-               <section className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5">
-                   <h3 className="font-bold text-[#123524] text-sm mb-2 flex items-center"><Info className="w-4 h-4 mr-2 text-yellow-600"/> Cumulative Upgrade System</h3>
-                   <p className="text-[11px] text-gray-700 leading-relaxed font-semibold mb-4">{cumulativeTxt}</p>
-                   <div className="bg-white border border-[#D4AF37]/40 shadow-sm rounded-xl p-4 relative overflow-hidden">
-                       <div className="absolute top-0 left-0 w-1.5 h-full bg-[#D4AF37]"></div>
-                       <p className="text-[11px] text-gray-700 leading-relaxed font-semibold"><span className="text-[#123524] font-bold block mb-1">💡 အထူးသတိပြုရန် -</span>{instantUpgTxt}</p>
-                   </div>
-               </section>
+                                    {/* Service Details */}
+                                    <div className="flex-1 flex flex-col justify-center w-full">
+                                        <div className="flex justify-between items-start mb-1.5">
+                                            <h4 className={`font-bold text-sm sm:text-base tracking-wide pr-6 ${isSelected ? 'text-[#123524]' : 'text-gray-800'}`}>
+                                                {s.name}
+                                            </h4>
+                                            <span className={`font-black text-sm sm:text-base whitespace-nowrap ml-2 ${isSelected ? 'text-[#123524]' : 'text-[#D4AF37]'}`}>
+                                                {s.price ? `${s.price.toLocaleString()} Ks` : ''} 
+                                            </span>
+                                        </div>
 
-               <section>
-                   <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><Gift className="w-5 h-5 mr-2 text-red-500"/> မွေးနေ့ အထူးခံစားခွင့်များ</h3>
-                   <div className="space-y-3">
-                       <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-start">
-                           <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mr-3 mt-0.5"><Star className="w-4 h-4 text-red-500"/></div>
-                           <div><h4 className="font-bold text-[#123524] text-xs">Standard Birthday Bonus</h4><p className="text-[11px] text-gray-600 mt-1 font-semibold leading-relaxed whitespace-pre-line">{bdayStd}</p></div>
-                       </div>
-                       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-start text-white">
-                           <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0 mr-3 mt-0.5"><Crown className="w-4 h-4 text-[#D4AF37]"/></div>
-                           <div><h4 className="font-bold text-[#D4AF37] text-xs">Imperial V-VIP သီးသန့်ခံစားခွင့်</h4><p className="text-[11px] text-gray-400 mt-1 font-semibold leading-relaxed whitespace-pre-line">{bdayImp}</p></div>
-                       </div>
-                   </div>
-               </section>
+                                        {/* Duration for PC/Tablet */}
+                                        <div className="hidden sm:inline-flex items-center text-[10px] text-gray-500 font-bold bg-gray-50 px-2 py-1.5 rounded-md border border-gray-100 w-max mb-2 shadow-sm">
+                                            <Clock className="w-3 h-3 mr-1 text-[#D4AF37]" /> {s.duration}
+                                        </div>
 
-               <section className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                   <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><ShieldCheck className="w-4 h-4 mr-2 text-[#D4AF37]"/> Membership Terms & Conditions</h3>
-                   <ul className="space-y-3">
-                       {vipSettings.rules.map((rule, idx) => (
-                           <li key={idx} className="flex items-start text-[11px] text-gray-600 leading-relaxed font-semibold">
-                               <ChevronRight className="w-3 h-3 mr-1.5 mt-0.5 text-[#D4AF37] flex-shrink-0" />{rule}
-                           </li>
-                       ))}
-                   </ul>
-               </section>
-
-               <div className="text-center pt-6 pb-8 border-t border-gray-200">
-                   <div className="w-12 h-1 bg-gray-200 mx-auto rounded-full mb-4"></div>
-                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-2">Check Your Points</p>
-                   <p className="text-xs text-gray-600 font-semibold mb-5 px-4 leading-relaxed">မိမိ၏ လက်ရှိ Point များကို မိမိ၏ Profile တွင် အချိန်မရွေး ဝင်ရောက်စစ်ဆေးနိုင်ပါသည်။</p>
-                   {onGoToProfile && (
-                       <button onClick={onGoToProfile} className="inline-flex items-center justify-center px-6 py-3 bg-[#123524] text-[#D4AF37] font-bold text-xs rounded-full shadow-md hover:shadow-lg transition transform hover:-translate-y-0.5">
-                           <UserCircle className="w-4 h-4 mr-2" /> Point စစ်ရန် (Go to Profile)
-                       </button>
-                   )}
-               </div>
-           </div>
-       </div>
+                                        {/* Dynamic Description */}
+                                        <p className={`text-[10px] sm:text-xs font-semibold leading-relaxed line-clamp-3 mt-1 sm:mt-0 ${isSelected ? 'text-gray-600' : 'text-gray-500'}`}>
+                                            {s.description || 'အကောင်းဆုံးသော ဝန်ဆောင်မှုဖြင့် လူကြီးမင်း၏ ပင်ပန်းနွမ်းနယ်မှုများကို အပြည့်အဝ ပြေပျောက်စေပါမည်။'}
+                                        </p>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    })}
+</div>
    );
 }
 
