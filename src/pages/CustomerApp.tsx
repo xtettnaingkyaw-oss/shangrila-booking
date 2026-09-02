@@ -1920,7 +1920,7 @@ const renderServiceSelection = (currentStep: number) => (
               <div key={category.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition"><div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>{activeCategory === category.id ? <ChevronUp className="w-6 h-6" style={{ color: THEME.primary }} /> : <ChevronDown className="w-6 h-6" style={{ color: THEME.primary }} />}</div>
                 {activeCategory === category.id && (
-                    <div className="p-3 sm:p-4 border-t border-gray-100 bg-gray-50/30">
+                    <div className="p-3 sm:p-4 border-t border-gray-100 bg-gray-50/30 grid grid-cols-2 gap-3 sm:gap-4">
                         {(() => {
                             // 🌟 နာမည်တူသော Service များကို Group ဖွဲ့ခြင်း 🌟
                             const groupedItems = category.items.reduce((acc, item) => {
@@ -1933,16 +1933,13 @@ const renderServiceSelection = (currentStep: number) => (
                                         variants: []
                                     };
                                 }
-                                // Group ထဲတွင် ပုံ သို့မဟုတ် စာသားမရှိပါက ဖြည့်စွက်ခြင်း
                                 if (!acc[name].imageUrl && item.imageUrl) acc[name].imageUrl = item.imageUrl;
                                 if (!acc[name].description && item.description) acc[name].description = item.description;
-                                
                                 acc[name].variants.push(item);
                                 return acc;
                             }, {} as Record<string, { baseName: string, description: string, imageUrl: string, variants: MenuItem[] }>);
 
                             return Object.values(groupedItems).map((group, gIdx) => {
-                                // ဤ Group အတွင်းမှ ရွေးချယ်ထားသော Service ရှိမရှိ စစ်ဆေးခြင်း
                                 const selectedVariant = group.variants.find(v => formData.selectedItem?.id === v.id);
                                 const isGroupSelected = !!selectedVariant;
                                 const displayVariant = selectedVariant || group.variants[0];
@@ -1952,43 +1949,43 @@ const renderServiceSelection = (currentStep: number) => (
                                         key={gIdx}
                                         className={`w-full text-left bg-white border ${
                                             isGroupSelected 
-                                                ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.01]' 
+                                                ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.02]' 
                                                 : 'border-gray-100 shadow-sm hover:border-[#D4AF37]/60 hover:shadow-md'
-                                        } rounded-[1.2rem] p-3 sm:p-4 mb-4 transition-all duration-300 flex flex-col sm:flex-row gap-3 sm:gap-4 relative overflow-hidden group cursor-pointer`}
+                                        } rounded-[1rem] transition-all duration-300 flex flex-col relative overflow-hidden group cursor-pointer`}
                                         onClick={() => setFormData({...formData, selectedItem: displayVariant, isVvipUpgrade: false, time: '', therapist2: null })}
                                     >
                                         {/* Selected Checkmark */}
                                         {isGroupSelected && (
-                                            <div className="absolute top-0 right-0 bg-[#123524] text-[#D4AF37] p-1.5 rounded-bl-xl z-10 shadow-sm">
+                                            <div className="absolute top-0 right-0 bg-[#123524] text-[#D4AF37] p-1.5 rounded-bl-xl z-20 shadow-sm">
                                                 <CheckCircle className="w-4 h-4" />
                                             </div>
                                         )}
 
-                                        {/* 🌟 Service Image (Square Style) 🌟 */}
-                                        <div className="w-full sm:w-[130px] aspect-square rounded-xl overflow-hidden bg-gray-50 relative flex-shrink-0 border border-gray-100/60 shadow-inner flex items-center justify-center mx-auto sm:mx-0 p-2">
+                                        {/* 🌟 Service Image (Square - 2 Columns) 🌟 */}
+                                        <div className="w-full aspect-square bg-gray-50 relative border-b border-gray-100/80 shadow-[inset_0_-2px_10px_rgba(0,0,0,0.02)] flex items-center justify-center p-1.5">
                                             {group.imageUrl ? (
                                                 <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105" />
                                             ) : (
-                                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                                                    <Sparkles className="w-6 h-6 mb-1.5 opacity-40 text-[#D4AF37]" />
-                                                    <span className="text-[8px] font-bold uppercase tracking-widest opacity-40">Shangri-La</span>
+                                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                                                    <Sparkles className="w-5 h-5 mb-1 opacity-40 text-[#D4AF37]" />
+                                                    <span className="text-[7px] font-bold uppercase tracking-widest opacity-40">Shangri-La</span>
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* Service Details */}
-                                        <div className="flex-1 flex flex-col justify-center w-full">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h4 className={`font-bold text-sm sm:text-base tracking-wide pr-6 ${isGroupSelected ? 'text-[#123524]' : 'text-gray-800'}`}>
+                                        {/* 🌟 Service Details 🌟 */}
+                                        <div className="p-2.5 sm:p-3 flex flex-col justify-between flex-1">
+                                            <div className="mb-2">
+                                                <h4 className={`font-bold text-[11px] sm:text-xs tracking-wide line-clamp-2 leading-tight ${isGroupSelected ? 'text-[#123524]' : 'text-gray-800'}`}>
                                                     {group.baseName}
                                                 </h4>
-                                                <span className={`font-black text-sm sm:text-base whitespace-nowrap ml-2 ${isGroupSelected ? 'text-[#123524]' : 'text-[#D4AF37]'}`}>
+                                                <div className={`font-black text-xs sm:text-sm mt-1 ${isGroupSelected ? 'text-[#123524]' : 'text-[#D4AF37]'}`}>
                                                     {displayVariant.price ? `${displayVariant.price.toLocaleString()} Ks` : ''} 
-                                                </span>
+                                                </div>
                                             </div>
 
-                                            {/* 🌟 Duration Variants Selection (အချိန်ရွေးချယ်ရန်) 🌟 */}
-                                            <div className="flex flex-wrap gap-2 mb-2">
+                                            {/* 🌟 Duration Variants Selection 🌟 */}
+                                            <div className="flex flex-wrap gap-1.5 mt-auto mb-2">
                                                 {group.variants.map((v) => {
                                                     const isVariantSelected = formData.selectedItem?.id === v.id;
                                                     return (
@@ -1996,26 +1993,34 @@ const renderServiceSelection = (currentStep: number) => (
                                                             key={v.id}
                                                             type="button"
                                                             onClick={(e) => {
-                                                                e.stopPropagation(); // Parent ကိုပါ နှိပ်မိခြင်းမှ ကာကွယ်ရန်
+                                                                e.stopPropagation(); 
                                                                 setFormData({...formData, selectedItem: v, isVvipUpgrade: false, time: '', therapist2: null });
                                                             }}
-                                                            className={`flex items-center px-3 py-1.5 rounded-lg border text-[10px] sm:text-[11px] font-bold transition-all ${
+                                                            className={`flex-1 flex items-center justify-center px-1.5 py-1.5 rounded border text-[9px] font-bold transition-all ${
                                                                 isVariantSelected 
                                                                     ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm' 
                                                                     : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-[#D4AF37]/50'
                                                             }`}
                                                         >
-                                                            <Clock className={`w-3 h-3 mr-1.5 ${isVariantSelected ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
+                                                            <Clock className={`w-2.5 h-2.5 mr-1 ${isVariantSelected ? 'text-[#D4AF37]' : 'text-gray-400'}`} />
                                                             {v.duration}
                                                         </button>
                                                     );
                                                 })}
                                             </div>
 
-                                            {/* Dynamic Description */}
-                                            <p className={`text-[10px] sm:text-xs font-semibold leading-relaxed line-clamp-3 mt-1 ${isGroupSelected ? 'text-gray-600' : 'text-gray-500'}`}>
-                                                {group.description || 'အကောင်းဆုံးသော ဝန်ဆောင်မှုဖြင့် လူကြီးမင်း၏ ပင်ပန်းနွမ်းနယ်မှုများကို အပြည့်အဝ ပြေပျောက်စေပါမည်။'}
-                                            </p>
+                                            {/* 🌟 Expandable Description Button 🌟 */}
+                                            <details className="group/desc mt-1" onClick={(e) => e.stopPropagation()}>
+                                                <summary className="text-[9px] font-bold text-[#D4AF37] cursor-pointer outline-none list-none flex items-center justify-center py-1.5 border border-[#D4AF37]/30 rounded bg-yellow-50/30 hover:bg-yellow-50 transition-colors [&::-webkit-details-marker]:hidden">
+                                                    <Info className="w-3 h-3 mr-1" />
+                                                    <span className="group-open/desc:hidden">ဝန်ဆောင်မှုအကြောင်း ဖတ်ရန်</span>
+                                                    <span className="hidden group-open/desc:inline">အသေးစိတ်ကို ပိတ်ရန်</span>
+                                                </summary>
+                                                <div className="text-[9px] sm:text-[10px] text-gray-600 mt-2 p-2 bg-gray-50 rounded border border-gray-100 leading-relaxed text-center">
+                                                    {group.description || 'အကောင်းဆုံးသော ဝန်ဆောင်မှုဖြင့် လူကြီးမင်း၏ ပင်ပန်းနွမ်းနယ်မှုများကို အပြည့်အဝ ပြေပျောက်စေပါမည်။'}
+                                                </div>
+                                            </details>
+
                                         </div>
                                     </div>
                                 );
@@ -2023,10 +2028,6 @@ const renderServiceSelection = (currentStep: number) => (
                         })()}
                     </div>
                 )}
-              </div>
-            );
-          })}
-      </div>
       
       <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
         <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (isVipCurrentlyFull ? '🚫 လတ်တလော VIP အခန်းပြည့်နေပါသည်' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available')))}</div></div></div>
