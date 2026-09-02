@@ -2313,23 +2313,24 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      <div className="w-full relative" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
        
-       {/* 🌟 ORIGINAL WHITE TAB BAR 🌟 */}
+       {/* 🌟 DOCKED STICKY TAB BAR 🌟 */}
+       {/* style top သည် App.tsx မှ Header အသေးလေးဖြစ်သွားချိန် အမြင့် (53px) ၏ အောက်တည့်တည့်သို့ ကွက်တိ ဝင်ကပ်စေပါသည် */}
        <div 
-         className="sticky top-0 z-[100] w-full bg-white/95 backdrop-blur-xl shadow-sm border-b border-gray-100 transition-all duration-300 pb-3 pt-2"
-         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
+         className="sticky z-[90] w-full bg-white/95 backdrop-blur-xl shadow-sm border-b border-gray-100 transition-all duration-300 pb-3 pt-2 mb-6"
+         style={{ top: 'calc(53px + env(safe-area-inset-top))' }}
        >
           <div className="max-w-4xl mx-auto flex flex-col items-center">
               
               {/* Swipe Indicator (Mobile Only) */}
               <div className="w-full max-w-[95vw] flex sm:hidden justify-end mb-2 pr-1">
-                  <span className="text-[9px] text-gray-500 font-bold flex items-center bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200 shadow-sm tracking-wider">
-                     ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-3.5 h-3.5 ml-1 text-[#D4AF37]" />
+                  <span className="text-[9px] text-[#123524] font-bold flex items-center bg-yellow-50 px-3 py-1.5 rounded-full border border-yellow-200 shadow-sm uppercase tracking-wider">
+                     ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-3 h-3 ml-0.5 text-[#D4AF37]" />
                   </span>
               </div>
 
               {/* White Container Tabs */}
               <div className="w-full overflow-x-auto sm:overflow-visible scrollbar-hide px-3">
-                  <div className="flex sm:flex-wrap sm:justify-center items-center gap-1.5 w-max sm:w-full mx-auto bg-gray-50/60 p-1.5 rounded-[1.5rem] border border-gray-100">
+                  <div className="flex sm:flex-wrap sm:justify-center items-center gap-1.5 w-max sm:w-full mx-auto bg-gray-50/80 p-1.5 rounded-[1.5rem] border border-gray-100">
                     {tabs.map((tab) => {
                       const isActive = activeTab === tab.id;
                       return (
@@ -2363,7 +2364,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        </div>
        
        {/* 🌟 Main Content Area */}
-       <div className="max-w-2xl mx-auto px-4 sm:px-0 mt-4">
+       <div className="max-w-2xl mx-auto px-4 sm:px-0">
            {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
            {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
            {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
