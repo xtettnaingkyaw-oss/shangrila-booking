@@ -1387,7 +1387,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                         </div>
                                     )}
                                     
-                                    <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
+                                   <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
                                         <input 
                                             type="file" 
                                             accept="image/*" 
@@ -1401,7 +1401,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                         const img = new Image();
                                                         img.onload = () => {
                                                             const canvas = document.createElement('canvas');
-                                                            const MAX_SIZE = 300; 
+                                                            // 🌟 ပုံဆိုဒ်ကို 800 အထိ ကြီးပေးလိုက်ပါသည် (ကြည်လင်စွာ ပေါ်စေရန်)
+                                                            const MAX_SIZE = 800; 
                                                             let width = img.width;
                                                             let height = img.height;
 
@@ -1421,9 +1422,10 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                             const ctx = canvas.getContext('2d');
                                                             ctx?.drawImage(img, 0, 0, width, height);
                                                             
-                                                            const tinyBase64 = canvas.toDataURL('image/jpeg', 0.6); 
+                                                            // 🌟 Quality ကို 85% ထိ တိုးပေးလိုက်ပါသည် (Database Limit လည်း မကျော်အောင် ချိန်ညှိထားပါသည်)
+                                                            const highResBase64 = canvas.toDataURL('image/jpeg', 0.85); 
                                                             
-                                                            updateItem(cIdx, iIdx, 'imageUrl', tinyBase64);
+                                                            updateItem(cIdx, iIdx, 'imageUrl', highResBase64);
                                                             setUploadingImage(null);
                                                         };
                                                         img.src = event.target?.result as string;
