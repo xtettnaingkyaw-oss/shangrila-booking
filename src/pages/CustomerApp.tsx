@@ -2310,47 +2310,40 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const tabs = vipSettings.isActive ? [...baseTabs, { id: 'vip', label: 'VIP Member', icon: Award }, { id: 'profile', label: 'Profile', icon: UserCircle }] : [...baseTabs, { id: 'profile', label: 'Profile', icon: UserCircle }];
 
    return (
-     <div className="max-w-4xl mx-auto" onClick={handleInteraction}>
+     <div className="w-full" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
        
-       {/* 🌟 STICKY TAB NAVIGATION BAR (FIXED FOR PC/TABLET) 🌟 */}
+       {/* 🌟 STICKY TAB NAVIGATION BAR (SLIM & RESPONSIVE) 🌟 */}
        <div 
-         className="sticky top-0 z-[100] w-full bg-white/90 backdrop-blur-xl px-2 sm:px-0 mb-8 shadow-sm border-b border-gray-200 transition-all duration-300"
-         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))', paddingBottom: '0.5rem' }}
+         className="sticky top-0 z-[100] w-full bg-white/95 backdrop-blur-xl mb-6 shadow-sm border-b border-gray-200 transition-all duration-300"
+         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
        >
-          <div className="max-w-4xl mx-auto flex flex-col items-center">
-             
-             {/* Scroll Indicator for Mobile */}
-             <div className="w-full flex sm:hidden justify-end mb-2 pr-2">
-                <span className="text-[9px] text-[#123524] font-bold flex items-center animate-pulse bg-yellow-50 px-2.5 py-1 rounded-full border border-yellow-200 shadow-sm uppercase tracking-wider">
-                   ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-3 h-3 ml-0.5 text-[#D4AF37]" />
-                </span>
-             </div>
-
+          <div className="max-w-4xl mx-auto px-2 pb-3">
              {/* Tab Container */}
-             <div className="w-full overflow-x-auto scrollbar-hide">
-                 <div className="flex sm:justify-center items-center space-x-1.5 sm:space-x-3 bg-gray-50/50 p-1.5 rounded-2xl border border-gray-100 min-w-max mx-auto px-2">
+             <div className="w-full overflow-x-auto sm:overflow-visible scrollbar-hide">
+                 {/* PC တွင် sm:w-full နှင့် sm:flex-wrap ထည့်သွင်းပေးထားသောကြောင့် ဘေးဆွဲစရာမလိုဘဲ အချိုးကျကျ နေရာယူပါမည် */}
+                 <div className="flex sm:flex-wrap sm:justify-center items-center gap-2 sm:gap-3 w-max sm:w-full mx-auto px-1">
                    {tabs.map((tab) => {
                      const isActive = activeTab === tab.id;
                      return (
                        <button 
                          key={tab.id} 
                          onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-                         className={`relative flex-shrink-0 flex flex-col sm:flex-row items-center justify-center py-2.5 sm:py-3 px-3 sm:px-5 rounded-xl text-[10px] sm:text-sm font-bold transition-all duration-300 ease-out ${
+                         className={`relative flex-shrink-0 flex items-center justify-center py-2.5 px-4 sm:py-2.5 sm:px-5 rounded-full text-[11px] sm:text-sm font-bold transition-all duration-300 ease-out ${
                            isActive 
-                             ? 'bg-[#123524] text-[#D4AF37] shadow-md transform sm:scale-105 border border-[#1a4a32]' 
-                             : 'text-gray-500 hover:bg-white hover:text-gray-800 hover:shadow-sm border border-transparent'
+                             ? 'bg-[#123524] text-[#D4AF37] shadow-md border border-[#1a4a32] transform sm:scale-105' 
+                             : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-800 border border-gray-200/60'
                          }`}
                        >
-                         <tab.icon className={`flex-shrink-0 w-5 h-5 mb-1.5 sm:mb-0 sm:mr-2 transition-all duration-300 ${isActive ? 'text-[#D4AF37] scale-110 drop-shadow-md' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
+                         <tab.icon className={`flex-shrink-0 w-4 h-4 sm:w-4 sm:h-4 mr-1.5 transition-all duration-300 ${isActive ? 'text-[#D4AF37] drop-shadow-md' : 'text-gray-400'} ${tab.id === 'vip' && isActive ? 'animate-pulse' : ''}`} />
                          
-                         <span className="whitespace-nowrap tracking-wide">{tab.label}</span>
+                         <span className={`whitespace-nowrap tracking-wide ${isActive ? 'text-[#D4AF37]' : ''}`}>{tab.label}</span>
                          
                          {/* Notification Dots */}
                          {tab.id === 'history' && hasNoti && (
                            <>
-                             <span className="absolute top-1 right-2 sm:top-2 sm:right-3 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>
-                             <span className="absolute top-1 right-2 sm:top-2 sm:right-3 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></span>
+                             <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md animate-ping"></span>
+                             <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></span>
                            </>
                          )}
                        </button>
@@ -2358,10 +2351,10 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
                    })}
                  </div>
              </div>
-
           </div>
        </div>
        
+       {/* 🌟 Main Content Area */}
        <div className="max-w-2xl mx-auto px-4 sm:px-0">
            {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
            {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
