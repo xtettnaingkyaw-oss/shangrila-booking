@@ -1088,7 +1088,8 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   const [formData, setFormData] = useState({ name: '', password: '', dob: '' });
   const [saving, setSaving] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
-
+  
+  const [viewDesc, setViewDesc] = useState<{title: string, desc: string} | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -1898,6 +1899,27 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 
 const renderServiceSelection = (currentStep: number) => (
     <div className="animate-fade-in px-2 sm:px-0">
+      
+      {/* 🌟 Description Floating Box (Modal) 🌟 */}
+      {viewDesc && (
+          <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 sm:p-6 animate-fade-in backdrop-blur-sm" onClick={() => setViewDesc(null)}>
+              <div className="bg-white w-full max-w-sm rounded-[1.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up border border-[#D4AF37]/30" onClick={e => e.stopPropagation()}>
+                  <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-4 flex items-center justify-between shadow-md">
+                      <h3 className="text-[#D4AF37] font-bold text-sm tracking-wide flex items-center"><Info className="w-4 h-4 mr-2" /> {viewDesc.title}</h3>
+                      <button onClick={() => setViewDesc(null)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-4 h-4"/></button>
+                  </div>
+                  <div className="p-6 text-[11px] sm:text-xs text-gray-700 leading-relaxed text-center font-semibold bg-gray-50/50">
+                      {viewDesc.desc || 'အကောင်းဆုံးသော ဝန်ဆောင်မှုဖြင့် လူကြီးမင်း၏ ပင်ပန်းနွမ်းနယ်မှုများကို အပြည့်အဝ ပြေပျောက်စေပါမည်။'}
+                  </div>
+                  <div className="p-4 border-t border-gray-100 bg-white">
+                      <button onClick={() => setViewDesc(null)} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-bold shadow-sm hover:bg-gray-200 transition text-xs uppercase tracking-widest border border-gray-200">
+                          ပိတ်မည် (Close)
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {promoActive && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between">
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div><div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
@@ -1959,9 +1981,10 @@ const renderServiceSelection = (currentStep: number) => (
                                             </div>
                                         )}
 
-                                        <div className="w-full aspect-square bg-gray-50 relative border-b border-gray-100/80 shadow-[inset_0_-2px_10px_rgba(0,0,0,0.02)] flex items-center justify-center p-1.5">
+                                        {/* 🌟 Rounded Image 🌟 */}
+                                        <div className="w-full aspect-square bg-gray-50 relative border-b border-gray-100/80 flex items-center justify-center p-2">
                                             {group.imageUrl ? (
-                                                <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105" />
+                                                <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
                                             ) : (
                                                 <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
                                                     <Sparkles className="w-5 h-5 mb-1 opacity-40 text-[#D4AF37]" />
@@ -2004,17 +2027,17 @@ const renderServiceSelection = (currentStep: number) => (
                                                 })}
                                             </div>
 
-                                            {/* 🌟 Expandable Description Button 🌟 */}
-                                            <details className="group/desc mt-1" onClick={(e) => e.stopPropagation()}>
-                                                <summary className="text-[9px] font-bold text-[#D4AF37] cursor-pointer outline-none list-none flex items-center justify-center py-1.5 border border-[#D4AF37]/30 rounded bg-yellow-50/30 hover:bg-yellow-50 transition-colors [&::-webkit-details-marker]:hidden">
-                                                    <Info className="w-3 h-3 mr-1" />
-                                                    <span className="group-open/desc:hidden">အသေးစိတ်ဖတ်ရန်</span>
-                                                    <span className="hidden group-open/desc:inline">အသေးစိတ်ကို ပိတ်ရန်</span>
-                                                </summary>
-                                                <div className="text-[9px] sm:text-[10px] text-gray-600 mt-2 p-2 bg-gray-50 rounded border border-gray-100 leading-relaxed text-center">
-                                                    {group.description || 'အကောင်းဆုံးသော ဝန်ဆောင်မှုဖြင့် လူကြီးမင်း၏ ပင်ပန်းနွမ်းနယ်မှုများကို အပြည့်အဝ ပြေပျောက်စေပါမည်။'}
-                                                </div>
-                                            </details>
+                                            {/* 🌟 Floating Box ခေါ်ရန် Button 🌟 */}
+                                            <button 
+                                                type="button" 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setViewDesc({ title: group.baseName, desc: group.description });
+                                                }}
+                                                className="w-full flex items-center justify-center py-1.5 px-2 rounded-lg border border-[#D4AF37]/40 text-[9px] font-bold text-[#123524] bg-yellow-50/50 hover:bg-yellow-100 transition-colors shadow-sm"
+                                            >
+                                                <Info className="w-3 h-3 mr-1" /> အသေးစိတ်ဖတ်ရန်
+                                            </button>
 
                                         </div>
                                     </div>
