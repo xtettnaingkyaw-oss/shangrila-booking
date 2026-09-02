@@ -776,6 +776,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
   const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, title: 'SPECIAL PROMO', hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
+  const [localSignUpBonus, setLocalSignUpBonus] = useState<any>(JSON.parse(JSON.stringify(appData.signUpBonus || { isActive: false, points: 5, startDate: '', endDate: '' })));
   const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
   const [localVipSettings, setLocalVipSettings] = useState<any>(defaultVipConfig);
 
