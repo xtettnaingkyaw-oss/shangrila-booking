@@ -1417,6 +1417,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
+  const [viewDesc, setViewDesc] = useState<{title: string, desc: string} | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [alertMessage, setAlertMessage] = useState('');
   
