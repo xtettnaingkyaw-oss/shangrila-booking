@@ -1319,8 +1319,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                   <button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : 'Save'}</button>
                </div>
                <div className="space-y-3">
-                  {cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
-                  {cat.items.map((item, iIdx) => (
+                 {cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
+                 {cat.items.map((item, iIdx) => (
                     <div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-4 border border-gray-200 rounded-xl hover:border-[#D4AF37] transition">
                         
                         <div className="lg:col-span-3">
@@ -1368,7 +1368,26 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                             </div>
 
                             <div>
-                               <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Service Image (ပုံ)</label>
+                                <div className="flex items-center gap-3">
+                                    {item.imageUrl ? (
+                                        <div className="relative w-20 h-20 rounded-xl border border-gray-200 shadow-sm overflow-hidden group">
+                                            <img src={item.imageUrl} alt="Service" className="w-full h-full object-cover" />
+                                            <button 
+                                                type="button"
+                                                onClick={() => updateItem(cIdx, iIdx, 'imageUrl', '')} 
+                                                className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <X className="w-5 h-5 text-white" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-white text-gray-400 shadow-inner">
+                                            <ImageIcon className="w-6 h-6 opacity-40" />
+                                        </div>
+                                    )}
+                                    
+                                    <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
                                         <input 
                                             type="file" 
                                             accept="image/*" 
@@ -1380,7 +1399,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                         setUploadingImage(`service_${cIdx}_${iIdx}`);
                                                         const base64 = await compressImage(file, 600, 600);
                                                         const fileName = `service_${Date.now()}.jpg`;
-                                                        // Firebase Storage သို့ လှမ်းတင်ခြင်း
                                                         const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
                                                         updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
                                                     } catch (err) {
@@ -1397,14 +1415,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                 </div>
                             </div>
                         </div>
-
+                        
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+                 ))}
+               </div>
+             </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
