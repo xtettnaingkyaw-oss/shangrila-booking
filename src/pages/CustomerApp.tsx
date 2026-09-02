@@ -1227,12 +1227,12 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
   const isBdayMonth = () => { if (!profile?.dob) return false; const dobParts = profile.dob.split('-'); const currentParts = getLocalTodayStr().split('-'); return dobParts[1] === currentParts[1]; };
 
   return (
-    <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0 relative z-10 pb-12">
+    <div className="animate-fade-in max-w-sm mx-auto px-4 sm:px-0 relative pb-12">
       <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
       
-      {/* 🌟 History Modal */}
+      {/* 🌟 History Modal (Z-index ကို 999 ထိ တင်ပေးထားသောကြောင့် အဖြူကွက်ကြီး ဖုံးမနေတော့ပါ) */}
       {showHistory && (
-          <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center sm:items-center sm:p-4 animate-fade-in backdrop-blur-sm" onClick={() => setShowHistory(false)}>
+          <div className="fixed inset-0 z-[999] bg-black/60 flex items-end justify-center sm:items-center sm:p-4 animate-fade-in backdrop-blur-sm" onClick={() => setShowHistory(false)}>
               <div className="bg-white w-full sm:max-w-md rounded-t-[2rem] sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh] sm:h-auto sm:max-h-[85vh] animate-slide-up border border-[#D4AF37]/20" onClick={e => e.stopPropagation()}>
                   <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-5 flex items-center justify-between sticky top-0 z-10 shadow-md">
                       <h3 className="text-[#D4AF37] font-bold text-sm flex items-center tracking-wide"><History className="w-4 h-4 mr-2" /> Points History</h3>
