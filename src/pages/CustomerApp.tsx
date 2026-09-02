@@ -1896,8 +1896,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
     </div>
   );
 
-  const renderSer
-    viceSelection = (currentStep: number) => (
+const renderServiceSelection = (currentStep: number) => (
     <div className="animate-fade-in px-2 sm:px-0">
       {promoActive && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between">
