@@ -1387,22 +1387,19 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                         </div>
                                     )}
                                     
-                                    <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center">
+                                    <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
                                         <input 
                                             type="file" 
                                             accept="image/*" 
                                             className="hidden" 
-                                            onChange={async (e) => {
+                                            onChange={(e) => {
                                                 const file = e.target.files?.[0];
                                                 if (file) {
-                                                    try {
-                                                        const base64 = await compressImage(file, 600, 600);
-                                                        const fileName = `service_${Date.now()}.jpg`;
-                                                        const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
-                                                        updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
-                                                    } catch (err) {
-                                                        alert("Error uploading image");
-                                                    }
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => {
+                                                        updateItem(cIdx, iIdx, 'imageUrl', reader.result as string);
+                                                    };
+                                                    reader.readAsDataURL(file);
                                                 }
                                             }} 
                                         />
