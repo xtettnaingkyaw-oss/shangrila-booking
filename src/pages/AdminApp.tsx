@@ -1412,11 +1412,16 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                         {uploadingImage === `service_${cIdx}_${iIdx}` ? 'Uploading...' : 'Upload Photo'}
                                     </label>
                                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+                            </div>
+                        </div>
+
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
     </div>
   );
 }
