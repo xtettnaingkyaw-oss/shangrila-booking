@@ -822,7 +822,16 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const handleSaveBranding = async () => { if (!window.confirm(`Are you sure you want to save branding settings?`)) return; setSavingCategory('branding'); try { await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true }); onSettingsUpdated({ ...appData, branding: localBranding }); alert('Branding saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
   const handleSavePayments = async () => { if (!window.confirm(`Are you sure you want to save payment methods?`)) return; setSavingCategory('payments'); try { await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true }); onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods }); alert('Payment methods saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
   const handleSaveInstallSteps = async () => { if (!window.confirm(`Are you sure you want to save Install Instructions?`)) return; setSavingCategory('install_steps'); try { await setDoc(doc(db, 'settings', 'appData'), { installSteps: localInstallSteps }, { merge: true }); onSettingsUpdated({ ...appData, installSteps: localInstallSteps }); alert('Install Instructions saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
-
+  const handleSaveSignUpBonus = async () => { 
+      if (!window.confirm(`Are you sure you want to save Welcome Bonus settings?`)) return; 
+      setSavingCategory('signup_bonus'); 
+      try { 
+          await setDoc(doc(db, 'settings', 'appData'), { signUpBonus: localSignUpBonus }, { merge: true }); 
+          onSettingsUpdated({ ...appData, signUpBonus: localSignUpBonus }); 
+          alert('Welcome Bonus settings saved successfully.'); 
+      } catch (e) { alert('Update error.'); } 
+      setSavingCategory(null); 
+  };
   const handleSaveTherapists = async () => {
     if (!window.confirm(`Are you sure you want to save therapists list and ranking?`)) return; setSavingCategory('therapists');
     try {
@@ -1039,6 +1048,42 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                       </div>
                       <div><label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label><input type="date" value={localPromotion.startDate} onChange={(e) => setLocalPromotion({...localPromotion, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
                       <div><label className="block text-xs font-bold text-gray-500 mb-1">End Date</label><input type="date" value={localPromotion.endDate} onChange={(e) => setLocalPromotion({...localPromotion, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                  </div>
+              </div>
+          )}
+      </div>
+
+       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-purple-500">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Gift className="w-5 h-5 mr-2 text-purple-500" /> New User Welcome Bonus</h3>
+                  <p className="text-xs text-gray-500 mt-1">အကောင့်သစ်ဖွင့်သူများကို Point လက်ဆောင်ပေးမည့် အစီအစဉ်</p>
+              </div>
+              <button onClick={() => toggleSection('signupBonus')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                  {expandedSection === 'signupBonus' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+              </button>
+          </div>
+
+          {expandedSection === 'signupBonus' && (
+              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                  <div className="flex justify-end mb-6">
+                      <button disabled={savingCategory === 'signup_bonus'} onClick={handleSaveSignUpBonus} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
+                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'signup_bonus' ? 'Saving...' : 'Save'}
+                      </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-3 mb-2 md:col-span-2 bg-gray-50 p-3 rounded-lg border border-gray-200 w-full sm:w-auto">
+                          <label className="text-sm font-bold text-gray-700 cursor-pointer flex-1 flex items-center justify-between">
+                              <span>Enable Welcome Bonus (ပွိုင့်လက်ဆောင်ပေးမည်)</span>
+                              <input type="checkbox" checked={localSignUpBonus.isActive} onChange={(e) => setLocalSignUpBonus({...localSignUpBonus, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524]" />
+                          </label>
+                      </div>
+                      <div className="md:col-span-2">
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Bonus Points Amount (ပေးမည့် ပွိုင့်အရေအတွက်)</label>
+                          <input type="number" value={localSignUpBonus.points || ''} onChange={(e) => setLocalSignUpBonus({...localSignUpBonus, points: Number(e.target.value)})} placeholder="e.g. 5" className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-bold" />
+                      </div>
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label><input type="date" value={localSignUpBonus.startDate} onChange={(e) => setLocalSignUpBonus({...localSignUpBonus, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                      <div><label className="block text-xs font-bold text-gray-500 mb-1">End Date</label><input type="date" value={localSignUpBonus.endDate} onChange={(e) => setLocalSignUpBonus({...localSignUpBonus, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
                   </div>
               </div>
           )}
