@@ -1387,7 +1387,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                         </div>
                                     )}
                                     
-                                   <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
+                                  <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
                                         <input 
                                             type="file" 
                                             accept="image/*" 
@@ -1401,8 +1401,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                         const img = new Image();
                                                         img.onload = () => {
                                                             const canvas = document.createElement('canvas');
-                                                            // 🌟 Database Limit (1MB) လုံးဝ မကျော်စေရန်နှင့် ဖုန်းစခရင်အတွက် အကြည်လင်ဆုံးဖြစ်စေရန် 600px သို့ ချိန်ညှိထားပါသည် 🌟
-                                                            const MAX_SIZE = 600; 
+                                                            // 🌟 1MB Limit လုံးဝမကျော်စေရန်နှင့် ဖုန်းအတွက် ကွက်တိဖြစ်စေရန် 450px သို့ ပြင်ထားပါသည်
+                                                            const MAX_SIZE = 450; 
                                                             let width = img.width;
                                                             let height = img.height;
 
@@ -1422,8 +1422,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                             const ctx = canvas.getContext('2d');
                                                             ctx?.drawImage(img, 0, 0, width, height);
                                                             
-                                                            // 🌟 Quality ကို 85% ထားသဖြင့် ဝါးမသွားဘဲ ဖိုင်ဆိုဒ် အလွန်သေးသွားပါမည် 🌟
-                                                            const optimizedBase64 = canvas.toDataURL('image/jpeg', 0.85); 
+                                                            // 🌟 Quality 70% သို့ ချိန်ညှိထားသဖြင့် ပုံမဝါးဘဲ File Size အလွန်သေးငယ်သွားပါမည်
+                                                            const optimizedBase64 = canvas.toDataURL('image/jpeg', 0.7); 
                                                             
                                                             updateItem(cIdx, iIdx, 'imageUrl', optimizedBase64);
                                                             setUploadingImage(null);
