@@ -1400,7 +1400,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                     </label>
                                 )}
                             </div>
-                             </div> 
+                        </div>
                     ))}
 
       {localCategories.map((cat, cIdx) => (
