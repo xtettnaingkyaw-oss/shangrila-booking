@@ -784,8 +784,20 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         };
         fetchTherapists();
     }, []);
-   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
-  const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
+  const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
+  useEffect(() => {
+        const fetchCategories = async () => {
+            const snap = await getDocs(collection(db, 'categories'));
+            const arr: any[] = [];
+            snap.forEach(d => arr.push(d.data()));
+            arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+            if (arr.length > 0) {
+                setLocalCategories(arr);
+            }
+        };
+        fetchCategories();
+    }, []);
+   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
   const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, title: 'SPECIAL PROMO', hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
   const [localSignUpBonus, setLocalSignUpBonus] = useState<any>(JSON.parse(JSON.stringify(appData.signUpBonus || { isActive: false, points: 5, startDate: '', endDate: '' })));
@@ -844,36 +856,35 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (e) { alert('Update error.'); } 
       setSavingCategory(null); 
   };
-  const handleSaveTherapists = async () => {
-        setSavingCategory('therapists');
+  const handleSaveCategories = async () => {
+        setSavingCategory('categories');
         try {
             const batch = writeBatch(db);
             
-            // 🌟 1. အရင်ရှိနေတဲ့ Therapist အဟောင်းတွေကို ဖျက်မယ် (Data ထပ်မနေအောင်) 🌟
-            const snapshot = await getDocs(collection(db, 'therapists'));
+            // 🌟 1. အရင်ရှိနေတဲ့ Category အဟောင်းတွေကို ဖျက်မယ် 🌟
+            const snapshot = await getDocs(collection(db, 'categories'));
             snapshot.forEach(d => {
                 batch.delete(d.ref);
             });
 
-            // 🌟 2. အသစ်တွေကို 'therapists' ဆိုတဲ့ ဖိုင်တွဲအသစ်ထဲမှာ တစ်ယောက်ချင်းစီ သီးသန့်ခွဲသိမ်းမယ် 🌟
-            localTherapists.forEach((t, idx) => {
-                const tDocRef = doc(db, 'therapists', t.id);
-                batch.set(tDocRef, { ...t, order: idx });
+            // 🌟 2. အသစ်တွေကို 'categories' ဆိုတဲ့ ဖိုင်တွဲအသစ်ထဲမှာ သီးသန့်ခွဲသိမ်းမယ် 🌟
+            localCategories.forEach((cat, idx) => {
+                const cDocRef = doc(db, 'categories', cat.id);
+                batch.set(cDocRef, { ...cat, order: idx });
             });
 
             await batch.commit();
 
-            // 🌟 3. Main Data ဖိုင်ကြီးထဲက therapists တွေကို ရှင်းထုတ်မယ် (နေရာလွတ်ပြန်ရအောင်) 🌟
-            await updateDoc(doc(db, 'settings', 'appData'), { therapists: [] });
+            // 🌟 3. Main Data ဖိုင်ကြီးထဲက categories တွေကို ရှင်းထုတ်မယ် (နေရာလွတ်ပြန်ရအောင်) 🌟
+            await updateDoc(doc(db, 'settings', 'appData'), { categories: [] });
 
-            alert('Therapists saved successfully to new collection!');
+            alert('Categories saved successfully to new collection!');
         } catch (error) {
             console.error(error);
             alert('Update error.');
         }
         setSavingCategory(null);
     };
-
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); const fileName = `logo_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'branding', fileName); setLocalBranding({ ...localBranding, logoUrl: imageUrl }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const fileName = `pay_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'payments', fileName); const updated = [...localPaymentMethods]; updated[idx].logoUrl = imageUrl; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const fileName = `install_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'install_steps', fileName); const updated = [...localInstallSteps]; updated[idx].imageUrl = imageUrl; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
