@@ -621,7 +621,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
    if (!vipSettings || !vipSettings.isActive) return <div className="text-center py-20 text-gray-400 font-bold text-sm">VIP Program is currently unavailable.</div>;
    
    const sortedTiers = [...vipSettings.tiers].sort((a,b) => a.requiredPoints - b.requiredPoints);
-   const baseRule = (vipSettings as any).baseRuleText || "သုံးစွဲငွေ ၃၅,၀၀၀ ကျပ် လျှင် = ၁ ပွိုင့် (1 Point)";
+   const baseRule = (vipSettings as any).baseRuleText || "သုံးစွဲငွေ ၃၅,၀⁠၀၀ ကျပ် လျှင် = ၁ ပွိုင့် (1 Point)";
    const preJadeTxt = (vipSettings as any).preJadeText || "Jade Member မဖြစ်မီ (၅၀) ပွိုင့် စုဆောင်းနေစဉ်ကာလအတွင်း (၁)လ အတွင်း ပြည့်မီသော Points များအတွက် အထူး Discount ကို ထပ်ဆောင်းပေးအပ်ပါသည်။";
    const preJadeRws = (vipSettings as any).preJadeRewards || ['10 Pts = 10% Off', '20 Pts = 20% Off', '30 Pts = 30% Off', '40 Pts = 40% Off', '50 Pts = 50% Off'];
    const cumulativeTxt = (vipSettings as any).cumulativeText || "Member အဆင့်များကို အဆင့်မြှင့်တင်ရာတွင် ပွိုင့်များကို သုညမှ ပြန်မစဘဲ ရှိပြီးသားပွိုင့်များအပေါ်တွင် ဆက်လက်ပေါင်းထည့်ပေးမည့် စနစ်ကို အသုံးပြုထားပါသည်။";
@@ -646,10 +646,10 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
            <div className="px-5 mt-8 space-y-8">
                <section>
                    <h3 className="font-bold text-[#123524] text-base mb-4 flex items-center"><Star className="w-5 h-5 mr-2 text-[#D4AF37]"/> Member အဆင့်များနှင့် ခံစားခွင့်များ</h3>
-                   <div className="space-y-4">
-                     <div className="space-y-5">
+                   
+                   {/* 🌟 LUXURY CARD UI အသစ် 🌟 */}
+                   <div className="space-y-5">
                       {sortedTiers.map(tier => {
-                          // အရောင်ပေါ်မူတည်ပြီး စာသားအရောင်ကို အလိုအလျောက် ချိန်ညှိပေးရန်
                           const isGold = tier.colorTheme === '#D4AF37';
                           const textColor = isGold ? 'text-[#123524]' : 'text-white';
                           const accentColor = isGold ? 'text-[#123524]' : 'text-[#D4AF37]';
@@ -660,7 +660,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                                    className="relative rounded-[1.2rem] p-6 overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.12)] border border-white/20 transform transition-transform hover:scale-[1.02] cursor-default"
                                    style={{ backgroundColor: tier.colorTheme }}
                               >
-                                  {/* 🌟 Card Background Decoration 🌟 */}
+                                  {/* Card Background Decoration */}
                                   <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-20 rounded-full -mr-10 -mt-10 blur-2xl"></div>
                                   <div className="absolute bottom-0 left-0 w-24 h-24 bg-black opacity-10 rounded-full -ml-8 -mb-8 blur-xl"></div>
                                   
@@ -694,6 +694,49 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
                           );
                       })}
                    </div>
+               </section>
+
+               <section>
+                   <h3 className="font-bold text-[#123524] text-base mb-4 flex items-center"><Target className="w-5 h-5 mr-2 text-green-600"/> လစဉ် Target ပြည့်ပါက (Pre-Jade)</h3>
+                   <p className="text-[10px] text-gray-500 mb-3 leading-relaxed">{preJadeTxt}</p>
+                   <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                       <ul className="space-y-2">
+                           {preJadeRws.map((rw: string, i: number) => (
+                               <li key={i} className="text-xs font-bold text-green-800 flex items-center"><CheckCircle className="w-3 h-3 mr-2 text-green-500"/> {rw}</li>
+                           ))}
+                       </ul>
+                   </div>
+               </section>
+               
+               <section>
+                   <h3 className="font-bold text-[#123524] text-base mb-4 flex items-center"><Gift className="w-5 h-5 mr-2 text-blue-500"/> မွေးနေ့လ အထူးခံစားခွင့်များ</h3>
+                   <div className="space-y-3">
+                       <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                           <span className="text-[10px] font-bold text-blue-800 block mb-1">VIP Standard (Jade & Gold)</span>
+                           <span className="text-xs text-blue-600">{bdayStd}</span>
+                       </div>
+                       <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                           <span className="text-[10px] font-bold text-blue-800 block mb-1">Imperial & V-VIP Only</span>
+                           <span className="text-xs text-blue-600">{bdayImp}</span>
+                       </div>
+                   </div>
+               </section>
+
+               <section>
+                   <h3 className="font-bold text-[#123524] text-base mb-4 flex items-center"><Info className="w-5 h-5 mr-2 text-gray-500"/> အခြားစည်းကမ်းချက်များ</h3>
+                   <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                       <ul className="space-y-3">
+                           <li className="text-[10px] text-gray-600 font-semibold leading-relaxed flex items-start"><ChevronRight className="w-3 h-3 mr-1 mt-0.5 text-[#D4AF37] flex-shrink-0"/> {cumulativeTxt}</li>
+                           {vipSettings.rules.map((rule: string, i: number) => (
+                               <li key={i} className="text-[10px] text-gray-600 font-semibold leading-relaxed flex items-start"><ChevronRight className="w-3 h-3 mr-1 mt-0.5 text-[#D4AF37] flex-shrink-0"/> {rule}</li>
+                           ))}
+                       </ul>
+                   </div>
+               </section>
+           </div>
+       </div>
+   );
+}
 
 export function TherapistsGallery({ appData }: { appData: AppData }) {
     const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
