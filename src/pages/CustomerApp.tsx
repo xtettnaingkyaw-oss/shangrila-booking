@@ -703,42 +703,74 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
 }
 
 export function TherapistsGallery({ appData }: { appData: AppData }) {
+    const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
+
     return (
-        <div className="max-w-4xl mx-auto px-4 pb-20 animate-fade-in">
-      <div className="text-center mb-10">
-        <h2 className="text-2xl font-bold text-[#123524] mb-2 font-serif">Our Professionals</h2>
-        <div className="w-16 h-1 bg-[#D4AF37] mx-auto rounded-full mb-4"></div>
-        <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">Experience ultimate relaxation with our certified and highly skilled therapists.</p>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-        {appData.therapists.map((t) => (
-          <div key={t.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 group">
-            <div className="aspect-[3/4] relative overflow-hidden bg-gray-50">
-              {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
-              {(t.images?.[0] || t.imageUrl) ? (
-                <>
-                  <img src={t.images?.[0] || t.imageUrl} alt={t.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-transparent to-transparent opacity-80"></div>
-                </>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
-              )}
-              <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
-              <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
-                 <h3 className="font-bold text-white text-lg drop-shadow-md">{t.name}</h3>
-                 {/* 🌟 နောက်ထပ် ပုံများရှိလျှင် ပြပေးမည့် Photo Badge (အသစ်) 🌟 */}
-                 {t.images && t.images.length > 1 && (
-                     <span className="text-[9px] text-[#D4AF37] font-bold tracking-widest uppercase mt-1 block drop-shadow-sm flex items-center justify-center">
-                         <ImageIcon className="w-2.5 h-2.5 mr-1"/>{t.images.length} Photos
-                     </span>
-                 )}
+        <div className="max-w-4xl mx-auto px-4 pb-20 animate-fade-in relative">
+          
+          {/* 🌟 Image Gallery Popup 🌟 */}
+      {viewGallery && (
+          <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center animate-fade-in backdrop-blur-sm" onClick={() => setViewGallery(null)}>
+              <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 sm:top-8 sm:right-8 text-white bg-white/10 p-2 rounded-full hover:bg-white/20 transition z-50">
+                  <X className="w-6 h-6"/>
+              </button>
+              <div className="relative w-full max-w-sm sm:max-w-md flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+                  <img src={viewGallery.images[viewGallery.index]} alt="Gallery" className="w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" />
+                  
+                  {viewGallery.images.length > 1 && (
+                      <>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }); }} className="absolute left-2 sm:-left-4 top-1/2 -translate-y-1/2 bg-black/60 text-white p-2 rounded-full hover:bg-black/80 transition border border-white/20 shadow-lg">
+                              <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6"/>
+                          </button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }); }} className="absolute right-2 sm:-right-4 top-1/2 -translate-y-1/2 bg-black/60 text-white p-2 rounded-full hover:bg-black/80 transition border border-white/20 shadow-lg">
+                              <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6"/>
+                          </button>
+                          <div className="absolute -bottom-10 left-0 right-0 text-center text-white text-xs font-bold bg-white/10 py-1.5 px-4 w-fit mx-auto rounded-full border border-white/20 tracking-widest shadow-lg">
+                              {viewGallery.index + 1} / {viewGallery.images.length}
+                          </div>
+                      </>
+                  )}
               </div>
-            </div>
           </div>
-        ))}
-      </div>
-    </div>
-  );
+      )}
+
+          <div className="text-center mb-10">
+            <h2 className="text-2xl font-bold text-[#123524] mb-2 font-serif">Our Professionals</h2>
+            <div className="w-16 h-1 bg-[#D4AF37] mx-auto rounded-full mb-4"></div>
+            <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">Experience ultimate relaxation with our certified and highly skilled therapists.</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            {appData.therapists.map((t) => (
+              <div key={t.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 group">
+                <div className="aspect-[3/4] relative overflow-hidden bg-gray-50">
+                  {(t.images?.[0] || t.imageUrl) ? (
+                    <>
+                      <img src={t.images?.[0] || t.imageUrl} alt={t.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-transparent to-transparent opacity-80"></div>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
+                  )}
+                  <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
+                  
+                  <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
+                     <h3 className="font-bold text-white text-lg drop-shadow-md">{t.name}</h3>
+                     {/* 🌟 Button အသစ် 🌟 */}
+                     {t.images && t.images.length > 1 && (
+                         <button 
+                             onClick={(e) => { e.stopPropagation(); setViewGallery({ images: t.images, index: 0 }); }}
+                             className="mx-auto mt-2 bg-black/60 hover:bg-black/80 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest uppercase flex items-center justify-center border border-white/20 transition-all shadow-sm z-10 relative cursor-pointer"
+                         >
+                             <ImageIcon className="w-3 h-3 mr-1"/> {t.images.length} Photos
+                         </button>
+                     )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+    );
 }
 
 export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppData, onBookTherapist: (t: TherapistProfile) => void }) {
