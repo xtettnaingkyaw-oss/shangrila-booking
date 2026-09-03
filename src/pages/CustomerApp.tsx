@@ -714,9 +714,10 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
         {appData.therapists.map((t) => (
           <div key={t.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 group">
             <div className="aspect-[3/4] relative overflow-hidden bg-gray-50">
-              {t.images.length > 0 ? (
+              {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
+              {(t.images?.[0] || t.imageUrl) ? (
                 <>
-                  <img src={t.images[0]} alt={t.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                  <img src={t.images?.[0] || t.imageUrl} alt={t.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-transparent to-transparent opacity-80"></div>
                 </>
               ) : (
@@ -725,7 +726,12 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
               <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
               <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
                  <h3 className="font-bold text-white text-lg drop-shadow-md">{t.name}</h3>
-                 {t.images.length > 1 && <span className="text-[9px] text-[#D4AF37] font-bold tracking-widest uppercase mt-1 block drop-shadow-sm flex items-center justify-center"><ImageIcon className="w-2.5 h-2.5 mr-1"/>{t.images.length} Photos</span>}
+                 {/* 🌟 နောက်ထပ် ပုံများရှိလျှင် ပြပေးမည့် Photo Badge (အသစ်) 🌟 */}
+                 {t.images && t.images.length > 1 && (
+                     <span className="text-[9px] text-[#D4AF37] font-bold tracking-widest uppercase mt-1 block drop-shadow-sm flex items-center justify-center">
+                         <ImageIcon className="w-2.5 h-2.5 mr-1"/>{t.images.length} Photos
+                     </span>
+                 )}
               </div>
             </div>
           </div>
@@ -900,7 +906,12 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
                    <div className="bg-[#123524] p-4 flex items-center justify-between">
                        <div className="flex items-center">
-                           {viewingDetails.images[0] ? <img src={viewingDetails.images[0]} loading="lazy" className="w-10 h-10 rounded-full object-cover mr-3 border border-[#D4AF37]"/> : <User className="w-10 h-10 rounded-full p-2 bg-gray-100 text-gray-400 mr-3"/>}
+                           {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
+                           {(viewingDetails.images?.[0] || viewingDetails.imageUrl) ? (
+                               <img src={viewingDetails.images?.[0] || viewingDetails.imageUrl} loading="lazy" className="w-10 h-10 rounded-full object-cover mr-3 border border-[#D4AF37]"/>
+                           ) : (
+                               <User className="w-10 h-10 rounded-full p-2 bg-gray-100 text-gray-400 mr-3"/>
+                           )}
                            <div><h3 className="text-[#D4AF37] font-bold text-sm tracking-wide">{viewingDetails.name}'s Schedule</h3><p className="text-[10px] text-gray-300 font-semibold mt-0.5">Today ({getLocalTodayStr()})</p></div>
                        </div>
                        <button onClick={() => setViewingDetails(null)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-5 h-5"/></button>
@@ -936,7 +947,12 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
              return (
                 <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
                    <div className={`w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border object-cover ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale opacity-80' : 'border-orange-200'}`}>
-                       {t.images && t.images.length > 0 ? <img src={t.images[0]} loading="lazy" className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />}
+                       {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
+                       {(t.images?.[0] || t.imageUrl) ? (
+                           <img src={t.images?.[0] || t.imageUrl} loading="lazy" className="w-full h-full object-cover object-top" />
+                       ) : (
+                           <User className="w-full h-full p-2 text-gray-400 bg-gray-100" />
+                       )}
                    </div>
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
@@ -970,7 +986,12 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                          <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
                              <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">{idx + 1}</div>
                              <div className={`w-full aspect-[3/4] bg-gray-100 relative ${isFullyBooked ? 'grayscale opacity-80' : ''}`}>
-                                 {t.images && t.images.length > 0 ? <img src={t.images[0]} loading="lazy" className="w-full h-full object-cover object-top" /> : <User className="w-full h-full p-6 text-gray-400 opacity-50" />}
+                                 {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
+                                 {(t.images?.[0] || t.imageUrl) ? (
+                                     <img src={t.images?.[0] || t.imageUrl} loading="lazy" className="w-full h-full object-cover object-top" />
+                                 ) : (
+                                     <User className="w-full h-full p-6 text-gray-400 opacity-50" />
+                                 )}
                              </div>
                              <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
                                  <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
@@ -2099,8 +2120,9 @@ const renderServiceSelection = (currentStep: number) => (
               className={`bg-white rounded-[1rem] overflow-hidden border-2 cursor-pointer transition-all ${isSelected ? 'border-[#123524] shadow-md scale-105' : 'border-transparent shadow-sm hover:border-[#D4AF37]/50'}`}
             >
               <div className="aspect-[3/4] bg-gray-50 relative border-b border-gray-100/80">
-                {therapist.imageUrl ? (
-                  <img src={therapist.imageUrl} alt={therapist.name} className="w-full h-full object-cover" />
+                {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
+                {(therapist.images?.[0] || therapist.imageUrl) ? (
+                  <img src={therapist.images?.[0] || therapist.imageUrl} alt={therapist.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
                       <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Therapist</span>
@@ -2322,7 +2344,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        if (view === 'profile') return 'profile';
        return 'book';
    });
-    
+   
    const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
    const [hasNoti, setHasNoti] = useState(false);
    const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
@@ -2413,7 +2435,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
                                 <button 
                                   key={tab.id} 
                                   onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-                                  className={`relative flex-shrink-0 flex flex-col items-center justify-center py-1.5 px-2.5 sm:py-2 sm:px-4 min-w-[65px] sm:min-w-[80px] rounded-lg text-[9px] sm:text-[10px] font-bold transition-all duration-300 ease-out outline-none group ${
+                                  className={`relative flex-shrink-0 flex flex-col items-center justify-center py-1.5 px-2.5 sm:py-2 sm:px-4 min-w-[65px] sm:minw-[80px] rounded-lg text-[9px] sm:text-[10px] font-bold transition-all duration-300 ease-out outline-none group ${
                                     isActive 
                                       ? 'bg-white text-[#123524] shadow-[0_2px_5px_rgba(0,0,0,0.05)] border border-gray-100 transform scale-[1.02]' 
                                       : 'text-gray-500 hover:text-[#123524] hover:bg-white/60 border border-transparent'
