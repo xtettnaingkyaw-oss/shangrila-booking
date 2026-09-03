@@ -1901,7 +1901,6 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 const renderServiceSelection = (currentStep: number) => (
     <div className="animate-fade-in -mx-1.5 sm:mx-0">
       
-      {/* 🌟 Description Floating Box (Modal) 🌟 */}
       {viewDesc && (
           <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 sm:p-6 animate-fade-in backdrop-blur-sm" onClick={() => setViewDesc(null)}>
               <div className="bg-white w-full max-w-sm rounded-[1.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up border border-[#D4AF37]/30" onClick={e => e.stopPropagation()}>
@@ -1950,7 +1949,6 @@ const renderServiceSelection = (currentStep: number) => (
                   {activeCategory === category.id ? <ChevronUp className="w-5 h-5" style={{ color: THEME.primary }} /> : <ChevronDown className="w-5 h-5" style={{ color: THEME.primary }} />}
                 </div>
                 {activeCategory === category.id && (
-                    {/* 🌟 2. ကတ်တွေကို ပိုကြီးစေရန် Padding ကို p-2 သို့ လျှော့ချပြီး၊ ကြားအကွာအဝေးကို gap-2 ထားလိုက်ပါသည် 🌟 */}
                     <div className="p-2 sm:p-4 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-2 sm:gap-4">
                         {(() => {
                             const groupedItems = category.items.reduce((acc, item) => {
@@ -1990,7 +1988,6 @@ const renderServiceSelection = (currentStep: number) => (
                                             </div>
                                         )}
 
-                                        {/* 🌟 3. အဖြူဘောင် (Padding) ကို p-1.5 ထိ ထပ်ပါးပေးလိုက်သဖြင့် ပုံသည် အကြီးဆုံးနှင့် အရှင်းဆုံးဖြစ်သွားပါမည် 🌟 */}
                                         <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2.5">
                                             {group.imageUrl ? (
                                                 <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
@@ -2071,101 +2068,6 @@ const renderServiceSelection = (currentStep: number) => (
       </div>
     </div>
   );
-
-  const renderTherapistSelection = (currentStep: number) => {
-      let globalCheckDate = formData.date;
-      if (!globalCheckDate) { const now = new Date(); if (now.getHours() >= 23) { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); globalCheckDate = tmrw.getFullYear() + '-' + String(tmrw.getMonth() + 1).padStart(2, '0') + '-' + String(tmrw.getDate()).padStart(2, '0'); } else { globalCheckDate = todayStr; } }
-      const allFullyBooked = appData.therapists.length > 0 && appData.therapists.every(t => isTherapistFullForDate(t.name, globalCheckDate));
-      const isSelectionIncomplete = isFourHands && formData.therapist !== null && formData.therapist2 === null; const isAnySelected = formData.therapist === null;
-
-      return (
-        <div className="animate-fade-in relative px-2 sm:px-0">
-          {viewGallery && (
-            <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in">
-              <button type="button" onClick={() => setViewGallery(null)} className="absolute top-4 right-4 z-[110] text-white p-2 hover:text-[#D4AF37] transition bg-black/50 rounded-full"><X className="w-8 h-8" /></button>
-              <div className="relative w-full flex-1 flex items-center justify-center overflow-hidden py-10 px-0 sm:px-10">
-                <img src={viewGallery.images[viewGallery.index]} alt="Detail" className="w-full h-full object-contain drop-shadow-2xl" />
-                {viewGallery.images.length > 1 && (
-                  <>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }) }} className="absolute left-2 sm:left-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" /></button>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }) }} className="absolute right-2 sm:right-8 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/70 text-white p-3 rounded-full transition z-[110] border border-white/10"><ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" /></button>
-                  </>
-                )}
-              </div>
-              <div className="absolute bottom-6 text-white font-bold tracking-widest text-sm bg-black/50 px-4 py-1.5 rounded-full z-[110]">{viewGallery.index + 1} / {viewGallery.images.length}</div>
-            </div>
-          )}
-
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Select Your Therapist</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>{isFourHands ? '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်း ၂ ယောက်ကို ရွေးချယ်ပါ)' : '(ဘိုကင်ယူထားလိုသော ဝန်ထမ်းနံပါတ်ကို ရွေးချယ်ပါ)'}</p></div>
-          <div onClick={() => setFormData({ ...formData, therapist: null, therapist2: null, time: '' })} className={`flex items-center p-4 mb-6 rounded-xl cursor-pointer border transition-all duration-200 ${!formData.therapist ? 'border-[#D4AF37] bg-yellow-50 shadow-sm' : 'border-gray-200 bg-white hover:border-[#D4AF37]'}`}>
-              <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4"><User className="w-6 h-6 text-gray-500" /></div>
-              <div><div className="font-bold text-gray-800">Any Available Therapist</div><div className="text-xs text-gray-500 mt-1">We'll assign the best available therapist for you</div></div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {appData.therapists.map((therapist) => {
-              const isSelected1 = formData.therapist?.id === therapist.id; const isSelected2 = formData.therapist2?.id === therapist.id; const isSelected = isSelected1 || isSelected2;
-              const hasImage = therapist.images && therapist.images.length > 0; const isFull = isTherapistFullForDate(therapist.name, globalCheckDate);
-              const fullTextEn = globalCheckDate === todayStr ? "Fully Booked For Today" : "Fully Booked"; const fullTextMm = globalCheckDate === todayStr ? "(ဒီနေ့အတွက် ဘိုကင်ပြည့်သွားပါပြီ)" : "(ဘိုကင်ပြည့်သွားပါပြီ)";
-
-              return (
-                <div key={therapist.id} onClick={() => {
-                    if (isFull) return;
-                    if (isFourHands) {
-                        if (isSelected1) { setFormData({ ...formData, therapist: formData.therapist2, therapist2: null, time: '' }); } 
-                        else if (isSelected2) { setFormData({ ...formData, therapist2: null, time: '' }); } 
-                        else if (!formData.therapist) { setFormData({ ...formData, therapist: therapist, time: '' }); } 
-                        else if (!formData.therapist2) { setFormData({ ...formData, therapist2: therapist, time: '' }); } 
-                        else { setFormData({ ...formData, therapist2: therapist, time: '' }); }
-                    } else { setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' }); }
-                }} className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 relative overflow-hidden ${isFull ? 'cursor-not-allowed border-gray-200 bg-gray-50' : isSelected ? 'border-[#D4AF37] bg-yellow-50 shadow-lg transform scale-105 cursor-pointer' : 'border-transparent bg-white hover:border-[#D4AF37]/50 hover:shadow-md cursor-pointer'}`}>
-                  
-                  {isFull && (<div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"><div className="bg-red-600 text-white font-bold px-2 py-1.5 rounded shadow-xl transform -rotate-12 text-center w-11/12 border border-red-500"><div className="text-[10px] sm:text-xs leading-tight">{fullTextEn}</div><div className="text-[8px] sm:text-[9px] leading-tight mt-1 text-red-50">{fullTextMm}</div></div></div>)}
-
-                  {isSelected1 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">1</div>}
-                  {isSelected2 && isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-[#123524] w-6 h-6 rounded-full flex items-center justify-center font-black text-xs z-30 shadow-md border-2 border-white">2</div>}
-                  {isSelected && !isFourHands && <div className="absolute top-2 right-2 bg-[#D4AF37] text-white w-6 h-6 rounded-full flex items-center justify-center z-30 shadow-md border-2 border-white"><Check className="w-4 h-4"/></div>}
-
-                  <div className={`w-full aspect-[3/4] rounded-lg overflow-hidden mb-3 bg-gray-100 flex items-center justify-center shadow-inner relative border-2 transition-colors ${isSelected ? 'border-[#D4AF37]' : 'border-[#123524]'} ${isFull ? 'opacity-70' : ''}`}>
-                    {hasImage ? (
-                      <>
-                        <img src={therapist.images[0]} alt={therapist.name} loading="lazy" className="w-full h-full object-cover object-top" />
-                        {therapist.images.length > 1 && (
-                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ images: therapist.images, index: 0 }); }} className="absolute bottom-2 inset-x-2 bg-[#123524]/90 hover:bg-[#123524] text-[#D4AF37] text-[10px] font-bold py-1 px-1 rounded flex flex-col items-center justify-center backdrop-blur-sm border border-[#D4AF37]/50 transition z-30 leading-tight">
-                            <div className="flex items-center"><ImageIcon className="w-3 h-3 mr-1" /> See {therapist.images.length} photos</div><div className="text-[8px] mt-0.5 text-[#D4AF37]/80">(နောက်ထပ်ပုံများကြည့်ရန်)</div>
-                          </button>
-                        )}
-                      </>
-                    ) : (<div className="flex flex-col items-center"><User className="w-12 h-12 text-[#123524]" /></div>)}
-                  </div>
-                  <div className={`font-bold text-sm text-center w-full truncate px-1 ${isFull ? 'text-gray-600' : 'text-gray-800'}`}>{therapist.name}</div>
-                  <div className={`text-[10px] mt-1 text-center ${isFull ? 'text-gray-300' : 'text-gray-400'}`}>Professional Therapist</div>
-                  
-                  {isTherapistFirst && !isFourHands && (
-                    <button type="button" disabled={isFull} onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, therapist: therapist, therapist2: null, time: '' }); handleNextStep(currentStep + 1); }} className={`mt-3 w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center transition shadow-sm border ${isFull ? 'bg-red-500/50 text-white border-red-500/50 cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>Book Now {!isFull && <ChevronRight className="w-3 h-3 ml-1" />}</button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          
-          <div className={`mt-8 flex flex-col gap-4`}>
-             <div className={`flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} w-full`}>
-                {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-                <button type="button" disabled={(!isAnySelected && isSelectionIncomplete) || allFullyBooked} onClick={() => handleNextStep(currentStep + 1)} className={`px-8 py-4 rounded-lg font-bold text-white transition shadow-md flex items-center w-full sm:w-auto justify-center ${((!isAnySelected && isSelectionIncomplete) || allFullyBooked) ? 'bg-gray-300 cursor-not-allowed' : 'hover:opacity-90'}`} style={!((!isAnySelected && isSelectionIncomplete) || allFullyBooked) ? { backgroundColor: THEME.primary } : {}}>
-                  {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE'} {isTherapistFirst && currentStep === 1 && <ChevronRight className="w-5 h-5 ml-2" />}
-                </button>
-             </div>
-             {(!formData.date || formData.date === todayStr) && allFullyBooked && (
-                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 text-center shadow-sm w-full animate-fade-in mt-4">
-                     <p className="text-sm font-bold text-gray-700 mb-3 leading-relaxed">ဒီနေ့အတွက် ဘိုကင်ယူနိုင်သည့်အချိန်ကျော်လွန်သွားပြီလား (သို့မဟုတ်) ဝန်ထမ်းများအားလုံး ပြည့်နေပါသလား?</p>
-                     <button type="button" onClick={(e) => { e.stopPropagation(); const tomorrowStr = getTomorrowStr(); setFormData({ ...formData, therapist: null, therapist2: null, date: tomorrowStr, time: '' }); setAlertMessage(`ရွေးချယ်မည့်ရက်အား မနက်ဖြန် (${tomorrowStr}) သို့ ပြောင်းလဲလိုက်ပါသည်။ ဝန်ထမ်းကို ဆက်လက်ရွေးချယ်ပါ။`); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="inline-flex items-center px-6 py-3 bg-[#123524] text-[#D4AF37] font-bold text-sm rounded-lg hover:bg-[#1a4a32] shadow-md transition"><CalendarPlus className="w-5 h-5 mr-2" /> နောက်ရက်အတွက် ဘိုကင်ကြိုယူရန် နှိပ်ပါ</button>
-                 </div>
-             )}
-          </div>
-        </div>
-      );
-  };
 
   return (
     <div>
