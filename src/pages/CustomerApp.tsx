@@ -1899,7 +1899,6 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   );
 
 const renderServiceSelection = (currentStep: number) => (
-    {/* 🌟 1. ဖုန်းဘောင်ကို အရမ်းမကပ်ဘဲ နေရာပိုရအောင် -mx-1.5 ဖြင့် Container ကို အနည်းငယ် ဆွဲချဲ့ထားပါသည် 🌟 */}
     <div className="animate-fade-in -mx-1.5 sm:mx-0">
       
       {/* 🌟 Description Floating Box (Modal) 🌟 */}
