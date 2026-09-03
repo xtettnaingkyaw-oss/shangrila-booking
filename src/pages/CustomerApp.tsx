@@ -1898,9 +1898,9 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
     </div>
   );
 
-const renderServiceSelection = (currentStep: number) => (
-    {/* 🌟 1. Double Margin ဖြစ်နေသည့် px-4 အား ဖြုတ်လိုက်ပါသည် (Main Parent တွင် ပါပြီးသားဖြစ်၍ ဖုန်းဘောင်နှင့် အနေတော် ဖြစ်သွားပါမည်) 🌟 */}
-    <div className="animate-fade-in">
+const rendconst renderServiceSelection = (currentStep: number) => (
+    {/* 🌟 1. ဖုန်းဘောင်ကို အရမ်းမကပ်ဘဲ နေရာပိုရအောင် -mx-1.5 ဖြင့် Container ကို အနည်းငယ် ဆွဲချဲ့ထားပါသည် 🌟 */}
+    <div className="animate-fade-in -mx-1.5 sm:mx-0">
       
       {/* 🌟 Description Floating Box (Modal) 🌟 */}
       {viewDesc && (
@@ -1923,7 +1923,7 @@ const renderServiceSelection = (currentStep: number) => (
       )}
 
       {promoActive && (
-        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between">
+        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between mx-1.5 sm:mx-0">
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div><div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
            <div className="relative z-10 flex items-center">
               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0"><Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" /></div>
@@ -1936,7 +1936,7 @@ const renderServiceSelection = (currentStep: number) => (
         </div>
       )}
 
-      <div className="text-center mb-6 sm:mb-8">
+      <div className="text-center mb-6 sm:mb-8 px-1.5 sm:px-0">
         <h2 className="text-xl sm:text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Service</h2>
         <p className="text-xs sm:text-sm font-bold mt-1.5" style={{ color: THEME.gold }}>(သင်ရယူလိုသော ဝန်ဆောင်မှုကို ရွေးချယ်ပါ)</p>
       </div>
@@ -1945,14 +1945,14 @@ const renderServiceSelection = (currentStep: number) => (
           {appData.categories.map(category => {
             const CategoryIcon = ICON_MAP[category.id] || Activity;
             return (
-              <div key={category.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div key={category.id} className="bg-white rounded-[1.2rem] shadow-sm border border-gray-100 overflow-hidden">
                 <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-3.5 sm:p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
                   <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>
                   {activeCategory === category.id ? <ChevronUp className="w-5 h-5" style={{ color: THEME.primary }} /> : <ChevronDown className="w-5 h-5" style={{ color: THEME.primary }} />}
                 </div>
                 {activeCategory === category.id && (
-                    {/* 🌟 2. အတွင်းဘောင် (p-2.5) နှင့် ကတ်အကွာအဝေး (gap-2.5) ကို UX အရ အချိုးကျချိန်ညှိထားပါသည် 🌟 */}
-                    <div className="p-2.5 sm:p-4 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-2.5 sm:gap-4">
+                    {/* 🌟 2. ကတ်တွေကို ပိုကြီးစေရန် Padding ကို p-2 သို့ လျှော့ချပြီး၊ ကြားအကွာအဝေးကို gap-2 ထားလိုက်ပါသည် 🌟 */}
+                    <div className="p-2 sm:p-4 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-2 sm:gap-4">
                         {(() => {
                             const groupedItems = category.items.reduce((acc, item) => {
                                 const name = (item.name || '').trim();
@@ -1991,8 +1991,8 @@ const renderServiceSelection = (currentStep: number) => (
                                             </div>
                                         )}
 
-                                        {/* 🌟 3. အဖြူဘောင်ကို (p-1.5) သို့ပါးလိုက်ခြင်းဖြင့် ပုံသည် အရင်ကထက် ပိုမိုကြီးမားပြတ်သားသွားပါမည် 🌟 */}
-                                        <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2">
+                                        {/* 🌟 3. အဖြူဘောင် (Padding) ကို p-1.5 ထိ ထပ်ပါးပေးလိုက်သဖြင့် ပုံသည် အကြီးဆုံးနှင့် အရှင်းဆုံးဖြစ်သွားပါမည် 🌟 */}
+                                        <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2.5">
                                             {group.imageUrl ? (
                                                 <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
                                             ) : (
@@ -2005,7 +2005,7 @@ const renderServiceSelection = (currentStep: number) => (
 
                                         <div className="p-2 sm:p-3 flex flex-col justify-between flex-1">
                                             <div className="mb-2">
-                                                <h4 className={`font-bold text-[11px] sm:text-xs tracking-wide line-clamp-2 leading-tight ${isGroupSelected ? 'text-[#123524]' : 'text-gray-800'}`}>
+                                                <h4 className={`font-bold text-[11.5px] sm:text-xs tracking-wide line-clamp-2 leading-tight ${isGroupSelected ? 'text-[#123524]' : 'text-gray-800'}`}>
                                                     {group.baseName}
                                                 </h4>
                                                 <div className={`font-black text-[11px] sm:text-sm mt-1 ${isGroupSelected ? 'text-[#123524]' : 'text-[#D4AF37]'}`}>
@@ -2024,7 +2024,7 @@ const renderServiceSelection = (currentStep: number) => (
                                                                 e.stopPropagation(); 
                                                                 setFormData({...formData, selectedItem: v, isVvipUpgrade: false, time: '', therapist2: null });
                                                             }}
-                                                            className={`flex-1 flex items-center justify-center px-1 py-1.5 rounded border text-[9px] font-bold transition-all ${
+                                                            className={`flex-1 flex items-center justify-center px-1 py-1.5 rounded-lg border text-[9px] font-bold transition-all ${
                                                                 isVariantSelected 
                                                                     ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm' 
                                                                     : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:border-[#D4AF37]/50'
@@ -2059,12 +2059,12 @@ const renderServiceSelection = (currentStep: number) => (
           })}
       </div>
       
-      <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm">
+      <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6 flex justify-between items-center shadow-sm mx-1.5 sm:mx-0">
         <div className="flex items-center"><div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center mr-4"><Crown className="w-5 h-5" style={{ color: THEME.gold }} /></div><div><div className="font-bold text-yellow-800 text-sm">VVIP Master Room</div><div className="text-xs text-yellow-600 font-semibold mt-1">{formData.selectedItem?.vvipIncluded ? '✅ Included (Free)' : (!formData.selectedItem ? 'Select a service' : (isVipCurrentlyFull ? '🚫 လတ်တလော VIP အခန်းပြည့်နေပါသည်' : (formData.selectedItem.vvipPrice ? 'Upgrade for extra comfort' : 'Not available')))}</div></div></div>
         {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <input type="checkbox" checked={formData.isVvipUpgrade} disabled={disableVvipToggle} onChange={(e) => setFormData({ ...formData, isVvipUpgrade: e.target.checked, time: '' })} className="w-6 h-6 accent-[#D4AF37] cursor-pointer disabled:opacity-50" />}
       </div>
 
-      <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
+      <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} mx-1.5 sm:mx-0`}>
         {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
         <button type="button" disabled={!formData.selectedItem} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>
           {isTherapistFirst && currentStep === 2 ? 'CONTINUE TO DATE & TIME' : 'CONTINUE TO THERAPIST'} <ChevronRight className="w-5 h-5 ml-2" />
