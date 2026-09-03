@@ -2122,14 +2122,41 @@ const renderServiceSelection = (currentStep: number) => (
     </div>
   );
 
-  const renderTherapistSelection = (currentStep: number) => {
+ const renderTherapistSelection = (currentStep: number) => {
     const is4Hands = formData.selectedItem?.name?.toLowerCase().includes('4') || formData.selectedItem?.name?.toLowerCase().includes('four');
 
     return (
     <div className="animate-fade-in px-4 sm:px-0">
+      
+      {/* 🌟 1. Image Gallery Popup (Modal) အပိုင်း 🌟 */}
+      {viewGallery && (
+          <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center animate-fade-in backdrop-blur-sm" onClick={() => setViewGallery(null)}>
+              <button type="button" onClick={() => setViewGallery(null)} className="absolute top-4 right-4 sm:top-8 sm:right-8 text-white bg-white/10 p-2 rounded-full hover:bg-white/20 transition z-50">
+                  <X className="w-6 h-6"/>
+              </button>
+              <div className="relative w-full max-w-sm sm:max-w-md flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+                  <img src={viewGallery.images[viewGallery.index]} alt="Gallery" className="w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" />
+                  
+                  {viewGallery.images.length > 1 && (
+                      <>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }); }} className="absolute left-2 sm:-left-4 top-1/2 -translate-y-1/2 bg-black/60 text-white p-2 rounded-full hover:bg-black/80 transition border border-white/20 shadow-lg">
+                              <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6"/>
+                          </button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }); }} className="absolute right-2 sm:-right-4 top-1/2 -translate-y-1/2 bg-black/60 text-white p-2 rounded-full hover:bg-black/80 transition border border-white/20 shadow-lg">
+                              <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6"/>
+                          </button>
+                          <div className="absolute -bottom-10 left-0 right-0 text-center text-white text-xs font-bold bg-white/10 py-1.5 px-4 w-fit mx-auto rounded-full border border-white/20 tracking-widest shadow-lg">
+                              {viewGallery.index + 1} / {viewGallery.images.length}
+                          </div>
+                      </>
+                  )}
+              </div>
+          </div>
+      )}
+
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Therapist</h2>
-        <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ဘိုကင်ရယူလိုသော​ Therapist​ ကို ရွေးချယ်ပါ)</p>
+        <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ဘိုကင်ရယူလိုသော Therapist ကို​ ရွေးချယ်ပါ)</p>
       </div>
       
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -2152,7 +2179,6 @@ const renderServiceSelection = (currentStep: number) => (
               className={`bg-white rounded-[1rem] overflow-hidden border-2 cursor-pointer transition-all ${isSelected ? 'border-[#123524] shadow-md scale-105' : 'border-transparent shadow-sm hover:border-[#D4AF37]/50'}`}
             >
               <div className="aspect-[3/4] bg-gray-50 relative border-b border-gray-100/80">
-                {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
                 {(therapist.images?.[0] || therapist.imageUrl) ? (
                   <img src={therapist.images?.[0] || therapist.imageUrl} alt={therapist.name} className="w-full h-full object-cover" />
                 ) : (
@@ -2164,6 +2190,20 @@ const renderServiceSelection = (currentStep: number) => (
                   <div className="absolute top-2 right-2 bg-[#123524] text-[#D4AF37] p-1.5 rounded-full z-10 shadow-sm">
                     <CheckCircle className="w-4 h-4" />
                   </div>
+                )}
+                
+                {/* 🌟 2. Multiple Photos ရှိရင် ပြမည့် Button 🌟 */}
+                {therapist.images && therapist.images.length > 1 && (
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setViewGallery({ images: therapist.images, index: 0 });
+                    }}
+                    className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center shadow-md border border-white/20 hover:bg-black transition-colors z-20 whitespace-nowrap"
+                  >
+                    <ImageIcon className="w-3 h-3 mr-1"/> {therapist.images.length} Photos
+                  </button>
                 )}
               </div>
               <div className="p-3 text-center">
