@@ -2129,7 +2129,7 @@ const renderServiceSelection = (currentStep: number) => (
     <div className="animate-fade-in px-4 sm:px-0">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Therapist</h2>
-        <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်အနှိပ်ခံလိုသော သက်သာပီကို ရွေးချယ်ပါ)</p>
+        <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ဘိုကင်ရယူလိုသော​ Therapist​ ကို ရွေးချယ်ပါ)</p>
       </div>
       
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
