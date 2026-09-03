@@ -1363,8 +1363,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                                 const img = new Image();
                                                                 img.onload = () => {
                                                                     const canvas = document.createElement('canvas');
-                                                                    // 🌟 ပုံမဝါးစေရန် 600px သို့ ပြန်တိုးထားပြီး၊ File Size မကြီးစေရန် Quality ဖြင့် ထိန်းညှိထားပါသည် 🌟
-                                                                    const MAX_SIZE = 600; 
+                                                                    const MAX_SIZE = 500; 
                                                                     let width = img.width;
                                                                     let height = img.height;
 
@@ -1382,16 +1381,22 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                                     canvas.width = width;
                                                                     canvas.height = height;
                                                                     const ctx = canvas.getContext('2d');
-                                                                    ctx?.drawImage(img, 0, 0, width, height);
                                                                     
-                                                                    // 🌟 Quality ကို 0.6 သို့ ထားခြင်းဖြင့် ပုံထွက်ကြည်လင်ပြီး 1MB Limit လည်း မပြည့်အောင် ကာကွယ်ပေးပါမည် 🌟
-                                                                    const webpBase64 = canvas.toDataURL('image/webp', 0.6); 
+                                                                    // 🌟 PNG များ နောက်ခံမည်းမသွားစေရန် အဖြူရောင်အရင်ခံပါသည် 🌟
+                                                                    if (ctx) {
+                                                                        ctx.fillStyle = '#FFFFFF';
+                                                                        ctx.fillRect(0, 0, width, height);
+                                                                        ctx.drawImage(img, 0, 0, width, height);
+                                                                    }
+                                                                    
+                                                                    // 🌟 Device တိုင်း Support လုပ်ပြီး File Size အလွန်သေးငယ်သော JPEG စနစ်ကို အသုံးပြုထားပါသည် 🌟
+                                                                    const finalBase64 = canvas.toDataURL('image/jpeg', 0.6); 
                                                                     
                                                                     const newTherapists = [...localTherapists];
                                                                     if (!newTherapists[tIdx].images) {
                                                                         newTherapists[tIdx].images = [];
                                                                     }
-                                                                    newTherapists[tIdx].images.push(webpBase64);
+                                                                    newTherapists[tIdx].images.push(finalBase64);
                                                                     setLocalTherapists(newTherapists);
                                                                     
                                                                     setUploadingImage(null);
