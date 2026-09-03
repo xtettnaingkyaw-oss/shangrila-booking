@@ -1347,68 +1347,71 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                       </div>
                                   ))}
 
-                                  {(!therapist.images || therapist.images.length < 5) && (
-                                      <label className="w-16 aspect-[3/4] rounded border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm">
-                                          <input 
-                                              type="file" 
-                                              accept="image/*" 
-                                              className="hidden" 
-                                              onChange={(e) => {
-                                                  const file = e.target.files?.[0];
-                                                  if (file) {
-                                                      setUploadingImage(`therapist_${tIdx}`);
-                                                      const reader = new FileReader();
-                                                      reader.onload = (event) => {
-                                                          const img = new Image();
-                                                          img.onload = () => {
-                                                              const canvas = document.createElement('canvas');
-                                                              const MAX_SIZE = 600; 
-                                                              let width = img.width;
-                                                              let height = img.height;
+                                  {/* 🌟 Upload Button (Extreme Compression) 🌟 */}
+                                        {(!therapist.images || therapist.images.length < 5) && (
+                                            <label className="w-16 aspect-[3/4] rounded border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm">
+                                                <input 
+                                                    type="file" 
+                                                    accept="image/*" 
+                                                    className="hidden" 
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) {
+                                                            setUploadingImage(`therapist_${tIdx}`);
+                                                            const reader = new FileReader();
+                                                            reader.onload = (event) => {
+                                                                const img = new Image();
+                                                                img.onload = () => {
+                                                                    const canvas = document.createElement('canvas');
+                                                                    // 🌟 Database မပြည့်စေရန် 350px အထိ အကြီးအကျယ် ချုံ့လိုက်ပါသည် 🌟
+                                                                    const MAX_SIZE = 350; 
+                                                                    let width = img.width;
+                                                                    let height = img.height;
 
-                                                              if (width > height) {
-                                                                  if (width > MAX_SIZE) {
-                                                                      height *= MAX_SIZE / width;
-                                                                      width = MAX_SIZE;
-                                                                  }
-                                                              } else {
-                                                                  if (height > MAX_SIZE) {
-                                                                      width *= MAX_SIZE / height;
-                                                                      height = MAX_SIZE;
-                                                                  }
-                                                              }
-                                                              canvas.width = width;
-                                                              canvas.height = height;
-                                                              const ctx = canvas.getContext('2d');
-                                                              ctx?.drawImage(img, 0, 0, width, height);
-                                                              
-                                                              const webpBase64 = canvas.toDataURL('image/webp', 0.8); 
-                                                              
-                                                              const newTherapists = [...localTherapists];
-                                                              if (!newTherapists[tIdx].images) {
-                                                                  newTherapists[tIdx].images = [];
-                                                              }
-                                                              newTherapists[tIdx].images.push(webpBase64);
-                                                              setLocalTherapists(newTherapists);
-                                                              
-                                                              setUploadingImage(null);
-                                                          };
-                                                          img.src = event.target?.result as string;
-                                                      };
-                                                      reader.readAsDataURL(file);
-                                                  }
-                                              }} 
-                                              disabled={uploadingImage === `therapist_${tIdx}`}
-                                          />
-                                          <div className="text-center">
-                                              {uploadingImage === `therapist_${tIdx}` ? (
-                                                  <span className="text-[9px] font-bold text-[#D4AF37]">Wait..</span>
-                                              ) : (
-                                                  <span className="text-[10px] font-bold text-gray-500">Upload</span>
-                                              )}
-                                          </div>
-                                      </label>
-                                  )}
+                                                                    if (width > height) {
+                                                                        if (width > MAX_SIZE) {
+                                                                            height *= MAX_SIZE / width;
+                                                                            width = MAX_SIZE;
+                                                                        }
+                                                                    } else {
+                                                                        if (height > MAX_SIZE) {
+                                                                            width *= MAX_SIZE / height;
+                                                                            height = MAX_SIZE;
+                                                                        }
+                                                                    }
+                                                                    canvas.width = width;
+                                                                    canvas.height = height;
+                                                                    const ctx = canvas.getContext('2d');
+                                                                    ctx?.drawImage(img, 0, 0, width, height);
+                                                                    
+                                                                    // 🌟 Quality ကို 50% အထိချုံ့ပြီး WebP သုံးထားသဖြင့် File Size လုံးဝ (လုံးဝ) မယူတော့ပါ 🌟
+                                                                    const webpBase64 = canvas.toDataURL('image/webp', 0.5); 
+                                                                    
+                                                                    const newTherapists = [...localTherapists];
+                                                                    if (!newTherapists[tIdx].images) {
+                                                                        newTherapists[tIdx].images = [];
+                                                                    }
+                                                                    newTherapists[tIdx].images.push(webpBase64);
+                                                                    setLocalTherapists(newTherapists);
+                                                                    
+                                                                    setUploadingImage(null);
+                                                                };
+                                                                img.src = event.target?.result as string;
+                                                            };
+                                                            reader.readAsDataURL(file);
+                                                        }
+                                                    }} 
+                                                    disabled={uploadingImage === `therapist_${tIdx}`}
+                                                />
+                                                <div className="text-center">
+                                                    {uploadingImage === `therapist_${tIdx}` ? (
+                                                        <span className="text-[9px] font-bold text-[#D4AF37]">Wait..</span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold text-gray-500">Upload</span>
+                                                    )}
+                                                </div>
+                                            </label>
+                                        )}
                               </div>
                           </div>
                       ))}
