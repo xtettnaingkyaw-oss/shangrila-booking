@@ -2460,7 +2460,9 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const isFirstLoad = useRef(true);
 
   const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
+  const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
    const [realtimeTherapists, setRealtimeTherapists] = useState<TherapistProfile[]>(appData.therapists || []);
+   const [realtimeCategories, setRealtimeCategories] = useState<MenuCategory[]>(appData.categories || []);
 
    useEffect(() => {
        const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
@@ -2469,15 +2471,23 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        return () => unsub();
    }, []);
 
-   // 🌟 သီးသန့်ခွဲထုတ်လိုက်သော Therapists များကို လှမ်းခေါ်မည့် ကုဒ်အသစ် 🌟
    useEffect(() => {
        const unsub = onSnapshot(collection(db, 'therapists'), (snap) => {
            const arr: TherapistProfile[] = [];
            snap.forEach(d => arr.push(d.data() as TherapistProfile));
            arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-           if (arr.length > 0) {
-               setRealtimeTherapists(arr);
-           }
+           if (arr.length > 0) setRealtimeTherapists(arr);
+       });
+       return () => unsub();
+   }, []);
+
+   // 🌟 သီးသန့်ခွဲထုတ်လိုက်သော Categories (Services) များကို လှမ်းခေါ်မည့် ကုဒ်အသစ် 🌟
+   useEffect(() => {
+       const unsub = onSnapshot(collection(db, 'categories'), (snap) => {
+           const arr: MenuCategory[] = [];
+           snap.forEach(d => arr.push(d.data() as MenuCategory));
+           arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+           if (arr.length > 0) setRealtimeCategories(arr);
        });
        return () => unsub();
    }, []);
@@ -2485,7 +2495,8 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const mergedAppData = { 
        ...appData, 
        vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS,
-       therapists: realtimeTherapists.length > 0 ? realtimeTherapists : (appData.therapists || [])
+       therapists: realtimeTherapists.length > 0 ? realtimeTherapists : (appData.therapists || []),
+       categories: realtimeCategories.length > 0 ? realtimeCategories : (appData.categories || [])
    };
 
    useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
