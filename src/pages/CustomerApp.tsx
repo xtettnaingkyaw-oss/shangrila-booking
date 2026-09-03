@@ -2459,14 +2459,34 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const prevStatuses = useRef<Record<string, string>>({});
    const isFirstLoad = useRef(true);
 
-   const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
+  const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
+   const [realtimeTherapists, setRealtimeTherapists] = useState<TherapistProfile[]>(appData.therapists || []);
+
    useEffect(() => {
        const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
            if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
        });
        return () => unsub();
    }, []);
-   const mergedAppData = { ...appData, vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS };
+
+   // 🌟 သီးသန့်ခွဲထုတ်လိုက်သော Therapists များကို လှမ်းခေါ်မည့် ကုဒ်အသစ် 🌟
+   useEffect(() => {
+       const unsub = onSnapshot(collection(db, 'therapists'), (snap) => {
+           const arr: TherapistProfile[] = [];
+           snap.forEach(d => arr.push(d.data() as TherapistProfile));
+           arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+           if (arr.length > 0) {
+               setRealtimeTherapists(arr);
+           }
+       });
+       return () => unsub();
+   }, []);
+
+   const mergedAppData = { 
+       ...appData, 
+       vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS,
+       therapists: realtimeTherapists.length > 0 ? realtimeTherapists : (appData.therapists || [])
+   };
 
    useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
