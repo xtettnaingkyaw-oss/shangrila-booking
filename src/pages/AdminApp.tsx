@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
-import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, addDoc } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, addDoc, writeBatch } from 'firebase/firestore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
@@ -772,7 +772,19 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(() => { return (appData.therapists || []).map(t => ({...t, password: decryptText(t.password) || t.password})); });
-  const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
+  useEffect(() => {
+        const fetchTherapists = async () => {
+            const snap = await getDocs(collection(db, 'therapists'));
+            const arr: any[] = [];
+            snap.forEach(d => arr.push(d.data()));
+            arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+            if (arr.length > 0) {
+                setLocalTherapists(arr);
+            }
+        };
+        fetchTherapists();
+    }, []);
+   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
   const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, title: 'SPECIAL PROMO', hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
@@ -833,14 +845,34 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       setSavingCategory(null); 
   };
   const handleSaveTherapists = async () => {
-    if (!window.confirm(`Are you sure you want to save therapists list and ranking?`)) return; setSavingCategory('therapists');
-    try {
-      const finalizedTherapists = localTherapists.map((t, idx) => ({ ...t, order: idx }));
-      const tPromises = finalizedTherapists.map((t) => { const decPass = decryptText(t.password) || t.password; if (decPass && decPass.length >= 6) createUserWithEmailAndPassword(secondaryAuth, `${t.id.toLowerCase()}@shangrila.com`, decPass).catch(() => {}); return setDoc(doc(db, 'therapists', t.id), { name: t.name, images: t.images, order: t.order, password: encryptText(t.password || '') }); });
-      const delPromises = deletedTherapistIds.map(id => deleteDoc(doc(db, 'therapists', id))); await Promise.all([...tPromises, ...delPromises]);
-      setDeletedTherapistIds([]); setLocalTherapists(finalizedTherapists); alert('Therapists saved successfully.');
-    } catch (e) { alert('Update error.'); } setSavingCategory(null);
-  };
+        setSavingCategory('therapists');
+        try {
+            const batch = writeBatch(db);
+            
+            // 🌟 1. အရင်ရှိနေတဲ့ Therapist အဟောင်းတွေကို ဖျက်မယ် (Data ထပ်မနေအောင်) 🌟
+            const snapshot = await getDocs(collection(db, 'therapists'));
+            snapshot.forEach(d => {
+                batch.delete(d.ref);
+            });
+
+            // 🌟 2. အသစ်တွေကို 'therapists' ဆိုတဲ့ ဖိုင်တွဲအသစ်ထဲမှာ တစ်ယောက်ချင်းစီ သီးသန့်ခွဲသိမ်းမယ် 🌟
+            localTherapists.forEach((t, idx) => {
+                const tDocRef = doc(db, 'therapists', t.id);
+                batch.set(tDocRef, { ...t, order: idx });
+            });
+
+            await batch.commit();
+
+            // 🌟 3. Main Data ဖိုင်ကြီးထဲက therapists တွေကို ရှင်းထုတ်မယ် (နေရာလွတ်ပြန်ရအောင်) 🌟
+            await updateDoc(doc(db, 'settings', 'appData'), { therapists: [] });
+
+            alert('Therapists saved successfully to new collection!');
+        } catch (error) {
+            console.error(error);
+            alert('Update error.');
+        }
+        setSavingCategory(null);
+    };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); const fileName = `logo_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'branding', fileName); setLocalBranding({ ...localBranding, logoUrl: imageUrl }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const fileName = `pay_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'payments', fileName); const updated = [...localPaymentMethods]; updated[idx].logoUrl = imageUrl; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
@@ -1348,6 +1380,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                   ))}
 
                                   {/* 🌟 Upload Button (Balanced Quality) 🌟 */}
+                                        {/* 🌟 Upload Button (High Quality - 800px, 0.8) 🌟 */}
                                         {(!therapist.images || therapist.images.length < 5) && (
                                             <label className="w-16 aspect-[3/4] rounded border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm">
                                                 <input 
@@ -1363,7 +1396,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                                 const img = new Image();
                                                                 img.onload = () => {
                                                                     const canvas = document.createElement('canvas');
-                                                                    const MAX_SIZE = 500; 
+                                                                    // 🌟 1MB Limit ပြဿနာမရှိတော့သဖြင့် ပုံထွက်ကြည်လင်စေရန် 800px သုံးထားပါသည် 🌟
+                                                                    const MAX_SIZE = 800; 
                                                                     let width = img.width;
                                                                     let height = img.height;
 
@@ -1382,15 +1416,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                                     canvas.height = height;
                                                                     const ctx = canvas.getContext('2d');
                                                                     
-                                                                    // 🌟 PNG များ နောက်ခံမည်းမသွားစေရန် အဖြူရောင်အရင်ခံပါသည် 🌟
                                                                     if (ctx) {
                                                                         ctx.fillStyle = '#FFFFFF';
                                                                         ctx.fillRect(0, 0, width, height);
                                                                         ctx.drawImage(img, 0, 0, width, height);
                                                                     }
                                                                     
-                                                                    // 🌟 Device တိုင်း Support လုပ်ပြီး File Size အလွန်သေးငယ်သော JPEG စနစ်ကို အသုံးပြုထားပါသည် 🌟
-                                                                    const finalBase64 = canvas.toDataURL('image/jpeg', 0.6); 
+                                                                    // 🌟 Quality ကို 0.8 သို့ ပြန်တင်ထားသဖြင့် ပုံများ လုံးဝဝါးတော့မည်မဟုတ်ပါ 🌟
+                                                                    const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
                                                                     
                                                                     const newTherapists = [...localTherapists];
                                                                     if (!newTherapists[tIdx].images) {
