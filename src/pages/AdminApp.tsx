@@ -1401,8 +1401,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                         const img = new Image();
                                                         img.onload = () => {
                                                             const canvas = document.createElement('canvas');
-                                                            // 🌟 1MB Limit လုံးဝမကျော်စေရန်နှင့် ဖုန်းအတွက် ကွက်တိဖြစ်စေရန် 450px သို့ ပြင်ထားပါသည်
-                                                            const MAX_SIZE = 450; 
+                                                            const MAX_SIZE = 500; 
                                                             let width = img.width;
                                                             let height = img.height;
 
@@ -1422,10 +1421,10 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                             const ctx = canvas.getContext('2d');
                                                             ctx?.drawImage(img, 0, 0, width, height);
                                                             
-                                                            // 🌟 Quality 70% သို့ ချိန်ညှိထားသဖြင့် ပုံမဝါးဘဲ File Size အလွန်သေးငယ်သွားပါမည်
-                                                            const optimizedBase64 = canvas.toDataURL('image/jpeg', 0.7); 
+                                                            // 🌟 WebP Format ကို သုံးထားသဖြင့် JPEG ထက် File Size သိသိသာသာ သေးငယ်ပြီး ပုံပိုကြည်လင်ပါမည် 🌟
+                                                            const webpBase64 = canvas.toDataURL('image/webp', 0.65); 
                                                             
-                                                            updateItem(cIdx, iIdx, 'imageUrl', optimizedBase64);
+                                                            updateItem(cIdx, iIdx, 'imageUrl', webpBase64);
                                                             setUploadingImage(null);
                                                         };
                                                         img.src = event.target?.result as string;
