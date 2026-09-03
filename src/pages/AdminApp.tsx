@@ -1400,9 +1400,9 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                     reader.onload = (event) => {
                                                         const img = new Image();
                                                         img.onload = () => {
-                                                           const canvas = document.createElement('canvas');
-                                                            // 🌟 ပုံဆိုဒ်ကို 1024px အထိ ထပ်ကြီးပေးလိုက်ပါသည် (1MB အတွင်း အကြည်လင်ဆုံး)
-                                                            const MAX_SIZE = 1024; 
+                                                            const canvas = document.createElement('canvas');
+                                                            // 🌟 Database Limit (1MB) လုံးဝ မကျော်စေရန်နှင့် ဖုန်းစခရင်အတွက် အကြည်လင်ဆုံးဖြစ်စေရန် 600px သို့ ချိန်ညှိထားပါသည် 🌟
+                                                            const MAX_SIZE = 600; 
                                                             let width = img.width;
                                                             let height = img.height;
 
@@ -1422,10 +1422,10 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                             const ctx = canvas.getContext('2d');
                                                             ctx?.drawImage(img, 0, 0, width, height);
                                                             
-                                                            // 🌟 Quality ကို 92% ထိ ထပ်တင်ပေးလိုက်ပါသည်
-                                                            const ultraResBase64 = canvas.toDataURL('image/jpeg', 0.92); 
+                                                            // 🌟 Quality ကို 85% ထားသဖြင့် ဝါးမသွားဘဲ ဖိုင်ဆိုဒ် အလွန်သေးသွားပါမည် 🌟
+                                                            const optimizedBase64 = canvas.toDataURL('image/jpeg', 0.85); 
                                                             
-                                                            updateItem(cIdx, iIdx, 'imageUrl', ultraResBase64);
+                                                            updateItem(cIdx, iIdx, 'imageUrl', optimizedBase64);
                                                             setUploadingImage(null);
                                                         };
                                                         img.src = event.target?.result as string;
