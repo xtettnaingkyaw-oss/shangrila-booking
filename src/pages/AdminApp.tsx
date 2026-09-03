@@ -1264,144 +1264,154 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {localTherapists.map((therapist, tIdx) => (
-                          <div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
-                              <div className="absolute top-2 left-2 flex space-x-1 z-10">
-                                  <button type="button" onClick={() => moveTherapistUp(tIdx)} disabled={tIdx === 0} className="p-1 bg-white border border-gray-200 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30 shadow-sm"><ChevronUp className="w-4 h-4" /></button>
-                                  <button type="button" onClick={() => moveTherapistDown(tIdx)} disabled={tIdx === localTherapists.length - 1} className="p-1 bg-white border border-gray-200 text-gray-600 rounded hover:bg-gray-100 disabled:opacity-30 shadow-sm"><ChevronDown className="w-4 h-4" /></button>
-                              </div>
-                              <button onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200 z-10"><Trash2 className="w-4 h-4" /></button>
-                              
-                              <div className="mb-3 mt-8">
-                                  <span className="bg-[#123524] text-white text-[10px] font-bold px-2 py-1 rounded">Login ID: {therapist.id}</span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3 mb-4">
-                                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label><input type="text" value={therapist.name} onChange={(e) => updateTherapistField(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" /></div>
-                                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Login Password</label><input type="text" minLength={6} value={therapist.password || ''} onChange={(e) => updateTherapistField(tIdx, 'password', e.target.value)} placeholder="Min 6 chars" className="w-full p-2 text-sm font-bold border border-gray-300 rounded focus:outline-none focus:border-[#D4AF37]" /></div>
-                              </div>
-                              <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label>
-                            <div className="flex flex-wrap gap-2 mb-2">
-                                {therapist.images && therapist.images.map((imgUrl: string, imgIdx: number) => (
-                                    <div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200 group">
-                                        <img src={imgUrl} alt="Therapist" className="w-full h-full object-cover" />
-                                        
-                                        {/* 🌟 Hover လုပ်မှပေါ်မည့် ဖျက်ရန် နှင့် ရှေ့/နောက် ရွှေ့ရန် ခလုတ်များ 🌟 */}
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
-                                            <button 
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    const newTherapists = [...localTherapists];
-                                                    newTherapists[tIdx].images.splice(imgIdx, 1);
-                                                    setLocalTherapists(newTherapists);
-                                                }}
-                                                className="bg-red-500 text-white text-[8px] px-1.5 py-1 rounded hover:bg-red-600 shadow-sm"
-                                            >
-                                                Delete
-                                            </button>
-                                            
-                                            <div className="flex gap-1.5">
-                                                {imgIdx > 0 && (
-                                                    <button 
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            const newTherapists = [...localTherapists];
-                                                            const imgs = newTherapists[tIdx].images;
-                                                            [imgs[imgIdx - 1], imgs[imgIdx]] = [imgs[imgIdx], imgs[imgIdx - 1]];
-                                                            setLocalTherapists(newTherapists);
-                                                        }}
-                                                        className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
-                                                    >
-                                                        &lt;
-                                                    </button>
-                                                )}
-                                                {imgIdx < therapist.images.length - 1 && (
-                                                    <button 
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            const newTherapists = [...localTherapists];
-                                                            const imgs = newTherapists[tIdx].images;
-                                                            [imgs[imgIdx + 1], imgs[imgIdx]] = [imgs[imgIdx], imgs[imgIdx + 1]];
-                                                            setLocalTherapists(newTherapists);
-                                                        }}
-                                                        className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
-                                                    >
-                                                        &gt;
-                                                    </button>
-                                                )}
-                                            </div>
+                                <div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
+                                    <div className="absolute top-2 left-2 flex space-x-1 z-10">
+                                        <button type="button" onClick={() => moveTherapistUp(tIdx)} disabled={tIdx === 0} className="p-1 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 shadow-sm">
+                                            <ChevronUp className="w-4 h-4 text-gray-600" />
+                                        </button>
+                                        <button type="button" onClick={() => moveTherapistDown(tIdx)} disabled={tIdx === localTherapists.length - 1} className="p-1 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 shadow-sm">
+                                            <ChevronDown className="w-4 h-4 text-gray-600" />
+                                        </button>
+                                    </div>
+                                    <button type="button" onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200 transition-colors z-10">
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+
+                                    <div className="mb-3 mt-8">
+                                        <span className="bg-[#123524] text-white text-[10px] font-bold px-2 py-1 rounded">Login ID: {therapist.id}</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 mb-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label>
+                                            <input type="text" value={therapist.name} onChange={(e) => updateTherapist(tIdx, 'name', e.target.value)} placeholder="Name" className="w-full p-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#123524] outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">Login Password</label>
+                                            <input type="text" minLength={6} value={therapist.password} onChange={(e) => updateTherapist(tIdx, 'password', e.target.value)} placeholder="Password (Min 6 chars)" className="w-full p-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#123524] outline-none" />
                                         </div>
                                     </div>
-                                ))}
 
-                                {/* 🌟 Upload Button (ပုံ ၅ ပုံ ပြည့်သွားလျှင် အလိုအလျောက် ပျောက်သွားပါမည်) 🌟 */}
-                                {(!therapist.images || therapist.images.length < 5) && (
-                                    <label className="w-16 aspect-[3/4] rounded border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm">
-                                        <input 
-                                            type="file" 
-                                            accept="image/*" 
-                                            className="hidden" 
-                                            onChange={(e) => {
-                                                const file = e.target.files?.[0];
-                                                if (file) {
-                                                    setUploadingImage(`therapist_${tIdx}`);
-                                                    const reader = new FileReader();
-                                                    reader.onload = (event) => {
-                                                        const img = new Image();
-                                                        img.onload = () => {
-                                                            const canvas = document.createElement('canvas');
-                                                            // 🌟 ပုံမဝါးစေရန် 600px သို့ ပြင်ပေးထားပြီး WebP ဖြင့် File Size ချုံ့ပါသည် 🌟
-                                                            const MAX_SIZE = 600; 
-                                                            let width = img.width;
-                                                            let height = img.height;
-
-                                                            if (width > height) {
-                                                                if (width > MAX_SIZE) {
-                                                                    height *= MAX_SIZE / width;
-                                                                    width = MAX_SIZE;
-                                                                }
-                                                            } else {
-                                                                if (height > MAX_SIZE) {
-                                                                    width *= MAX_SIZE / height;
-                                                                    height = MAX_SIZE;
-                                                                }
-                                                            }
-                                                            canvas.width = width;
-                                                            canvas.height = height;
-                                                            const ctx = canvas.getContext('2d');
-                                                            ctx?.drawImage(img, 0, 0, width, height);
-                                                            
-                                                            const webpBase64 = canvas.toDataURL('image/webp', 0.8); 
-                                                            
+                                    <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label>
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                        {therapist.images && therapist.images.map((imgUrl: string, imgIdx: number) => (
+                                            <div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200 group">
+                                                <img src={imgUrl} alt="Therapist" className="w-full h-full object-cover" />
+                                                
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
+                                                    <button 
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
                                                             const newTherapists = [...localTherapists];
-                                                            if (!newTherapists[tIdx].images) {
-                                                                newTherapists[tIdx].images = [];
-                                                            }
-                                                            newTherapists[tIdx].images.push(webpBase64);
+                                                            newTherapists[tIdx].images.splice(imgIdx, 1);
                                                             setLocalTherapists(newTherapists);
-                                                            
-                                                            setUploadingImage(null);
-                                                        };
-                                                        img.src = event.target?.result as string;
-                                                    };
-                                                    reader.readAsDataURL(file);
-                                                }
-                                            }} 
-                                            disabled={uploadingImage === `therapist_${tIdx}`}
-                                        />
-                                        <div className="text-center">
-                                            {uploadingImage === `therapist_${tIdx}` ? (
-                                                <span className="text-[9px] font-bold text-[#D4AF37]">Wait..</span>
-                                            ) : (
-                                                <span className="text-[10px] font-bold text-gray-500">Upload</span>
-                                            )}
-                                        </div>
-                                    </label>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                                                        }}
+                                                        className="bg-red-500 text-white text-[8px] px-1.5 py-1 rounded hover:bg-red-600 shadow-sm"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                    
+                                                    <div className="flex gap-1.5">
+                                                        {imgIdx > 0 && (
+                                                            <button 
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    const newTherapists = [...localTherapists];
+                                                                    const imgs = newTherapists[tIdx].images;
+                                                                    [imgs[imgIdx - 1], imgs[imgIdx]] = [imgs[imgIdx], imgs[imgIdx - 1]];
+                                                                    setLocalTherapists(newTherapists);
+                                                                }}
+                                                                className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
+                                                            >
+                                                                &lt;
+                                                            </button>
+                                                        )}
+                                                        {imgIdx < therapist.images.length - 1 && (
+                                                            <button 
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    const newTherapists = [...localTherapists];
+                                                                    const imgs = newTherapists[tIdx].images;
+                                                                    [imgs[imgIdx + 1], imgs[imgIdx]] = [imgs[imgIdx], imgs[imgIdx + 1]];
+                                                                    setLocalTherapists(newTherapists);
+                                                                }}
+                                                                className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
+                                                            >
+                                                                &gt;
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {(!therapist.images || therapist.images.length < 5) && (
+                                            <label className="w-16 aspect-[3/4] rounded border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm">
+                                                <input 
+                                                    type="file" 
+                                                    accept="image/*" 
+                                                    className="hidden" 
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) {
+                                                            setUploadingImage(`therapist_${tIdx}`);
+                                                            const reader = new FileReader();
+                                                            reader.onload = (event) => {
+                                                                const img = new Image();
+                                                                img.onload = () => {
+                                                                    const canvas = document.createElement('canvas');
+                                                                    const MAX_SIZE = 600; 
+                                                                    let width = img.width;
+                                                                    let height = img.height;
+
+                                                                    if (width > height) {
+                                                                        if (width > MAX_SIZE) {
+                                                                            height *= MAX_SIZE / width;
+                                                                            width = MAX_SIZE;
+                                                                        }
+                                                                    } else {
+                                                                        if (height > MAX_SIZE) {
+                                                                            width *= MAX_SIZE / height;
+                                                                            height = MAX_SIZE;
+                                                                        }
+                                                                    }
+                                                                    canvas.width = width;
+                                                                    canvas.height = height;
+                                                                    const ctx = canvas.getContext('2d');
+                                                                    ctx?.drawImage(img, 0, 0, width, height);
+                                                                    
+                                                                    const webpBase64 = canvas.toDataURL('image/webp', 0.8); 
+                                                                    
+                                                                    const newTherapists = [...localTherapists];
+                                                                    if (!newTherapists[tIdx].images) {
+                                                                        newTherapists[tIdx].images = [];
+                                                                    }
+                                                                    newTherapists[tIdx].images.push(webpBase64);
+                                                                    setLocalTherapists(newTherapists);
+                                                                    
+                                                                    setUploadingImage(null);
+                                                                };
+                                                                img.src = event.target?.result as string;
+                                                            };
+                                                            reader.readAsDataURL(file);
+                                                        }
+                                                    }} 
+                                                    disabled={uploadingImage === `therapist_${tIdx}`}
+                                                />
+                                                <div className="text-center">
+                                                    {uploadingImage === `therapist_${tIdx}` ? (
+                                                        <span className="text-[9px] font-bold text-[#D4AF37]">Wait..</span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold text-gray-500">Upload</span>
+                                                    )}
+                                                </div>
+                                            </label>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
 
       {localCategories.map((cat, cIdx) => (
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 border-l-4 border-l-[#123524]">
