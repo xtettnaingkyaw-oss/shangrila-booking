@@ -2069,6 +2069,70 @@ const renderServiceSelection = (currentStep: number) => (
     </div>
   );
 
+  const renderTherapistSelection = (currentStep: number) => {
+    const is4Hands = formData.selectedItem?.name?.toLowerCase().includes('4') || formData.selectedItem?.name?.toLowerCase().includes('four');
+
+    return (
+    <div className="animate-fade-in px-4 sm:px-0">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Therapist</h2>
+        <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်အနှိပ်ခံလိုသော သက်သာပီကို ရွေးချယ်ပါ)</p>
+      </div>
+      
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        {appData.therapists.map((therapist, idx) => {
+          const isSelected = formData.selectedTherapist?.id === therapist.id || formData.therapist2?.id === therapist.id;
+          
+          return (
+            <div 
+              key={idx} 
+              onClick={() => {
+                if (is4Hands) {
+                  if (formData.selectedTherapist?.id === therapist.id) setFormData({...formData, selectedTherapist: null});
+                  else if (formData.therapist2?.id === therapist.id) setFormData({...formData, therapist2: null});
+                  else if (!formData.selectedTherapist) setFormData({...formData, selectedTherapist: therapist});
+                  else if (!formData.therapist2) setFormData({...formData, therapist2: therapist});
+                } else {
+                  setFormData({...formData, selectedTherapist: formData.selectedTherapist?.id === therapist.id ? null : therapist, therapist2: null});
+                }
+              }}
+              className={`bg-white rounded-[1rem] overflow-hidden border-2 cursor-pointer transition-all ${isSelected ? 'border-[#123524] shadow-md scale-105' : 'border-transparent shadow-sm hover:border-[#D4AF37]/50'}`}
+            >
+              <div className="aspect-[3/4] bg-gray-50 relative border-b border-gray-100/80">
+                {therapist.imageUrl ? (
+                  <img src={therapist.imageUrl} alt={therapist.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Therapist</span>
+                  </div>
+                )}
+                {isSelected && (
+                  <div className="absolute top-2 right-2 bg-[#123524] text-[#D4AF37] p-1.5 rounded-full z-10 shadow-sm">
+                    <CheckCircle className="w-4 h-4" />
+                  </div>
+                )}
+              </div>
+              <div className="p-3 text-center">
+                <h4 className="font-bold text-[#123524] text-sm">{therapist.name}</h4>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
+        {currentStep > 1 && (
+          <button type="button" onClick={() => handleNextStep(currentStep - 1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">
+            BACK
+          </button>
+        )}
+        <button type="button" disabled={is4Hands ? (!formData.selectedTherapist || !formData.therapist2) : !formData.selectedTherapist} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md flex items-center" style={{ backgroundColor: THEME.primary }}>
+          {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE TO DATE & TIME'} <ChevronRight className="w-5 h-5 ml-2" />
+        </button>
+      </div>
+    </div>
+  )};
+
   return (
     <div>
       <CustomAlert message={alertMessage} onClose={() => setAlertMessage('')} />
