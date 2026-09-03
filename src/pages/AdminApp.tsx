@@ -1400,6 +1400,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                     </label>
                                 )}
                             </div>
+                             </div> 
+                    ))}
 
       {localCategories.map((cat, cIdx) => (
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 border-l-4 border-l-[#123524]">
