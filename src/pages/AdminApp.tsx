@@ -1347,7 +1347,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                       </div>
                                   ))}
 
-                                  {/* 🌟 Upload Button (Extreme Compression) 🌟 */}
+                                  {/* 🌟 Upload Button (Balanced Quality) 🌟 */}
                                         {(!therapist.images || therapist.images.length < 5) && (
                                             <label className="w-16 aspect-[3/4] rounded border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm">
                                                 <input 
@@ -1363,8 +1363,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                                 const img = new Image();
                                                                 img.onload = () => {
                                                                     const canvas = document.createElement('canvas');
-                                                                    // 🌟 Database မပြည့်စေရန် 350px အထိ အကြီးအကျယ် ချုံ့လိုက်ပါသည် 🌟
-                                                                    const MAX_SIZE = 350; 
+                                                                    // 🌟 ပုံမဝါးစေရန် 600px သို့ ပြန်တိုးထားပြီး၊ File Size မကြီးစေရန် Quality ဖြင့် ထိန်းညှိထားပါသည် 🌟
+                                                                    const MAX_SIZE = 600; 
                                                                     let width = img.width;
                                                                     let height = img.height;
 
@@ -1384,8 +1384,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                                     const ctx = canvas.getContext('2d');
                                                                     ctx?.drawImage(img, 0, 0, width, height);
                                                                     
-                                                                    // 🌟 Quality ကို 50% အထိချုံ့ပြီး WebP သုံးထားသဖြင့် File Size လုံးဝ (လုံးဝ) မယူတော့ပါ 🌟
-                                                                    const webpBase64 = canvas.toDataURL('image/webp', 0.5); 
+                                                                    // 🌟 Quality ကို 0.6 သို့ ထားခြင်းဖြင့် ပုံထွက်ကြည်လင်ပြီး 1MB Limit လည်း မပြည့်အောင် ကာကွယ်ပေးပါမည် 🌟
+                                                                    const webpBase64 = canvas.toDataURL('image/webp', 0.6); 
                                                                     
                                                                     const newTherapists = [...localTherapists];
                                                                     if (!newTherapists[tIdx].images) {
