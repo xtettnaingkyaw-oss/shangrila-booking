@@ -841,15 +841,15 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const updateVipTier = (tIdx: number, field: string, val: any) => { const updated = [...localVipSettings.tiers]; (updated[tIdx] as any)[field] = val; setLocalVipSettings({...localVipSettings, tiers: updated}); };
   const updateVipRule = (rIdx: number, val: string) => { const updated = [...localVipSettings.rules]; updated[rIdx] = val; setLocalVipSettings({...localVipSettings, rules: updated}); };
 
-  const handleSaveCategory = async (cIdx: number) => { const cat = localCategories[cIdx]; if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; setSavingCategory(cat.id); try { await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true }); onSettingsUpdated({ ...appData, const handleSaveCategory = async (cIdx: number) => { 
+  const handleSaveCategory = async (cIdx: number) => { 
       const cat = localCategories[cIdx]; 
       if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; 
       setSavingCategory(cat.id); 
       try { 
-          // 🌟 1. Category တစ်ခုချင်းစီကို 'categories' ဆိုတဲ့ ဖိုင်တွဲအသစ်ထဲမှာ သီးသန့်စီ သိမ်းမည် 🌟
+          // 🌟 Category တစ်ခုချင်းစီကို သီးသန့်ခွဲသိမ်းမည် 🌟
           await setDoc(doc(db, 'categories', cat.id), { ...cat, order: cIdx }); 
           
-          // 🌟 2. appData အဟောင်းကြီးထဲက နေရာယူထားတဲ့ ပုံဟောင်းတွေကို ရှင်းထုတ်မည် (နေရာလွတ်ပြန်ရအောင်) 🌟
+          // 🌟 appData အဟောင်းထဲက နေရာယူထားတာတွေကို ရှင်းထုတ်မည် 🌟
           await updateDoc(doc(db, 'settings', 'appData'), { categories: [] }); 
           
           alert('Saved Successfully.'); 
