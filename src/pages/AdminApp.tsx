@@ -841,8 +841,25 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const updateVipTier = (tIdx: number, field: string, val: any) => { const updated = [...localVipSettings.tiers]; (updated[tIdx] as any)[field] = val; setLocalVipSettings({...localVipSettings, tiers: updated}); };
   const updateVipRule = (rIdx: number, val: string) => { const updated = [...localVipSettings.rules]; updated[rIdx] = val; setLocalVipSettings({...localVipSettings, rules: updated}); };
 
-  const handleSaveCategory = async (cIdx: number) => { const cat = localCategories[cIdx]; if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; setSavingCategory(cat.id); try { await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true }); onSettingsUpdated({ ...appData, categories: localCategories }); alert('Saved Successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
-  const handleSavePromotion = async () => { if (!window.confirm(`Are you sure you want to save promotion settings?`)) return; setSavingCategory('promotion'); try { await setDoc(doc(db, 'settings', 'appData'), { promotion: localPromotion }, { merge: true }); onSettingsUpdated({ ...appData, promotion: localPromotion }); alert('Promotion settings saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
+  const handleSaveCategory = async (cIdx: number) => { const cat = localCategories[cIdx]; if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; setSavingCategory(cat.id); try { await setDoc(doc(db, 'settings', 'appData'), { categories: localCategories }, { merge: true }); onSettingsUpdated({ ...appData, const handleSaveCategory = async (cIdx: number) => { 
+      const cat = localCategories[cIdx]; 
+      if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; 
+      setSavingCategory(cat.id); 
+      try { 
+          // 🌟 1. Category တစ်ခုချင်းစီကို 'categories' ဆိုတဲ့ ဖိုင်တွဲအသစ်ထဲမှာ သီးသန့်စီ သိမ်းမည် 🌟
+          await setDoc(doc(db, 'categories', cat.id), { ...cat, order: cIdx }); 
+          
+          // 🌟 2. appData အဟောင်းကြီးထဲက နေရာယူထားတဲ့ ပုံဟောင်းတွေကို ရှင်းထုတ်မည် (နေရာလွတ်ပြန်ရအောင်) 🌟
+          await updateDoc(doc(db, 'settings', 'appData'), { categories: [] }); 
+          
+          alert('Saved Successfully.'); 
+      } catch (e) { 
+          console.error(e);
+          alert('Update error.'); 
+      } 
+      setSavingCategory(null); 
+  };
+                                                                                                                                                                                                      const handleSavePromotion = async () => { if (!window.confirm(`Are you sure you want to save promotion settings?`)) return; setSavingCategory('promotion'); try { await setDoc(doc(db, 'settings', 'appData'), { promotion: localPromotion }, { merge: true }); onSettingsUpdated({ ...appData, promotion: localPromotion }); alert('Promotion settings saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
   const handleSaveBranding = async () => { if (!window.confirm(`Are you sure you want to save branding settings?`)) return; setSavingCategory('branding'); try { await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true }); onSettingsUpdated({ ...appData, branding: localBranding }); alert('Branding saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
   const handleSavePayments = async () => { if (!window.confirm(`Are you sure you want to save payment methods?`)) return; setSavingCategory('payments'); try { await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true }); onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods }); alert('Payment methods saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
   const handleSaveInstallSteps = async () => { if (!window.confirm(`Are you sure you want to save Install Instructions?`)) return; setSavingCategory('install_steps'); try { await setDoc(doc(db, 'settings', 'appData'), { installSteps: localInstallSteps }, { merge: true }); onSettingsUpdated({ ...appData, installSteps: localInstallSteps }); alert('Install Instructions saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
