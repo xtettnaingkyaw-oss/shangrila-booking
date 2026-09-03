@@ -759,9 +759,9 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
                      {t.images && t.images.length > 1 && (
                          <button 
                              onClick={(e) => { e.stopPropagation(); setViewGallery({ images: t.images, index: 0 }); }}
-                             className="mx-auto mt-2 bg-black/60 hover:bg-black/80 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest uppercase flex items-center justify-center border border-white/20 transition-all shadow-sm z-10 relative cursor-pointer"
+                             className="mx-auto mt-2 bg-black/60 hover:bg-black/80 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center justify-center border border-white/20 transition-all shadow-sm z-10 relative cursor-pointer"
                          >
-                             <ImageIcon className="w-3 h-3 mr-1"/> {t.images.length} Photos
+                             <ImageIcon className="w-3 h-3 mr-1"/> နောက်ထပ်ပုံများကြည့်ရန်
                          </button>
                      )}
                   </div>
@@ -2193,7 +2193,7 @@ const renderServiceSelection = (currentStep: number) => (
                 )}
                 
                 {/* 🌟 2. Multiple Photos ရှိရင် ပြမည့် Button 🌟 */}
-                {therapist.images && therapist.images.length > 1 && (
+               {therapist.images && therapist.images.length > 1 && (
                   <button 
                     type="button"
                     onClick={(e) => {
@@ -2202,7 +2202,7 @@ const renderServiceSelection = (currentStep: number) => (
                     }}
                     className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center shadow-md border border-white/20 hover:bg-black transition-colors z-20 whitespace-nowrap"
                   >
-                    <ImageIcon className="w-3 h-3 mr-1"/> {therapist.images.length} Photos
+                    <ImageIcon className="w-3 h-3 mr-1"/> နောက်ထပ်ပုံများကြည့်ရန်
                   </button>
                 )}
               </div>
