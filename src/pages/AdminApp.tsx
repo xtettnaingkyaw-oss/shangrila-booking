@@ -842,17 +842,23 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const updateVipRule = (rIdx: number, val: string) => { const updated = [...localVipSettings.rules]; updated[rIdx] = val; setLocalVipSettings({...localVipSettings, rules: updated}); };
 
   const handleSaveCategory = async (cIdx: number) => { 
+  const handleSaveCategory = async (cIdx: number) => { 
       const cat = localCategories[cIdx]; 
       if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; 
       setSavingCategory(cat.id); 
       try { 
-          // 🌟 Category တစ်ခုချင်းစီကို သီးသန့်ခွဲသိမ်းမည် 🌟
-          await setDoc(doc(db, 'categories', cat.id), { ...cat, order: cIdx }); 
+          const batch = writeBatch(db);
+          // 🌟 Category အားလုံးကို သီးသန့်ဖိုင်တွဲ (Collection) အသစ်ထဲသို့ တစ်ပြိုင်နက်တည်း သိမ်းမည် 🌟
+          localCategories.forEach((c, idx) => {
+              const cDocRef = doc(db, 'categories', c.id);
+              batch.set(cDocRef, { ...c, order: idx });
+          });
+          await batch.commit();
           
           // 🌟 appData အဟောင်းထဲက နေရာယူထားတာတွေကို ရှင်းထုတ်မည် 🌟
           await updateDoc(doc(db, 'settings', 'appData'), { categories: [] }); 
           
-          alert('Saved Successfully.'); 
+          alert('Saved Successfully. All categories are synced!'); 
       } catch (e) { 
           console.error(e);
           alert('Update error.'); 
