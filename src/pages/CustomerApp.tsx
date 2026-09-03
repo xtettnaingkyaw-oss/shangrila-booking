@@ -2460,7 +2460,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const isFirstLoad = useRef(true);
 
   const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
-  const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
    const [realtimeTherapists, setRealtimeTherapists] = useState<TherapistProfile[]>(appData.therapists || []);
    const [realtimeCategories, setRealtimeCategories] = useState<MenuCategory[]>(appData.categories || []);
 
