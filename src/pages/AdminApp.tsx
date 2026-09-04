@@ -1513,14 +1513,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                           ] 
                       }, { merge: true });
 
-                      // 2. Body Scrub
+                      // 2. Body Scrub (Fixed undefined to 0)
                       batch.set(doc(db, 'categories', 'body_scrub'), { 
                           id: 'body_scrub', 
                           title: 'Body Scrub Category', 
                           order: 1,
                           items: [
-                              { id: 's1', name: 'Body Scrub & Bath Only', duration: '60 Mins', price: 70000, vvipPrice: undefined, vvipIncluded: true, description: 'Service အကြောင်း အသေးစိတ်ရေးရန်...', imageUrl: '' },
-                              { id: 's2', name: 'Body Scrub & Lotion Massage', duration: '120 Mins', price: 80000, vvipPrice: undefined, vvipIncluded: true, description: 'Service အကြောင်း အသေးစိတ်ရေးရန်...', imageUrl: '' }
+                              { id: 's1', name: 'Body Scrub & Bath Only', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'Service အကြောင်း အသေးစိတ်ရေးရန်...', imageUrl: '' },
+                              { id: 's2', name: 'Body Scrub & Lotion Massage', duration: '120 Mins', price: 80000, vvipPrice: 0, vvipIncluded: true, description: 'Service အကြောင်း အသေးစိတ်ရေးရန်...', imageUrl: '' }
                           ] 
                       }, { merge: true });
 
@@ -1546,6 +1546,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                       alert('Category (၄) ခုလုံးကို အောင်မြင်စွာ ပြန်လည်ထည့်သွင်းပြီးပါပြီ! Page ကို Refresh လုပ်ပေးပါ။');
                       window.location.reload();
                   } catch(e) {
+                      console.error(e);
                       alert('Error restoring data.');
                   }
               }} 
