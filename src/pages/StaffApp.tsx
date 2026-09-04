@@ -603,7 +603,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     }
 
     const totalDays = allDates.length;
-    
     const BASE_DAILY_TARGET = 150000;
     const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
 
@@ -639,6 +638,13 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         };
     });
 
+    // 🌟 ယနေ့အထိ Attendance တွက်ချက်ခြင်း 🌟
+    const todayStr = getLocalTodayStr();
+    const pastDays = dailyBreakdown.filter(item => item.date <= todayStr);
+    const workedDaysCount = pastDays.filter(item => item.hasSales).length;
+    const missedDays = pastDays.filter(item => !item.hasSales);
+    const missedDaysCount = missedDays.length;
+
     return (
         <div className="animate-fade-in mt-4">
             <div className="flex space-x-2 mb-6 bg-gray-100 p-1.5 rounded-xl">
@@ -653,7 +659,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                         <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Shangri-La Hall of Fame</p>
                     </div>
 
-                    {/* 🌟 Graph တိုင်များ ပြန်ပေါ်လာစေရန် ပြင်ဆင်ထားသော အပိုင်း 🌟 */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
                         <div className="flex items-end space-x-3 h-48 pb-2 pt-10 min-w-max border-b border-gray-100">
                             {sortedPerformers.map((p, idx) => {
@@ -674,7 +679,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                         </div>
                     </div>
 
-                    {/* 🌟 Percentage များကို Dynamic Target ဖြင့် ပြန်လည်တွက်ချက်ထားသော အပိုင်း 🌟 */}
                     <div className="space-y-3">
                         {sortedPerformers.slice(0, 10).map((p, idx) => {
                             const isMe = extractNumber(p['Staff ID']) === staffNum;
@@ -683,7 +687,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                             else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
                             else if (idx === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-300";
 
-                            // Dynamic Percent တွက်ချက်ခြင်း
                             const metPercent = (p['1 to 31 Actual'] / monthlyTotalTarget) * 100;
 
                             return (
@@ -761,6 +764,41 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 </div>
                             </div>
 
+                            {/* 🌟 Attendance & Sales Summary (ယနေ့အထိ အခြေအနေ) 🌟 */}
+                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ယနေ့အထိ Section ဝင်ထားမှု အခြေအနေ)</p>
+                                
+                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                    <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
+                                        <div className="text-[9px] text-green-600 font-bold uppercase tracking-wider mb-1">Worked Days</div>
+                                        <div className="text-2xl font-black text-green-700">{workedDaysCount} <span className="text-[10px] font-bold text-green-600/70">Days</span></div>
+                                    </div>
+                                    <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">
+                                        <div className="text-[9px] text-red-600 font-bold uppercase tracking-wider mb-1">Missed Days</div>
+                                        <div className="text-2xl font-black text-red-700">{missedDaysCount} <span className="text-[10px] font-bold text-red-600/70">Days</span></div>
+                                    </div>
+                                </div>
+
+                                {missedDaysCount > 0 ? (
+                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
+                                        <span className="text-[10px] font-bold text-gray-500 mb-2.5 block">Section မဝင်ထားသော ရက်များ :</span>
+                                        <div className="flex flex-wrap gap-2">
+                                            {missedDays.map(md => (
+                                                <span key={md.date} className="bg-white border border-red-200 text-red-500 text-[9px] font-bold px-2 py-1 rounded-md shadow-sm">
+                                                    Day {md.dayNo} ({md.date})
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center text-[10px] font-bold text-gray-500 flex flex-col items-center">
+                                        <CheckCircle className="w-5 h-5 text-green-500 mb-1.5"/>
+                                        ယနေ့အထိ Section မပျက်ထားပါ။ အလွန်ကောင်းမွန်ပါတယ်။
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Dynamic Adjusted Daily Target Tracker */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
@@ -799,7 +837,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                             )}
 
                                             <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
-                                                {/* 🌟 နံပါတ် ၁ နေရာ (ဘယ်ဘက်) 🌟 */}
                                                 <div>
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
                                                     <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
@@ -810,7 +847,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                                     </span>
                                                 </div>
                                                 
-                                                {/* 🌟 နံပါတ် ၂ နေရာ (ညာဘက်) - Adjusted Target အပါအဝင် 🌟 */}
                                                 <div className="text-right">
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
                                                     <span className="font-bold text-[#123524]">
