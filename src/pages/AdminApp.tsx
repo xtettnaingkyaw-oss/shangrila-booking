@@ -1670,7 +1670,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                         </div>
                                     )}
                                     
-                                  <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
+                                 <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
     <input 
         type="file" 
         accept="image/*" 
@@ -1688,9 +1688,12 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                     updateItem(cIdx, iIdx, 'imageUrl', downloadUrl);
                 } catch (error) {
                     console.error("Image upload failed", error);
-                    alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။");
+                    alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။ (Internet Connection သို့မဟုတ် VPN ကို စစ်ဆေးပါ)");
+                } finally {
+                    // အောင်မြင်သည်ဖြစ်စေ၊ ကျရှုံးသည်ဖြစ်စေ Loading ကို ဖျောက်မည်
+                    setUploadingImage(null);
+                    e.target.value = ''; // ပုံအဟောင်းကို ပြန်ရွေးလို့ရအောင် Reset လုပ်မည်
                 }
-                setUploadingImage(null);
             }
         }} 
         disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
