@@ -4,7 +4,7 @@ import { collection, query, onSnapshot, doc, updateDoc, addDoc, where } from 'fi
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
-import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets } from 'lucide-react';
+import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy, TrendingUp, Target, Award, Star } from 'lucide-react';
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 
 import { CustomerBookingWizard } from './CustomerApp';
@@ -134,10 +134,9 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    const [activeSession, setActiveSession] = useState<Booking | null>(null);
    const [showClockInFlow, setShowClockInFlow] = useState(false);
    const [loading, setLoading] = useState(true);
-   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass'>('service');
+   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance'>('service');
 
    useEffect(() => {
-       // 🚀 Optimization: Fetch ONLY bookings belonging to this specific therapist
        const q = query(collection(db, 'bookings'), where('therapist', '==', loggedInStaff.name));
        const unsubscribe = onSnapshot(q, (snap) => {
            let foundActive = null;
@@ -198,10 +197,12 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                <button onClick={() => setStaffTab('service')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'service' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Service</button>
                <button onClick={() => setStaffTab('history')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'history' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>History</button>
                <button onClick={() => setStaffTab('outpass')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Pass</button>
+               <button onClick={() => setStaffTab('performance')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'performance' ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] shadow text-[#D4AF37]' : 'text-gray-500 hover:bg-gray-100'}`}><Sparkles className="w-3 h-3 inline mb-0.5 mr-1"/>Matrix</button>
            </div>
 
            {staffTab === 'history' && <StaffDailyHistoryTab loggedInStaff={loggedInStaff} />}
            {staffTab === 'outpass' && <StaffOutPassTab appData={appData} loggedInStaff={loggedInStaff} />}
+           {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={loggedInStaff} />}
            
            {staffTab === 'service' && (
                activeSession ? (
@@ -236,7 +237,6 @@ function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfi
    const todayStr = getLocalTodayStr();
 
    useEffect(() => {
-       // 🚀 Optimization: Fetch ONLY bookings belonging to this specific therapist
        const q = query(collection(db, 'bookings'), where('therapist', '==', loggedInStaff.name));
        const unsub = onSnapshot(q, (snap) => {
            const arr: Booking[] = [];
@@ -251,7 +251,6 @@ function StaffDailyHistoryTab({ loggedInStaff }: { loggedInStaff: TherapistProfi
                    specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
                } as Booking;
 
-               // Filter by today locally
                if (b.date === todayStr && (b.status === 'completed' || b.status === 'cancelled')) {
                    arr.push(b);
                }
@@ -304,7 +303,6 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData, loggedI
    const todayStr = getLocalTodayStr();
 
    useEffect(() => {
-       // 🚀 Optimization: Fetch ONLY today's outpasses
        const q = query(collection(db, 'outpasses'), where('date', '==', todayStr));
        const unsub = onSnapshot(q, snap => {
            const arr: OutPass[] = [];
@@ -538,4 +536,150 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
            <button onClick={onStop} className="w-full py-4 bg-red-500 text-white rounded-xl font-bold shadow-lg flex items-center justify-center mx-auto hover:bg-red-600 transition text-sm"><Trash2 className="w-4 h-4 sm:w-5 sm:h-5 mr-2"/> Stop Service / End Now</button>
        </div>
    );
+}
+
+function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
+    const [matrixData, setMatrixData] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [subTab, setSubTab] = useState<'leaderboard' | 'my_stats'>('leaderboard');
+
+    useEffect(() => {
+        const unsub = onSnapshot(doc(db, 'settings', 'matrixData'), (snap) => {
+            if (snap.exists()) setMatrixData(snap.data());
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    if (loading) return <div className="text-center py-20 text-[#D4AF37] font-bold animate-pulse text-xs uppercase tracking-widest">Loading Matrix Data...</div>;
+    if (!matrixData || !matrixData.topPerformers) return <div className="text-center py-20 text-gray-400 font-bold text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-4">No Matrix Data available. Admin needs to upload the Excel file.</div>;
+
+    const extractNumber = (str: string) => {
+        const match = String(str).match(/\d+/);
+        return match ? parseInt(match[0], 10) : null;
+    };
+    
+    const staffNum = extractNumber(loggedInStaff.id) || extractNumber(loggedInStaff.name);
+    const mySummary = (matrixData.monthlySummary || []).find((d: any) => extractNumber(d['Staff No']) === staffNum);
+    const sortedPerformers = [...matrixData.topPerformers].filter(p => p['1 to 31 Actual'] > 0).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
+    const maxActual = sortedPerformers.length > 0 ? sortedPerformers[0]['1 to 31 Actual'] : 1;
+
+    return (
+        <div className="animate-fade-in mt-4">
+            <div className="flex space-x-2 mb-6 bg-gray-100 p-1.5 rounded-xl">
+                <button onClick={() => setSubTab('leaderboard')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${subTab === 'leaderboard' ? 'bg-white shadow text-[#123524]' : 'text-gray-500'}`}><Trophy className="w-3.5 h-3.5 inline mr-1.5"/> Leaderboard</button>
+                <button onClick={() => setSubTab('my_stats')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${subTab === 'my_stats' ? 'bg-white shadow text-[#123524]' : 'text-gray-500'}`}><TrendingUp className="w-3.5 h-3.5 inline mr-1.5"/> My Stats</button>
+            </div>
+
+            {subTab === 'leaderboard' && (
+                <div className="space-y-6">
+                    <div className="text-center mb-6">
+                        <h3 className="text-lg font-bold text-[#123524] font-serif">Top Performers of the Month</h3>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Shangri-La Hall of Fame</p>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
+                        <div className="flex items-end space-x-3 h-48 pb-2 pt-6 min-w-max border-b border-gray-100">
+                            {sortedPerformers.map((p, idx) => {
+                                const heightPercent = Math.max(5, (p['1 to 31 Actual'] / maxActual) * 100);
+                                const isMe = extractNumber(p['Staff ID']) === staffNum;
+                                return (
+                                    <div key={idx} className="flex flex-col items-center group w-12">
+                                        <div className="text-[9px] font-bold text-gray-500 mb-1 opacity-0 group-hover:opacity-100 transition-opacity -rotate-45 mb-4">{formatPrice(p['1 to 31 Actual'])}</div>
+                                        <div className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out shadow-sm ${isMe ? 'bg-gradient-to-t from-[#D4AF37] to-yellow-300' : (idx === 0 ? 'bg-gradient-to-t from-[#123524] to-[#1a4a32]' : 'bg-gray-200 hover:bg-gray-300')}`} style={{ height: `${heightPercent}%` }}>
+                                            {idx === 0 && <Crown className="w-5 h-5 text-[#D4AF37] absolute -top-6 -left-1.5" />}
+                                        </div>
+                                        <span className={`text-[10px] font-bold mt-2 ${isMe ? 'text-[#D4AF37]' : 'text-gray-600'}`}>{p['Staff ID']}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        {sortedPerformers.slice(0, 10).map((p, idx) => {
+                            const isMe = extractNumber(p['Staff ID']) === staffNum;
+                            let badgeClass = "bg-gray-100 text-gray-600";
+                            if (idx === 0) badgeClass = "bg-yellow-100 text-yellow-700 border border-yellow-300";
+                            else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
+                            else if (idx === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-300";
+
+                            return (
+                                <div key={idx} className={`flex items-center p-4 rounded-xl border transition-all ${isMe ? 'bg-yellow-50/50 border-[#D4AF37] shadow-md scale-[1.02]' : 'bg-white border-gray-100 shadow-sm'}`}>
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mr-4 ${badgeClass}`}>
+                                        {idx === 0 ? <Trophy className="w-4 h-4"/> : `#${idx + 1}`}
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="font-bold text-gray-800 text-sm flex items-center">{p['Staff ID']} {isMe && <span className="ml-2 text-[9px] bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded uppercase tracking-wider">YOU</span>}</div>
+                                        <div className="text-[10px] text-gray-500 font-semibold mt-0.5">Target: {formatPrice(p['1 to 30 Target'])}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="font-black text-[#123524]">{formatPrice(p['1 to 31 Actual'])}</div>
+                                        <div className={`text-[9px] font-bold mt-0.5 ${p['Meet %'] >= 0.5 ? 'text-green-500' : 'text-orange-500'}`}>
+                                            Met {(p['Meet %'] * 100).toFixed(1)}%
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {subTab === 'my_stats' && (
+                <div className="space-y-6">
+                    {!mySummary ? (
+                        <div className="text-center py-10 text-gray-400 text-xs font-bold border-2 border-dashed border-gray-200 rounded-xl">Your data is not found in the uploaded Matrix.</div>
+                    ) : (
+                        <>
+                            <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
+                                <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center"><Target className="w-4 h-4 mr-2"/> Monthly Target</h3>
+                                
+                                <div className="relative w-32 h-32 flex items-center justify-center bg-black/20 rounded-full border-4 border-white/5 shadow-inner">
+                                    <div className="text-center">
+                                        <div className="text-2xl font-black text-white">{mySummary['Total Actual Sales'] > 0 ? Math.round((mySummary['Total Actual Sales'] / mySummary['Total Target']) * 100) : 0}%</div>
+                                        <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-1">Achieved</div>
+                                    </div>
+                                    <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
+                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#D4AF37]" strokeDasharray="364" strokeDashoffset={364 - (364 * (mySummary['Total Actual Sales'] / mySummary['Total Target']))} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-out' }} />
+                                    </svg>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 w-full mt-8">
+                                    <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
+                                        <div className="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Target</div>
+                                        <div className="text-sm font-bold text-white">{formatPrice(mySummary['Total Target'])}</div>
+                                    </div>
+                                    <div className="bg-white/10 p-3 rounded-xl border border-[#D4AF37]/30 text-center">
+                                        <div className="text-[9px] text-[#D4AF37] font-bold uppercase tracking-wider mb-1">Actual Sales</div>
+                                        <div className="text-sm font-bold text-[#D4AF37]">{formatPrice(mySummary['Total Actual Sales'])}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-yellow-600"/> Financial Summary</h3>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                        <span className="text-xs font-semibold text-gray-600">Total Commissions</span>
+                                        <span className="font-bold text-[#123524]">{formatPrice(mySummary['Total Commessions'])}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                        <span className="text-xs font-semibold text-gray-600">Bonus</span>
+                                        <span className="font-bold text-blue-600">{formatPrice(mySummary['Bonus'])}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                                        <span className="text-xs font-bold text-yellow-800">Final Expected Pay</span>
+                                        <span className="font-black text-yellow-700 text-lg">{formatPrice(mySummary['Final Pay'])}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }
