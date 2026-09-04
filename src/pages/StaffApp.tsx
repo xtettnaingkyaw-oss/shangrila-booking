@@ -613,20 +613,21 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     let cumActualPrior = 0;
     let runningCumTarget = 0;
 
-    const dailyBreakdown = allDates.map((d: any, idx: number) => {
+    const dailyconst dailyBreakdown = allDates.map((d: any, idx: number) => {
         const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
         
         const daysRemaining = totalDays - idx;
         const remainingTarget = Math.max(0, monthlyTotalTarget - cumActualPrior);
         
-        // 🌟 ကျန်ရှိသော Target ကို ကျန်ရှိသော ရက်အရေအတွက်ဖြင့် စားပြီး Adjusted Daily Target ရှာခြင်း 🌟
+        // Dynamic Target တွက်ခြင်း (ကျန်ငွေ / ကျန်ရက်)
         const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTarget / daysRemaining) : 0;
         
-        runningCumTarget += adjustedDailyTarget;
+        // 🌟 ပြင်ဆင်လိုက်သော အပိုင်း (Cum. Target သည် ပုံမှန်အတိုင်းသာ တက်မည်)
+        runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
+
         const variance = dayActual - adjustedDailyTarget;
 
-        // နောက်ရက်အတွက် အရင်ရက်များစုစုပေါင်း Actual ကို ပေါင်းထည့်မည်
         cumActualPrior += dayActual;
 
         return {
