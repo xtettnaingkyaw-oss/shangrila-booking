@@ -968,35 +968,37 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
 
    const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      
-      setSavingCategory('excel_upload');
-      try {
-          const data = await file.arrayBuffer();
-          const workbook = XLSX.read(data, { type: 'array' });
-          
-          const topSheet = workbook.Sheets['Top Performers'];
-          const topData = topSheet ? XLSX.utils.sheet_to_json(topSheet) : [];
-          
-          const monthlySheet = workbook.Sheets['Monthly Summary'];
-          const monthlyData = monthlySheet ? XLSX.utils.sheet_to_json(monthlySheet) : [];
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSavingCategory('excel_upload');
+    try {
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const topSheet = workbook.Sheets['Top Performers'];
+        const topData = topSheet ? XLSX.utils.sheet_to_json(topSheet) : [];
+        const monthlySheet = workbook.Sheets['Monthly Summary'];
+        const monthlyData = monthlySheet ? XLSX.utils.sheet_to_json(monthlySheet) : [];
 
-          await setDoc(doc(db, 'settings', 'matrixData'), { 
-              topPerformers: topData, 
-              monthlySummary: monthlyData,
-              lastUpdated: Date.now()
-          }, { merge: true });
+        // 🌟 Daily Entry Sheet ပါ ထပ်မံဖတ်ရှုခြင်း
+        const entrySheet = workbook.Sheets['1. Daily Entry (နေ့စဉ်စာရင်း)'];
+        const entryData = entrySheet ? XLSX.utils.sheet_to_json(entrySheet) : [];
 
-          alert("✅ Excel Data များကို အောင်မြင်စွာ Upload တင်ပြီးပါပြီ။ Staff များဘက်တွင် ချက်ချင်း မြင်တွေ့ရပါမည်။");
-      } catch (error) {
-          console.error("Excel Upload Error:", error);
-          alert("Excel ဖိုင် ဖတ်ရာတွင် အခက်အခဲရှိနေပါသည်။");
-      } finally {
-          setSavingCategory(null);
-          e.target.value = '';
-      }
-  };
+        await setDoc(doc(db, 'settings', 'matrixData'), { 
+            topPerformers: topData, 
+            monthlySummary: monthlyData,
+            dailyEntries: entryData, // သိမ်းဆည်းမည်
+            lastUpdated: Date.now()
+        }, { merge: true });
+
+        alert("✅ Excel Data (Top Performers, Monthly Summary, Daily Entries) များကို အောင်မြင်စွာ Upload တင်ပြီးပါပြီ။");
+    } catch (error) {
+        console.error("Excel Upload Error:", error);
+        alert("Excel ဖိုင် ဖတ်ရာတွင် အခက်အခဲရှိနေပါသည်။");
+    } finally {
+        setSavingCategory(null);
+        e.target.value = '';
+    }
+};
   
   const [newSecretKey, setNewSecretKey] = useState('');
   const [migratingKey, setMigratingKey] = useState(false);
