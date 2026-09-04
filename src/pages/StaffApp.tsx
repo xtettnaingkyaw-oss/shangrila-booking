@@ -560,9 +560,47 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     };
     
     const staffNum = extractNumber(loggedInStaff.id) || extractNumber(loggedInStaff.name);
+    const staffIdExact = loggedInStaff.id; 
+    const staffNameExact = loggedInStaff.name; 
+
     const mySummary = (matrixData.monthlySummary || []).find((d: any) => extractNumber(d['Staff No']) === staffNum);
     const sortedPerformers = [...matrixData.topPerformers].filter(p => p['1 to 31 Actual'] > 0).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
     const maxActual = sortedPerformers.length > 0 ? sortedPerformers[0]['1 to 31 Actual'] : 1;
+
+    // 🌟 Daily Breakdown & Target Progress Calculation
+    const allEntries = matrixData.dailyEntries || [];
+    const myEntries = allEntries.filter((e: any) => e['Staff ID'] === staffIdExact || e['Staff Name'] === staffNameExact);
+
+    // Get all unique dates or default to August 1-31
+    const allDates = Array.from(new Set(allEntries.map((e: any) => e.Date))).filter(Boolean).sort();
+    if (allDates.length === 0) {
+        for (let i = 1; i <= 31; i++) {
+            allDates.push(`2026-08-${String(i).padStart(2, '0')}`);
+        }
+    }
+
+    const dailyTarget = 150000;
+    let cumTarget = 0;
+    let cumActual = 0;
+
+    const dailyBreakdown = allDates.map((d: string, idx: number) => {
+        const dayRecords = myEntries.filter((e: any) => String(e.Date).startsWith(d));
+        const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
+        cumTarget += dailyTarget;
+        cumActual += dayActual;
+
+        return {
+            dayNo: idx + 1,
+            date: d,
+            hasSales: dayRecords.length > 0,
+            services: dayRecords,
+            dayActual,
+            dailyTarget,
+            variance: dayActual - dailyTarget,
+            cumTarget,
+            cumActual
+        };
+    });
 
     return (
         <div className="animate-fade-in mt-4">
@@ -632,6 +670,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                         <div className="text-center py-10 text-gray-400 text-xs font-bold border-2 border-dashed border-gray-200 rounded-xl">Your data is not found in the uploaded Matrix.</div>
                     ) : (
                         <>
+                            {/* Monthly Target Donut Card */}
                             <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
                                 <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center"><Target className="w-4 h-4 mr-2"/> Monthly Target</h3>
@@ -659,6 +698,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 </div>
                             </div>
 
+                            {/* Financial Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-yellow-600"/> Financial Summary</h3>
                                 <div className="space-y-3">
@@ -674,6 +714,62 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                         <span className="text-xs font-bold text-yellow-800">Final Expected Pay</span>
                                         <span className="font-black text-yellow-700 text-lg">{formatPrice(mySummary['Final Pay'])}</span>
                                     </div>
+                                </div>
+                            </div>
+
+                            {/* 🌟 Daily Breakdown & Progressive Cumulative Target Tracker */}
+                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
+                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Daily Sales & Target Tracker (150k / Day)</span>
+                                </h3>
+                                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                                    {dailyBreakdown.map((item, idx) => (
+                                        <div key={idx} className={`p-4 rounded-xl border transition-all ${item.hasSales ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-50/70 border-dashed border-gray-200'}`}>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="bg-[#123524] text-[#D4AF37] text-[10px] font-bold px-2 py-0.5 rounded">Day {item.dayNo}</span>
+                                                    <span className="text-xs font-mono font-bold text-gray-700">{item.date}</span>
+                                                </div>
+                                                <div>
+                                                    {item.hasSales ? (
+                                                        <span className="bg-green-100 text-green-700 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">Active Sale</span>
+                                                    ) : (
+                                                        <span className="bg-gray-200 text-gray-600 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">No Sales</span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {item.hasSales ? (
+                                                <div className="space-y-1 my-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                                                    {item.services.map((s: any, sIdx: number) => (
+                                                        <div key={sIdx} className="flex justify-between text-xs font-semibold text-gray-800">
+                                                            <span>• {s['Service Name']}</span>
+                                                            <span className="font-bold text-[#123524]">{formatPrice(s['Sales Amount'])}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="my-2 py-2 text-center text-xs text-gray-400 font-bold italic bg-gray-100/50 rounded-lg">
+                                                    No Sales / Section ဝင်ထားခြင်း မရှိပါ
+                                                </div>
+                                            )}
+
+                                            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
+                                                <div>
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target (150k)</span>
+                                                    <span className={`font-black ${item.dayActual >= 150000 ? 'text-green-600' : 'text-orange-600'}`}>
+                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= 150000 ? 'Target Met' : `${formatPrice(item.variance)}`})</span>
+                                                    </span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Cumulative Target Buildup</span>
+                                                    <span className="font-bold text-[#123524]">
+                                                        Target: {formatPrice(item.cumTarget)} <span className="text-[9px] text-gray-500 block">Actual: {formatPrice(item.cumActual)}</span>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </>
