@@ -598,45 +598,37 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         }
     }
 
-    // 🌟 တစ်လစာ Total Target (Excel ထဲမှ Total Target ကို ယူမည်၊ မရှိလျှင် 4,500,000 Ks ကို သုံးမည်)
     const monthlyTotalTarget = mySummary ? (Number(mySummary['Total Target']) || 4500000) : 4500000;
     const totalDays = allDates.length;
 
-    let cumActual = 0;
+    let cumActualPrior = 0;
+    let runningCumTarget = 0;
 
-    // ပထမအကြိမ် Loop ပတ်၍ နေ့စဉ် Actual များကို အရင်စုမည်
-    const rawBreakdown = allDates.map((d: any, idx: number) => {
+    const dailyBreakdown = allDates.map((d: any, idx: number) => {
         const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
-        cumActual += dayActual;
+        
+        // 🌟 တက်ကြွစွာ ပြောင်းလဲတွက်ချက်သော Dynamic Target Logic
+        const daysRemaining = totalDays - idx;
+        const remainingTarget = Math.max(0, monthlyTotalTarget - cumActualPrior);
+        const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTarget / daysRemaining) : 0;
+        
+        runningCumTarget += adjustedDailyTarget;
+        const variance = dayActual - adjustedDailyTarget;
+
+        // နောက်ရက်အတွက် အရင်ရက်များစုစုပေါင်း Actual ကို ပေါင်းထည့်မည်
+        cumActualPrior += dayActual;
+
         return {
             dayNo: idx + 1,
             date: d,
             hasSales: dayRecords.length > 0,
             services: dayRecords,
             dayActual,
-            cumActual
-        };
-    });
-
-    // 🌟 ဒုတိယအကြိမ် Loop ဖြင့် ကျန်တဲ့ရက်များအတွက် Target အသစ် (Adjusted Target) ကို တွက်မည်
-    let runningCumTarget = 0;
-
-    const dailyBreakdown = rawBreakdown.map((item, idx) => {
-        const daysRemaining = totalDays - idx;
-        const totalRemainingTarget = Math.max(0, monthlyTotalTarget - runningCumTarget);
-        
-        // ကျန်တဲ့ရက်များအတွက် တစ်ရက်ချင်းစီ ရှာရမည့် Target အသစ် (Average needed per remaining day)
-        const adjustedDailyTarget = daysRemaining > 0 ? Math.round(totalRemainingTarget / daysRemaining) : 0;
-        
-        runningCumTarget += adjustedDailyTarget;
-        const variance = item.dayActual - adjustedDailyTarget;
-
-        return {
-            ...item,
             dailyTarget: adjustedDailyTarget,
+            variance,
             cumTarget: runningCumTarget,
-            variance
+            cumActual: cumActualPrior
         };
     });
 
