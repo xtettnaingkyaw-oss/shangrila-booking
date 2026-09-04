@@ -682,7 +682,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                         </div>
                                         
                                         <div className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out flex justify-center ${barColor} ${isMe ? 'ring-2 ring-offset-1 ring-[#D4AF37]' : ''}`} style={{ height: `${heightPercent}%` }}>
-                                            {idx === 0 && <Crown className="w-6 h-6 text-[#D4AF37] absolute -top-9" />}
+                                            {idx === 0 && <Crown className="w-6 h-6 text-[#D4AF37] absolute -top-12" />}
                                             <span className={`absolute -top-5 text-[9px] font-bold ${idx === 0 ? 'text-[#123524]' : idx === 1 ? 'text-yellow-600' : 'text-gray-600'}`}>
                                                 {metPercent.toFixed(0)}%
                                             </span>
