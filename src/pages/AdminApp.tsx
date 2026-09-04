@@ -1493,7 +1493,69 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           )}
       </div>
 
-      {localCategories.map((cat, cIdx) => (
+      {/* 🌟 Auto Restore Data (All 4 Categories) 🌟 */}
+      <div className="w-full flex justify-center mt-6 mb-6">
+          <button 
+              type="button" 
+              onClick={async () => {
+                  try {
+                      const batch = writeBatch(db);
+                      
+                      // 1. Massage
+                      batch.set(doc(db, 'categories', 'massage'), { 
+                          id: 'massage', 
+                          title: 'Massage', 
+                          order: 0,
+                          items: [
+                              { id: 'm1', name: 'Myanmar Traditional Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: 'Experience the ancient art of Myanmar traditional massage...', imageUrl: '' },
+                              { id: 'm2', name: 'Myanmar Traditional Massage', duration: '90 Mins', price: 35000, vvipPrice: 45000, vvipIncluded: false, description: 'Experience the ancient art of Myanmar traditional massage...', imageUrl: '' },
+                              { id: 'm3', name: 'Myanmar Traditional Massage', duration: '120 Mins', price: 45000, vvipPrice: 55000, vvipIncluded: false, description: '', imageUrl: '' }
+                          ] 
+                      }, { merge: true });
+
+                      // 2. Body Scrub
+                      batch.set(doc(db, 'categories', 'body_scrub'), { 
+                          id: 'body_scrub', 
+                          title: 'Body Scrub Category', 
+                          order: 1,
+                          items: [
+                              { id: 's1', name: 'Body Scrub & Bath Only', duration: '60 Mins', price: 70000, vvipPrice: undefined, vvipIncluded: true, description: 'Service အကြောင်း အသေးစိတ်ရေးရန်...', imageUrl: '' },
+                              { id: 's2', name: 'Body Scrub & Lotion Massage', duration: '120 Mins', price: 80000, vvipPrice: undefined, vvipIncluded: true, description: 'Service အကြောင်း အသေးစိတ်ရေးရန်...', imageUrl: '' }
+                          ] 
+                      }, { merge: true });
+
+                      // 3. Waxing
+                      batch.set(doc(db, 'categories', 'waxing'), { 
+                          id: 'waxing', 
+                          title: 'Waxing', 
+                          order: 2,
+                          items: [] 
+                      }, { merge: true });
+
+                      // 4. Hotel Service
+                      batch.set(doc(db, 'categories', 'hotel_service'), { 
+                          id: 'hotel_service', 
+                          title: 'Hotel & Home Services', 
+                          order: 3,
+                          items: [
+                              { id: 'h1', name: 'Outcall Massage (Hotel/Home)', duration: '90 Mins', price: 50000, vvipPrice: 0, vvipIncluded: false, description: 'Hotel and Home Service', imageUrl: '' }
+                          ] 
+                      }, { merge: true });
+
+                      await batch.commit();
+                      alert('Category (၄) ခုလုံးကို အောင်မြင်စွာ ပြန်လည်ထည့်သွင်းပြီးပါပြီ! Page ကို Refresh လုပ်ပေးပါ။');
+                      window.location.reload();
+                  } catch(e) {
+                      alert('Error restoring data.');
+                  }
+              }} 
+              className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold shadow-md hover:bg-green-700 animate-pulse flex items-center"
+          >
+              <Sparkles className="w-5 h-5 mr-2" /> Restore All Categories (Category ၄ ခုလုံး ပြန်ခေါ်ရန် နှိပ်ပါ)
+          </button>
+      </div>
+       
+       {localCategories.map((cat, cIdx) => (
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 border-l-4 border-l-[#123524]">
           <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
              <div>
