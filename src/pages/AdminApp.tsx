@@ -791,8 +791,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           title: 'Massage',
           order: 0,
           items: [
-              { id: 'm1', name: 'Traditional Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm2', name: 'Traditional Massage', duration: '90 Mins', price: 37000, vvipPrice: 47000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm1', name: 'Myanmar Traditional Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm2', name: 'Myanmar Traditional Massage', duration: '90 Mins', price: 37000, vvipPrice: 47000, vvipIncluded: false, description: '', imageUrl: '' },
               { id: 'm3', name: 'Oil Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
               { id: 'm4', name: 'Oil Massage', duration: '90 Mins', price: 37000, vvipPrice: 47000, vvipIncluded: false, description: '', imageUrl: '' },
               { id: 'm5', name: 'Aromatherapy Massage', duration: '60 Mins', price: 30000, vvipPrice: 40000, vvipIncluded: false, description: '', imageUrl: '' },
@@ -835,9 +835,9 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           order: 3,
           items: [
               { id: 'h1', name: 'Part Time Outcall Service', duration: '100 Mins', price: 70000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'h2', name: 'Half Day Service', duration: '6:00 AM to 12:00 PM OR 12:00 PM to 6:00 PM', price: 100000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'h3', name: 'The Whole Night Service', duration: '8:00 PM to 8:00 AM', price: 120000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'h4', name: 'The Whole Day Service', duration: '7:00 AM to 7:00 PM', price: 180000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' }
+              { id: 'h2', name: 'Half Day Service', duration: '6 Hrs', price: 100000, vvipPrice: 0, vvipIncluded: false, description: '6:00 AM to 12:00 PM OR 12:00 PM to 6:00 PM', imageUrl: '' },
+              { id: 'h3', name: 'The Whole Night Service', duration: '12 Hrs', price: 120000, vvipPrice: 0, vvipIncluded: false, description: '8:00 PM to 8:00 AM', imageUrl: '' },
+              { id: 'h4', name: 'The Whole Day Service', duration: '12 Hrs', price: 180000, vvipPrice: 0, vvipIncluded: false, description: '7:00 AM to 7:00 PM', imageUrl: '' }
           ]
       }
   ];
@@ -845,37 +845,44 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(DEFAULT_MENU_CATEGORIES);
 
   useEffect(() => {
-      const fetchAndSyncCategories = async () => {
+      const fetchCategories = async () => {
           const snap = await getDocs(collection(db, 'categories'));
           const arr: any[] = [];
           snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
-          
-          // Database ထဲမှာ ပိုနေတဲ့ (သို့) လိုနေတဲ့ Categories ရှိရင် အဟောင်းတွေကို ဖျက်ပြီး အသစ် Auto ပြန်ရေးပါမည်
-          if (arr.length !== 4) {
-              const batch = writeBatch(db);
-              
-              // အဟောင်း/အမှားများကို ဖျက်ခြင်း
-              arr.forEach(cat => {
-                  if (cat.docId) batch.delete(doc(db, 'categories', cat.docId));
-              });
-              
-              // အသစ် (၁၄) မျိုးလုံးကို ပြန်ထည့်ခြင်း
-              DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
-                  const cDocRef = doc(db, 'categories', cat.id);
-                  batch.set(cDocRef, { ...cat, order: idx });
-              });
-              
-              await batch.commit();
-              setLocalCategories(DEFAULT_MENU_CATEGORIES);
-          } else {
-              arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-              setLocalCategories(arr);
-          }
+          arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+          if (arr.length > 0) setLocalCategories(arr);
       };
-      fetchAndSyncCategories();
+      fetchCategories();
   }, []);
+
+  const handleForceFixCategories = async () => {
+      if (!window.confirm("Menu အဟောင်းများကိုဖျက်၍ ပုံထဲကအတိုင်း အသစ်ပြန်လည်ထည့်သွင်းမည် သေချာပါသလား?")) return;
+      setSavingCategory('force_fix');
+      try {
+          const batch = writeBatch(db);
+          // 1. Delete existing categories
+          const snap = await getDocs(collection(db, 'categories'));
+          snap.forEach(d => batch.delete(doc(db, 'categories', d.id)));
+          
+          // 2. Add defaults
+          DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
+              batch.set(doc(db, 'categories', cat.id), { ...cat, order: idx });
+          });
+          
+          // 3. Clear appData categories just in case
+          batch.update(doc(db, 'settings', 'appData'), { categories: [] });
+          
+          await batch.commit();
+          setLocalCategories(DEFAULT_MENU_CATEGORIES);
+          alert("✅ Menu အားလုံးကို အောင်မြင်စွာ ပြန်လည်ပြင်ဆင်ပြီးပါပြီ။ Customer App ကို ပိတ်ပြီး ပြန်ဖွင့်ကြည့်ပါ။");
+      } catch (e) {
+          console.error(e);
+          alert("Error fixing categories");
+      }
+      setSavingCategory(null);
+  };
    
-   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
+  const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', telegram: '', viber: '', copyright: '', name: '', shopLat: 0, shopLng: 0 })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
   const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, title: 'SPECIAL PROMO', hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
   const [localSignUpBonus, setLocalSignUpBonus] = useState<any>(JSON.parse(JSON.stringify(appData.signUpBonus || { isActive: false, points: 5, startDate: '', endDate: '' })));
@@ -925,16 +932,12 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       setSavingCategory(cat.id); 
       try { 
           const batch = writeBatch(db);
-          // 🌟 Category အားလုံးကို သီးသန့်ဖိုင်တွဲ (Collection) အသစ်ထဲသို့ တစ်ပြိုင်နက်တည်း သိမ်းမည် 🌟
           localCategories.forEach((c, idx) => {
               const cDocRef = doc(db, 'categories', c.id);
               batch.set(cDocRef, { ...c, order: idx });
           });
           await batch.commit();
-          
-          // 🌟 appData အဟောင်းထဲက နေရာယူထားတာတွေကို ရှင်းထုတ်မည် 🌟
           await updateDoc(doc(db, 'settings', 'appData'), { categories: [] }); 
-          
           alert('Saved Successfully. All categories are synced!'); 
       } catch (e) { 
           console.error(e);
@@ -944,7 +947,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const handleSavePromotion = async () => { if (!window.confirm(`Are you sure you want to save promotion settings?`)) return; setSavingCategory('promotion'); try { await setDoc(doc(db, 'settings', 'appData'), { promotion: localPromotion }, { merge: true }); onSettingsUpdated({ ...appData, promotion: localPromotion }); alert('Promotion settings saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
-                                                                                                                                                                                                     
+                                                                                                                                                                                                            
   const handleSaveBranding = async () => { if (!window.confirm(`Are you sure you want to save branding settings?`)) return; setSavingCategory('branding'); try { await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true }); onSettingsUpdated({ ...appData, branding: localBranding }); alert('Branding saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
   const handleSavePayments = async () => { if (!window.confirm(`Are you sure you want to save payment methods?`)) return; setSavingCategory('payments'); try { await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true }); onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods }); alert('Payment methods saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
   const handleSaveInstallSteps = async () => { if (!window.confirm(`Are you sure you want to save Install Instructions?`)) return; setSavingCategory('install_steps'); try { await setDoc(doc(db, 'settings', 'appData'), { installSteps: localInstallSteps }, { merge: true }); onSettingsUpdated({ ...appData, installSteps: localInstallSteps }); alert('Install Instructions saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
@@ -958,35 +961,26 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (e) { alert('Update error.'); } 
       setSavingCategory(null); 
   };
-  const handleSaveCategories = async () => {
-        setSavingCategory('categories');
+  const handleSaveTherapists = async () => {
+        setSavingCategory('therapists');
         try {
             const batch = writeBatch(db);
-            
-            // 🌟 1. အရင်ရှိနေတဲ့ Category အဟောင်းတွေကို ဖျက်မယ် 🌟
-            const snapshot = await getDocs(collection(db, 'categories'));
-            snapshot.forEach(d => {
-                batch.delete(d.ref);
+            deletedTherapistIds.forEach(id => {
+                batch.delete(doc(db, 'therapists', id));
             });
-
-            // 🌟 2. အသစ်တွေကို 'categories' ဆိုတဲ့ ဖိုင်တွဲအသစ်ထဲမှာ သီးသန့်ခွဲသိမ်းမယ် 🌟
-            localCategories.forEach((cat, idx) => {
-                const cDocRef = doc(db, 'categories', cat.id);
-                batch.set(cDocRef, { ...cat, order: idx });
+            localTherapists.forEach((t, idx) => {
+                const isNew = t.id.startsWith('new_') || t.id.startsWith('t_');
+                const finalId = isNew ? `therapist_${Date.now()}_${idx}` : t.id;
+                const tRef = doc(db, 'therapists', finalId);
+                const updatedT = { ...t, id: finalId, order: idx, password: CryptoJS.AES.encrypt(t.password || '', import.meta.env.VITE_SECRET_KEY).toString() };
+                batch.set(tRef, updatedT, { merge: true });
             });
-
             await batch.commit();
-
-            // 🌟 3. Main Data ဖိုင်ကြီးထဲက categories တွေကို ရှင်းထုတ်မယ် (နေရာလွတ်ပြန်ရအောင်) 🌟
-            await updateDoc(doc(db, 'settings', 'appData'), { categories: [] });
-
-            alert('Categories saved successfully to new collection!');
-        } catch (error) {
-            console.error(error);
-            alert('Update error.');
-        }
+            setDeletedTherapistIds([]);
+            alert('Therapists saved successfully.');
+        } catch (error) { alert('Error saving therapists.'); }
         setSavingCategory(null);
-    };
+  };
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); const fileName = `logo_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'branding', fileName); setLocalBranding({ ...localBranding, logoUrl: imageUrl }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const fileName = `pay_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'payments', fileName); const updated = [...localPaymentMethods]; updated[idx].logoUrl = imageUrl; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const fileName = `install_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'install_steps', fileName); const updated = [...localInstallSteps]; updated[idx].imageUrl = imageUrl; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
@@ -1000,7 +994,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   };
 
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
-  const updateTherapistField = (tIdx: number, field: keyof TherapistProfile, val: any) => { const updated = [...localTherapists]; updated[tIdx] = { ...updated[tIdx], [field]: val }; setLocalTherapists(updated); };
+  const updateTherapist = (tIdx: number, field: keyof TherapistProfile, val: any) => { const updated = [...localTherapists]; updated[tIdx] = { ...updated[tIdx], [field]: val }; setLocalTherapists(updated); };
   const removeTherapist = (tIdx: number) => { if (!window.confirm("Are you sure you want to delete this therapist?")) return; const t = localTherapists[tIdx]; if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]); const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated); };
   const moveTherapistUp = (tIdx: number) => { if (tIdx === 0) return; const updated = [...localTherapists]; const temp = updated[tIdx - 1]; updated[tIdx - 1] = updated[tIdx]; updated[tIdx] = temp; setLocalTherapists(updated); };
   const moveTherapistDown = (tIdx: number) => { if (tIdx === localTherapists.length - 1) return; const updated = [...localTherapists]; const temp = updated[tIdx + 1]; updated[tIdx + 1] = updated[tIdx]; updated[tIdx] = temp; setLocalTherapists(updated); };
@@ -1129,6 +1123,74 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                  </div>
              </div>
          )}
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Settings className="w-5 h-5 mr-2 text-[#123524]" /> App Branding & Footer</h3>
+                  <p className="text-xs text-gray-500 mt-1">ဆိုင်၏ လိုဂို၊ အမည်၊ လိပ်စာ၊ ဖုန်းနံပါတ် နှင့် GPS Location များ ပြင်ဆင်ရန်</p>
+              </div>
+              <button onClick={() => toggleSection('branding')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
+                  {expandedSection === 'branding' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+              </button>
+          </div>
+
+          {expandedSection === 'branding' && (
+              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                      <div className="flex flex-wrap gap-2">
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=therapists'; navigator.clipboard.writeText(url); alert('Gallery Link Copied:\n' + url); }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Gallery Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=dashboard'; navigator.clipboard.writeText(url); alert('Dashboard Link Copied:\n' + url); }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Dashboard Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=vip'; navigator.clipboard.writeText(url); alert('VIP Member Link Copied:\n' + url); }} className="text-xs flex items-center text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded border border-yellow-200 hover:bg-yellow-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> VIP Member Link</button>
+                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=profile'; navigator.clipboard.writeText(url); alert('Profile Link Copied:\n' + url); }} className="text-xs flex items-center text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200 hover:bg-indigo-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Profile Link</button>
+                      </div>
+                      <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
+                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}
+                      </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
+                          <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
+                          <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
+                              {localBranding.logoUrl ? (
+                                  <><img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({ ...localBranding, logoUrl: '' })} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4" /></button></div></>
+                              ) : (
+                                  <div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : "No Logo"}</div>
+                              )}
+                          </div>
+                          <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">{localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}<input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} /></label>
+                      </div>
+                      <div className="space-y-4">
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Business Name</label><input type="text" value={localBranding.name || ''} onChange={e => setLocalBranding({ ...localBranding, name: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({ ...localBranding, address: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div>
+                          <div className="grid grid-cols-2 gap-2">
+                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({ ...localBranding, phone1: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({ ...localBranding, phone2: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                          </div>
+                          
+                          {/* 🌟 Telegram / Viber ထည့်ရန် အကွက်အသစ် */}
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Telegram Link</label><input type="text" value={(localBranding as any).telegram || ''} onChange={e => setLocalBranding({ ...localBranding, telegram: e.target.value } as any)} placeholder="https://t.me/username" className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Viber Link</label><input type="text" value={(localBranding as any).viber || ''} onChange={e => setLocalBranding({ ...localBranding, viber: e.target.value } as any)} placeholder="viber://add?number=..." className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                          </div>
+
+                          <div className="mt-2"><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({ ...localBranding, copyright: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
+                      </div>
+                  </div>
+                  
+                  <div className="border-t border-gray-100 pt-6 mt-6">
+                      <h4 className="text-sm font-bold text-gray-800 mb-2">Shop Location (For Staff Out Pass GPS Restriction)</h4>
+                      <div className="flex items-center space-x-2">
+                          <div className="flex-1 bg-gray-50 p-3 rounded border border-gray-200 text-xs text-gray-600 font-mono">Lat: {localBranding.shopLat ? localBranding.shopLat.toFixed(5) : 'Not set'}, Lng: {localBranding.shopLng ? localBranding.shopLng.toFixed(5) : 'Not set'}</div>
+                          <button type="button" onClick={() => { navigator.geolocation.getCurrentPosition((pos) => { setLocalBranding({...localBranding, shopLat: pos.coords.latitude, shopLng: pos.coords.longitude}); alert("Location updated! Please click 'Save' above to confirm."); }, () => alert("Please enable Location Services in your browser to get coordinates."), {enableHighAccuracy: true}); }} className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-xs font-bold border border-green-200 hover:bg-green-100 transition whitespace-nowrap">Get Current GPS</button>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-2">Staff will only be able to Clock Out/In within 50 meters of this exact location. Make sure you are physically at the shop when setting this.</p>
+                  </div>
+              </div>
+          )}
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-orange-500">
@@ -1278,79 +1340,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           )}
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Settings className="w-5 h-5 mr-2 text-[#123524]" /> App Branding & Footer</h3>
-                  <p className="text-xs text-gray-500 mt-1">ဆိုင်၏ လိုဂို၊ အမည်၊ လိပ်စာ၊ ဖုန်းနံပါတ် နှင့် GPS Location များ ပြင်ဆင်ရန်</p>
-              </div>
-              <button onClick={() => toggleSection('branding')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                  {expandedSection === 'branding' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-              </button>
-          </div>
-
-          {expandedSection === 'branding' && (
-              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                      <div className="flex flex-wrap gap-2">
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=therapists'; navigator.clipboard.writeText(url); alert('Gallery Link Copied:\n' + url); }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Gallery Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=dashboard'; navigator.clipboard.writeText(url); alert('Dashboard Link Copied:\n' + url); }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Dashboard Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=vip'; navigator.clipboard.writeText(url); alert('VIP Member Link Copied:\n' + url); }} className="text-xs flex items-center text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded border border-yellow-200 hover:bg-yellow-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> VIP Member Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=profile'; navigator.clipboard.writeText(url); alert('Profile Link Copied:\n' + url); }} className="text-xs flex items-center text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200 hover:bg-indigo-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Profile Link</button>
-                      </div>
-                      <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
-                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}
-                      </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
-                          <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
-                          <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
-                              {localBranding.logoUrl ? (
-                                  <><img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({ ...localBranding, logoUrl: '' })} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4" /></button></div></>
-                              ) : (
-                                  <div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : "No Logo"}</div>
-                              )}
-                          </div>
-                          <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">{localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}<input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} /></label>
-                      </div>
-                      <div className="space-y-4">
-                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Business Name</label><input type="text" value={localBranding.name || ''} onChange={e => setLocalBranding({ ...localBranding, name: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({ ...localBranding, address: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div>
-                          <div className="grid grid-cols-2 gap-2">
-                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({ ...localBranding, phone1: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({ ...localBranding, phone2: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                          </div>
-                         <div className="grid grid-cols-2 gap-2">
-      <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({ ...localBranding, phone1: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-      <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({ ...localBranding, phone2: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-  </div>
-  
-  {/* 🌟 Telegram / Viber ထည့်ရန် အကွက်အသစ် */}
-  <div className="grid grid-cols-2 gap-2 mt-2">
-      <div><label className="block text-xs font-bold text-gray-500 mb-1">Telegram Link</label><input type="text" value={(localBranding as any).telegram || ''} onChange={e => setLocalBranding({ ...localBranding, telegram: e.target.value } as any)} placeholder="https://t.me/username" className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-      <div><label className="block text-xs font-bold text-gray-500 mb-1">Viber Link</label><input type="text" value={(localBranding as any).viber || ''} onChange={e => setLocalBranding({ ...localBranding, viber: e.target.value } as any)} placeholder="viber://add?number=..." className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-  </div>
-
-  <div className="mt-2"><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({ ...localBranding, copyright: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({ ...localBranding, copyright: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                      </div>
-                  </div>
-                  
-                  <div className="border-t border-gray-100 pt-6 mt-6">
-                      <h4 className="text-sm font-bold text-gray-800 mb-2">Shop Location (For Staff Out Pass GPS Restriction)</h4>
-                      <div className="flex items-center space-x-2">
-                          <div className="flex-1 bg-gray-50 p-3 rounded border border-gray-200 text-xs text-gray-600 font-mono">Lat: {localBranding.shopLat ? localBranding.shopLat.toFixed(5) : 'Not set'}, Lng: {localBranding.shopLng ? localBranding.shopLng.toFixed(5) : 'Not set'}</div>
-                          <button type="button" onClick={() => { navigator.geolocation.getCurrentPosition((pos) => { setLocalBranding({...localBranding, shopLat: pos.coords.latitude, shopLng: pos.coords.longitude}); alert("Location updated! Please click 'Save' above to confirm."); }, () => alert("Please enable Location Services in your browser to get coordinates."), {enableHighAccuracy: true}); }} className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-xs font-bold border border-green-200 hover:bg-green-100 transition whitespace-nowrap">Get Current GPS</button>
-                      </div>
-                      <p className="text-[10px] text-gray-400 mt-2">Staff will only be able to Clock Out/In within 50 meters of this exact location. Make sure you are physically at the shop when setting this.</p>
-                  </div>
-              </div>
-          )}
-      </div>
-
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-400">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -1492,77 +1481,73 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                       </div>
                                   ))}
 
-                                  {/* 🌟 Upload Button (Balanced Quality) 🌟 */}
-                                        {/* 🌟 Upload Button (High Quality - 800px, 0.8) 🌟 */}
-                                        {(!therapist.images || therapist.images.length < 5) && (
-                                            <label className="w-16 aspect-[3/4] rounded border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm">
-                                                <input 
-                                                    type="file" 
-                                                    accept="image/*" 
-                                                    className="hidden" 
-                                                    onChange={(e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (file) {
-                                                            setUploadingImage(`therapist_${tIdx}`);
-                                                            const reader = new FileReader();
-                                                            reader.onload = (event) => {
-                                                                const img = new Image();
-                                                                img.onload = () => {
-                                                                    const canvas = document.createElement('canvas');
-                                                                    // 🌟 1MB Limit ပြဿနာမရှိတော့သဖြင့် ပုံထွက်ကြည်လင်စေရန် 800px သုံးထားပါသည် 🌟
-                                                                    const MAX_SIZE = 800; 
-                                                                    let width = img.width;
-                                                                    let height = img.height;
+                                  {(!therapist.images || therapist.images.length < 5) && (
+                                      <label className="w-16 aspect-[3/4] rounded border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm">
+                                          <input 
+                                              type="file" 
+                                              accept="image/*" 
+                                              className="hidden" 
+                                              onChange={(e) => {
+                                                  const file = e.target.files?.[0];
+                                                  if (file) {
+                                                      setUploadingImage(`therapist_${tIdx}`);
+                                                      const reader = new FileReader();
+                                                      reader.onload = (event) => {
+                                                          const img = new Image();
+                                                          img.onload = () => {
+                                                              const canvas = document.createElement('canvas');
+                                                              const MAX_SIZE = 800; 
+                                                              let width = img.width;
+                                                              let height = img.height;
 
-                                                                    if (width > height) {
-                                                                        if (width > MAX_SIZE) {
-                                                                            height *= MAX_SIZE / width;
-                                                                            width = MAX_SIZE;
-                                                                        }
-                                                                    } else {
-                                                                        if (height > MAX_SIZE) {
-                                                                            width *= MAX_SIZE / height;
-                                                                            height = MAX_SIZE;
-                                                                        }
-                                                                    }
-                                                                    canvas.width = width;
-                                                                    canvas.height = height;
-                                                                    const ctx = canvas.getContext('2d');
-                                                                    
-                                                                    if (ctx) {
-                                                                        ctx.fillStyle = '#FFFFFF';
-                                                                        ctx.fillRect(0, 0, width, height);
-                                                                        ctx.drawImage(img, 0, 0, width, height);
-                                                                    }
-                                                                    
-                                                                    // 🌟 Quality ကို 0.8 သို့ ပြန်တင်ထားသဖြင့် ပုံများ လုံးဝဝါးတော့မည်မဟုတ်ပါ 🌟
-                                                                    const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
-                                                                    
-                                                                    const newTherapists = [...localTherapists];
-                                                                    if (!newTherapists[tIdx].images) {
-                                                                        newTherapists[tIdx].images = [];
-                                                                    }
-                                                                    newTherapists[tIdx].images.push(finalBase64);
-                                                                    setLocalTherapists(newTherapists);
-                                                                    
-                                                                    setUploadingImage(null);
-                                                                };
-                                                                img.src = event.target?.result as string;
-                                                            };
-                                                            reader.readAsDataURL(file);
-                                                        }
-                                                    }} 
-                                                    disabled={uploadingImage === `therapist_${tIdx}`}
-                                                />
-                                                <div className="text-center">
-                                                    {uploadingImage === `therapist_${tIdx}` ? (
-                                                        <span className="text-[9px] font-bold text-[#D4AF37]">Wait..</span>
-                                                    ) : (
-                                                        <span className="text-[10px] font-bold text-gray-500">Upload</span>
-                                                    )}
-                                                </div>
-                                            </label>
-                                        )}
+                                                              if (width > height) {
+                                                                  if (width > MAX_SIZE) {
+                                                                      height *= MAX_SIZE / width;
+                                                                      width = MAX_SIZE;
+                                                                  }
+                                                              } else {
+                                                                  if (height > MAX_SIZE) {
+                                                                      width *= MAX_SIZE / height;
+                                                                      height = MAX_SIZE;
+                                                                  }
+                                                              }
+                                                              canvas.width = width;
+                                                              canvas.height = height;
+                                                              const ctx = canvas.getContext('2d');
+                                                              
+                                                              if (ctx) {
+                                                                  ctx.fillStyle = '#FFFFFF';
+                                                                  ctx.fillRect(0, 0, width, height);
+                                                                  ctx.drawImage(img, 0, 0, width, height);
+                                                              }
+                                                              
+                                                              const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
+                                                              
+                                                              const newTherapists = [...localTherapists];
+                                                              if (!newTherapists[tIdx].images) {
+                                                                  newTherapists[tIdx].images = [];
+                                                              }
+                                                              newTherapists[tIdx].images.push(finalBase64);
+                                                              setLocalTherapists(newTherapists);
+                                                              
+                                                              setUploadingImage(null);
+                                                          };
+                                                          img.src = event.target?.result as string;
+                                                      };
+                                                      reader.readAsDataURL(file);
+                                                  }
+                                              }} 
+                                              disabled={uploadingImage === `therapist_${tIdx}`}
+                                          />
+                                          <div className="text-center">
+                                              {uploadingImage === `therapist_${tIdx}` ? (
+                                                  <span className="text-[9px] font-bold text-[#D4AF37]">Wait..</span>
+                                              ) : (
+                                                  <span className="text-[10px] font-bold text-gray-500">Upload</span>
+                                              )}
+                                          </div>
+                                      </label>
+                                  )}
                               </div>
                           </div>
                       ))}
@@ -1570,7 +1555,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               </div>
           )}
       </div>
-       
+
+       <div className="bg-red-50 border border-red-200 p-6 rounded-2xl shadow-sm mt-6 mb-2">
+           <h3 className="font-bold text-red-700 mb-2 flex items-center text-lg"><AlertCircle className="w-5 h-5 mr-2" /> Category များ ပိုနေ/လိုနေပါသလား?</h3>
+           <p className="text-sm text-red-600 mb-4 font-semibold">အောက်ပါခလုတ်ကို နှိပ်လိုက်ပါက Database ထဲရှိ အမှားများကို အကုန်ရှင်းလင်းပြီး ပုံထဲကအတိုင်း Service Category (၁၄) မျိုးလုံးကို အလိုအလျောက် ပြန်လည်ပြင်ဆင်ပေးပါမည်။</p>
+           <button onClick={handleForceFixCategories} className="bg-red-600 text-white px-5 py-3 rounded-lg font-bold hover:bg-red-700 shadow-md text-sm flex items-center">
+               {savingCategory === 'force_fix' ? 'Fixing Database...' : '🛠️ Fix & Reset Menu Categories'}
+           </button>
+       </div>
        
        {localCategories.map((cat, cIdx) => (
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 border-l-4 border-l-[#123524]">
@@ -1693,7 +1685,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                                             const ctx = canvas.getContext('2d');
                                                             ctx?.drawImage(img, 0, 0, width, height);
                                                             
-                                                            // 🌟 WebP Format ကို သုံးထားသဖြင့် JPEG ထက် File Size သိသိသာသာ သေးငယ်ပြီး ပုံပိုကြည်လင်ပါမည် 🌟
                                                             const webpBase64 = canvas.toDataURL('image/webp', 0.65); 
                                                             
                                                             updateItem(cIdx, iIdx, 'imageUrl', webpBase64);
