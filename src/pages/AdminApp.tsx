@@ -538,7 +538,6 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
   const [creatingUser, setCreatingUser] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', phone: '', password: '', dob: '' });
   
-  // 🌟 Search အသစ်အတွက်
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetchUsers = async () => {
@@ -555,7 +554,6 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
              otpApproved: raw.otpApproved || false
           });
       });
-      // 🌟 Sort Logic အသစ်: Request လုပ်ထားသူများကို ထိပ်ဆုံးပို့မည်။ ကျန်တာကို အသစ်ဖွင့်တဲ့အကောင့်စဉ်အတိုင်းပြမည်
       data.sort((a, b) => {
           if (a.resetRequested && !b.resetRequested) return -1;
           if (!a.resetRequested && b.resetRequested) return 1;
@@ -610,7 +608,6 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
 
   const getTier = (points: number) => { if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null; const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
 
-  // 🌟 Filter Users by Search
   const filteredUsers = users.filter(u => 
       u.phone.includes(searchQuery) || 
       (u.name && u.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -649,7 +646,6 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           </div>
       )}
 
-      {/* 🌟 Top Bar With Search */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
           <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
           
@@ -665,7 +661,6 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           </div>
       </div>
       
-      {/* 🌟 Users Table */}
       <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name & DOB</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security / OTP Request</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{filteredUsers.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မတွေ့ပါ။</td></tr>)}{filteredUsers.map((u, idx) => {
          const userTier = getTier(u.points);
          return (
@@ -792,13 +787,13 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           order: 0,
           items: [
               { id: 'm1', name: 'Myanmar Traditional Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm2', name: 'Myanmar Traditional Massage', duration: '90 Mins', price: 37000, vvipPrice: 47000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm2', name: 'Myanmar Traditional Massage', duration: '90 Mins', price: 37000, vvipPrice: 52000, vvipIncluded: false, description: '', imageUrl: '' },
               { id: 'm3', name: 'Oil Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm4', name: 'Oil Massage', duration: '90 Mins', price: 37000, vvipPrice: 47000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm4', name: 'Oil Massage', duration: '90 Mins', price: 37000, vvipPrice: 52000, vvipIncluded: false, description: '', imageUrl: '' },
               { id: 'm5', name: 'Aromatherapy Massage', duration: '60 Mins', price: 30000, vvipPrice: 40000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm6', name: 'Aromatherapy Massage', duration: '90 Mins', price: 45000, vvipPrice: 55000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm6', name: 'Aromatherapy Massage', duration: '90 Mins', price: 45000, vvipPrice: 60000, vvipIncluded: false, description: '', imageUrl: '' },
               { id: 'm7', name: 'Body Butter Lotion Massage', duration: '60 Mins', price: 35000, vvipPrice: 45000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm8', name: 'Body Butter Lotion Massage', duration: '90 Mins', price: 50000, vvipPrice: 60000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm8', name: 'Body Butter Lotion Massage', duration: '90 Mins', price: 50000, vvipPrice: 67000, vvipIncluded: false, description: '', imageUrl: '' },
               { id: 'm9', name: 'Body to Body Massage', duration: '60 Mins', price: 55000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
               { id: 'm10', name: 'Body to Body Massage', duration: '90 Mins', price: 82000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
               { id: 'm11', name: 'Four Hands Massage', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
@@ -842,35 +837,57 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       }
   ];
 
-  const [localCategories, setLocalCategories] = useState<MenuCategory[]>(DEFAULT_MENU_CATEGORIES);
+  const [localCategories, setLocalCategories] = useState<MenuCategory[]>(() => {
+      if (appData.categories && appData.categories.length > 0) {
+          return appData.categories;
+      }
+      return DEFAULT_MENU_CATEGORIES;
+  });
 
   useEffect(() => {
-      const fetchCategories = async () => {
+      const fetchAndSyncCategories = async () => {
+          if (appData.categories && appData.categories.length === 4) return;
+          
           const snap = await getDocs(collection(db, 'categories'));
           const arr: any[] = [];
           snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
-          arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-          if (arr.length > 0) setLocalCategories(arr);
+          
+          if (arr.length !== 4) {
+              const batch = writeBatch(db);
+              arr.forEach(cat => {
+                  if (cat.docId) batch.delete(doc(db, 'categories', cat.docId));
+              });
+              DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
+                  const cDocRef = doc(db, 'categories', cat.id);
+                  batch.set(cDocRef, { ...cat, order: idx });
+              });
+              
+              // 🌟 FIX DELAY: Save directly into appData to prevent the 3 second delay for Customer App
+              batch.update(doc(db, 'settings', 'appData'), { categories: DEFAULT_MENU_CATEGORIES });
+              
+              await batch.commit();
+              setLocalCategories(DEFAULT_MENU_CATEGORIES);
+          } else {
+              arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+              setLocalCategories(arr);
+          }
       };
-      fetchCategories();
-  }, []);
+      fetchAndSyncCategories();
+  }, [appData.categories]);
 
   const handleForceFixCategories = async () => {
       if (!window.confirm("Menu အဟောင်းများကိုဖျက်၍ ပုံထဲကအတိုင်း အသစ်ပြန်လည်ထည့်သွင်းမည် သေချာပါသလား?")) return;
       setSavingCategory('force_fix');
       try {
           const batch = writeBatch(db);
-          // 1. Delete existing categories
           const snap = await getDocs(collection(db, 'categories'));
           snap.forEach(d => batch.delete(doc(db, 'categories', d.id)));
           
-          // 2. Add defaults
           DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
               batch.set(doc(db, 'categories', cat.id), { ...cat, order: idx });
           });
           
-          // 3. Clear appData categories just in case
-          batch.update(doc(db, 'settings', 'appData'), { categories: [] });
+          batch.update(doc(db, 'settings', 'appData'), { categories: DEFAULT_MENU_CATEGORIES });
           
           await batch.commit();
           setLocalCategories(DEFAULT_MENU_CATEGORIES);
@@ -936,8 +953,11 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               const cDocRef = doc(db, 'categories', c.id);
               batch.set(cDocRef, { ...c, order: idx });
           });
+          
+          // 🌟 FIX DELAY: Save to appData so it loads instantly in Customer App
+          batch.update(doc(db, 'settings', 'appData'), { categories: localCategories }); 
+          
           await batch.commit();
-          await updateDoc(doc(db, 'settings', 'appData'), { categories: [] }); 
           alert('Saved Successfully. All categories are synced!'); 
       } catch (e) { 
           console.error(e);
@@ -1171,7 +1191,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                               <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({ ...localBranding, phone2: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
                           </div>
                           
-                          {/* 🌟 Telegram / Viber ထည့်ရန် အကွက်အသစ် */}
                           <div className="grid grid-cols-2 gap-2 mt-2">
                               <div><label className="block text-xs font-bold text-gray-500 mb-1">Telegram Link</label><input type="text" value={(localBranding as any).telegram || ''} onChange={e => setLocalBranding({ ...localBranding, telegram: e.target.value } as any)} placeholder="https://t.me/username" className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
                               <div><label className="block text-xs font-bold text-gray-500 mb-1">Viber Link</label><input type="text" value={(localBranding as any).viber || ''} onChange={e => setLocalBranding({ ...localBranding, viber: e.target.value } as any)} placeholder="viber://add?number=..." className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
