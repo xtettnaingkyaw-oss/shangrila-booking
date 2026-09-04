@@ -538,7 +538,7 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
    );
 }
 
-function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
+function Stafffunction StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
     const [matrixData, setMatrixData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [subTab, setSubTab] = useState<'leaderboard' | 'my_stats'>('leaderboard');
@@ -609,25 +609,17 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     let cumActualPrior = 0;
 
-    const dailyconst dailyBreakdown = allDates.map((d: any, idx: number) => {
+    const dailyBreakdown = allDates.map((d: any, idx: number) => {
         const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
         
-        // 🌟 အရင်က Adjusted Daily Target တွက်ချက်မှုကို ပြန်ထည့်ထားပါသည်
         const daysRemaining = totalDays - idx;
         const remainingTargetPrior = Math.max(0, monthlyTotalTarget - cumActualPrior);
         const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTargetPrior / daysRemaining) : 0;
         
-        // Cum. Target တွက်ချက်မှု (ပုံမှန် ၁ သိန်းခွဲစီ တက်သွားမည်)
         const runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
-
-        // ယနေ့အထိ စုစုပေါင်း ရောင်းရငွေ (Cumulative Actual)
         const cumActual = cumActualPrior + dayActual;
-        
-        // နေ့စဉ် ၁၅၀,၀၀၀ အပေါ် မူတည်ပြီး လို/ပို (Variance)
         const dailyVariance = dayActual - BASE_DAILY_TARGET;
-
-        // လကုန်အထိ ရှာရန်ကျန်နေသေးသော Target ပမာဏ (Total Target - ယနေ့အထိ ရှာထားသောငွေ)
         const remainingMonthlyTarget = Math.max(0, monthlyTotalTarget - cumActual);
 
         cumActualPrior = cumActual;
@@ -639,7 +631,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
             services: dayRecords,
             dayActual,
             dailyTarget: BASE_DAILY_TARGET,
-            adjustedDailyTarget, // ဒါလေး ပြန်ထည့်ထားပါတယ်
+            adjustedDailyTarget,
             dailyVariance,
             cumTarget: runningCumTarget,
             cumActual,
@@ -802,7 +794,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                             <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
                                                 {/* 🌟 နံပါတ် ၁ နေရာ (ဘယ်ဘက်) 🌟 */}
                                                 <div>
-                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Daily Target</span>
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
                                                     <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
                                                         {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
                                                     </span>
@@ -811,13 +803,16 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                                     </span>
                                                 </div>
                                                 
-                                                {/* 🌟 နံပါတ် ၂ နေရာ (ညာဘက်) 🌟 */}
+                                                {/* 🌟 နံပါတ် ၂ နေရာ (ညာဘက်) - Adjusted Target အပါအဝင် 🌟 */}
                                                 <div className="text-right">
-                                                    <span className="text-gray-400 font-semibold text-[10px] block">Remaining Monthly Target</span>
-                                                    <span className="font-bold text-red-500">
-                                                        {formatPrice(item.remainingMonthlyTarget)}
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
+                                                    <span className="font-bold text-[#123524]">
+                                                        {formatPrice(item.adjustedDailyTarget)}
                                                     </span>
                                                     <span className="text-[9px] text-gray-500 block mt-1.5">
+                                                        Remaining: <span className="font-bold text-red-500">{formatPrice(item.remainingMonthlyTarget)}</span>
+                                                    </span>
+                                                    <span className="text-[9px] text-gray-500 block mt-0.5">
                                                         Cum. Target: {formatPrice(item.cumTarget)}
                                                     </span>
                                                 </div>
