@@ -520,13 +520,16 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
 }
 
 function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
-   const [view, setView] = useState<'dashboard' | 'service' | 'outpass'>('dashboard');
+   const [view, setView] = useState<'dashboard' | 'service' | 'outpass' | 'performance'>('dashboard');
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
    const todayStr = getLocalTodayStr(); const [now, setNow] = useState(Date.now());
+   
    useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 15000); return () => clearInterval(timer); }, []);
    useEffect(() => { const unsub = onSnapshot(query(collection(db, 'outpasses'), orderBy('outTimeMillis', 'desc')), snap => { const arr: OutPass[] = []; snap.forEach(d => arr.push({id: d.id, ...d.data()} as OutPass)); setOutpasses(arr); }); return () => unsub(); }, []);
+   
    const formatMillis = (millis: number | undefined) => { if (!millis) return '-'; const date = new Date(millis); return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
    const formatSecondsAdmin = (totalSeconds: number | undefined) => { if (totalSeconds === undefined) return '00:00'; const isNegative = totalSeconds < 0; const absSecs = Math.abs(totalSeconds); const h = Math.floor(absSecs / 3600); const m = Math.floor((absSecs % 3600) / 60); const s = Math.floor(absSecs % 60); return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; };
+   
    const handleDeleteBooking = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
@@ -540,6 +543,8 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                  <button onClick={() => setView('dashboard')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'dashboard' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Dashboard</button>
                  <button onClick={() => setView('service')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services List</button>
                  <button onClick={() => setView('outpass')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'outpass' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Passes List</button>
+                 {/* 🌟 New Performance Tab 🌟 */}
+                 <button onClick={() => setView('performance')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition flex items-center justify-center ${view === 'performance' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}><TrendingUp className="w-3.5 h-3.5 mr-1.5"/> Performance Stats</button>
               </div>
            </div>
 
@@ -583,6 +588,11 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
 
            {view === 'outpass' && (
               <div className="overflow-x-auto animate-fade-in"><table className="w-full text-left border-collapse min-w-[900px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Out Time</th><th className="p-3 pb-4">Expected Return</th><th className="p-3 pb-4">Actual Return</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead><tbody>{outpasses.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No out pass records found.</td></tr>)}{outpasses.map((o) => { let currentOvertime = o.overtimeSeconds || 0; let isLate = currentOvertime > 0; if (o.status === 'out' && o.expectedInTimeMillis && now > o.expectedInTimeMillis) { currentOvertime = Math.floor((now - o.expectedInTimeMillis) / 1000); isLate = true; } return (<tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm"><td className="p-3"><div className="font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</div><div className="text-[10px] text-gray-500 mt-0.5">Reason: {o.reason || '-'}</div></td><td className="p-3 text-gray-700 font-semibold">{o.date}</td><td className="p-3 font-mono text-gray-600">{formatMillis(o.outTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td><td className="p-3 text-right"><div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>{isLate && o.status === 'out' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}</div><button onClick={() => handleDeleteOutpass(o.id!)} disabled={adminRole !== 'super_admin'} className={`text-xs font-bold px-2 py-1 rounded transition ${adminRole === 'super_admin' ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-gray-300 bg-gray-100 cursor-not-allowed'}`} title="Delete">Delete</button></td></tr>); })}</tbody></table></div>
+           )}
+
+           {/* 🌟 Render New Performance View 🌟 */}
+           {view === 'performance' && (
+               <AdminStaffPerformanceView therapists={therapists} />
            )}
        </div>
    );
@@ -1837,4 +1847,366 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       ))}
     </div>
   );
+}
+function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
+    const [matrixData, setMatrixData] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [selectedStaffId, setSelectedStaffId] = useState<string>('');
+
+    useEffect(() => {
+        const unsub = onSnapshot(doc(db, 'settings', 'matrixData'), (snap) => {
+            if (snap.exists()) setMatrixData(snap.data());
+            setLoading(false);
+        });
+        return () => unsub();
+    }, []);
+
+    if (loading) return <div className="text-center py-20 text-[#D4AF37] font-bold animate-pulse text-xs uppercase tracking-widest">Loading Matrix Data...</div>;
+    if (!matrixData || !matrixData.topPerformers) return <div className="text-center py-20 text-gray-400 font-bold text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-4">No Matrix Data available. Please upload the Excel file in Settings.</div>;
+
+    const sortedPerformers = [...matrixData.topPerformers].filter(p => p['1 to 31 Actual'] > 0).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
+    const maxActual = sortedPerformers.length > 0 ? sortedPerformers[0]['1 to 31 Actual'] : 1;
+
+    const extractNumber = (str: string) => {
+        const match = String(str).match(/\d+/);
+        return match ? parseInt(match[0], 10) : null;
+    };
+
+    const parseExcelDate = (val: any) => {
+        if (!val) return '';
+        if (typeof val === 'number') {
+            const d = new Date((val - (25567 + 2)) * 86400 * 1000);
+            return d.toISOString().split('T')[0];
+        }
+        const str = String(val).trim();
+        if (str.includes('T')) return str.split('T')[0];
+        return str;
+    };
+
+    const allEntries = (matrixData.dailyEntries || []).map((e: any) => ({
+        ...e,
+        ParsedDate: parseExcelDate(e.Date),
+        CleanStaffId: String(e['Staff ID'] || '').trim().toLowerCase(),
+        CleanStaffName: String(e['Staff Name'] || '').trim().toLowerCase()
+    }));
+
+    const allDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
+    if (allDates.length === 0) {
+        const currentMonth = new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+        const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+        for (let i = 1; i <= daysInMonth; i++) {
+            allDates.push(`${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
+        }
+    }
+    
+    const totalDays = allDates.length;
+    const BASE_DAILY_TARGET = 150000;
+    const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
+
+    const selectedStaff = therapists.find(t => t.id === selectedStaffId);
+
+    let mySummary = null;
+    let myEntries: any[] = [];
+    let dailyBreakdown: any[] = [];
+    let workedDaysCount = 0;
+    let missedDaysCount = 0;
+    let missedDays: any[] = [];
+
+    if (selectedStaff) {
+        const staffNum = extractNumber(selectedStaff.id) || extractNumber(selectedStaff.name);
+        const staffIdExact = String(selectedStaff.id).trim().toLowerCase(); 
+        const staffNameExact = String(selectedStaff.name).trim().toLowerCase(); 
+
+        mySummary = (matrixData.monthlySummary || []).find((d: any) => extractNumber(d['Staff No']) === staffNum);
+        
+        myEntries = allEntries.filter((e: any) => {
+            return e.CleanStaffId === staffIdExact || 
+                   e.CleanStaffName === staffNameExact ||
+                   extractNumber(e['Staff ID']) === staffNum;
+        });
+
+        let cumActualPrior = 0;
+
+        dailyBreakdown = allDates.map((d: any, idx: number) => {
+            const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
+            const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
+            
+            const daysRemaining = totalDays - idx;
+            const remainingTargetPrior = Math.max(0, monthlyTotalTarget - cumActualPrior);
+            const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTargetPrior / daysRemaining) : 0;
+            
+            const runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
+            const cumActual = cumActualPrior + dayActual;
+            const dailyVariance = dayActual - BASE_DAILY_TARGET;
+            const remainingMonthlyTarget = Math.max(0, monthlyTotalTarget - cumActual);
+
+            cumActualPrior = cumActual;
+
+            return {
+                dayNo: idx + 1,
+                date: d,
+                hasSales: dayRecords.length > 0,
+                services: dayRecords,
+                dayActual,
+                dailyTarget: BASE_DAILY_TARGET,
+                adjustedDailyTarget,
+                dailyVariance,
+                cumTarget: runningCumTarget,
+                cumActual,
+                remainingMonthlyTarget
+            };
+        });
+
+        const todayStr = getLocalTodayStr();
+        const pastDays = dailyBreakdown.filter(item => item.date <= todayStr);
+        workedDaysCount = pastDays.filter(item => item.hasSales).length;
+        missedDays = pastDays.filter(item => !item.hasSales);
+        missedDaysCount = missedDays.length;
+    }
+
+    return (
+        <div className="animate-fade-in mt-6">
+            <div className="bg-gray-50 p-5 rounded-2xl shadow-sm border border-gray-200 mb-6">
+                <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider flex items-center">
+                    <User className="w-4 h-4 mr-2 text-[#D4AF37]" /> Select Therapist to View Performance
+                </label>
+                <div className="relative">
+                    <select 
+                        value={selectedStaffId} 
+                        onChange={(e) => setSelectedStaffId(e.target.value)}
+                        className="w-full p-3 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-gray-800 appearance-none cursor-pointer shadow-sm"
+                    >
+                        <option value="">-- Show Global Leaderboard --</option>
+                        {therapists.map(t => (
+                            <option key={t.id} value={t.id}>{t.name} (ID: {t.id})</option>
+                        ))}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-3.5 w-5 h-5 text-gray-400 pointer-events-none" />
+                </div>
+            </div>
+
+            {!selectedStaffId ? (
+                // LEADERBOARD VIEW
+                <div className="space-y-6 animate-slide-up">
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
+                        <div className="flex items-end space-x-3 h-52 pb-2 pt-14 min-w-max border-b border-gray-100">
+                            {sortedPerformers.map((p, idx) => {
+                                const heightPercent = Math.max(5, (p['1 to 31 Actual'] / maxActual) * 100);
+                                const metPercent = monthlyTotalTarget > 0 ? (p['1 to 31 Actual'] / monthlyTotalTarget) * 100 : 0;
+                                
+                                let barColor = 'bg-gray-200 hover:bg-gray-300';
+                                if (idx === 0) barColor = 'bg-gradient-to-t from-[#123524] to-[#1a4a32] shadow-md'; 
+                                else if (idx === 1) barColor = 'bg-gradient-to-t from-[#D4AF37] to-yellow-400 shadow-md'; 
+                                else if (idx === 2) barColor = 'bg-gradient-to-t from-gray-400 to-gray-300 shadow-md'; 
+                                else if (idx === 3) barColor = 'bg-gradient-to-t from-orange-400 to-orange-300 shadow-sm'; 
+                                else if (idx === 4) barColor = 'bg-gradient-to-t from-blue-400 to-blue-300 shadow-sm'; 
+
+                                return (
+                                    <div key={idx} className="flex flex-col justify-end items-center group w-12 h-full">
+                                        <div className="text-[9px] font-bold text-gray-500 mb-2 opacity-0 group-hover:opacity-100 transition-opacity -rotate-45 whitespace-nowrap z-10">
+                                            {formatPrice(p['1 to 31 Actual'])}
+                                        </div>
+                                        <div className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out flex justify-center ${barColor}`} style={{ height: `${heightPercent}%` }}>
+                                            {idx === 0 && <Crown className="w-6 h-6 text-[#D4AF37] absolute -top-12" />}
+                                            <span className={`absolute -top-5 text-[9px] font-bold ${idx === 0 ? 'text-[#123524]' : idx === 1 ? 'text-yellow-600' : 'text-gray-600'}`}>
+                                                {metPercent.toFixed(0)}%
+                                            </span>
+                                        </div>
+                                        <span className="text-[10px] font-bold mt-2 text-gray-600">{p['Staff ID']}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        {sortedPerformers.slice(0, 10).map((p, idx) => {
+                            let badgeClass = "bg-gray-100 text-gray-600";
+                            if (idx === 0) badgeClass = "bg-yellow-100 text-yellow-700 border border-yellow-300";
+                            else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
+                            else if (idx === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-300";
+
+                            const metPercent = monthlyTotalTarget > 0 ? (p['1 to 31 Actual'] / monthlyTotalTarget) * 100 : 0;
+
+                            return (
+                                <div key={idx} className="flex items-center p-4 rounded-xl border bg-white border-gray-100 shadow-sm transition-all hover:border-[#D4AF37]/50 hover:shadow-md cursor-default">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mr-4 ${badgeClass}`}>
+                                        {idx === 0 ? <Trophy className="w-4 h-4"/> : `#${idx + 1}`}
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="font-bold text-gray-800 text-sm flex items-center">{p['Staff ID']}</div>
+                                        <div className="text-[10px] text-gray-500 font-semibold mt-0.5">Target: {formatPrice(monthlyTotalTarget)}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="font-black text-[#123524]">{formatPrice(p['1 to 31 Actual'])}</div>
+                                        <div className={`text-[9px] font-bold mt-0.5 ${metPercent >= 50 ? 'text-green-500' : 'text-orange-500'}`}>
+                                            Met {metPercent.toFixed(1)}%
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ) : (
+                // INDIVIDUAL STATS VIEW
+                <div className="space-y-6 animate-slide-up">
+                    {!mySummary ? (
+                        <div className="text-center py-10 text-gray-400 text-xs font-bold border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">Selected staff data is not found in the uploaded Matrix.</div>
+                    ) : (
+                        <>
+                            {/* Monthly Target Donut Card */}
+                            <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
+                                <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center"><Target className="w-4 h-4 mr-2"/> Monthly Target ({selectedStaff?.name})</h3>
+                                
+                                <div className="relative w-32 h-32 flex items-center justify-center bg-black/20 rounded-full border-4 border-white/5 shadow-inner">
+                                    <div className="text-center">
+                                        <div className="text-2xl font-black text-white">{mySummary['Total Actual Sales'] > 0 && monthlyTotalTarget > 0 ? Math.round((mySummary['Total Actual Sales'] / monthlyTotalTarget) * 100) : 0}%</div>
+                                        <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-1">Achieved</div>
+                                    </div>
+                                    <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
+                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#D4AF37]" strokeDasharray="364" strokeDashoffset={364 - (364 * (mySummary['Total Actual Sales'] / monthlyTotalTarget))} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-out' }} />
+                                    </svg>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 w-full mt-8">
+                                    <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
+                                        <div className="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Target</div>
+                                        <div className="text-sm font-bold text-white">{formatPrice(monthlyTotalTarget)}</div>
+                                    </div>
+                                    <div className="bg-white/10 p-3 rounded-xl border border-[#D4AF37]/30 text-center">
+                                        <div className="text-[9px] text-[#D4AF37] font-bold uppercase tracking-wider mb-1">Actual Sales</div>
+                                        <div className="text-sm font-bold text-[#D4AF37]">{formatPrice(mySummary['Total Actual Sales'])}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Financial Summary */}
+                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-yellow-600"/> Financial Summary</h3>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                        <span className="text-xs font-semibold text-gray-600">Total Commissions</span>
+                                        <span className="font-bold text-[#123524]">{formatPrice(mySummary['Total Commessions'])}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                        <span className="text-xs font-semibold text-gray-600">Bonus</span>
+                                        <span className="font-bold text-blue-600">{formatPrice(mySummary['Bonus'])}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                                        <span className="text-xs font-bold text-yellow-800">Final Expected Pay</span>
+                                        <span className="font-black text-yellow-700 text-lg">{formatPrice(mySummary['Final Pay'])}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Attendance Summary */}
+                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ယနေ့အထိ Section ဝင်ထားမှု အခြေအနေ)</p>
+                                
+                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                    <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
+                                        <div className="text-[9px] text-green-600 font-bold uppercase tracking-wider mb-1">Worked Days</div>
+                                        <div className="text-2xl font-black text-green-700">{workedDaysCount} <span className="text-[10px] font-bold text-green-600/70">Days</span></div>
+                                    </div>
+                                    <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">
+                                        <div className="text-[9px] text-red-600 font-bold uppercase tracking-wider mb-1">Missed Days</div>
+                                        <div className="text-2xl font-black text-red-700">{missedDaysCount} <span className="text-[10px] font-bold text-red-600/70">Days</span></div>
+                                    </div>
+                                </div>
+
+                                {missedDaysCount > 0 ? (
+                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
+                                        <span className="text-[10px] font-bold text-gray-500 mb-2.5 block">Section မဝင်ထားသော ရက်များ :</span>
+                                        <div className="flex flex-wrap gap-2">
+                                            {missedDays.map(md => (
+                                                <span key={md.date} className="bg-white border border-red-200 text-red-500 text-[9px] font-bold px-2 py-1 rounded-md shadow-sm">
+                                                    Day {md.dayNo} ({md.date})
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center text-[10px] font-bold text-gray-500 flex flex-col items-center">
+                                        <CheckCircle className="w-5 h-5 text-green-500 mb-1.5"/>
+                                        ယနေ့အထိ Section မပျက်ထားပါ။ အလွန်ကောင်းမွန်ပါတယ်။
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Dynamic Tracker */}
+                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
+                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
+                                </h3>
+                                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                                    {dailyBreakdown.map((item, idx) => (
+                                        <div key={idx} className={`p-4 rounded-xl border transition-all ${item.hasSales ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-50/70 border-dashed border-gray-200'}`}>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="bg-[#123524] text-[#D4AF37] text-[10px] font-bold px-2 py-0.5 rounded">Day {item.dayNo}</span>
+                                                    <span className="text-xs font-mono font-bold text-gray-700">{item.date}</span>
+                                                </div>
+                                                <div>
+                                                    {item.hasSales ? (
+                                                        <span className="bg-green-100 text-green-700 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">Active Sale</span>
+                                                    ) : (
+                                                        <span className="bg-gray-200 text-gray-600 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">No Sales</span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {item.hasSales ? (
+                                                <div className="space-y-1 my-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                                                    {item.services.map((s: any, sIdx: number) => (
+                                                        <div key={sIdx} className="flex justify-between text-xs font-semibold text-gray-800">
+                                                            <span>• {s['Service Name']}</span>
+                                                            <span className="font-bold text-[#123524]">{formatPrice(s['Sales Amount'])}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="my-2 py-2 text-center text-xs text-gray-400 font-bold italic bg-gray-100/50 rounded-lg">
+                                                    No Sales / Section ဝင်ထားခြင်း မရှိပါ
+                                                </div>
+                                            )}
+
+                                            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
+                                                <div>
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
+                                                    <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
+                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
+                                                    </span>
+                                                    <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
+                                                        Total Actual: {formatPrice(item.cumActual)}
+                                                    </span>
+                                                </div>
+                                                
+                                                <div className="text-right">
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
+                                                    <span className="font-bold text-[#123524]">
+                                                        {formatPrice(item.adjustedDailyTarget)}
+                                                    </span>
+                                                    <span className="text-[9px] text-gray-500 block mt-1.5">
+                                                        Remaining: <span className="font-bold text-red-500">{formatPrice(item.remainingMonthlyTarget)}</span>
+                                                    </span>
+                                                    <span className="text-[9px] text-gray-500 block mt-0.5">
+                                                        Cum. Target: {formatPrice(item.cumTarget)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }
