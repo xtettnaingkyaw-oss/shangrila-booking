@@ -538,7 +538,7 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
    );
 }
 
-function StaffPefunction StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
+function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
     const [matrixData, setMatrixData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [subTab, setSubTab] = useState<'leaderboard' | 'my_stats'>('leaderboard');
