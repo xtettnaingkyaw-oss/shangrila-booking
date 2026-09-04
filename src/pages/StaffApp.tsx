@@ -4,7 +4,7 @@ import { collection, query, onSnapshot, doc, updateDoc, addDoc, where } from 'fi
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
-import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy, TrendingUp, Target, Award, Star } from 'lucide-react';
+import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy, TrendingUp, Target, Award, Star, Crown } from 'lucide-react';
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 
 import { CustomerBookingWizard } from './CustomerApp';
