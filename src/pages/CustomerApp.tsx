@@ -2192,24 +2192,25 @@ const renderServiceSelection = (currentStep: number) => (
 
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Therapist</h2>
-        <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ဘိုကင်ရယူလိုသော Therapist ကို​ ရွေးချယ်ပါ)</p>
+        <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ဘိုကင်ရယူလိုသော Therapist ကို ရွေးချယ်ပါ)</p>
       </div>
       
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         {appData.therapists.map((therapist, idx) => {
-          const isSelected = formData.selectedTherapist?.id === therapist.id || formData.therapist2?.id === therapist.id;
+          // 🌟 ဤနေရာတွင် selectedTherapist အစား therapist သို့ အမည်ပြောင်းထားပါသည် 🌟
+          const isSelected = formData.therapist?.id === therapist.id || formData.therapist2?.id === therapist.id;
           
           return (
             <div 
               key={idx} 
               onClick={() => {
                 if (is4Hands) {
-                  if (formData.selectedTherapist?.id === therapist.id) setFormData({...formData, selectedTherapist: null});
+                  if (formData.therapist?.id === therapist.id) setFormData({...formData, therapist: null});
                   else if (formData.therapist2?.id === therapist.id) setFormData({...formData, therapist2: null});
-                  else if (!formData.selectedTherapist) setFormData({...formData, selectedTherapist: therapist});
+                  else if (!formData.therapist) setFormData({...formData, therapist: therapist});
                   else if (!formData.therapist2) setFormData({...formData, therapist2: therapist});
                 } else {
-                  setFormData({...formData, selectedTherapist: formData.selectedTherapist?.id === therapist.id ? null : therapist, therapist2: null});
+                  setFormData({...formData, therapist: formData.therapist?.id === therapist.id ? null : therapist, therapist2: null});
                 }
               }}
               className={`bg-white rounded-[1rem] overflow-hidden border-2 cursor-pointer transition-all ${isSelected ? 'border-[#123524] shadow-md scale-105' : 'border-transparent shadow-sm hover:border-[#D4AF37]/50'}`}
@@ -2256,7 +2257,7 @@ const renderServiceSelection = (currentStep: number) => (
             BACK
           </button>
         )}
-        <button type="button" disabled={is4Hands ? (!formData.selectedTherapist || !formData.therapist2) : !formData.selectedTherapist} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md flex items-center" style={{ backgroundColor: THEME.primary }}>
+        <button type="button" disabled={is4Hands ? (!formData.therapist || !formData.therapist2) : !formData.therapist} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md flex items-center" style={{ backgroundColor: THEME.primary }}>
           {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE TO DATE & TIME'} <ChevronRight className="w-5 h-5 ml-2" />
         </button>
       </div>
