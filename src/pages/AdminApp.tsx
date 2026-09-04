@@ -784,19 +784,83 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         };
         fetchTherapists();
     }, []);
-  const [localCategories, setLocalCategories] = useState<MenuCategory[]>(JSON.parse(JSON.stringify(appData.categories || [])));
+  
+   const DEFAULT_MENU_CATEGORIES = [
+      {
+          id: 'massage',
+          title: 'Massage',
+          order: 0,
+          items: [
+              { id: 'm1', name: 'Traditional Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm2', name: 'Traditional Massage', duration: '90 Mins', price: 37000, vvipPrice: 47000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm3', name: 'Oil Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm4', name: 'Oil Massage', duration: '90 Mins', price: 37000, vvipPrice: 47000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm5', name: 'Aromatherapy Massage', duration: '60 Mins', price: 30000, vvipPrice: 40000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm6', name: 'Aromatherapy Massage', duration: '90 Mins', price: 45000, vvipPrice: 55000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm7', name: 'Body Butter Lotion Massage', duration: '60 Mins', price: 35000, vvipPrice: 45000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm8', name: 'Body Butter Lotion Massage', duration: '90 Mins', price: 50000, vvipPrice: 60000, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'm9', name: 'Body to Body Massage', duration: '60 Mins', price: 55000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
+              { id: 'm10', name: 'Body to Body Massage', duration: '90 Mins', price: 82000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
+              { id: 'm11', name: 'Four Hands Massage', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
+              { id: 'm12', name: 'Four Hands Massage', duration: '90 Mins', price: 104000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
+              { id: 'm13', name: 'Lotion Candle Massage', duration: '60 Mins', price: 55000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
+              { id: 'm14', name: 'Lotion Candle Massage', duration: '90 Mins', price: 82000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' }
+          ]
+      },
+      {
+          id: 'body_scrub',
+          title: 'Body Scrub',
+          order: 1,
+          items: [
+              { id: 's1', name: 'Body Scrub & Bath Only', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'Scrub Options: Coffee | Aloe Vera | Tamarind | Milk | Vitamin C | Daily Shower Spa Salt', imageUrl: '' },
+              { id: 's2', name: 'Body Scrub & Lotion Massage', duration: '120 Mins', price: 80000, vvipPrice: 0, vvipIncluded: true, description: 'Scrub Options: Coffee | Aloe Vera | Tamarind | Milk | Vitamin C | Daily Shower Spa Salt', imageUrl: '' }
+          ]
+      },
+      {
+          id: 'waxing',
+          title: 'Waxing',
+          order: 2,
+          items: [
+              { id: 'w1', name: 'Arm Wax', duration: 'Session', price: 20000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'w2', name: 'Underarm Wax', duration: 'Session', price: 25000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'w3', name: 'Half Leg Wax', duration: 'Session', price: 30000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'w4', name: 'Full Leg Wax', duration: 'Session', price: 45000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'w5', name: 'Bikini Wax', duration: 'Session', price: 35000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'w6', name: 'Brazilian Wax', duration: 'Session', price: 50000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' }
+          ]
+      },
+      {
+          id: 'hotel_service',
+          title: 'Hotel & Home Services',
+          order: 3,
+          items: [
+              { id: 'h1', name: 'Part Time Outcall Service', duration: '100 Mins', price: 70000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'h2', name: 'Half Day Service', duration: '6:00 AM to 12:00 PM OR 12:00 PM to 6:00 PM', price: 100000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'h3', name: 'The Whole Night Service', duration: '8:00 PM to 8:00 AM', price: 120000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
+              { id: 'h4', name: 'The Whole Day Service', duration: '7:00 AM to 7:00 PM', price: 180000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' }
+          ]
+      }
+  ];
+
+  const [localCategories, setLocalCategories] = useState<MenuCategory[]>(DEFAULT_MENU_CATEGORIES);
+  
   useEffect(() => {
-        const fetchCategories = async () => {
-            const snap = await getDocs(collection(db, 'categories'));
-            const arr: any[] = [];
-            snap.forEach(d => arr.push(d.data()));
-            arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-            if (arr.length > 0) {
-                setLocalCategories(arr);
-            }
-        };
-        fetchCategories();
-    }, []);
+      const fetchCategories = async () => {
+          const snap = await getDocs(collection(db, 'categories'));
+          const arr: any[] = [];
+          snap.forEach(d => arr.push(d.data()));
+          arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+          
+          // Database ထဲမှာ Category လေးခုလုံး မပြည့်ဘူးဆိုရင် Default Data ကို အလိုအလျောက် ပြန်ခေါ်ပါမည်
+          if (arr.length < 4) {
+              setLocalCategories(DEFAULT_MENU_CATEGORIES);
+          } else {
+              setLocalCategories(arr);
+          }
+      };
+      fetchCategories();
+  }, []);
+   
    const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
   const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, title: 'SPECIAL PROMO', hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
@@ -1492,90 +1556,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               </div>
           )}
       </div>
-
-      {/* 🌟 Auto Restore Data (Menu ပုံထဲက Data အစစ်များဖြင့် ပြန်ခေါ်ရန်) 🌟 */}
-      <div className="w-full flex justify-center mt-6 mb-6">
-          <button 
-              type="button" 
-              onClick={async () => {
-                  try {
-                      const batch = writeBatch(db);
-                      
-                      // 1. Massage Category
-                      batch.set(doc(db, 'categories', 'massage'), { 
-                          id: 'massage', 
-                          title: 'Massage', 
-                          order: 0,
-                          items: [
-                              { id: 'm1', name: 'Traditional Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'm2', name: 'Traditional Massage', duration: '90 Mins', price: 37000, vvipPrice: 47000, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'm3', name: 'Oil Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'm4', name: 'Oil Massage', duration: '90 Mins', price: 37000, vvipPrice: 47000, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'm5', name: 'Aromatherapy Massage', duration: '60 Mins', price: 30000, vvipPrice: 40000, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'm6', name: 'Aromatherapy Massage', duration: '90 Mins', price: 45000, vvipPrice: 55000, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'm7', name: 'Body Butter Lotion Massage', duration: '60 Mins', price: 35000, vvipPrice: 45000, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'm8', name: 'Body Butter Lotion Massage', duration: '90 Mins', price: 50000, vvipPrice: 60000, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'm9', name: 'Body to Body Massage', duration: '60 Mins', price: 55000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-                              { id: 'm10', name: 'Body to Body Massage', duration: '90 Mins', price: 82000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-                              { id: 'm11', name: 'Four Hands Massage', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-                              { id: 'm12', name: 'Four Hands Massage', duration: '90 Mins', price: 104000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-                              { id: 'm13', name: 'Lotion Candle Massage', duration: '60 Mins', price: 55000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-                              { id: 'm14', name: 'Lotion Candle Massage', duration: '90 Mins', price: 82000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' }
-                          ] 
-                      }, { merge: true });
-
-                      // 2. Body Scrub Category
-                      batch.set(doc(db, 'categories', 'body_scrub'), { 
-                          id: 'body_scrub', 
-                          title: 'Body Scrub', 
-                          order: 1,
-                          items: [
-                              { id: 's1', name: 'Body Scrub & Bath Only', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'Scrub Options: Coffee | Aloe Vera | Tamarind | Milk | Vitamin C | Daily Shower Spa Salt', imageUrl: '' },
-                              { id: 's2', name: 'Body Scrub & Lotion Massage', duration: '120 Mins', price: 80000, vvipPrice: 0, vvipIncluded: true, description: 'Scrub Options: Coffee | Aloe Vera | Tamarind | Milk | Vitamin C | Daily Shower Spa Salt', imageUrl: '' }
-                          ] 
-                      }, { merge: true });
-
-                      // 3. Waxing Category
-                      batch.set(doc(db, 'categories', 'waxing'), { 
-                          id: 'waxing', 
-                          title: 'Waxing', 
-                          order: 2,
-                          items: [
-                              { id: 'w1', name: 'Arm Wax', duration: 'Session', price: 20000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'w2', name: 'Underarm Wax', duration: 'Session', price: 25000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'w3', name: 'Half Leg Wax', duration: 'Session', price: 30000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'w4', name: 'Full Leg Wax', duration: 'Session', price: 45000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'w5', name: 'Bikini Wax', duration: 'Session', price: 35000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'w6', name: 'Brazilian Wax', duration: 'Session', price: 50000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' }
-                          ] 
-                      }, { merge: true });
-
-                      // 4. Hotel Service Category
-                      batch.set(doc(db, 'categories', 'hotel_service'), { 
-                          id: 'hotel_service', 
-                          title: 'Hotel & Home Services', 
-                          order: 3,
-                          items: [
-                              { id: 'h1', name: 'Part Time Outcall Service', duration: '100 Mins', price: 70000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'h2', name: 'Half Day Service', duration: '6:00 AM - 12:00 PM OR 12:00 PM - 6:00 PM', price: 100000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'h3', name: 'The Whole Night Service', duration: '8:00 PM to 8:00 AM', price: 120000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-                              { id: 'h4', name: 'The Whole Day Service', duration: '7:00 AM to 7:00 PM', price: 180000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' }
-                          ] 
-                      }, { merge: true });
-
-                      await batch.commit();
-                      alert('Menu ပုံထဲမှ Data များအားလုံးကို အောင်မြင်စွာ ပြန်လည်ထည့်သွင်းပြီးပါပြီ! Page ကို Refresh လုပ်ပေးပါ။');
-                      window.location.reload();
-                  } catch(e) {
-                      console.error(e);
-                      alert('Error restoring data.');
-                  }
-              }} 
-              className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold shadow-md hover:bg-green-700 animate-pulse flex items-center"
-          >
-              <Sparkles className="w-5 h-5 mr-2" /> Load Menu Data (Menu အချက်အလက်များ အားလုံးထည့်ရန် နှိပ်ပါ)
-          </button>
-      </div>
+       
        
        {localCategories.map((cat, cIdx) => (
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 border-l-4 border-l-[#123524]">
