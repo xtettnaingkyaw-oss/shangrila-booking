@@ -1730,29 +1730,54 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         type="file" 
         accept="image/*" 
         className="hidden" 
-        onChange={async (e) => {
+        onChange={(e) => {
             const file = e.target.files?.[0];
             if (file) {
                 setUploadingImage(`service_${cIdx}_${iIdx}`);
-                try {
-                    // ပုံကို Compress လုပ်ပြီး Storage ပေါ်တင်ကာ Link သာရယူမည်
-                    const base64 = await compressImage(file, 600, 600); 
-                    const fileName = `service_${cat.id}_${item.id}_${Date.now()}.jpg`;
-                    const downloadUrl = await uploadBase64ToStorage(base64, 'services', fileName);
-                    
-                    updateItem(cIdx, iIdx, 'imageUrl', downloadUrl);
-                } catch (error) {
-                    console.error("Image upload failed", error);
-                    alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။ (Internet Connection သို့မဟုတ် VPN ကို စစ်ဆေးပါ)");
-                } finally {
-                    // အောင်မြင်သည်ဖြစ်စေ၊ ကျရှုံးသည်ဖြစ်စေ Loading ကို ဖျောက်မည်
-                    setUploadingImage(null);
-                    e.target.value = ''; // ပုံအဟောင်းကို ပြန်ရွေးလို့ရအောင် Reset လုပ်မည်
-                }
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_SIZE = 600; 
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_SIZE) {
+                                height *= MAX_SIZE / width;
+                                width = MAX_SIZE;
+                            }
+                        } else {
+                            if (height > MAX_SIZE) {
+                                width *= MAX_SIZE / height;
+                                height = MAX_SIZE;
+                            }
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        
+                        if (ctx) {
+                            ctx.fillStyle = '#FFFFFF';
+                            ctx.fillRect(0, 0, width, height);
+                            ctx.drawImage(img, 0, 0, width, height);
+                        }
+                        
+                        const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
+                        updateItem(cIdx, iIdx, 'imageUrl', finalBase64);
+                        
+                        setUploadingImage(null);
+                        e.target.value = '';
+                    };
+                    img.src = event.target?.result as string;
+                };
+                reader.readAsDataURL(file);
             }
         }} 
         disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
     />
+                                    
     {uploadingImage === `service_${cIdx}_${iIdx}` ? 'UPLOADING...' : 'UPLOAD PHOTO'}
 </label>
                                 </div>
