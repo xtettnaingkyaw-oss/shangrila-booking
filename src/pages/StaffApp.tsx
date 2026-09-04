@@ -613,22 +613,24 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     let cumActualPrior = 0;
     let runningCumTarget = 0;
 
-    const dailyBreakdown = allDates.map((d: any, idx: number) => {
+    conconst dailyBreakdown = allDates.map((d: any, idx: number) => {
         const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
         
-        const daysRemaining = totalDays - idx;
-        const remainingTarget = Math.max(0, monthlyTotalTarget - cumActualPrior);
-        
-        // Dynamic Target တွက်ခြင်း (ကျန်ငွေ / ကျန်ရက်)
-        const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTarget / daysRemaining) : 0;
-        
-        // 🌟 ပြင်ဆင်လိုက်သော အပိုင်း (Cum. Target သည် ပုံမှန်အတိုင်းသာ တက်မည်)
-        runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
+        // Cum. Target တွက်ချက်မှု (ပုံမှန် ၁ သိန်းခွဲစီ တက်သွားမည်)
+        const runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
 
-        const variance = dayActual - adjustedDailyTarget;
+        // ယနေ့အထိ စုစုပေါင်း ရောင်းရငွေ (Cumulative Actual)
+        const cumActual = cumActualPrior + dayActual;
+        
+        // နေ့စဉ် ၁၅၀,၀၀၀ အပေါ် မူတည်ပြီး လို/ပို (Variance)
+        const dailyVariance = dayActual - BASE_DAILY_TARGET;
 
-        cumActualPrior += dayActual;
+        // လကုန်အထိ ရှာရန်ကျန်နေသေးသော Target ပမာဏ (Total Target - ယနေ့အထိ ရှာထားသောငွေ)
+        const remainingMonthlyTarget = Math.max(0, monthlyTotalTarget - cumActual);
+
+        // နောက်ရက်အတွက် Save လုပ်ထားမည်
+        cumActualPrior = cumActual;
 
         return {
             dayNo: idx + 1,
@@ -636,10 +638,11 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
             hasSales: dayRecords.length > 0,
             services: dayRecords,
             dayActual,
-            dailyTarget: adjustedDailyTarget,
-            variance,
+            dailyTarget: BASE_DAILY_TARGET,
+            dailyVariance,
             cumTarget: runningCumTarget,
-            cumActual: cumActualPrior
+            cumActual,
+            remainingMonthlyTarget
         };
     });
 
@@ -728,19 +731,29 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                     </svg>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4 w-full mt-8">
-                                    <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
-                                        <div className="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Target</div>
-                                        {/* 🌟 Updated to show correct Target Amount */}
-                                        <div className="text-sm font-bold text-white">{formatPrice(monthlyTotalTarget)}</div>
-                                    </div>
-                                    <div className="bg-white/10 p-3 rounded-xl border border-[#D4AF37]/30 text-center">
-                                        <div className="text-[9px] text-[#D4AF37] font-bold uppercase tracking-wider mb-1">Actual Sales</div>
-                                        <div className="text-sm font-bold text-[#D4AF37]">{formatPrice(mySummary['Total Actual Sales'])}</div>
-                                    </div>
-                                </div>
-                            </div>
-
+                               <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
+                                                {/* 🌟 နံပါတ် ၁ နေရာ (ဘယ်ဘက်) 🌟 */}
+                                                <div>
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Daily Target</span>
+                                                    <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
+                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
+                                                    </span>
+                                                    <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
+                                                        Total Actual: {formatPrice(item.cumActual)}
+                                                    </span>
+                                                </div>
+                                                
+                                                {/* 🌟 နံပါတ် ၂ နေရာ (ညာဘက်) 🌟 */}
+                                                <div className="text-right">
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Remaining Monthly Target</span>
+                                                    <span className="font-bold text-red-500">
+                                                        {formatPrice(item.remainingMonthlyTarget)}
+                                                    </span>
+                                                    <span className="text-[9px] text-gray-500 block mt-1.5">
+                                                        Cum. Target: {formatPrice(item.cumTarget)}
+                                                    </span>
+                                                </div>
+                                            </div>
                             {/* Financial Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-yellow-600"/> Financial Summary</h3>
