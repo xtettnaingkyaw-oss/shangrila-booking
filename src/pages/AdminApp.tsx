@@ -4,6 +4,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
+import * as XLSX from 'xlsx';
 
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
@@ -965,6 +966,37 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+
+   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      setSavingCategory('excel_upload');
+      try {
+          const data = await file.arrayBuffer();
+          const workbook = XLSX.read(data, { type: 'array' });
+          
+          const topSheet = workbook.Sheets['Top Performers'];
+          const topData = topSheet ? XLSX.utils.sheet_to_json(topSheet) : [];
+          
+          const monthlySheet = workbook.Sheets['Monthly Summary'];
+          const monthlyData = monthlySheet ? XLSX.utils.sheet_to_json(monthlySheet) : [];
+
+          await setDoc(doc(db, 'settings', 'matrixData'), { 
+              topPerformers: topData, 
+              monthlySummary: monthlyData,
+              lastUpdated: Date.now()
+          }, { merge: true });
+
+          alert("✅ Excel Data များကို အောင်မြင်စွာ Upload တင်ပြီးပါပြီ။ Staff များဘက်တွင် ချက်ချင်း မြင်တွေ့ရပါမည်။");
+      } catch (error) {
+          console.error("Excel Upload Error:", error);
+          alert("Excel ဖိုင် ဖတ်ရာတွင် အခက်အခဲရှိနေပါသည်။");
+      } finally {
+          setSavingCategory(null);
+          e.target.value = '';
+      }
+  };
   
   const [newSecretKey, setNewSecretKey] = useState('');
   const [migratingKey, setMigratingKey] = useState(false);
@@ -1198,6 +1230,16 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                  </div>
              </div>
          )}
+      </div>
+
+       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-600">
+          <h3 className="text-xl font-bold text-gray-800 flex items-center mb-2"><BarChart2 className="w-5 h-5 mr-2 text-blue-600" /> Upload Matrix Database (Excel)</h3>
+          <p className="text-xs text-gray-500 mb-4">Staff များ၏ Performance (Top Performers & Visual Charts) ကို ပြသရန် August_Shangri_La_Matrix_Database.xlsx ဖိုင်အား ဤနေရာတွင် တင်ပါ။</p>
+          
+          <label className="flex items-center justify-center w-full sm:w-auto px-6 py-4 bg-blue-50 text-blue-700 border-2 border-dashed border-blue-300 rounded-xl cursor-pointer hover:bg-blue-100 transition font-bold shadow-sm">
+              {savingCategory === 'excel_upload' ? 'Uploading & Parsing Data...' : '📊 Click to Upload Excel File'}
+              <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleExcelUpload} disabled={savingCategory === 'excel_upload'} />
+          </label>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
