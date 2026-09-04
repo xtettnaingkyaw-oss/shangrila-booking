@@ -609,13 +609,25 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     let cumActualPrior = 0;
 
-    const dailyBreakdown = allDates.map((d: any, idx: number) => {
+    const dailyconst dailyBreakdown = allDates.map((d: any, idx: number) => {
         const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
         
+        // 🌟 အရင်က Adjusted Daily Target တွက်ချက်မှုကို ပြန်ထည့်ထားပါသည်
+        const daysRemaining = totalDays - idx;
+        const remainingTargetPrior = Math.max(0, monthlyTotalTarget - cumActualPrior);
+        const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTargetPrior / daysRemaining) : 0;
+        
+        // Cum. Target တွက်ချက်မှု (ပုံမှန် ၁ သိန်းခွဲစီ တက်သွားမည်)
         const runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
+
+        // ယနေ့အထိ စုစုပေါင်း ရောင်းရငွေ (Cumulative Actual)
         const cumActual = cumActualPrior + dayActual;
+        
+        // နေ့စဉ် ၁၅၀,၀၀၀ အပေါ် မူတည်ပြီး လို/ပို (Variance)
         const dailyVariance = dayActual - BASE_DAILY_TARGET;
+
+        // လကုန်အထိ ရှာရန်ကျန်နေသေးသော Target ပမာဏ (Total Target - ယနေ့အထိ ရှာထားသောငွေ)
         const remainingMonthlyTarget = Math.max(0, monthlyTotalTarget - cumActual);
 
         cumActualPrior = cumActual;
@@ -627,6 +639,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
             services: dayRecords,
             dayActual,
             dailyTarget: BASE_DAILY_TARGET,
+            adjustedDailyTarget, // ဒါလေး ပြန်ထည့်ထားပါတယ်
             dailyVariance,
             cumTarget: runningCumTarget,
             cumActual,
