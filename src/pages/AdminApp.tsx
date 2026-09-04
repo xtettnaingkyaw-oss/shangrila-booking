@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
-import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, addDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, addDoc, writeBatch, runTransaction } from 'firebase/firestore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
@@ -188,7 +188,7 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
 });
 
 function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
-  const handleStatusChange = async (b: Booking, newStatus: string) => {
+ const handleStatusChange = async (b: Booking, newStatus: string) => {
     let reason = '';
     if (newStatus === 'cancelled') {
       const input = window.prompt("Reason for cancellation:");
@@ -201,18 +201,47 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         const earnedPts = Math.floor(b.totalPrice / 35000);
         try {
             const usersSnap = await getDocs(collection(db, 'users'));
-            let targetDocId = null; let currentPts = 0;
+            let targetDocRef = null;
+            
             usersSnap.forEach(d => {
                 const uData = d.data(); const decPhone = decryptText(uData.phone) || d.id;
-                if (decPhone === b.phone) { targetDocId = d.id; currentPts = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10); }
+                if (decPhone === b.phone) { targetDocRef = doc(db, 'users', d.id); }
             });
-            if (targetDocId) {
-                await updateDoc(doc(db, 'users', targetDocId), { points: encryptText((currentPts + earnedPts).toString()) });
-                await addDoc(collection(db, 'point_history'), { phone: encryptText(b.phone), amount: encryptText(b.totalPrice.toString()), pointsEarned: encryptText(earnedPts.toString()), invoiceNo: encryptText(b.txId || 'Online'), type: encryptText('Online Booking'), date: getLocalTodayStr(), createdAt: Date.now() });
-                updateData.pointsAdded = true;
+
+            if (targetDocRef) {
+                // 🌟 Transaction အသုံးပြု၍ Data ၃ ခုလုံးကို တပြိုင်နက် သိမ်းမည်
+                await runTransaction(db, async (transaction) => {
+                    const userDoc = await transaction.get(targetDocRef);
+                    if (!userDoc.exists()) throw new Error("User does not exist!");
+                    
+                    const uData = userDoc.data();
+                    const currentPts = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10);
+                    const newTotal = currentPts + earnedPts;
+
+                    // ၁။ User Point ကို Update လုပ်မည်
+                    transaction.update(targetDocRef, { points: encryptText(newTotal.toString()) });
+                    
+                    // ၂။ Point History သို့ မှတ်တမ်းအသစ်ထည့်မည်
+                    const newHistoryRef = doc(collection(db, 'point_history'));
+                    transaction.set(newHistoryRef, { 
+                        phone: encryptText(b.phone), amount: encryptText(b.totalPrice.toString()), 
+                        pointsEarned: encryptText(earnedPts.toString()), invoiceNo: encryptText(b.txId || 'Online'), 
+                        type: encryptText('Online Booking'), date: getLocalTodayStr(), createdAt: Date.now() 
+                    });
+
+                    // ၃။ Booking Status ကိုပါ Update လုပ်မည်
+                    const bookingRef = doc(db, 'bookings', b.id!);
+                    transaction.update(bookingRef, { ...updateData, pointsAdded: true });
+                });
+                
                 alert(`✅ Booking Confirmed! Customer ထံသို့ Point (${earnedPts} Pts) အလိုအလျောက် ပေါင်းထည့်ပေးလိုက်ပါပြီ။`);
+                return; // Transaction အောင်မြင်ပါက အောက်ဆုံးက updateDoc ကို ထပ်မ run တော့ပါ
             }
-        } catch (e) { console.error("Error adding points:", e); }
+        } catch (e) { 
+            console.error("Transaction Error:", e);
+            alert("Error Update! Booking Status နှင့် Point ပေါင်းခြင်း မအောင်မြင်ပါ။"); 
+            return;
+        }
     }
     try { await updateDoc(doc(db, 'bookings', b.id!), updateData); } catch (e) { alert("Error Update"); }
   };
@@ -328,8 +357,20 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
      setProcessing(true);
      try {
          const newTotal = (selectedUser.points || 0) + earnedPoints;
-         await updateDoc(doc(db, 'users', selectedUser.docId), { points: encryptText(newTotal.toString()) });
-         await addDoc(collection(db, 'point_history'), { phone: encryptText(selectedUser.phone), amount: encryptText(amount.toString()), pointsEarned: encryptText(earnedPoints.toString()), invoiceNo: encryptText(invoiceNo), type: encryptText('Walk-in / Direct'), date: getLocalTodayStr(), createdAt: Date.now() });
+         const batch = writeBatch(db); // 🌟 Batch Write အသုံးပြုခြင်း
+         
+         const userRef = doc(db, 'users', selectedUser.docId);
+         batch.update(userRef, { points: encryptText(newTotal.toString()) });
+         
+         const historyRef = doc(collection(db, 'point_history'));
+         batch.set(historyRef, { 
+             phone: encryptText(selectedUser.phone), amount: encryptText(amount.toString()), 
+             pointsEarned: encryptText(earnedPoints.toString()), invoiceNo: encryptText(invoiceNo), 
+             type: encryptText('Walk-in / Direct'), date: getLocalTodayStr(), createdAt: Date.now() 
+         });
+
+         await batch.commit(); // တပြိုင်နက်တည်း သိမ်းမည်
+
          alert(`✅ ${earnedPoints} Points အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ (စုစုပေါင်း - ${newTotal} Pts)`);
          await fetchUsers(); const updatedUser = users.find(u => u.docId === selectedUser.docId); if (updatedUser) setSelectedUser({ ...updatedUser, points: newTotal });
          setAmount(''); setInvoiceNo('');
@@ -340,16 +381,32 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
       if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
       if (!window.confirm(`ဤမှတ်တမ်းကိုဖျက်၍ Customer ထံမှ ${pointsEarned} Points ကို ပြန်နှုတ်မည် သေချာပါသလား?`)) return;
       try {
-          const targetUser = users.find(u => u.phone === phone); let newTotal = 0;
+          const batch = writeBatch(db); // 🌟 Batch Write အသုံးပြုခြင်း
+          let targetDocId = null;
+          let currentPts = 0;
+          
+          const targetUser = users.find(u => u.phone === phone); 
           if (targetUser) {
-              newTotal = Math.max(0, (targetUser.points || 0) - (Number(pointsEarned) || 0));
-              await updateDoc(doc(db, 'users', targetUser.docId), { points: encryptText(newTotal.toString()) });
+              targetDocId = targetUser.docId;
+              currentPts = targetUser.points || 0;
           } else {
               const snap = await getDocs(collection(db, 'users'));
-              snap.forEach(d => { const uData = d.data(); const decPhone = decryptText(uData.phone) || d.id; if (decPhone === phone) { newTotal = Math.max(0, parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10) - (Number(pointsEarned) || 0)); updateDoc(doc(db, 'users', d.id), { points: encryptText(newTotal.toString()) }); } });
+              snap.forEach(d => { 
+                  const uData = d.data(); const decPhone = decryptText(uData.phone) || d.id; 
+                  if (decPhone === phone) { targetDocId = d.id; currentPts = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10); } 
+              });
           }
-          await deleteDoc(doc(db, 'point_history', hId)); alert(`✅ မှတ်တမ်းကို ဖျက်ပြီး Customer ထံမှ ${pointsEarned} Points ပြန်နှုတ်လိုက်ပါပြီ။`);
-          await fetchUsers(); if (selectedUser && selectedUser.phone === phone) { setSelectedUser({ ...selectedUser, points: newTotal }); }
+
+          if (targetDocId) {
+              const newTotal = Math.max(0, currentPts - (Number(pointsEarned) || 0));
+              batch.update(doc(db, 'users', targetDocId), { points: encryptText(newTotal.toString()) });
+          }
+          
+          batch.delete(doc(db, 'point_history', hId));
+          await batch.commit(); // ပြန်နှုတ်တာရော မှတ်တမ်းဖျက်တာရော တပြိုင်နက်တည်း လုပ်မည်
+
+          alert(`✅ မှတ်တမ်းကို ဖျက်ပြီး Customer ထံမှ ${pointsEarned} Points ပြန်နှုတ်လိုက်ပါပြီ။`);
+          await fetchUsers(); if (selectedUser && selectedUser.phone === phone) { setSelectedUser({ ...selectedUser, points: Math.max(0, currentPts - (Number(pointsEarned) || 0)) }); }
       } catch (e) { alert('Error deleting record.'); }
   };
 
