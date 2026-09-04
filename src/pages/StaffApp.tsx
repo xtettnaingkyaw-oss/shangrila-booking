@@ -669,8 +669,35 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 );
                             })}
                         </div>
+                    </div>{subTab === 'leaderboard' && (
+                <div className="space-y-6">
+                    <div className="text-center mb-6">
+                        <h3 className="text-lg font-bold text-[#123524] font-serif">Top Performers of the Month</h3>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Shangri-La Hall of Fame</p>
                     </div>
 
+                    {/* 🌟 Graph တိုင်များ ပြန်ပေါ်လာစေရန် ပြင်ဆင်ထားသော အပိုင်း 🌟 */}
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
+                        <div className="flex items-end space-x-3 h-48 pb-2 pt-10 min-w-max border-b border-gray-100">
+                            {sortedPerformers.map((p, idx) => {
+                                const heightPercent = Math.max(5, (p['1 to 31 Actual'] / maxActual) * 100);
+                                const isMe = extractNumber(p['Staff ID']) === staffNum;
+                                return (
+                                    <div key={idx} className="flex flex-col justify-end items-center group w-12 h-full">
+                                        <div className="text-[9px] font-bold text-gray-500 mb-2 opacity-0 group-hover:opacity-100 transition-opacity -rotate-45 whitespace-nowrap z-10">
+                                            {formatPrice(p['1 to 31 Actual'])}
+                                        </div>
+                                        <div className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out shadow-sm ${isMe ? 'bg-gradient-to-t from-[#D4AF37] to-yellow-300' : (idx === 0 ? 'bg-gradient-to-t from-[#123524] to-[#1a4a32]' : 'bg-gray-200 hover:bg-gray-300')}`} style={{ height: `${heightPercent}%` }}>
+                                            {idx === 0 && <Crown className="w-5 h-5 text-[#D4AF37] absolute -top-6 -left-1.5" />}
+                                        </div>
+                                        <span className={`text-[10px] font-bold mt-2 ${isMe ? 'text-[#D4AF37]' : 'text-gray-600'}`}>{p['Staff ID']}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* 🌟 Percentage များကို Dynamic Target ဖြင့် ပြန်လည်တွက်ချက်ထားသော အပိုင်း 🌟 */}
                     <div className="space-y-3">
                         {sortedPerformers.slice(0, 10).map((p, idx) => {
                             const isMe = extractNumber(p['Staff ID']) === staffNum;
@@ -679,6 +706,9 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                             else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
                             else if (idx === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-300";
 
+                            // Dynamic Percent တွက်ချက်ခြင်း
+                            const metPercent = (p['1 to 31 Actual'] / monthlyTotalTarget) * 100;
+
                             return (
                                 <div key={idx} className={`flex items-center p-4 rounded-xl border transition-all ${isMe ? 'bg-yellow-50/50 border-[#D4AF37] shadow-md scale-[1.02]' : 'bg-white border-gray-100 shadow-sm'}`}>
                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mr-4 ${badgeClass}`}>
@@ -686,12 +716,12 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                     </div>
                                     <div className="flex-1">
                                         <div className="font-bold text-gray-800 text-sm flex items-center">{p['Staff ID']} {isMe && <span className="ml-2 text-[9px] bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded uppercase tracking-wider">YOU</span>}</div>
-                                        <div className="text-[10px] text-gray-500 font-semibold mt-0.5">Target: {formatPrice(p['1 to 30 Target'])}</div>
+                                        <div className="text-[10px] text-gray-500 font-semibold mt-0.5">Target: {formatPrice(monthlyTotalTarget)}</div>
                                     </div>
                                     <div className="text-right">
                                         <div className="font-black text-[#123524]">{formatPrice(p['1 to 31 Actual'])}</div>
-                                        <div className={`text-[9px] font-bold mt-0.5 ${p['Meet %'] >= 0.5 ? 'text-green-500' : 'text-orange-500'}`}>
-                                            Met {(p['Meet %'] * 100).toFixed(1)}%
+                                        <div className={`text-[9px] font-bold mt-0.5 ${metPercent >= 50 ? 'text-green-500' : 'text-orange-500'}`}>
+                                            Met {metPercent.toFixed(1)}%
                                         </div>
                                     </div>
                                 </div>
