@@ -943,8 +943,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
               batch.set(doc(db, 'categories', cat.id), { ...cat, order: idx });
           });
-          
-          batch.update(doc(db, 'settings', 'appData'), { categories: DEFAULT_MENU_CATEGORIES });
+      
           
           await batch.commit();
           setLocalCategories(DEFAULT_MENU_CATEGORIES);
@@ -1012,7 +1011,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           });
           
           // 🌟 FIX DELAY: Save to appData so it loads instantly in Customer App
-          batch.update(doc(db, 'settings', 'appData'), { categories: localCategories }); 
           
           await batch.commit();
           alert('Saved Successfully. All categories are synced!'); 
