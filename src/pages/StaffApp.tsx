@@ -652,26 +652,44 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                 <button onClick={() => setSubTab('my_stats')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${subTab === 'my_stats' ? 'bg-white shadow text-[#123524]' : 'text-gray-500'}`}><TrendingUp className="w-3.5 h-3.5 inline mr-1.5"/> My Stats</button>
             </div>
 
-            {subTab === 'leaderboard' && (
-                <div className="space-y-6">
-                    <div className="text-center mb-6">
-                        <h3 className="text-lg font-bold text-[#123524] font-serif">Top Performers of the Month</h3>
-                        <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Shangri-La Hall of Fame</p>
-                    </div>
-
+            {/* 🌟 Graph တိုင်များ ပြန်ပေါ်လာစေရန် ပြင်ဆင်ထားသော အပိုင်း 🌟 */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
-                        <div className="flex items-end space-x-3 h-48 pb-2 pt-10 min-w-max border-b border-gray-100">
+                        {/* နေရာပိုကျယ်အောင် h-52 နဲ့ pt-14 သို့ ပြောင်းထားပါသည် */}
+                        <div className="flex items-end space-x-3 h-52 pb-2 pt-14 min-w-max border-b border-gray-100">
                             {sortedPerformers.map((p, idx) => {
                                 const heightPercent = Math.max(5, (p['1 to 31 Actual'] / maxActual) * 100);
                                 const isMe = extractNumber(p['Staff ID']) === staffNum;
+                                // 🌟 Dynamic Target ဖြင့် Percentage ပြန်တွက်ခြင်း 🌟
+                                const metPercent = monthlyTotalTarget > 0 ? (p['1 to 31 Actual'] / monthlyTotalTarget) * 100 : 0;
+                                
+                                // 🌟 Top 5 အတွက် အရောင်များ သတ်မှတ်ခြင်း 🌟
+                                let barColor = 'bg-gray-200 hover:bg-gray-300';
+                                if (idx === 0) barColor = 'bg-gradient-to-t from-[#123524] to-[#1a4a32] shadow-md'; // 1st
+                                else if (idx === 1) barColor = 'bg-gradient-to-t from-[#D4AF37] to-yellow-400 shadow-md'; // 2nd
+                                else if (idx === 2) barColor = 'bg-gradient-to-t from-gray-400 to-gray-300 shadow-md'; // 3rd
+                                else if (idx === 3) barColor = 'bg-gradient-to-t from-orange-400 to-orange-300 shadow-sm'; // 4th
+                                else if (idx === 4) barColor = 'bg-gradient-to-t from-blue-400 to-blue-300 shadow-sm'; // 5th
+
+                                // မိမိကိုယ်တိုင်ဖြစ်ပြီး Top 5 ထဲမဝင်ပါက ထင်ရှားစေရန်
+                                if (isMe && idx > 4) barColor = 'bg-gradient-to-t from-green-400 to-green-500 shadow-sm';
+
                                 return (
                                     <div key={idx} className="flex flex-col justify-end items-center group w-12 h-full">
+                                        {/* Hover လုပ်မှ Actual Amount ပြမည် */}
                                         <div className="text-[9px] font-bold text-gray-500 mb-2 opacity-0 group-hover:opacity-100 transition-opacity -rotate-45 whitespace-nowrap z-10">
                                             {formatPrice(p['1 to 31 Actual'])}
                                         </div>
-                                        <div className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out shadow-sm ${isMe ? 'bg-gradient-to-t from-[#D4AF37] to-yellow-300' : (idx === 0 ? 'bg-gradient-to-t from-[#123524] to-[#1a4a32]' : 'bg-gray-200 hover:bg-gray-300')}`} style={{ height: `${heightPercent}%` }}>
-                                            {idx === 0 && <Crown className="w-5 h-5 text-[#D4AF37] absolute -top-6 -left-1.5" />}
+                                        
+                                        <div className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out flex justify-center ${barColor} ${isMe ? 'ring-2 ring-offset-1 ring-[#D4AF37]' : ''}`} style={{ height: `${heightPercent}%` }}>
+                                            {/* Top 1 အတွက် Crown ကို နည်းနည်းအပေါ်ထပ်တင်ထားပါသည် */}
+                                            {idx === 0 && <Crown className="w-6 h-6 text-[#D4AF37] absolute -top-9" />}
+                                            
+                                            {/* 🌟 တိုင်ထိပ်တွင် Meet % အမြဲပေါ်နေစေရန် 🌟 */}
+                                            <span className={`absolute -top-5 text-[9px] font-bold ${idx === 0 ? 'text-[#123524]' : idx === 1 ? 'text-yellow-600' : 'text-gray-600'}`}>
+                                                {metPercent.toFixed(0)}%
+                                            </span>
                                         </div>
+                                        
                                         <span className={`text-[10px] font-bold mt-2 ${isMe ? 'text-[#D4AF37]' : 'text-gray-600'}`}>{p['Staff ID']}</span>
                                     </div>
                                 );
