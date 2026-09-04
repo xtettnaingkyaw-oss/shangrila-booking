@@ -560,19 +560,41 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     };
     
     const staffNum = extractNumber(loggedInStaff.id) || extractNumber(loggedInStaff.name);
-    const staffIdExact = loggedInStaff.id; 
-    const staffNameExact = loggedInStaff.name; 
+    const staffIdExact = String(loggedInStaff.id).trim().toLowerCase(); 
+    const staffNameExact = String(loggedInStaff.name).trim().toLowerCase(); 
 
     const mySummary = (matrixData.monthlySummary || []).find((d: any) => extractNumber(d['Staff No']) === staffNum);
     const sortedPerformers = [...matrixData.topPerformers].filter(p => p['1 to 31 Actual'] > 0).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
     const maxActual = sortedPerformers.length > 0 ? sortedPerformers[0]['1 to 31 Actual'] : 1;
 
-    // 🌟 Daily Breakdown & Target Progress Calculation
-    const allEntries = matrixData.dailyEntries || [];
-    const myEntries = allEntries.filter((e: any) => e['Staff ID'] === staffIdExact || e['Staff Name'] === staffNameExact);
+    // 🌟 Excel Serial Date ကို YYYY-MM-DD သို့ ပြောင်းပေးမည့် Helper
+    const parseExcelDate = (val: any) => {
+        if (!val) return '';
+        if (typeof val === 'number') {
+            const d = new Date((val - (25567 + 2)) * 86400 * 1000);
+            return d.toISOString().split('T')[0];
+        }
+        const str = String(val).trim();
+        if (str.includes('T')) return str.split('T')[0];
+        return str;
+    };
 
-    // Get all unique dates or default to August 1-31
-    const allDates = Array.from(new Set(allEntries.map((e: any) => e.Date))).filter(Boolean).sort();
+    const allEntries = (matrixData.dailyEntries || []).map((e: any) => ({
+        ...e,
+        ParsedDate: parseExcelDate(e.Date),
+        CleanStaffId: String(e['Staff ID'] || '').trim().toLowerCase(),
+        CleanStaffName: String(e['Staff Name'] || '').trim().toLowerCase()
+    }));
+
+    // 🌟 ဤ Staff ၏ Entry များသာ ယူရန်
+    const myEntries = allEntries.filter((e: any) => {
+        return e.CleanStaffId === staffIdExact || 
+               e.CleanStaffName === staffNameExact ||
+               extractNumber(e['Staff ID']) === staffNum;
+    });
+
+    // ရက်စွဲ အားလုံးကို ထုတ်ယူခြင်း (ဥပမာ - 2026-08-01 မှ 2026-08-31 ထိ)
+    const allDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
     if (allDates.length === 0) {
         for (let i = 1; i <= 31; i++) {
             allDates.push(`2026-08-${String(i).padStart(2, '0')}`);
@@ -583,8 +605,8 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     let cumTarget = 0;
     let cumActual = 0;
 
-    const dailyBreakdown = allDates.map((d: string, idx: number) => {
-        const dayRecords = myEntries.filter((e: any) => String(e.Date).startsWith(d));
+    const dailyBreakdown = allDates.map((d: any, idx: number) => {
+        const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
         cumTarget += dailyTarget;
         cumActual += dayActual;
