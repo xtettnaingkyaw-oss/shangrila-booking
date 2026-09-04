@@ -567,7 +567,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     const sortedPerformers = [...matrixData.topPerformers].filter(p => p['1 to 31 Actual'] > 0).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
     const maxActual = sortedPerformers.length > 0 ? sortedPerformers[0]['1 to 31 Actual'] : 1;
 
-    // 🌟 Excel Serial Date ကို YYYY-MM-DD သို့ ပြောင်းပေးမည့် Helper
     const parseExcelDate = (val: any) => {
         if (!val) return '';
         if (typeof val === 'number') {
@@ -586,14 +585,12 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         CleanStaffName: String(e['Staff Name'] || '').trim().toLowerCase()
     }));
 
-    // 🌟 ဤ Staff ၏ Entry များသာ ယူရန်
     const myEntries = allEntries.filter((e: any) => {
         return e.CleanStaffId === staffIdExact || 
                e.CleanStaffName === staffNameExact ||
                extractNumber(e['Staff ID']) === staffNum;
     });
 
-    // ရက်စွဲ အားလုံးကို ထုတ်ယူခြင်း (ဥပမာ - 2026-08-01 မှ 2026-08-31 ထိ)
     const allDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
     if (allDates.length === 0) {
         for (let i = 1; i <= 31; i++) {
@@ -601,26 +598,45 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         }
     }
 
-    const dailyTarget = 150000;
-    let cumTarget = 0;
+    // 🌟 တစ်လစာ Total Target (Excel ထဲမှ Total Target ကို ယူမည်၊ မရှိလျှင် 4,500,000 Ks ကို သုံးမည်)
+    const monthlyTotalTarget = mySummary ? (Number(mySummary['Total Target']) || 4500000) : 4500000;
+    const totalDays = allDates.length;
+
     let cumActual = 0;
 
-    const dailyBreakdown = allDates.map((d: any, idx: number) => {
+    // ပထမအကြိမ် Loop ပတ်၍ နေ့စဉ် Actual များကို အရင်စုမည်
+    const rawBreakdown = allDates.map((d: any, idx: number) => {
         const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
-        cumTarget += dailyTarget;
         cumActual += dayActual;
-
         return {
             dayNo: idx + 1,
             date: d,
             hasSales: dayRecords.length > 0,
             services: dayRecords,
             dayActual,
-            dailyTarget,
-            variance: dayActual - dailyTarget,
-            cumTarget,
             cumActual
+        };
+    });
+
+    // 🌟 ဒုတိယအကြိမ် Loop ဖြင့် ကျန်တဲ့ရက်များအတွက် Target အသစ် (Adjusted Target) ကို တွက်မည်
+    let runningCumTarget = 0;
+
+    const dailyBreakdown = rawBreakdown.map((item, idx) => {
+        const daysRemaining = totalDays - idx;
+        const totalRemainingTarget = Math.max(0, monthlyTotalTarget - runningCumTarget);
+        
+        // ကျန်တဲ့ရက်များအတွက် တစ်ရက်ချင်းစီ ရှာရမည့် Target အသစ် (Average needed per remaining day)
+        const adjustedDailyTarget = daysRemaining > 0 ? Math.round(totalRemainingTarget / daysRemaining) : 0;
+        
+        runningCumTarget += adjustedDailyTarget;
+        const variance = item.dayActual - adjustedDailyTarget;
+
+        return {
+            ...item,
+            dailyTarget: adjustedDailyTarget,
+            cumTarget: runningCumTarget,
+            variance
         };
     });
 
@@ -739,10 +755,10 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* 🌟 Daily Breakdown & Progressive Cumulative Target Tracker */}
+                            {/* 🌟 Dynamic Adjusted Daily Target Tracker */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
-                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Daily Sales & Target Tracker (150k / Day)</span>
+                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
                                 </h3>
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                                     {dailyBreakdown.map((item, idx) => (
@@ -778,15 +794,15 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
                                             <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
                                                 <div>
-                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target (150k)</span>
-                                                    <span className={`font-black ${item.dayActual >= 150000 ? 'text-green-600' : 'text-orange-600'}`}>
-                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= 150000 ? 'Target Met' : `${formatPrice(item.variance)}`})</span>
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Adjusted Target</span>
+                                                    <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
+                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.variance)}`})</span>
                                                     </span>
                                                 </div>
                                                 <div className="text-right">
-                                                    <span className="text-gray-400 font-semibold text-[10px] block">Cumulative Target Buildup</span>
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
                                                     <span className="font-bold text-[#123524]">
-                                                        Target: {formatPrice(item.cumTarget)} <span className="text-[9px] text-gray-500 block">Actual: {formatPrice(item.cumActual)}</span>
+                                                        {formatPrice(item.dailyTarget)} <span className="text-[9px] text-gray-500 block">Cum. Target: {formatPrice(item.cumTarget)}</span>
                                                     </span>
                                                 </div>
                                             </div>
