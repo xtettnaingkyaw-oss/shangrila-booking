@@ -843,22 +843,36 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   ];
 
   const [localCategories, setLocalCategories] = useState<MenuCategory[]>(DEFAULT_MENU_CATEGORIES);
-  
+
   useEffect(() => {
-      const fetchCategories = async () => {
+      const fetchAndSyncCategories = async () => {
           const snap = await getDocs(collection(db, 'categories'));
           const arr: any[] = [];
-          snap.forEach(d => arr.push(d.data()));
-          arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+          snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
           
-          // Database ထဲမှာ Category လေးခုလုံး မပြည့်ဘူးဆိုရင် Default Data ကို အလိုအလျောက် ပြန်ခေါ်ပါမည်
-          if (arr.length < 4) {
+          // Database ထဲမှာ ပိုနေတဲ့ (သို့) လိုနေတဲ့ Categories ရှိရင် အဟောင်းတွေကို ဖျက်ပြီး အသစ် Auto ပြန်ရေးပါမည်
+          if (arr.length !== 4) {
+              const batch = writeBatch(db);
+              
+              // အဟောင်း/အမှားများကို ဖျက်ခြင်း
+              arr.forEach(cat => {
+                  if (cat.docId) batch.delete(doc(db, 'categories', cat.docId));
+              });
+              
+              // အသစ် (၁၄) မျိုးလုံးကို ပြန်ထည့်ခြင်း
+              DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
+                  const cDocRef = doc(db, 'categories', cat.id);
+                  batch.set(cDocRef, { ...cat, order: idx });
+              });
+              
+              await batch.commit();
               setLocalCategories(DEFAULT_MENU_CATEGORIES);
           } else {
+              arr.sort((a, b) => (a.order || 0) - (b.order || 0));
               setLocalCategories(arr);
           }
       };
-      fetchCategories();
+      fetchAndSyncCategories();
   }, []);
    
    const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', copyright: '', name: '' })));
