@@ -592,14 +592,23 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     });
 
     const allDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
+    
+    // ရက်စွဲမရှိပါက လက်ရှိလ၏ ရက်အရေအတွက်အတိုင်း အလိုအလျောက် ထည့်သွင်းပေးမည်
     if (allDates.length === 0) {
-        for (let i = 1; i <= 31; i++) {
-            allDates.push(`2026-08-${String(i).padStart(2, '0')}`);
+        const currentMonth = new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+        const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+        for (let i = 1; i <= daysInMonth; i++) {
+            allDates.push(`${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
         }
     }
 
-    const monthlyTotalTarget = mySummary ? (Number(mySummary['Total Target']) || 4500000) : 4500000;
     const totalDays = allDates.length;
+    
+    // 🌟 ဤနေရာတွင် သင်လိုချင်သော Target Logic အမှန်ကို ပြင်ဆင်ထားပါသည် 🌟
+    // တစ်ရက်ကို ၁၅၀,၀၀၀ နှုန်းဖြင့် လအလိုက် Target အတိအကျ တွက်ချက်ခြင်း (၃၀ရက်လ = ၄၅ သိန်း၊ ၃၁ရက်လ = ၄၆သိန်း ၅သောင်း)
+    const BASE_DAILY_TARGET = 150000;
+    const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
 
     let cumActualPrior = 0;
     let runningCumTarget = 0;
@@ -608,9 +617,10 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
         
-        // 🌟 တက်ကြွစွာ ပြောင်းလဲတွက်ချက်သော Dynamic Target Logic
         const daysRemaining = totalDays - idx;
         const remainingTarget = Math.max(0, monthlyTotalTarget - cumActualPrior);
+        
+        // 🌟 ကျန်ရှိသော Target ကို ကျန်ရှိသော ရက်အရေအတွက်ဖြင့် စားပြီး Adjusted Daily Target ရှာခြင်း 🌟
         const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTarget / daysRemaining) : 0;
         
         runningCumTarget += adjustedDailyTarget;
@@ -707,19 +717,21 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 
                                 <div className="relative w-32 h-32 flex items-center justify-center bg-black/20 rounded-full border-4 border-white/5 shadow-inner">
                                     <div className="text-center">
-                                        <div className="text-2xl font-black text-white">{mySummary['Total Actual Sales'] > 0 ? Math.round((mySummary['Total Actual Sales'] / mySummary['Total Target']) * 100) : 0}%</div>
+                                        {/* 🌟 Calculated using Dynamic Target */}
+                                        <div className="text-2xl font-black text-white">{mySummary['Total Actual Sales'] > 0 ? Math.round((mySummary['Total Actual Sales'] / monthlyTotalTarget) * 100) : 0}%</div>
                                         <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-1">Achieved</div>
                                     </div>
                                     <svg className="absolute inset-0 w-full h-full transform -rotate-90">
                                         <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
-                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#D4AF37]" strokeDasharray="364" strokeDashoffset={364 - (364 * (mySummary['Total Actual Sales'] / mySummary['Total Target']))} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-out' }} />
+                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#D4AF37]" strokeDasharray="364" strokeDashoffset={364 - (364 * (mySummary['Total Actual Sales'] / monthlyTotalTarget))} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-out' }} />
                                     </svg>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4 w-full mt-8">
                                     <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
                                         <div className="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Target</div>
-                                        <div className="text-sm font-bold text-white">{formatPrice(mySummary['Total Target'])}</div>
+                                        {/* 🌟 Updated to show correct Target Amount */}
+                                        <div className="text-sm font-bold text-white">{formatPrice(monthlyTotalTarget)}</div>
                                     </div>
                                     <div className="bg-white/10 p-3 rounded-xl border border-[#D4AF37]/30 text-center">
                                         <div className="text-[9px] text-[#D4AF37] font-bold uppercase tracking-wider mb-1">Actual Sales</div>
@@ -747,7 +759,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* 🌟 Dynamic Adjusted Daily Target Tracker */}
+                            {/* Dynamic Adjusted Daily Target Tracker */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
                                     <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
