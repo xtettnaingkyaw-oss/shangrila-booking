@@ -773,7 +773,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* Dynamic Adjusted Daily Target Tracker */}
+                           {/* Dynamic Adjusted Daily Target Tracker */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
                                     <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
@@ -811,16 +811,25 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                             )}
 
                                             <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
+                                                {/* 🌟 နံပါတ် ၁ နေရာ (ဘယ်ဘက်) 🌟 */}
                                                 <div>
-                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Adjusted Target</span>
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Daily Target</span>
                                                     <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
-                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.variance)}`})</span>
+                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
+                                                    </span>
+                                                    <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
+                                                        Total Actual: {formatPrice(item.cumActual)}
                                                     </span>
                                                 </div>
+                                                
+                                                {/* 🌟 နံပါတ် ၂ နေရာ (ညာဘက်) 🌟 */}
                                                 <div className="text-right">
-                                                    <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
-                                                    <span className="font-bold text-[#123524]">
-                                                        {formatPrice(item.dailyTarget)} <span className="text-[9px] text-gray-500 block">Cum. Target: {formatPrice(item.cumTarget)}</span>
+                                                    <span className="text-gray-400 font-semibold text-[10px] block">Remaining Monthly Target</span>
+                                                    <span className="font-bold text-red-500">
+                                                        {formatPrice(item.remainingMonthlyTarget)}
+                                                    </span>
+                                                    <span className="text-[9px] text-gray-500 block mt-1.5">
+                                                        Cum. Target: {formatPrice(item.cumTarget)}
                                                     </span>
                                                 </div>
                                             </div>
@@ -828,10 +837,3 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                     ))}
                                 </div>
                             </div>
-                        </>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-}
