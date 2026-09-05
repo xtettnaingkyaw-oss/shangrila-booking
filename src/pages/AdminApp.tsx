@@ -2038,21 +2038,21 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         </div>
                     </div>
 
-                    {/* 🌟 1. Last Month Vs This Month Comparison Card 🌟 */}
+                  {/* 🌟 1. Last Month Vs This Month Comparison Card (Excel Style) 🌟 */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]"/> Last Month Vs This Month</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
-                                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">July Total (Last Month)</div>
-                                <div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div>
+                                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">July 1 to 31 Total</div>
+                                <div className="text-sm font-bold text-gray-800">17,100,300 Ks</div>
                             </div>
                             <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
-                                <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">August Total (This Month)</div>
+                                <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">Aug 1 to 31 Total</div>
                                 <div className="text-sm font-black text-[#123524]">{formatPrice(totalThisMonthSales)}</div>
                             </div>
-                            <div className={`p-3.5 rounded-xl border text-center ${salesDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                <div className="text-[9px] font-bold uppercase tracking-wider mb-1">Difference (Growth/Drop)</div>
-                                <div className="text-sm font-black">{salesDiff >= 0 ? '+' : ''}{formatPrice(salesDiff)}</div>
+                            <div className={`p-3.5 rounded-xl border text-center ${totalThisMonthSales - 17100300 >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                <div className="text-[9px] font-bold uppercase tracking-wider mb-1">Difference</div>
+                                <div className="text-sm font-black">{totalThisMonthSales - 17100300 >= 0 ? '+' : ''}{formatPrice(totalThisMonthSales - 17100300)}</div>
                             </div>
                         </div>
                     </div>
