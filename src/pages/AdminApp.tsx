@@ -2065,7 +2065,9 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         })
         .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
     
-    const upToTodayDiff = thisMonthUpToTodaySales - lastMonthUpToTodaySales;
+    // 🌟 displayThisMonthUpToToday variable အား ကြေညာပေးခြင်း 🌟
+    const displayThisMonthUpToToday = thisMonthUpToTodaySales > 0 ? thisMonthUpToTodaySales : 0;
+    const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
 
     const targetDateStr = `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, '0')}-${String(previousDayNum).padStart(2, '0')}`;
     const thisMonthYesterdaySales = allEntries
