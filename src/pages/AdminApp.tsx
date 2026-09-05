@@ -1933,9 +1933,17 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
     const uniqueDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
     
-    const allDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
-    
-    if (allDates.length === 0) {
+    const allDates: string[] = [];
+    if (uniqueDates.length > 0) {
+        const firstDateStr = uniqueDates[0] as string;
+        const [yearStr, monthStr] = firstDateStr.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+        const daysInMonth = new Date(year, month, 0).getDate();
+        for (let i = 1; i <= daysInMonth; i++) {
+            allDates.push(`${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
+        }
+    } else {
         const currentMonth = new Date().getMonth() + 1;
         const currentYear = new Date().getFullYear();
         const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
