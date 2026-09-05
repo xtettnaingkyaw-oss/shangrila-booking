@@ -983,32 +983,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setSavingCategory('excel_upload');
     
     try {
-
-       // 🌟 Fixed-label cell ကို sheet အားလုံးထဲကနေ ရှာဖတ်ပေးမည့် helper
-const findLabeledValueInWorkbook = (wb, label) => {
-    const target = label.trim().toLowerCase();
-    for (const sheetName of wb.SheetNames) {
-        const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true });
-        for (const row of raw) {
-            if (!Array.isArray(row)) continue;
-            for (let i = 0; i < row.length; i++) {
-                const cell = row[i];
-                if (cell !== undefined && cell !== null && String(cell).trim().toLowerCase() === target) {
-                    const val = row[i + 1];
-                    const num = typeof val === 'number' ? val : Number(val);
-                    if (!isNaN(num)) return num;
-                }
-            }
-        }
-    }
-    return 0;
-};
-
-// 🌟 လိုအပ်တဲ့ ၃ ကွက်ကို ဆွဲထုတ်ခြင်း
-const lastMonthTotal = findLabeledValueInWorkbook(workbook, 'Last Month Total');
-const lastMonthSameDayYesterday = findLabeledValueInWorkbook(workbook, 'Last Month Yesterday');
-const lastMonthUpToToday = findLabeledValueInWorkbook(workbook, 'Last Month Up To Today');
-       
         // 🌟 မိုဘိုင်းဘရောက်ဆာများတွင် ပိုမိုတည်ငြိမ်သော FileReader ဖြင့် ဖတ်ရှုခြင်း 🌟
         const reader = new FileReader();
         
@@ -1113,17 +1087,11 @@ const lastMonthUpToToday = findLabeledValueInWorkbook(workbook, 'Last Month Up T
 
         // 🌟 ၃။ Firebase သို့ သိမ်းဆည်းခြင်း 🌟
         await setDoc(doc(db, 'settings', 'matrixData'), {
-    topPerformers: normalizedTopData,
-    monthlySummary: monthlyData,
-    dailyEntries: normalizedEntryData,
-    lastMonthCompare: {                         
-       // 🌟 အသစ်ထည့်တာ
-        total: lastMonthTotal,
-        sameDay: lastMonthSameDayYesterday,
-        upToToday: lastMonthUpToToday
-    },
-    lastUpdated: Date.now()
-}, { merge: true });
+            topPerformers: normalizedTopData,
+            monthlySummary: monthlyData,
+            dailyEntries: normalizedEntryData,
+            lastUpdated: Date.now()
+        }, { merge: true });
 
                 alert("✅ Excel Data များကို အောင်မြင်စွာ Upload တင်ပြီးပါပြီ။");
                 setSavingCategory(null);
@@ -2081,18 +2049,15 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => p['1 to 31 Actual']), 1) : 1;
 
     // Default Previous Month Data for Comparison (Can be updated later if needed)
-   
-   const lastMonthCompareData = matrixData.lastMonthCompare || {};
-let lastMonthUpToTodaySales = lastMonthCompareData.upToToday || 0;
-let lastMonthYesterdaySales = lastMonthCompareData.sameDay || 0;
-let totalLastMonthSales = lastMonthCompareData.total || 0;
-
-let yesterdayDateTextStr = prevDayStr;
-const lastMonthDateObj = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
-let lastMonthNameStr = lastMonthDateObj.toLocaleString('en-US', { month: 'long' }).toUpperCase();
-let thisMonthNameStr = "THIS MONTH";
-let lastFullMonthNameStr = lastMonthNameStr;
-let thisFullMonthNameStr = "THIS MONTH";
+    let lastMonthUpToTodaySales = 2061000; 
+    let lastMonthYesterdaySales = 939000; 
+    let totalLastMonthSales = 12235000; 
+    
+    let yesterdayDateTextStr = prevDayStr;
+    let lastMonthNameStr = "AUGUST";
+    let thisMonthNameStr = "THIS MONTH";
+    let lastFullMonthNameStr = "AUGUST";
+    let thisFullMonthNameStr = "THIS MONTH";
 
     const salesDiff = totalThisMonthSales - totalLastMonthSales;
     const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
