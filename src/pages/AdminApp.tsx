@@ -1029,78 +1029,61 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                 }
 
                 if (topData.length === 0 && monthlyData.length === 0) {
-                    throw new Error("Excel ဖိုင်ထဲတွင် လိုအပ်သော Data များကို ရှာမတွေ့ပါ။ Sheet အမည် သို့မဟုတ် Column ခေါင်းစဉ်များ မှန်ကန်မှုရှိမရှိ စစ်ဆေးပါ။");
+            throw new Error("Excel ဖိုင်ထဲတွင် လိုအပ်သော Data များကို ရှာမတွေ့ပါ။ Sheet အမည် သို့မဟုတ် Column ခေါင်းစဉ်များ မှန်ကန်မှုရှိမရှိ စစ်ဆေးပါ။");
+        }
+
+        // 🌟 ၁။ Top Performers Data ကို ရှင်းလင်းခြင်း (ဤနေရာတွင် တစ်ကြိမ်သာ ရှိရပါမည်) 🌟
+        const normalizedTopData = topData.map((row: any) => {
+            const newRow = { ...row };
+            const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
+            
+            if (actualKey && actualKey !== '1 to 31 Actual') {
+                newRow['1 to 31 Actual'] = row[actualKey];
+            }
+            return newRow;
+        });
+
+        // 🌟 ၂။ Excel ထဲက Date များနှင့် Staff ID များကို တိကျစေရန် ရှင်းလင်းခြင်း (Normalization) 🌟
+        const normalizedEntryData = entryData.map((row: any) => {
+            const newRow = { ...row };
+            
+            // Staff ID နောက်မှာ Space အပိုတွေပါလာရင် ဖြတ်ထုတ်ခြင်း
+            if (newRow['Staff ID']) {
+                newRow['Staff ID'] = String(newRow['Staff ID']).trim();
+            }
+
+            // Date ပုံစံကို App ကဖတ်တတ်တဲ့ 'YYYY-MM-DD' အဖြစ် ပြောင်းလဲပေးခြင်း
+            const rawDate = row['Date'] || row['date'] || row['DATE'];
+            if (rawDate) {
+                let parsedStr = '';
+                if (typeof rawDate === 'number') {
+                    const utcDays = Math.floor(rawDate - 25569);
+                    const dateObj = new Date(utcDays * 86400 * 1000);
+                    parsedStr = dateObj.toISOString().split('T')[0];
+                } else if (typeof rawDate === 'string') {
+                    const dateObj = new Date(rawDate.trim());
+                    if (!isNaN(dateObj.getTime())) {
+                        const y = dateObj.getFullYear();
+                        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+                        const d = String(dateObj.getDate()).padStart(2, '0');
+                        parsedStr = `${y}-${m}-${d}`;
+                    } else {
+                        parsedStr = rawDate.trim();
+                    }
                 }
+                newRow.ParsedDate = parsedStr; 
+                newRow.Date = parsedStr; 
+            }
+            return newRow;
+        });
 
-                const normalizedTopData = topData.map((row: any) => {
-                    const newRow = { ...row };
-                    const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
-                    
-                    if (actualKey && actualKey !== '1 to 31 Actual') {
-                        newRow['1 to 31 Actual'] = row[actualKey];
-                    }
-                    return newRow;
-                });
-
-               const normalizedTopData = topData.map((row: any) => {
-                    const newRow = { ...row };
-                    const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
-                    if (actualKey && actualKey !== '1 to 31 Actual') {
-                        newRow['1 to 31 Actual'] = row[actualKey];
-                    }
-                    return newRow;
-                });
-
-                // 🌟 Excel ထဲက Date များနှင့် Staff ID များကို တိကျစေရန် ရှင်းလင်းခြင်း (Normalization) 🌟
-                const normalizedEntryData = entryData.map((row: any) => {
-                    const newRow = { ...row };
-                    
-                    // 1. Staff ID နောက်မှာ Space အပိုတွေပါလာရင် အလိုအလျောက် ဖြတ်ထုတ်ခြင်း
-                    if (newRow['Staff ID']) {
-                        newRow['Staff ID'] = String(newRow['Staff ID']).trim();
-                    }
-
-                    // 2. Date ပုံစံကို App ကဖတ်တတ်တဲ့ 'YYYY-MM-DD' အဖြစ် မဖြစ်မနေ ပြောင်းလဲပေးခြင်း
-                    const rawDate = row['Date'] || row['date'] || row['DATE'];
-                    if (rawDate) {
-                        let parsedStr = '';
-                        if (typeof rawDate === 'number') {
-                            // Excel မှ Date ကို ကိန်းဂဏန်း (Serial Number) အဖြစ် ဖတ်မိပါက
-                            const utcDays = Math.floor(rawDate - 25569);
-                            const dateObj = new Date(utcDays * 86400 * 1000);
-                            parsedStr = dateObj.toISOString().split('T')[0];
-                        } else if (typeof rawDate === 'string') {
-                            // စာသားအဖြစ် ဝင်လာပါက
-                            const dateObj = new Date(rawDate.trim());
-                            if (!isNaN(dateObj.getTime())) {
-                                const y = dateObj.getFullYear();
-                                const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-                                const d = String(dateObj.getDate()).padStart(2, '0');
-                                parsedStr = `${y}-${m}-${d}`;
-                            } else {
-                                parsedStr = rawDate.trim();
-                            }
-                        }
-                        newRow.ParsedDate = parsedStr; // Staff App တွက်ချက်မှုအတွက်
-                        newRow.Date = parsedStr; 
-                    }
-                    return newRow;
-                });
-
-                // 🌟 Firebase သို့ သိမ်းဆည်းခြင်း (normalizedEntryData ဖြင့် အစားထိုးပါ) 🌟
-                await setDoc(doc(db, 'settings', 'matrixData'), {
-                    topPerformers: normalizedTopData,
-                    monthlySummary: monthlyData,
-                    dailyEntries: normalizedEntryData, // 👈 ဤနေရာတွင် normalizedEntryData ဖြစ်ရပါမည်
-                    lastUpdated: Date.now()
-                }, { merge: true });
-
-                await setDoc(doc(db, 'settings', 'matrixData'), {
-                    topPerformers: normalizedTopData,
-                    monthlySummary: monthlyData,
-                    dailyEntries: entryData,
-                    lastUpdated: Date.now()
-                }, { merge: true });
+        // 🌟 ၃။ Firebase သို့ သိမ်းဆည်းခြင်း 🌟
+        await setDoc(doc(db, 'settings', 'matrixData'), {
+            topPerformers: normalizedTopData,
+            monthlySummary: monthlyData,
+            dailyEntries: normalizedEntryData,
+            lastUpdated: Date.now()
+        }, { merge: true });
 
                 alert("✅ Excel Data များကို အောင်မြင်စွာ Upload တင်ပြီးပါပြီ။");
                 setSavingCategory(null);
