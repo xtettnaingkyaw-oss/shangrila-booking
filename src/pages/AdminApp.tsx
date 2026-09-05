@@ -1848,7 +1848,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     </div>
   );
 }
-function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
+function AdminStaffPerffunction AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
     const [matrixData, setMatrixData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [selectedStaffId, setSelectedStaffId] = useState<string>('');
@@ -1965,6 +1965,24 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         missedDaysCount = missedDays.length;
     }
 
+    // 🌟 Last Month Vs This Month & Top 5 Gaps တွက်ချက်ခြင်း 🌟
+    const totalThisMonthSales = sortedPerformers.reduce((sum, p) => sum + (Number(p['1 to 31 Actual']) || 0), 0);
+    // ပြီးခဲ့တဲ့လအတွက် ဥပမာ ဒေတာ (သို့မဟုတ် Excel ထဲက July Total)
+    const totalLastMonthSales = 17100300; 
+    const salesDiff = totalThisMonthSales - totalLastMonthSales;
+
+    const top5Gaps = [];
+    for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
+        const p1 = sortedPerformers[i];
+        const p2 = sortedPerformers[i + 1];
+        const diff = p1['1 to 31 Actual'] - p2['1 to 31 Actual'];
+        top5Gaps.push({
+            rank1: `#${i + 1} (${p1['Staff ID']})`,
+            rank2: `#${i + 2} (${p2['Staff ID']})`,
+            diff
+        });
+    }
+
     return (
         <div className="animate-fade-in mt-6">
             <div className="bg-gray-50 p-5 rounded-2xl shadow-sm border border-gray-200 mb-6">
@@ -2020,6 +2038,38 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         </div>
                     </div>
 
+                    {/* 🌟 1. Last Month Vs This Month Comparison Card 🌟 */}
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                        <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]"/> Last Month Vs This Month</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
+                                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">July Total (Last Month)</div>
+                                <div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div>
+                            </div>
+                            <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
+                                <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">August Total (This Month)</div>
+                                <div className="text-sm font-black text-[#123524]">{formatPrice(totalThisMonthSales)}</div>
+                            </div>
+                            <div className={`p-3.5 rounded-xl border text-center ${salesDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                <div className="text-[9px] font-bold uppercase tracking-wider mb-1">Difference (Growth/Drop)</div>
+                                <div className="text-sm font-black">{salesDiff >= 0 ? '+' : ''}{formatPrice(salesDiff)}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 🌟 2. Top-5 Gap Analysis Card 🌟 */}
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                        <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-[#D4AF37]"/> Top-5 Rank Gap Analysis</h3>
+                        <div className="space-y-2.5">
+                            {top5Gaps.map((gap, gIdx) => (
+                                <div key={gIdx} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs font-semibold">
+                                    <span className="text-gray-700">{gap.rank1} &nbsp;vs&nbsp; {gap.rank2}</span>
+                                    <span className="font-black text-[#123524]">Gap: {formatPrice(gap.diff)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="space-y-3">
                         {sortedPerformers.slice(0, 10).map((p, idx) => {
                             let badgeClass = "bg-gray-100 text-gray-600";
@@ -2066,7 +2116,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                         <div className="text-2xl font-black text-white">{mySummary['Total Actual Sales'] > 0 && monthlyTotalTarget > 0 ? Math.round((mySummary['Total Actual Sales'] / monthlyTotalTarget) * 100) : 0}%</div>
                                         <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-1">Achieved</div>
                                     </div>
-                                    <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                                    <svg viewBox="0 0 128 128" className="absolute inset-0 w-full h-full transform -rotate-90 overflow-visible">
                                         <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
                                         <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#D4AF37]" strokeDasharray="364" strokeDashoffset={364 - (364 * (mySummary['Total Actual Sales'] / monthlyTotalTarget))} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-out' }} />
                                     </svg>
@@ -2138,7 +2188,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 )}
                             </div>
 
-                            {/* Dynamic Tracker */}
+                            {/* Dynamic Adjusted Daily Target Tracker */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
                                     <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
