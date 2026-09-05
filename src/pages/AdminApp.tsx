@@ -2060,59 +2060,70 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         missedDaysCount = missedDays.length;
     }
 
-    // 🌟 Compariso// 🌟 Comparison Calculations (Dynamic Extraction from Excel) 🌟
-    const totalThisMonthSales = sortedPerformers.reduce((sum, p) => sum + (Number(p['1 to 31 Actual']) || 0), 0);
-    const totalLastMonthSales = 17100300; 
-    const salesDiff = totalThisMonthSales - totalLastMonthSales;
-
+    // 🌟 Comparison Calculations (Dynamic Extraction from Excel) 🌟
     const todayLocal = new Date();
     const currentDayNum = todayLocal.getDate(); 
     const previousDayNum = Math.max(1, currentDayNum - 1); 
 
-    // Excel ရဲ့ Top Performers data ထဲကနေ Summary Data တွေကို ရှာဖွေခြင်း
-    let lastMonthUpToTodaySales = 2061000; // Default fallback
-    let displayThisMonthUpToToday = 770000; // Default fallback
-    let lastMonthYesterdaySales = 939000; // Default fallback (4-Aug)
-    let displayYesterdaySales = 37000; // Default fallback (4-Sep)
+    // Excel ရဲ့ Top Performers data ထဲကနေ Summary Data တွေကို အလိုအလျောက် ရှာဖွေခြင်း
+    let lastMonthUpToTodaySales = 2061000; 
+    let displayThisMonthUpToToday = 770000; 
+    let lastMonthYesterdaySales = 939000; 
+    let displayYesterdaySales = 37000; 
+    
+    let totalLastMonthSales = 12235000; // Aug Full Month Default
+    let totalThisMonthSales = 770000; // Sep Full Month Default
+
     let yesterdayDateTextStr = "မနေ့ကရက်";
     let lastMonthNameStr = "AUGUST";
     let thisMonthNameStr = "SEPTEMBER";
+    let lastFullMonthNameStr = "AUGUST";
+    let thisFullMonthNameStr = "SEPTEMBER";
 
     if (matrixData && matrixData.topPerformers) {
         const topDataRaw = matrixData.topPerformers;
+        
         for (const row of topDataRaw) {
-            const values = Object.values(row);
             const keys = Object.keys(row);
-            for (let i = 0; i < keys.length; i++) {
+            for (let i = 0; i < keys.length - 1; i++) {
                 const cellVal = String(row[keys[i]] || '').trim();
+                const nextValStr = String(row[keys[i+1]] || '').replace(/,/g, '');
+                const nextVal = Number(nextValStr);
                 
+                // Total ပါတဲ့ အကွက်တွေကို ရှာခြင်း
                 if (cellVal.includes('Total') && cellVal.includes('1 to')) {
-                    const nextVal = Number(row[keys[i+1]]);
                     if (!isNaN(nextVal)) {
-                        if (cellVal.toLowerCase().includes('aug')) {
-                            lastMonthUpToTodaySales = nextVal;
-                            lastMonthNameStr = cellVal.split('1 to')[0].trim().toUpperCase();
-                        } else if (cellVal.toLowerCase().includes('sep')) {
-                            displayThisMonthUpToToday = nextVal;
-                            thisMonthNameStr = cellVal.split('1 to')[0].trim().toUpperCase();
-                        } else if (cellVal.includes('Jul')) {
-                             lastMonthUpToTodaySales = nextVal;
-                             lastMonthNameStr = cellVal.split('1 to')[0].trim().toUpperCase();
+                        const monthPrefix = cellVal.split('1 to')[0].trim().toUpperCase();
+                        const isFullMonth = cellVal.includes('31') || cellVal.includes('30');
+                        
+                        if (isFullMonth) {
+                            if (cellVal.toLowerCase().includes('aug')) {
+                                totalLastMonthSales = nextVal;
+                                lastFullMonthNameStr = monthPrefix;
+                            } else if (cellVal.toLowerCase().includes('sep')) {
+                                totalThisMonthSales = nextVal;
+                                thisFullMonthNameStr = monthPrefix;
+                            }
+                        } else {
+                            if (cellVal.toLowerCase().includes('aug')) {
+                                lastMonthUpToTodaySales = nextVal;
+                                lastMonthNameStr = monthPrefix;
+                            } else if (cellVal.toLowerCase().includes('sep')) {
+                                displayThisMonthUpToToday = nextVal;
+                                thisMonthNameStr = monthPrefix;
+                            }
                         }
                     }
                 }
                 
-                if (cellVal.includes(`-0${previousDayNum} `) || cellVal.includes(`-${previousDayNum}-`)) {
-                    const nextVal = Number(row[keys[i+1]]);
+                // နေ့အလိုက် အကွက်များကို ရှာခြင်း (ဥပမာ 4-Aug, 4-Sep)
+                if (cellVal.includes(`-0${previousDayNum}`) || cellVal.includes(`-${previousDayNum}-`) || cellVal.match(new RegExp(`^${previousDayNum}-[A-Za-z]+$`))) {
                     if (!isNaN(nextVal)) {
-                        const dateObj = new Date(cellVal);
-                        if (!isNaN(dateObj.getTime())) {
-                            yesterdayDateTextStr = dateObj.toISOString().split('T')[0];
-                            if (dateObj.getMonth() === todayLocal.getMonth() - 1 || (todayLocal.getMonth() === 0 && dateObj.getMonth() === 11)) {
-                                lastMonthYesterdaySales = nextVal;
-                            } else if (dateObj.getMonth() === todayLocal.getMonth()) {
-                                displayYesterdaySales = nextVal;
-                            }
+                        if (cellVal.toLowerCase().includes('aug') || cellVal.includes('-08-')) {
+                            lastMonthYesterdaySales = nextVal;
+                        } else if (cellVal.toLowerCase().includes('sep') || cellVal.includes('-09-')) {
+                            displayYesterdaySales = nextVal;
+                            yesterdayDateTextStr = cellVal.split(' ')[0]; 
                         }
                     }
                 }
@@ -2120,6 +2131,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         }
     }
 
+    const salesDiff = totalThisMonthSales - totalLastMonthSales;
     const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
     const dayDifference = displayYesterdaySales - lastMonthYesterdaySales;
 
@@ -2236,11 +2248,11 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         {/* တစ်လစာ စုစုပေါင်း နှိုင်းယှဉ်ချက် */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                             <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
-                                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">July 1 to 31 Total</div>
-                                <div className="text-sm font-bold text-gray-800">17,100,300 Ks</div>
+                                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">{lastFullMonthNameStr} 1 TO 31 TOTAL</div>
+                                <div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div>
                             </div>
                             <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
-                                <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">Aug 1 to 31 Total</div>
+                                <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">{thisFullMonthNameStr} 1 TO 31 TOTAL</div>
                                 <div className="text-sm font-black text-[#123524]">{formatPrice(totalThisMonthSales)}</div>
                             </div>
                             <div className={`p-3.5 rounded-xl border text-center ${salesDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
@@ -2248,7 +2260,6 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 <div className="text-sm font-black">{salesDiff >= 0 ? '+' : ''}{formatPrice(salesDiff)}</div>
                             </div>
                         </div>
-                    </div>
 
                     {/* Top-5 Rank Gap Analysis */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
