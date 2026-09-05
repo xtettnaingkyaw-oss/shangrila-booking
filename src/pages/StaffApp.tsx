@@ -538,7 +538,7 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
    );
 }
 
-function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
+function Stafffunction StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
     const [matrixData, setMatrixData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [subTab, setSubTab] = useState<'leaderboard' | 'my_stats'>('leaderboard');
@@ -556,17 +556,29 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     const cleanStaffId = String(loggedInStaff.id || '').trim().toLowerCase();
     const cleanStaffName = String(loggedInStaff.name || '').trim().toLowerCase();
-    const staffNum = String(loggedInStaff.id).match(/\d+/) ? parseInt(String(loggedInStaff.id).match(/\d+/)![0], 10) : null;
+    
+    // 🌟 နာမည်ထဲက နံပါတ်ကို ဦးစားပေးယူမည် (ဥပမာ "Therapist No-7" လျှင် 7 ကို ယူမည်) 🌟
+    const nameMatch = cleanStaffName.match(/\d+/);
+    const staffNum = nameMatch ? parseInt(nameMatch[0], 10) : (String(loggedInStaff.id).match(/\d+/) ? parseInt(String(loggedInStaff.id).match(/\d+/)![0], 10) : null);
+
+    const checkIsMe = (pId: any, pName: any) => {
+        const pIdStr = String(pId || '').trim().toLowerCase();
+        const pNameStr = String(pName || '').trim().toLowerCase();
+        const pNumMatch = pIdStr.match(/\d+/) || pNameStr.match(/\d+/);
+        const pNum = pNumMatch ? parseInt(pNumMatch[0], 10) : null;
+
+        return pIdStr === cleanStaffId || 
+               pIdStr === `no-${staffNum}` ||
+               pNameStr === cleanStaffName || 
+               (staffNum !== null && pNum === staffNum);
+    };
 
     const mySummary = (matrixData.monthlySummary || []).find((d: any) => {
-        const rowId = String(d['Staff No'] || '').trim().toLowerCase();
-        const rowName = String(d['Staff Name'] || '').trim().toLowerCase();
-        const rowNum = String(d['Staff No']).match(/\d+/) ? parseInt(String(d['Staff No']).match(/\d+/)![0], 10) : null;
-        return rowId === cleanStaffId || rowName === cleanStaffName || (staffNum !== null && rowNum === staffNum);
+        return checkIsMe(d['Staff No'], d['Staff Name']);
     });
 
-    const sortedPerformers = [...matrixData.topPerformers].filter(p => p['1 to 31 Actual'] > 0).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
-    const maxActual = sortedPerformers.length > 0 ? sortedPerformers[0]['1 to 31 Actual'] : 1;
+    const sortedPerformers = [...matrixData.topPerformers].sort((a, b) => (Number(b['1 to 31 Actual']) || 0) - (Number(a['1 to 31 Actual']) || 0));
+    const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => Number(p['1 to 31 Actual']) || 0), 1) : 1;
 
     const parseExcelDate = (val: any) => {
         if (!val) return '';
@@ -587,15 +599,22 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     }));
 
     const myEntries = allEntries.filter((e: any) => {
-        const eNum = String(e['Staff ID']).match(/\d+/) ? parseInt(String(e['Staff ID']).match(/\d+/)![0], 10) : null;
-        return e.CleanStaffId === cleanStaffId || 
-               e.CleanStaffName === cleanStaffName ||
-               (staffNum !== null && eNum === staffNum);
+        return checkIsMe(e['Staff ID'], e['Staff Name']);
     });
 
-    const allDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
+    const uniqueDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
     
-    if (allDates.length === 0) {
+    const allDates: string[] = [];
+    if (uniqueDates.length > 0) {
+        const firstDateStr = uniqueDates[0] as string;
+        const [yearStr, monthStr] = firstDateStr.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+        const daysInMonth = new Date(year, month, 0).getDate();
+        for (let i = 1; i <= daysInMonth; i++) {
+            allDates.push(`${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
+        }
+    } else {
         const currentMonth = new Date().getMonth() + 1;
         const currentYear = new Date().getFullYear();
         const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
@@ -646,13 +665,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     const missedDays = pastDays.filter(item => !item.hasSales);
     const missedDaysCount = missedDays.length;
 
-    const checkIsMe = (pId: any, pName: any) => {
-        const pIdStr = String(pId || '').trim().toLowerCase();
-        const pNameStr = String(pName || '').trim().toLowerCase();
-        const pNum = pIdStr.match(/\d+/) ? parseInt(pIdStr.match(/\d+/)![0], 10) : null;
-        return pIdStr === cleanStaffId || pNameStr === cleanStaffName || (staffNum !== null && pNum === staffNum);
-    };
-
     return (
         <div className="animate-fade-in mt-4">
             <div className="flex space-x-2 mb-6 bg-gray-100 p-1.5 rounded-xl">
@@ -670,9 +682,10 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
                         <div className="flex items-end space-x-3 h-52 pb-2 pt-14 min-w-max border-b border-gray-100">
                             {sortedPerformers.map((p, idx) => {
-                                const heightPercent = Math.max(5, (p['1 to 31 Actual'] / maxActual) * 100);
+                                const actualSales = Number(p['1 to 31 Actual']) || 0;
+                                const heightPercent = Math.max(5, (actualSales / maxActual) * 100);
                                 const isMe = checkIsMe(p['Staff ID'], p['Staff Name']);
-                                const metPercent = monthlyTotalTarget > 0 ? (p['1 to 31 Actual'] / monthlyTotalTarget) * 100 : 0;
+                                const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
                                 
                                 let barColor = 'bg-gray-200 hover:bg-gray-300';
                                 if (idx === 0) barColor = 'bg-gradient-to-t from-[#123524] to-[#1a4a32] shadow-md'; 
@@ -686,7 +699,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 return (
                                     <div key={idx} className="flex flex-col justify-end items-center group w-12 h-full">
                                         <div className="text-[9px] font-bold text-gray-500 mb-2 opacity-0 group-hover:opacity-100 transition-opacity -rotate-45 whitespace-nowrap z-10">
-                                            {formatPrice(p['1 to 31 Actual'])}
+                                            {formatPrice(actualSales)}
                                         </div>
                                         
                                         <div className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out flex justify-center ${barColor} ${isMe ? 'ring-2 ring-offset-1 ring-[#D4AF37]' : ''}`} style={{ height: `${heightPercent}%` }}>
@@ -704,14 +717,15 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                     </div>
 
                     <div className="space-y-3">
-                        {sortedPerformers.slice(0, 10).map((p, idx) => {
+                        {sortedPerformers.map((p, idx) => {
                             const isMe = checkIsMe(p['Staff ID'], p['Staff Name']);
                             let badgeClass = "bg-gray-100 text-gray-600";
                             if (idx === 0) badgeClass = "bg-yellow-100 text-yellow-700 border border-yellow-300";
                             else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
                             else if (idx === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-300";
 
-                            const metPercent = monthlyTotalTarget > 0 ? (p['1 to 31 Actual'] / monthlyTotalTarget) * 100 : 0;
+                            const actualSales = Number(p['1 to 31 Actual']) || 0;
+                            const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
 
                             return (
                                 <div key={idx} className={`flex items-center p-4 rounded-xl border transition-all ${isMe ? 'bg-yellow-50/50 border-[#D4AF37] shadow-md scale-[1.02]' : 'bg-white border-gray-100 shadow-sm'}`}>
@@ -723,7 +737,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                         <div className="text-[10px] text-gray-500 font-semibold mt-0.5">Target: {formatPrice(monthlyTotalTarget)}</div>
                                     </div>
                                     <div className="text-right">
-                                        <div className="font-black text-[#123524]">{formatPrice(p['1 to 31 Actual'])}</div>
+                                        <div className="font-black text-[#123524]">{formatPrice(actualSales)}</div>
                                         <div className={`text-[9px] font-bold mt-0.5 ${metPercent >= 50 ? 'text-green-500' : 'text-orange-500'}`}>
                                             Met {metPercent.toFixed(1)}%
                                         </div>
@@ -751,7 +765,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                         <div className="text-2xl font-black text-white">{mySummary['Total Actual Sales'] > 0 && monthlyTotalTarget > 0 ? Math.round((mySummary['Total Actual Sales'] / monthlyTotalTarget) * 100) : 0}%</div>
                                         <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-1">Achieved</div>
                                     </div>
-                                    {/* 🌟 Fixed SVG viewBox to prevent clipping 🌟 */}
                                     <svg viewBox="0 0 128 128" className="absolute inset-0 w-full h-full transform -rotate-90 overflow-visible">
                                         <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
                                         <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#D4AF37]" strokeDasharray="364" strokeDashoffset={364 - (364 * (mySummary['Total Actual Sales'] / monthlyTotalTarget))} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-out' }} />
