@@ -1848,7 +1848,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     </div>
   );
 }
-function AdminStaffPerffunction AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
+function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
     const [matrixData, setMatrixData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [selectedStaffId, setSelectedStaffId] = useState<string>('');
