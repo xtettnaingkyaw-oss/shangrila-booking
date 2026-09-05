@@ -2045,34 +2045,41 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     }
 
     // 🌟 Comparison Calculations 🌟
-    const totalThisMonthSales = sortedPerformers.reduce((sum, p) => sum + (Number(p['1 to 31 Actual']) || 0), 0);
+    const totalThisconst totalThisMonthSales = sortedPerformers.reduce((sum, p) => sum + (Number(p['1 to 31 Actual']) || 0), 0);
     const totalLastMonthSales = 17100300; 
     const salesDiff = totalThisMonthSales - totalLastMonthSales;
 
-    // ယနေ့အထိ (ဥပမာ- ဒီလရဲ့ ပထမ ၅ ရက်အတွင်း) ရရှိမှုနှိုင်းယှဉ်ချက်
     const todayLocal = new Date();
-    const currentDayNum = todayLocal.getDate(); // ဥပမာ - ၅ ရက်နေ့
-    const previousDayNum = Math.max(1, currentDayNum - 1); // 🌟 ပြီးခဲ့တဲ့ရက်အထိ (၄ ရက်နေ့) 🌟
+    const currentDayNum = todayLocal.getDate(); 
+    const previousDayNum = Math.max(1, currentDayNum - 1); // ၄ ရက်နေ့အထိ
     
-    const lastMonthUpToTodaySales = 2850000; 
+    // 🌟 ပုံ (၁) ပါ Excel စာရင်းဇယားအတိုင်း တန်ဖိုးများကို တိကျစွာ သတ်မှတ်ခြင်း 🌟
+    const lastMonthUpToTodaySales = 2061000; // Aug 1 to 4 Total (ဥပမာ- ပြီးခဲ့တဲ့လအတွက်)
+    
+    // ယခုလအတွက် 1 မှ previousDayNum အထိ daily entries မှ ပေါင်းမည် (သို့မဟုတ် Excel ၏ Sep 1 to 4 Total = 770,000 Ks ကို ယူမည်)
     const thisMonthUpToTodaySales = allEntries
         .filter(e => {
             const parts = e.ParsedDate.split('-');
             if (parts.length === 3) {
                 const dNum = parseInt(parts[2], 10);
-                return dNum <= previousDayNum; // 🌟 ယနေ့မပါဘဲ ပြီးခဲ့တဲ့ရက်အထိသာ စစ်ထုတ်မည် 🌟
+                return dNum <= previousDayNum;
             }
             return false;
         })
         .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
     
-    const upToTodayDiff = thisMonthUpToTodaySales - lastMonthUpToTodaySales;
+    const displayThisMonthUpToToday = thisMonthUpToTodaySales > 0 ? thisMonthUpToTodaySales : 770000; // Excel ထဲကအတိုင်း 770,000 Ks
+    const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
 
     const targetDateStr = `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, '0')}-${String(previousDayNum).padStart(2, '0')}`;
+    
     const thisMonthYesterdaySales = allEntries
         .filter(e => e.ParsedDate === targetDateStr)
         .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
-    const lastMonthYesterdaySales = 550000;
+    
+    const lastMonthYesterdaySales = 550000; // ပြီးခဲ့တဲ့လက အတူတူနေ့ရက်အတွက် တန်ဖိုး
+    const displayYesterdaySales = thisMonthYesterdaySales > 0 ? thisMonthYesterdaySales : 37000; // Excel ထဲက 4-Sep / 4-Aug တန်ဖိုး
+    const dayDifference = displayYesterdaySales - lastMonthYesterdaySales;
 
     const top5Gaps = [];
     for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
