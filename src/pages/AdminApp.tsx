@@ -984,7 +984,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     
     try {
         const data = await file.arrayBuffer();
-        const workbook = XLSX.read(data, { type: 'array' });
+        // 🌟 ZIP ဖိုင်အဖြစ် မှားယွင်းမဖတ်မိစေရန် Uint8Array ဖြင့် ပြောင်းလဲဖတ်ရှုခြင်း 🌟
+        const workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
 
         let topData: any[] = [];
         let monthlyData: any[] = [];
