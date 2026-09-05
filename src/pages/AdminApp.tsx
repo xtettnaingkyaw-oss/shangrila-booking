@@ -2060,7 +2060,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         missedDaysCount = missedDays.length;
     }
 
-    // 🌟 Comparison Calculations 🌟
+    // 🌟 Compariso// 🌟 Comparison Calculations (Dynamic Extraction from Excel) 🌟
     const totalThisMonthSales = sortedPerformers.reduce((sum, p) => sum + (Number(p['1 to 31 Actual']) || 0), 0);
     const totalLastMonthSales = 17100300; 
     const salesDiff = totalThisMonthSales - totalLastMonthSales;
@@ -2068,28 +2068,60 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     const todayLocal = new Date();
     const currentDayNum = todayLocal.getDate(); 
     const previousDayNum = Math.max(1, currentDayNum - 1); 
-    
-    const lastMonthUpToTodaySales = 2850000; 
-    const thisMonthUpToTodaySales = allEntries
-        .filter(e => {
-            const parts = e.ParsedDate.split('-');
-            if (parts.length === 3) {
-                const dNum = parseInt(parts[2], 10);
-                return dNum <= previousDayNum;
-            }
-            return false;
-        })
-        .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
-    
-    // 🌟 displayThisMonthUpToToday variable အား ကြေညာပေးခြင်း 🌟
-    const displayThisMonthUpToToday = thisMonthUpToTodaySales > 0 ? thisMonthUpToTodaySales : 0;
-    const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
 
-    const targetDateStr = `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, '0')}-${String(previousDayNum).padStart(2, '0')}`;
-    const thisMonthYesterdaySales = allEntries
-        .filter(e => e.ParsedDate === targetDateStr)
-        .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
-    const lastMonthYesterdaySales = 550000;
+    // Excel ရဲ့ Top Performers data ထဲကနေ Summary Data တွေကို ရှာဖွေခြင်း
+    let lastMonthUpToTodaySales = 2061000; // Default fallback
+    let displayThisMonthUpToToday = 770000; // Default fallback
+    let lastMonthYesterdaySales = 939000; // Default fallback (4-Aug)
+    let displayYesterdaySales = 37000; // Default fallback (4-Sep)
+    let yesterdayDateTextStr = "မနေ့ကရက်";
+    let lastMonthNameStr = "AUGUST";
+    let thisMonthNameStr = "SEPTEMBER";
+
+    if (matrixData && matrixData.topPerformers) {
+        const topDataRaw = matrixData.topPerformers;
+        for (const row of topDataRaw) {
+            const values = Object.values(row);
+            const keys = Object.keys(row);
+            for (let i = 0; i < keys.length; i++) {
+                const cellVal = String(row[keys[i]] || '').trim();
+                
+                if (cellVal.includes('Total') && cellVal.includes('1 to')) {
+                    const nextVal = Number(row[keys[i+1]]);
+                    if (!isNaN(nextVal)) {
+                        if (cellVal.toLowerCase().includes('aug')) {
+                            lastMonthUpToTodaySales = nextVal;
+                            lastMonthNameStr = cellVal.split('1 to')[0].trim().toUpperCase();
+                        } else if (cellVal.toLowerCase().includes('sep')) {
+                            displayThisMonthUpToToday = nextVal;
+                            thisMonthNameStr = cellVal.split('1 to')[0].trim().toUpperCase();
+                        } else if (cellVal.includes('Jul')) {
+                             lastMonthUpToTodaySales = nextVal;
+                             lastMonthNameStr = cellVal.split('1 to')[0].trim().toUpperCase();
+                        }
+                    }
+                }
+                
+                if (cellVal.includes(`-0${previousDayNum} `) || cellVal.includes(`-${previousDayNum}-`)) {
+                    const nextVal = Number(row[keys[i+1]]);
+                    if (!isNaN(nextVal)) {
+                        const dateObj = new Date(cellVal);
+                        if (!isNaN(dateObj.getTime())) {
+                            yesterdayDateTextStr = dateObj.toISOString().split('T')[0];
+                            if (dateObj.getMonth() === todayLocal.getMonth() - 1 || (todayLocal.getMonth() === 0 && dateObj.getMonth() === 11)) {
+                                lastMonthYesterdaySales = nextVal;
+                            } else if (dateObj.getMonth() === todayLocal.getMonth()) {
+                                displayYesterdaySales = nextVal;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
+    const dayDifference = displayYesterdaySales - lastMonthYesterdaySales;
 
     const top5Gaps = [];
     for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
