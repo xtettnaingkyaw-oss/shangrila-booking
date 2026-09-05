@@ -2354,7 +2354,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
-                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ ဝင်ရောက်မှု အခြေအနေ)</p>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
                                 
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
