@@ -1961,12 +1961,27 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         const staffIdExact = String(selectedStaff.id).trim().toLowerCase(); 
         const staffNameExact = String(selectedStaff.name).trim().toLowerCase(); 
 
-        mySummary = (matrixData.monthlySummary || []).find((d: any) => extractNumber(d['Staff No']) === staffNum);
+        // 🌟 Staff No (ဥပမာ No-6) ကို အတိအကျ ရှာဖွေနိုင်ရန် ပြင်ဆင်ခြင်း 🌟
+        mySummary = (matrixData.monthlySummary || []).find((d: any) => {
+            const rowStaffNo = String(d['Staff No'] || '').trim().toLowerCase();
+            const rowStaffName = String(d['Staff Name'] || '').trim().toLowerCase();
+            const rowNum = extractNumber(rowStaffNo);
+            
+            return rowStaffNo === staffIdExact || 
+                   rowStaffNo === `no-${staffNum}` ||
+                   rowStaffName === staffNameExact || 
+                   (staffNum !== null && rowNum === staffNum);
+        });
         
         myEntries = allEntries.filter((e: any) => {
-            return e.CleanStaffId === staffIdExact || 
-                   e.CleanStaffName === staffNameExact ||
-                   extractNumber(e['Staff ID']) === staffNum;
+            const entryStaffId = String(e['Staff ID'] || '').trim().toLowerCase();
+            const entryStaffName = String(e['Staff Name'] || '').trim().toLowerCase();
+            const entryNum = extractNumber(entryStaffId);
+
+            return entryStaffId === staffIdExact || 
+                   entryStaffId === `no-${staffNum}` ||
+                   entryStaffName === staffNameExact ||
+                   (staffNum !== null && entryNum === staffNum);
         });
 
         let cumActualPrior = 0;
