@@ -663,7 +663,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     // 🌟 ယနေ့ရက် (Day 5) အထိ ပါဝင်ပြသရန် 🌟
     const filteredDailyBreakdown = dailyBreakdown.filter(item => item.date <= todayStr);
 
-    const pastDays = dailyBreakdown.filter(item => item.date <= todayStr);
+    const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
     const workedDaysCount = pastDays.filter(item => item.hasSales).length;
     const missedDays = pastDays.filter(item => !item.hasSales);
     const missedDaysCount = missedDays.length;
@@ -808,7 +808,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                             {/* Attendance & Sales Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
-                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ယနေ့အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
                                 
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
