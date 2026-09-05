@@ -983,79 +983,94 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setSavingCategory('excel_upload');
     
     try {
-        const data = await file.arrayBuffer();
-        // 🌟 ZIP ဖိုင်အဖြစ် မှားယွင်းမဖတ်မိစေရန် Uint8Array ဖြင့် ပြောင်းလဲဖတ်ရှုခြင်း 🌟
-        const workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
+        // 🌟 မိုဘိုင်းဘရောက်ဆာများတွင် ပိုမိုတည်ငြိမ်သော FileReader ဖြင့် ဖတ်ရှုခြင်း 🌟
+        const reader = new FileReader();
+        
+        reader.onload = async (event) => {
+            try {
+                const binaryData = event.target?.result;
+                const workbook = XLSX.read(binaryData, { type: 'binary' });
 
-        let topData: any[] = [];
-        let monthlyData: any[] = [];
-        let entryData: any[] = [];
+                let topData: any[] = [];
+                let monthlyData: any[] = [];
+                let entryData: any[] = [];
 
-        // Strategy 1: Column Signature အရ အလိုအလျောက် ရှာဖွေခြင်း (Smart Detection)
-        const allSheets = workbook.SheetNames.map(name => ({
-            name,
-            data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
-        }));
+                const allSheets = workbook.SheetNames.map(name => ({
+                    name,
+                    data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
+                }));
 
-        for (const sheet of allSheets) {
-            if (sheet.data.length === 0) continue;
-            const keys = Object.keys(sheet.data[0]).join(' ').toLowerCase();
+                for (const sheet of allSheets) {
+                    if (sheet.data.length === 0) continue;
+                    const keys = Object.keys(sheet.data[0]).join(' ').toLowerCase();
 
-            if (keys.includes('staff id') && (keys.includes('actual') || keys.includes('1 to'))) {
-                topData = sheet.data;
-            } else if (keys.includes('final pay') || keys.includes('commession') || keys.includes('commission')) {
-                monthlyData = sheet.data;
-            } else if (keys.includes('date') && keys.includes('sales amount')) {
-                entryData = sheet.data;
+                    if (keys.includes('staff id') && (keys.includes('actual') || keys.includes('1 to'))) {
+                        topData = sheet.data;
+                    } else if (keys.includes('final pay') || keys.includes('commession') || keys.includes('commission')) {
+                        monthlyData = sheet.data;
+                    } else if (keys.includes('date') && keys.includes('sales amount')) {
+                        entryData = sheet.data;
+                    }
+                }
+
+                const findSheet = (keywords: string[]) => {
+                    const sheetName = workbook.SheetNames.find(s => keywords.some(k => s.toLowerCase().includes(k.toLowerCase())));
+                    return sheetName ? XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) : [];
+                };
+
+                if (topData.length === 0) topData = findSheet(['Top Performers', 'Top Performer', 'Top']);
+                if (monthlyData.length === 0) monthlyData = findSheet(['Monthly Summary', 'Monthly', 'Summary']);
+                if (entryData.length === 0) entryData = findSheet(['Daily Entry', 'Daily', 'Entry']);
+
+                if (topData.length === 0 && monthlyData.length === 0 && allSheets.length >= 3) {
+                    entryData = allSheets[0].data;
+                    topData = allSheets[1].data;
+                    monthlyData = allSheets[2].data;
+                }
+
+                if (topData.length === 0 && monthlyData.length === 0) {
+                    throw new Error("Excel ဖိုင်ထဲတွင် လိုအပ်သော Data များကို ရှာမတွေ့ပါ။ Sheet အမည် သို့မဟုတ် Column ခေါင်းစဉ်များ မှန်ကန်မှုရှိမရှိ စစ်ဆေးပါ။");
+                }
+
+                const normalizedTopData = topData.map((row: any) => {
+                    const newRow = { ...row };
+                    const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
+                    
+                    if (actualKey && actualKey !== '1 to 31 Actual') {
+                        newRow['1 to 31 Actual'] = row[actualKey];
+                    }
+                    return newRow;
+                });
+
+                await setDoc(doc(db, 'settings', 'matrixData'), {
+                    topPerformers: normalizedTopData,
+                    monthlySummary: monthlyData,
+                    dailyEntries: entryData,
+                    lastUpdated: Date.now()
+                }, { merge: true });
+
+                alert("✅ Excel Data များကို အောင်မြင်စွာ Upload တင်ပြီးပါပြီ။");
+                setSavingCategory(null);
+            } catch (innerErr: any) {
+                console.error("Processing Error:", innerErr);
+                alert(`ဖိုင်အချက်အလက် စီမံရာတွင် အမှားရှိနေပါသည်: ${innerErr.message}`);
+                setSavingCategory(null);
             }
-        }
-
-        // Strategy 2: Column ရှာမတွေ့ပါက Sheet နာမည်ဖြင့် ထပ်ရှာခြင်း
-        const findSheet = (keywords: string[]) => {
-            const sheetName = workbook.SheetNames.find(s => keywords.some(k => s.toLowerCase().includes(k.toLowerCase())));
-            return sheetName ? XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) : [];
         };
 
-        if (topData.length === 0) topData = findSheet(['Top Performers', 'Top Performer', 'Top']);
-        if (monthlyData.length === 0) monthlyData = findSheet(['Monthly Summary', 'Monthly', 'Summary']);
-        if (entryData.length === 0) entryData = findSheet(['Daily Entry', 'Daily', 'Entry']);
+        reader.onerror = (err) => {
+            console.error("FileReader Error:", err);
+            alert("Excel ဖိုင်ကို ဖတ်ရှု၍ မရပါ။ ဖိုင်ပျက်နေခြင်း သို့မဟုတ် ပုံစံမမှန်ခြင်း ဖြစ်နိုင်ပါသည်။");
+            setSavingCategory(null);
+        };
 
-        // Strategy 3: ဘာမှရှာမတွေ့တော့ပါက အစီအစဉ်အတိုင်း သတ်မှတ်ခြင်း (Index Fallback)
-        if (topData.length === 0 && monthlyData.length === 0 && allSheets.length >= 3) {
-            entryData = allSheets[0].data;
-            topData = allSheets[1].data;
-            monthlyData = allSheets[2].data;
-        }
-
-        if (topData.length === 0 && monthlyData.length === 0) {
-            throw new Error("Excel ဖိုင်ထဲတွင် လိုအပ်သော Data များကို ရှာမတွေ့ပါ။ Sheet အမည် သို့မဟုတ် Column ခေါင်းစဉ်များ မှန်ကန်မှုရှိမရှိ စစ်ဆေးပါ။");
-        }
-
-        // 🌟 လအလိုက် Column နာမည်ပြောင်းသွားခြင်း (ဥပမာ "1 to 30 Actual") ကို Frontend တွင် Error မတက်စေရန် "1 to 31 Actual" အဖြစ် ပြောင်းလဲသတ်မှတ်ပေးခြင်း
-        const normalizedTopData = topData.map((row: any) => {
-            const newRow = { ...row };
-            const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
-            
-            if (actualKey && actualKey !== '1 to 31 Actual') {
-                newRow['1 to 31 Actual'] = row[actualKey]; // Normalize for Frontend UI
-            }
-            return newRow;
-        });
-
-        await setDoc(doc(db, 'settings', 'matrixData'), {
-            topPerformers: normalizedTopData,
-            monthlySummary: monthlyData,
-            dailyEntries: entryData,
-            lastUpdated: Date.now()
-        }, { merge: true });
-
-        alert("✅ Excel Data များကို အောင်မြင်စွာ Upload တင်ပြီးပါပြီ။");
+        reader.readAsBinaryString(file);
         
     } catch (error: any) {
         console.error("Excel Upload Error:", error);
         alert(`Excel ဖိုင် ဖတ်ရာတွင် အခက်အခဲရှိနေပါသည်။\nအကြောင်းရင်း: ${error.message}`);
-    } finally {
         setSavingCategory(null);
+    } finally {
         e.target.value = '';
     }
 };
