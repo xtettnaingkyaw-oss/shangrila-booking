@@ -2049,17 +2049,13 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
             };
         });
 
-        const todayStr = getLocalTodayStr(); // ဥပမာ - "2026-09-05"
-
-        // 🌟 ယနေ့ရောက်ရှိနေတဲ့ရက်အထိ (Day 5 အပါအဝင်) ပြသရန် 🌟
-        dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
-
-        const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
-        workedDaysCount = pastDays.filter(item => item.hasSales).length;
-        missedDays = pastDays.filter(item => !item.hasSales);
-        missedDaysCount = missedDays.length;
-    }
-
+  const todayStr = getLocalTodayStr();
+    
+    const pastDays = dailyBreakdown.filter(item => item.date < todayStr); 
+    const workedDaysCount = pastDays.filter(item => item.hasSales).length;
+    const missedDays = pastDays.filter(item => !item.hasSales);
+    const missedDaysCount = missedDays.length;
+       
     // 🌟 Comparison Calculations (Dynamic Extraction from Excel) 🌟
     const todayLocal = new Date();
     const currentDayNum = todayLocal.getDate(); 
@@ -2363,17 +2359,19 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
                             {/* Attendance Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                                <h3 classNa{/* Attendance & Sales Summary */}
+                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
-                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ယနေ့အထိ Section ဝင်ထားမှု အခြေအနေ)</p>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့တဲ့ရက်အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
                                 
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
                                         <div className="text-[9px] text-green-600 font-bold uppercase tracking-wider mb-1">Worked Days</div>
-                                        <div className="text-2xl font-black text-green-700">{workedDaysCount} <span className="text-[10px] font-bold text-green-600/70">Days</span></div>
+                                        <div className="text-2xl font-black text-green-700">{workedDaysCount} <span className="text-[10px] font-bold text-green-600/70">/ {pastDays.length} Days</span></div>
                                     </div>
                                     <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">
                                         <div className="text-[9px] text-red-600 font-bold uppercase tracking-wider mb-1">Missed Days</div>
-                                        <div className="text-2xl font-black text-red-700">{missedDaysCount} <span className="text-[10px] font-bold text-red-600/70">Days</span></div>
+                                        <div className="text-2xl font-black text-red-700">{missedDaysCount} <span className="text-[10px] font-bold text-red-600/70">/ {pastDays.length} Days</span></div>
                                     </div>
                                 </div>
 
