@@ -2045,18 +2045,15 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     }
 
     // 🌟 Comparison Calculations 🌟
-    const totalThisconst totalThisMonthSales = sortedPerformers.reduce((sum, p) => sum + (Number(p['1 to 31 Actual']) || 0), 0);
+    const totalThisMonthSales = sortedPerformers.reduce((sum, p) => sum + (Number(p['1 to 31 Actual']) || 0), 0);
     const totalLastMonthSales = 17100300; 
     const salesDiff = totalThisMonthSales - totalLastMonthSales;
 
     const todayLocal = new Date();
     const currentDayNum = todayLocal.getDate(); 
-    const previousDayNum = Math.max(1, currentDayNum - 1); // ၄ ရက်နေ့အထိ
+    const previousDayNum = Math.max(1, currentDayNum - 1); 
     
-    // 🌟 ပုံ (၁) ပါ Excel စာရင်းဇယားအတိုင်း တန်ဖိုးများကို တိကျစွာ သတ်မှတ်ခြင်း 🌟
-    const lastMonthUpToTodaySales = 2061000; // Aug 1 to 4 Total (ဥပမာ- ပြီးခဲ့တဲ့လအတွက်)
-    
-    // ယခုလအတွက် 1 မှ previousDayNum အထိ daily entries မှ ပေါင်းမည် (သို့မဟုတ် Excel ၏ Sep 1 to 4 Total = 770,000 Ks ကို ယူမည်)
+    const lastMonthUpToTodaySales = 2850000; 
     const thisMonthUpToTodaySales = allEntries
         .filter(e => {
             const parts = e.ParsedDate.split('-');
@@ -2068,18 +2065,13 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         })
         .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
     
-    const displayThisMonthUpToToday = thisMonthUpToTodaySales > 0 ? thisMonthUpToTodaySales : 770000; // Excel ထဲကအတိုင်း 770,000 Ks
-    const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
+    const upToTodayDiff = thisMonthUpToTodaySales - lastMonthUpToTodaySales;
 
     const targetDateStr = `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, '0')}-${String(previousDayNum).padStart(2, '0')}`;
-    
     const thisMonthYesterdaySales = allEntries
         .filter(e => e.ParsedDate === targetDateStr)
         .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
-    
-    const lastMonthYesterdaySales = 550000; // ပြီးခဲ့တဲ့လက အတူတူနေ့ရက်အတွက် တန်ဖိုး
-    const displayYesterdaySales = thisMonthYesterdaySales > 0 ? thisMonthYesterdaySales : 37000; // Excel ထဲက 4-Sep / 4-Aug တန်ဖိုး
-    const dayDifference = displayYesterdaySales - lastMonthYesterdaySales;
+    const lastMonthYesterdaySales = 550000;
 
     const top5Gaps = [];
     for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
@@ -2158,12 +2150,12 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                             <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ (Day 1 to {previousDayNum}) vs ယခုလ (Day 1 to {previousDayNum})</div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                                 <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                    <div className="text-[9px] text-gray-500 font-bold uppercase">July (1 to {previousDayNum})</div>
+                                    <div className="text-[9px] text-gray-500 font-bold uppercase">August (1 to {previousDayNum})</div>
                                     <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthUpToTodaySales)}</div>
                                 </div>
                                 <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                    <div className="text-[9px] text-blue-700 font-bold uppercase">August (1 to {previousDayNum})</div>
-                                    <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(thisMonthUpToTodaySales)}</div>
+                                    <div className="text-[9px] text-blue-700 font-bold uppercase">September (1 to {previousDayNum})</div>
+                                    <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayThisMonthUpToToday)}</div>
                                 </div>
                                 <div className={`p-2.5 rounded-lg border text-center ${upToTodayDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
                                     <div className="text-[9px] font-bold uppercase">Difference (Up to Day {previousDayNum})</div>
