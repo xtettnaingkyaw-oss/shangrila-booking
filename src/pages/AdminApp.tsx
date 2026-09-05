@@ -2049,13 +2049,17 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
             };
         });
 
-  const todayStr = getLocalTodayStr();
-    
-    const pastDays = dailyBreakdown.filter(item => item.date < todayStr); 
-    const workedDaysCount = pastDays.filter(item => item.hasSales).length;
-    const missedDays = pastDays.filter(item => !item.hasSales);
-    const missedDaysCount = missedDays.length;
-       
+        const todayStr = getLocalTodayStr(); // ဥပမာ - "2026-09-05"
+
+        // 🌟 ယနေ့ရောက်ရှိနေတဲ့ရက်အထိ (Day 5 အပါအဝင်) ပြသရန် 🌟
+        dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
+
+        const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
+        workedDaysCount = pastDays.filter(item => item.hasSales).length;
+        missedDays = pastDays.filter(item => !item.hasSales);
+        missedDaysCount = missedDays.length;
+    }
+
     // 🌟 Comparison Calculations (Dynamic Extraction from Excel) 🌟
     const todayLocal = new Date();
     const currentDayNum = todayLocal.getDate(); 
@@ -2357,19 +2361,19 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* Attendance & Sales Summary */}
-                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8">
+                            {/* Attendance Summary */}
+                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
-                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့တဲ့ရက်အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ယနေ့အထိ Section ဝင်ထားမှု အခြေအနေ)</p>
                                 
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
                                         <div className="text-[9px] text-green-600 font-bold uppercase tracking-wider mb-1">Worked Days</div>
-                                        <div className="text-2xl font-black text-green-700">{workedDaysCount} <span className="text-[10px] font-bold text-green-600/70">/ {pastDays.length} Days</span></div>
+                                        <div className="text-2xl font-black text-green-700">{workedDaysCount} <span className="text-[10px] font-bold text-green-600/70">Days</span></div>
                                     </div>
                                     <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">
                                         <div className="text-[9px] text-red-600 font-bold uppercase tracking-wider mb-1">Missed Days</div>
-                                        <div className="text-2xl font-black text-red-700">{missedDaysCount} <span className="text-[10px] font-bold text-red-600/70">/ {pastDays.length} Days</span></div>
+                                        <div className="text-2xl font-black text-red-700">{missedDaysCount} <span className="text-[10px] font-bold text-red-600/70">Days</span></div>
                                     </div>
                                 </div>
 
@@ -2377,7 +2381,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                     <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
                                         <span className="text-[10px] font-bold text-gray-500 mb-2.5 block">Section မဝင်ထားသော ရက်များ :</span>
                                         <div className="flex flex-wrap gap-2">
-                                            {missedDays.map((md: any) => (
+                                            {missedDays.map(md => (
                                                 <span key={md.date} className="bg-white border border-red-200 text-red-500 text-[9px] font-bold px-2 py-1 rounded-md shadow-sm">
                                                     Day {md.dayNo} ({md.date})
                                                 </span>
@@ -2398,8 +2402,8 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                     <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
                                 </h3>
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                                    {dailyBreakdown.map((item: any, idx: number) => (
-                                        <div key={idx} className={"p-4 rounded-xl border transition-all " + (item.hasSales ? "bg-white border-gray-200 shadow-sm" : "bg-gray-50/70 border-dashed border-gray-200")}>
+                                    {dailyBreakdown.map((item, idx) => (
+                                        <div key={idx} className={`p-4 rounded-xl border transition-all ${item.hasSales ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-50/70 border-dashed border-gray-200'}`}>
                                             <div className="flex justify-between items-center mb-2">
                                                 <div className="flex items-center space-x-2">
                                                     <span className="bg-[#123524] text-[#D4AF37] text-[10px] font-bold px-2 py-0.5 rounded">Day {item.dayNo}</span>
@@ -2432,8 +2436,8 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                             <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
                                                 <div>
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
-                                                    <span className={"font-black " + (item.dayActual >= item.dailyTarget ? "text-green-600" : "text-orange-600")}>
-                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? "Met" : formatPrice(item.dailyVariance)})</span>
+                                                    <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
+                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
                                                     </span>
                                                     <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
                                                         Total Actual: {formatPrice(item.cumActual)}
@@ -2457,6 +2461,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                     ))}
                                 </div>
                             </div>
+                        </>
                     )}
                 </div>
             )}
