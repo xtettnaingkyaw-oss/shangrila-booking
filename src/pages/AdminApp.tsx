@@ -2431,4 +2431,3 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         </div>
     );
 }
-)
