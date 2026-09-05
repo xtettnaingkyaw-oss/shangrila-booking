@@ -598,7 +598,8 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     }));
 
     // 🌟 ဝန်ထမ်း ID (No-7 နှင့် SGL-007) နှစ်မျိုးလုံးကို အလိုအလျောက် သိရှိစေရန်နှင့် Date မှန်ကန်စေရန် 🌟
-    const currentStaffNumMatch = currentUser?.id?.match(/\d+/);
+    // currentUser အစား loggedInStaff ဟု အမှန်တကယ် လက်ခံရရှိထားသော variable ကို ပြောင်းလဲအသုံးပြုထားပါသည်
+    const currentStaffNumMatch = loggedInStaff?.id?.match(/\d+/);
     const currentStaffNum = currentStaffNumMatch ? parseInt(currentStaffNumMatch[0], 10) : null;
 
     const myEntries = allEntries.filter((e: any) => {
@@ -607,7 +608,8 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         const eNumMatch = eId.match(/\d+/);
         const eNum = eNumMatch ? parseInt(eNumMatch[0], 10) : null;
         
-        const isMyEntry = eId === currentUser?.id || (currentStaffNum !== null && eNum === currentStaffNum);
+        // currentUser အစား loggedInStaff သို့ ပြောင်းလဲထားပါသည်
+        const isMyEntry = eId === loggedInStaff?.id || (currentStaffNum !== null && eNum === currentStaffNum);
         
         if (isMyEntry) {
             // Date များကို Timezone မလွဲစေဘဲ တိကျစွာ ပြောင်းလဲပေးခြင်း
