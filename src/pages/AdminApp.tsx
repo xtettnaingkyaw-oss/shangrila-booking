@@ -6,7 +6,7 @@ import { encryptText, decryptText } from '../security';
 import CryptoJS from 'crypto-js'; 
 import * as XLSX from 'xlsx';
 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy } from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
