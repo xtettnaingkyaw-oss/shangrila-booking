@@ -2017,7 +2017,6 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     const BASE_DAILY_TARGET = 150000;
     const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
 
-    // 🌟 1. Web App ဘက်မှ အလိုအလျောက် တွက်ချက်မှု (Auto Update သေချာစေရန်) 🌟
     const staffSalesMap = new Map();
     let calcThisMonthUpToToday = 0; 
     let calcYesterdaySales = 0; 
@@ -2046,7 +2045,6 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
     const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => p['1 to 31 Actual']), 1) : 1;
 
-    // 🌟 2. Excel ထဲက Custom Table အသစ်ကို ဖတ်မည့် Logic 🌟
     let lastMonthUpToTodaySales = 2061000; 
     let displayThisMonthUpToToday = calcThisMonthUpToToday; 
     let lastMonthYesterdaySales = 939000; 
@@ -2092,12 +2090,13 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         top5Gaps.push({ rank1: `#${i + 1} (${p1['Staff ID']})`, rank2: `#${i + 2} (${p2['Staff ID']})`, diff });
     }
 
+    // 🌟 FIX: Declare these variables outside the 'if' block so they don't cause crashes in the UI 🌟
     let myEntries: any[] = [];
     let dailyBreakdown: any[] = [];
+    let pastDays: any[] = []; 
     let workedDaysCount = 0;
     let missedDaysCount = 0;
     let missedDays: any[] = [];
-    
     let mySummary = null;
 
     if (selectedStaffId) {
@@ -2148,7 +2147,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
             });
 
             dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
-            const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
+            pastDays = fullDailyBreakdown.filter(item => item.date < todayStr); // assigned here
             workedDaysCount = pastDays.filter(item => item.hasSales).length;
             missedDays = pastDays.filter(item => !item.hasSales);
             missedDaysCount = missedDays.length;
@@ -2355,7 +2354,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
-                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ ဝင်ရောက်မှု အခြေအနေ)</p>
                                 
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
