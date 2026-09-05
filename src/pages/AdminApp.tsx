@@ -1047,9 +1047,17 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         const normalizedEntryData = entryData.map((row: any) => {
             const newRow = { ...row };
             
-            // Staff ID နောက်မှာ Space အပိုတွေပါလာရင် ဖြတ်ထုတ်ခြင်း
+            // 🌟 Staff ID များကို ပုံစံညီအောင် အလိုအလျောက် ပြောင်းလဲပေးခြင်း (SGL-001 မှ No-1 သို့) 🌟
             if (newRow['Staff ID']) {
-                newRow['Staff ID'] = String(newRow['Staff ID']).trim();
+                let sId = String(newRow['Staff ID']).trim();
+                // SGL- ပါလာပါက No- သို့ အလိုအလျောက်ပြောင်းပေးမည်
+                if (sId.toUpperCase().startsWith('SGL-')) {
+                    const numPart = parseInt(sId.split('-')[1], 10);
+                    if (!isNaN(numPart)) {
+                        sId = "No-" + numPart;
+                    }
+                }
+                newRow['Staff ID'] = sId;
             }
 
             // Date ပုံစံကို App ကဖတ်တတ်တဲ့ 'YYYY-MM-DD' အဖြစ် ပြောင်းလဲပေးခြင်း
@@ -1066,7 +1074,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                         const y = dateObj.getFullYear();
                         const m = String(dateObj.getMonth() + 1).padStart(2, '0');
                         const d = String(dateObj.getDate()).padStart(2, '0');
-                        parsedStr = `${y}-${m}-${d}`;
+                        parsedStr = y + "-" + m + "-" + d; // Quote အမှားမဖြစ်စေရန် String ပေါင်းနည်းသုံးထားပါသည်
                     } else {
                         parsedStr = rawDate.trim();
                     }
