@@ -628,7 +628,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     let cumActualPrior = 0;
 
-        const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
+    const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
         const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
         
