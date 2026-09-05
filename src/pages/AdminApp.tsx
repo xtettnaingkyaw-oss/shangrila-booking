@@ -2357,9 +2357,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* Attendance Summary */}
-                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <h3 classNa{/* Attendance & Sales Summary */}
+                            {/* Attendance & Sales Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
                                 <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့တဲ့ရက်အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
@@ -2379,7 +2377,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                     <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
                                         <span className="text-[10px] font-bold text-gray-500 mb-2.5 block">Section မဝင်ထားသော ရက်များ :</span>
                                         <div className="flex flex-wrap gap-2">
-                                            {missedDays.map(md => (
+                                            {missedDays.map((md: any) => (
                                                 <span key={md.date} className="bg-white border border-red-200 text-red-500 text-[9px] font-bold px-2 py-1 rounded-md shadow-sm">
                                                     Day {md.dayNo} ({md.date})
                                                 </span>
