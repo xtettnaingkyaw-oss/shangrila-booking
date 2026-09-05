@@ -1080,7 +1080,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                     }
                 }
                 newRow.ParsedDate = parsedStr; 
-                newRow.Date = parsedStr; 
+                newRow.Date = parsedStr; // 🌟 ဤစာကြောင်း မဖြစ်မနေ ပါရပါမည် 🌟
             }
             return newRow;
         });
