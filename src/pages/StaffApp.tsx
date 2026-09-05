@@ -557,7 +557,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     const cleanStaffId = String(loggedInStaff.id || '').trim().toLowerCase();
     const cleanStaffName = String(loggedInStaff.name || '').trim().toLowerCase();
     
-    // 🌟 နာမည်ထဲက နံပါတ်ကို ဦးစားပေးယူမည် (ဥပမာ "Therapist No-7" လျှင် 7 ကို ယူမည်) 🌟
     const nameMatch = cleanStaffName.match(/\d+/);
     const staffNum = nameMatch ? parseInt(nameMatch[0], 10) : (String(loggedInStaff.id).match(/\d+/) ? parseInt(String(loggedInStaff.id).match(/\d+/)![0], 10) : null);
 
@@ -629,15 +628,18 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     let cumActualPrior = 0;
 
-    const todayStr = getLocalTodayStr();
-
-        dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
-
-        const pastDays = fullDailyBreakdown.filter(item => item.date <= todayStr);
-        workedDaysCount = pastDays.filter(item => item.hasSales).length;
-        missedDays = pastDays.filter(item => !item.hasSales);
-        missedDaysCount = missedDays.length;
-    }
+    const dailyBreakdown = allDates.map((d: any, idx: number) => {
+        const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
+        const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
+        
+        const daysRemaining = totalDays - idx;
+        const remainingTargetPrior = Math.max(0, monthlyTotalTarget - cumActualPrior);
+        const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTargetPrior / daysRemaining) : 0;
+        
+        const runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
+        const cumActual = cumActualPrior + dayActual;
+        const dailyVariance = dayActual - BASE_DAILY_TARGET;
+        const remainingMonthlyTarget = Math.max(0, monthlyTotalTarget - cumActual);
 
         cumActualPrior = cumActual;
 
@@ -657,6 +659,10 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     });
 
     const todayStr = getLocalTodayStr();
+    
+    // 🌟 ယနေ့ရက် (Day 5) အထိ ပါဝင်ပြသရန် 🌟
+    const filteredDailyBreakdown = dailyBreakdown.filter(item => item.date <= todayStr);
+
     const pastDays = dailyBreakdown.filter(item => item.date <= todayStr);
     const workedDaysCount = pastDays.filter(item => item.hasSales).length;
     const missedDays = pastDays.filter(item => !item.hasSales);
@@ -840,7 +846,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                     <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
                                 </h3>
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                                    {dailyBreakdown.map((item, idx) => (
+                                    {filteredDailyBreakdown.map((item, idx) => (
                                         <div key={idx} className={`p-4 rounded-xl border transition-all ${item.hasSales ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-50/70 border-dashed border-gray-200'}`}>
                                             <div className="flex justify-between items-center mb-2">
                                                 <div className="flex items-center space-x-2">
