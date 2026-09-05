@@ -1897,7 +1897,8 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     </div>
   );
 }
-function AdminStaffPconst [matrixData, setMatrixData] = useState<any>(null);
+
+function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
     const [loading, setLoading] = useState(true);
     const [selectedStaffId, setSelectedStaffId] = useState<string>('');
 
