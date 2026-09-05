@@ -2203,63 +2203,66 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         </div>
                     </div>
 
-                    {/* 🌟 1. Last Month Vs This Month (Up to Today & Full Month) 🌟 */}
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                        <h3 className="font-bold text-[#123524] text-sm flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]"/> Last Month Vs This Month (Performance Comparison)</h3>
+                   {/* Last Month Vs This Month Comparison */}
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8">
+                        <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-blue-500"/> Last Month Vs This Month (Performance Comparison)</h3>
                         
-                        {/* နေ့အလိုက် (Day 1 to Previous Day) နှိုင်းယှဉ်ချက် */}
-                        <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                            <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ (Day 1 to {previousDayNum}) vs ယခုလ (Day 1 to {previousDayNum})</div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                                <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                    <div className="text-[9px] text-gray-500 font-bold uppercase">{lastMonthNameStr} (1 to {previousDayNum})</div>
-                                    <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthUpToTodaySales)}</div>
-                                </div>
-                                <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                    <div className="text-[9px] text-blue-700 font-bold uppercase">{thisMonthNameStr} (1 to {previousDayNum})</div>
-                                    <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayThisMonthUpToToday)}</div>
-                                </div>
-                                <div className={`p-2.5 rounded-lg border text-center ${upToTodayDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                    <div className="text-[9px] font-bold uppercase">Difference (Up to Day {previousDayNum})</div>
-                                    <div className="text-xs font-black mt-0.5">{upToTodayDiff >= 0 ? '+' : ''}{formatPrice(upToTodayDiff)}</div>
+                        <div className="space-y-6">
+                            {/* နေ့အလိုက် (Day 1 to Previous Day) နှိုင်းယှဉ်ချက် */}
+                            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                                <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ (Day 1 to {previousDayNum}) vs ယခုလ (Day 1 to {previousDayNum})</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                                    <div className="bg-white p-2.5 rounded-lg border border-blue-200">
+                                        <div className="text-[9px] text-gray-500 font-bold uppercase">{lastMonthNameStr} (1 to {previousDayNum})</div>
+                                        <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthUpToTodaySales)}</div>
+                                    </div>
+                                    <div className="bg-white p-2.5 rounded-lg border border-blue-200">
+                                        <div className="text-[9px] text-blue-700 font-bold uppercase">{thisMonthNameStr} (1 to {previousDayNum})</div>
+                                        <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayThisMonthUpToToday)}</div>
+                                    </div>
+                                    <div className={`p-2.5 rounded-lg border text-center ${upToTodayDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                        <div className="text-[9px] font-bold uppercase">Difference (Up to Day {previousDayNum})</div>
+                                        <div className="text-xs font-black mt-0.5">{upToTodayDiff >= 0 ? '+' : ''}{formatPrice(upToTodayDiff)}</div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* မနေ့က (Previous Day) နှိုင်းယှဉ်ချက် */}
-                        <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100">
-                            <div className="text-xs font-bold text-purple-900 mb-2 flex items-center"><Clock className="w-3.5 h-3.5 mr-1.5"/> မနေ့ကနေ့ချင်းအလိုက်နှိုင်းယှဉ်ချက် ({yesterdayDateTextStr})</div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                                <div className="bg-white p-2.5 rounded-lg border border-purple-200">
-                                    <div className="text-[9px] text-gray-500 font-bold uppercase">Last Month Same Day</div>
-                                    <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthYesterdaySales)}</div>
-                                </div>
-                                <div className="bg-white p-2.5 rounded-lg border border-purple-200">
-                                    <div className="text-[9px] text-purple-700 font-bold uppercase">This Month Yesterday</div>
-                                    <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayYesterdaySales)}</div>
-                                </div>
-                                <div className={`p-2.5 rounded-lg border text-center ${dayDifference >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                    <div className="text-[9px] font-bold uppercase">Day Difference</div>
-                                    <div className="text-xs font-black mt-0.5">{dayDifference >= 0 ? '+' : ''}{formatPrice(dayDifference)}</div>
+                            {/* မနေ့က (Previous Day) နှိုင်းယှဉ်ချက် */}
+                            <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100">
+                                <div className="text-xs font-bold text-purple-900 mb-2 flex items-center"><Clock className="w-3.5 h-3.5 mr-1.5"/> မနေ့ကနေ့ချင်းအလိုက်နှိုင်းယှဉ်ချက် ({yesterdayDateTextStr})</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                                    <div className="bg-white p-2.5 rounded-lg border border-purple-200">
+                                        <div className="text-[9px] text-gray-500 font-bold uppercase">Last Month Same Day</div>
+                                        <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthYesterdaySales)}</div>
+                                    </div>
+                                    <div className="bg-white p-2.5 rounded-lg border border-purple-200">
+                                        <div className="text-[9px] text-purple-700 font-bold uppercase">This Month Yesterday</div>
+                                        <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayYesterdaySales)}</div>
+                                    </div>
+                                    <div className={`p-2.5 rounded-lg border text-center ${dayDifference >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                        <div className="text-[9px] font-bold uppercase">Day Difference</div>
+                                        <div className="text-xs font-black mt-0.5">{dayDifference >= 0 ? '+' : ''}{formatPrice(dayDifference)}</div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* တစ်လစာ စုစုပေါင်း နှိုင်းယှဉ်ချက် */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                            <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
-                                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">{lastFullMonthNameStr} 1 TO 31 TOTAL</div>
-                                <div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div>
-                            </div>
-                            <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
-                                <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">{thisFullMonthNameStr} 1 TO 31 TOTAL</div>
-                                <div className="text-sm font-black text-[#123524]">{formatPrice(totalThisMonthSales)}</div>
-                            </div>
-                            <div className={`p-3.5 rounded-xl border text-center ${salesDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                <div className="text-[9px] font-bold uppercase tracking-wider mb-1">Full Month Difference</div>
-                                <div className="text-sm font-black">{salesDiff >= 0 ? '+' : ''}{formatPrice(salesDiff)}</div>
+                            {/* တစ်လစာ စုစုပေါင်း နှိုင်းယှဉ်ချက် */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                                <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
+                                    <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">{lastFullMonthNameStr} 1 TO 31 TOTAL</div>
+                                    <div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div>
+                                </div>
+                                <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
+                                    <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">{thisFullMonthNameStr} 1 TO 31 TOTAL</div>
+                                    <div className="text-sm font-black text-[#123524]">{formatPrice(totalThisMonthSales)}</div>
+                                </div>
+                                <div className={`p-3.5 rounded-xl border text-center ${salesDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                    <div className="text-[9px] font-bold uppercase tracking-wider mb-1">Full Month Difference</div>
+                                    <div className="text-sm font-black">{salesDiff >= 0 ? '+' : ''}{formatPrice(salesDiff)}</div>
+                                </div>
                             </div>
                         </div>
+                    </div>
 
                     {/* Top-5 Rank Gap Analysis */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
