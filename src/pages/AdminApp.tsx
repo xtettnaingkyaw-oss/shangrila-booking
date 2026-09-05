@@ -2033,8 +2033,10 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
             };
         });
 
-        const todayStr = getLocalTodayStr();
-        dailyBreakdown = fullDailyBreakdown.filter(item => item.date < todayStr);
+        const todayStr = getLocalTodayStr(); // ဥပမာ - "2026-09-05"
+
+        // 🌟 ယနေ့ရောက်ရှိနေတဲ့ရက်အထိ (Day 5 အပါအဝင်) ပြသရန် 🌟
+        dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
 
         const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
         workedDaysCount = pastDays.filter(item => item.hasSales).length;
