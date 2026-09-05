@@ -597,8 +597,36 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         CleanStaffName: String(e['Staff Name'] || '').trim().toLowerCase()
     }));
 
+    // 🌟 ဝန်ထမ်း ID (No-7 နှင့် SGL-007) နှစ်မျိုးလုံးကို အလိုအလျောက် သိရှိစေရန်နှင့် Date မှန်ကန်စေရန် 🌟
+    const currentStaffNumMatch = currentUser?.id?.match(/\d+/);
+    const currentStaffNum = currentStaffNumMatch ? parseInt(currentStaffNumMatch[0], 10) : null;
+
     const myEntries = allEntries.filter((e: any) => {
-        return checkIsMe(e['Staff ID'], e['Staff Name']);
+        // Staff ID တိုက်စစ်ခြင်း (No-7, SGL-007, SGL-7 အားလုံးကို အတူတူဟု သတ်မှတ်မည်)
+        const eId = String(e['Staff ID'] || '').trim();
+        const eNumMatch = eId.match(/\d+/);
+        const eNum = eNumMatch ? parseInt(eNumMatch[0], 10) : null;
+        
+        const isMyEntry = eId === currentUser?.id || (currentStaffNum !== null && eNum === currentStaffNum);
+        
+        if (isMyEntry) {
+            // Date များကို Timezone မလွဲစေဘဲ တိကျစွာ ပြောင်းလဲပေးခြင်း
+            let rawDate = e.ParsedDate || e.Date;
+            if (typeof rawDate === 'number') {
+                const dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+                e.ParsedDate = dateObj.toISOString().split('T')[0];
+            } else if (typeof rawDate === 'string') {
+                const parsed = new Date(rawDate);
+                if (!isNaN(parsed.getTime())) {
+                    const y = parsed.getFullYear();
+                    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+                    const d = String(parsed.getDate()).padStart(2, '0');
+                    e.ParsedDate = `${y}-${m}-${d}`;
+                }
+            }
+            return true;
+        }
+        return false;
     });
 
     const uniqueDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
