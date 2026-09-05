@@ -629,9 +629,10 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     let cumActualPrior = 0;
 
-    const dailyBreakdown = allDates.map((d: any, idx: number) => {
-        const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
-        const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
+    const todayStr = getLocalTodayStr(); // ဥပမာ - "2026-09-05"
+
+        // 🌟 ယနေ့ရောက်ရှိနေတဲ့ရက်အထိ (Day 5 အပါအဝင်) ပြသရန် 🌟
+        dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
         
         const daysRemaining = totalDays - idx;
         const remainingTargetPrior = Math.max(0, monthlyTotalTarget - cumActualPrior);
