@@ -1913,15 +1913,6 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     if (loading) return <div className="text-center py-20 text-[#D4AF37] font-bold animate-pulse text-xs uppercase tracking-widest">Loading Matrix Data...</div>;
     if (!matrixData || !matrixData.topPerformers) return <div className="text-center py-20 text-gray-400 font-bold text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-4">No Matrix Data available. Please upload the Excel file in Settings.</div>;
 
-    // 🌟 FIX: Safety Checks ထည့်သွင်းထားပါသည်
-    const sortedPerformers = [...matrixData.topPerformers].filter(p => p && Number(p['1 to 31 Actual']) > 0).sort((a, b) => (Number(b['1 to 31 Actual']) || 0) - (Number(a['1 to 31 Actual']) || 0));
-    const maxActual = sortedPerformers.length > 0 ? (Number(sortedPerformers[0]['1 to 31 Actual']) || 1) : 1;
-
-    const extractNumber = (str: string) => {
-        const match = String(str).match(/\d+/);
-        return match ? parseInt(match[0], 10) : null;
-    };
-
     const parseExcelDate = (val: any) => {
         if (!val) return '';
         if (typeof val === 'number') {
@@ -1941,18 +1932,20 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     }));
 
     const allDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
-    if (allDates.length === 0) {
-        const currentMonth = new Date().getMonth() + 1;
-        const currentYear = new Date().getFullYear();
-        const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-        for (let i = 1; i <= daysInMonth; i++) {
-            allDates.push(`${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
-        }
-    }
     
-    const totalDays = allDates.length;
+    // 🌟 ရက်အရေအတွက် အမှန်ရရှိစေရန် (အနည်းဆုံး ၂၈ ရက်မှ ၃၁ ရက်အထိ သေချာစေရန်) 🌟
+    const totalDays = Math.max(allDates.length, 30);
     const BASE_DAILY_TARGET = 150000;
-    const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
+    const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET; // ၃၀ ရက်ဆိုလျှင် ၄၅ သိန်း အတိအကျထွက်မည်
+
+    // 🌟 ဝန်ထမ်းအားလုံး (၁၅ ယောက်လုံး) ပါဝင်စေရန် filter ကို ဖြုတ်လိုက်ပါပြီ 🌟
+    const sortedPerformers = [...matrixData.topPerformers].sort((a, b) => (Number(b['1 to 31 Actual']) || 0) - (Number(a['1 to 31 Actual']) || 0));
+    const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => Number(p['1 to 31 Actual']) || 0), 1) : 1;
+
+    const extractNumber = (str: string) => {
+        const match = String(str).match(/\d+/);
+        return match ? parseInt(match[0], 10) : null;
+    };
 
     const selectedStaff = therapists.find(t => t.id === selectedStaffId);
 
@@ -2019,22 +2012,16 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     const totalLastMonthSales = 17100300; 
     const salesDiff = totalThisMonthSales - totalLastMonthSales;
 
-    // 🌟 FIX: Data Out of Bounds မဖြစ်စေရန် Math.max(0, length - 1) ထည့်သွင်းထားပါသည်
     const top5Gaps = [];
-    const loopLimit = Math.min(4, Math.max(0, sortedPerformers.length - 1));
-    
-    for (let i = 0; i < loopLimit; i++) {
+    for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
         const p1 = sortedPerformers[i];
         const p2 = sortedPerformers[i + 1];
-        
-        if (p1 && p2) {
-            const diff = (Number(p1['1 to 31 Actual']) || 0) - (Number(p2['1 to 31 Actual']) || 0);
-            top5Gaps.push({
-                rank1: `#${i + 1} (${p1['Staff ID']})`,
-                rank2: `#${i + 2} (${p2['Staff ID']})`,
-                diff
-            });
-        }
+        const diff = (Number(p1['1 to 31 Actual']) || 0) - (Number(p2['1 to 31 Actual']) || 0);
+        top5Gaps.push({
+            rank1: `#${i + 1} (${p1['Staff ID']})`,
+            rank2: `#${i + 2} (${p2['Staff ID']})`,
+            diff
+        });
     }
 
     return (
@@ -2064,9 +2051,9 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
                         <div className="flex items-end space-x-3 h-52 pb-2 pt-14 min-w-max border-b border-gray-100">
                             {sortedPerformers.map((p, idx) => {
-                                const pActual = Number(p['1 to 31 Actual']) || 0;
-                                const heightPercent = Math.max(5, (pActual / maxActual) * 100);
-                                const metPercent = monthlyTotalTarget > 0 ? (pActual / monthlyTotalTarget) * 100 : 0;
+                                const actualSales = Number(p['1 to 31 Actual']) || 0;
+                                const heightPercent = Math.max(5, (actualSales / maxActual) * 100);
+                                const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
                                 
                                 let barColor = 'bg-gray-200 hover:bg-gray-300';
                                 if (idx === 0) barColor = 'bg-gradient-to-t from-[#123524] to-[#1a4a32] shadow-md'; 
@@ -2078,7 +2065,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 return (
                                     <div key={idx} className="flex flex-col justify-end items-center group w-12 h-full">
                                         <div className="text-[9px] font-bold text-gray-500 mb-2 opacity-0 group-hover:opacity-100 transition-opacity -rotate-45 whitespace-nowrap z-10">
-                                            {formatPrice(pActual)}
+                                            {formatPrice(actualSales)}
                                         </div>
                                         <div className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out flex justify-center ${barColor}`} style={{ height: `${heightPercent}%` }}>
                                             {idx === 0 && <Crown className="w-6 h-6 text-[#D4AF37] absolute -top-12" />}
@@ -2093,12 +2080,13 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         </div>
                     </div>
 
+                    {/* Last Month Vs This Month Comparison Card */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]"/> Last Month Vs This Month</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
                                 <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">July 1 to 31 Total</div>
-                                <div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div>
+                                <div className="text-sm font-bold text-gray-800">17,100,300 Ks</div>
                             </div>
                             <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
                                 <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">Aug 1 to 31 Total</div>
@@ -2111,6 +2099,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         </div>
                     </div>
 
+                    {/* Top-5 Rank Gap Analysis */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-[#D4AF37]"/> Top-5 Rank Gap Analysis</h3>
                         <div className="space-y-2.5">
@@ -2124,14 +2113,14 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                     </div>
 
                     <div className="space-y-3">
-                        {sortedPerformers.slice(0, 10).map((p, idx) => {
-                            const pActual = Number(p['1 to 31 Actual']) || 0;
+                        {sortedPerformers.map((p, idx) => {
                             let badgeClass = "bg-gray-100 text-gray-600";
                             if (idx === 0) badgeClass = "bg-yellow-100 text-yellow-700 border border-yellow-300";
                             else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
                             else if (idx === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-300";
 
-                            const metPercent = monthlyTotalTarget > 0 ? (pActual / monthlyTotalTarget) * 100 : 0;
+                            const actualSales = Number(p['1 to 31 Actual']) || 0;
+                            const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
 
                             return (
                                 <div key={idx} className="flex items-center p-4 rounded-xl border bg-white border-gray-100 shadow-sm transition-all hover:border-[#D4AF37]/50 hover:shadow-md cursor-default">
@@ -2143,7 +2132,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                         <div className="text-[10px] text-gray-500 font-semibold mt-0.5">Target: {formatPrice(monthlyTotalTarget)}</div>
                                     </div>
                                     <div className="text-right">
-                                        <div className="font-black text-[#123524]">{formatPrice(pActual)}</div>
+                                        <div className="font-black text-[#123524]">{formatPrice(actualSales)}</div>
                                         <div className={`text-[9px] font-bold mt-0.5 ${metPercent >= 50 ? 'text-green-500' : 'text-orange-500'}`}>
                                             Met {metPercent.toFixed(1)}%
                                         </div>
@@ -2160,6 +2149,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         <div className="text-center py-10 text-gray-400 text-xs font-bold border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">Selected staff data is not found in the uploaded Matrix.</div>
                     ) : (
                         <>
+                            {/* Monthly Target Donut Card */}
                             <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
                                 <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center"><Target className="w-4 h-4 mr-2"/> Monthly Target ({selectedStaff?.name})</h3>
@@ -2187,6 +2177,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 </div>
                             </div>
 
+                            {/* Financial Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-yellow-600"/> Financial Summary</h3>
                                 <div className="space-y-3">
@@ -2205,6 +2196,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 </div>
                             </div>
 
+                            {/* Attendance Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
                                 <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ယနေ့အထိ Section ဝင်ထားမှု အခြေအနေ)</p>
@@ -2239,6 +2231,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 )}
                             </div>
 
+                            {/* Dynamic Adjusted Daily Target Tracker */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
                                     <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
