@@ -847,7 +847,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                     <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
                                 </h3>
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                                    {filteredDailyBreakdown.map((item, idx) => (
+                                    {dailyBreakdown.map((item, idx) => (
                                         <div key={idx} className={`p-4 rounded-xl border transition-all ${item.hasSales ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-50/70 border-dashed border-gray-200'}`}>
                                             <div className="flex justify-between items-center mb-2">
                                                 <div className="flex items-center space-x-2">
