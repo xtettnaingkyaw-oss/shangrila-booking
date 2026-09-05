@@ -2043,25 +2043,28 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
     // ယနေ့အထိ (ဥပမာ- ဒီလရဲ့ ပထမ ၅ ရက်အတွင်း) ရရှိမှုနှိုင်းယှဉ်ချက်
     const todayLocal = new Date();
-    const currentDayNum = todayLocal.getDate(); // ၅ ရက်နေ့ဆိုလျှင် ၅
+    const currentDayNum = todayLocal.getDate(); // ဥပမာ - ၅ ရက်နေ့
+    const previousDayNum = Math.max(1, currentDayNum - 1); // 🌟 ပြီးခဲ့တဲ့ရက်အထိ (၄ ရက်နေ့) 🌟
     
-    // ပြီးခဲ့တဲ့လ (July) ရဲ့ ဒီနေ့အထိ ရရှိခဲ့သော နှုန်းထား (ဥပမာအားဖြင့် ယူဆချက် ဒါမှမဟုတ် daily entries မှ တွက်ချက်မှု)
-    const lastMonthUpToTodaySales = 2850000; // 7လပိုင်း ပထမ ၅ရက်အတွက် စုစုပေါင်း ဥပမာပမာဏ
+    const lastMonthUpToTodaySales = 2850000; 
     const thisMonthUpToTodaySales = allEntries
         .filter(e => {
-            const dNum = parseInt(e.ParsedDate.split('-')[2], 10);
-            return dNum <= currentDayNum;
+            const parts = e.ParsedDate.split('-');
+            if (parts.length === 3) {
+                const dNum = parseInt(parts[2], 10);
+                return dNum <= previousDayNum; // 🌟 ယနေ့မပါဘဲ ပြီးခဲ့တဲ့ရက်အထိသာ စစ်ထုတ်မည် 🌟
+            }
+            return false;
         })
         .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
     
     const upToTodayDiff = thisMonthUpToTodaySales - lastMonthUpToTodaySales;
 
-    // ပြီးခဲ့တဲ့ရက်ချင်းနှိုင်းယှဉ်ချက် (ဥပမာ- 7လပိုင်း ၄ ရက်နေ့ vs 8လပိုင်း ၄ ရက်နေ့ သို့မဟုတ် မနေ့က vs ယခင်လကနေ့)
-    const targetDateStr = `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, '0')}-${String(Math.max(1, currentDayNum - 1)).padStart(2, '0')}`;
+    const targetDateStr = `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, '0')}-${String(previousDayNum).padStart(2, '0')}`;
     const thisMonthYesterdaySales = allEntries
         .filter(e => e.ParsedDate === targetDateStr)
         .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
-    const lastMonthYesterdaySales = 550000; // ပြီးခဲ့တဲ့လက အတူတူနေ့ရက်အတွက် ဥပမာပမာဏ
+    const lastMonthYesterdaySales = 550000;
 
     const top5Gaps = [];
     for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
@@ -2135,20 +2138,20 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                         <h3 className="font-bold text-[#123524] text-sm flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]"/> Last Month Vs This Month (Performance Comparison)</h3>
                         
-                        {/* နေ့အလိုက် (ယနေ့အထိ) နှိုင်းယှဉ်ချက် */}
+                        {/* နေ့အလိုက် (ပြီးခဲ့တဲ့ရက်အထိ) နှိုင်းယှဉ်ချက် */}
                         <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                            <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ (Day 1 to {currentDayNum}) vs ယခုလ (Day 1 to {currentDayNum})</div>
+                            <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ (Day 1 to {previousDayNum}) vs ယခုလ (Day 1 to {previousDayNum})</div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                                 <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                    <div className="text-[9px] text-gray-500 font-bold uppercase">July (1 to {currentDayNum})</div>
+                                    <div className="text-[9px] text-gray-500 font-bold uppercase">July (1 to {previousDayNum})</div>
                                     <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthUpToTodaySales)}</div>
                                 </div>
                                 <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                    <div className="text-[9px] text-blue-700 font-bold uppercase">August (1 to {currentDayNum})</div>
+                                    <div className="text-[9px] text-blue-700 font-bold uppercase">August (1 to {previousDayNum})</div>
                                     <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(thisMonthUpToTodaySales)}</div>
                                 </div>
                                 <div className={`p-2.5 rounded-lg border text-center ${upToTodayDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                    <div className="text-[9px] font-bold uppercase">Difference (Up to Today)</div>
+                                    <div className="text-[9px] font-bold uppercase">Difference (Up to Day {previousDayNum})</div>
                                     <div className="text-xs font-black mt-0.5">{upToTodayDiff >= 0 ? '+' : ''}{formatPrice(upToTodayDiff)}</div>
                                 </div>
                             </div>
