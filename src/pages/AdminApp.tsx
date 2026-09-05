@@ -1994,7 +1994,8 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
         let cumActualPrior = 0;
 
-        dailyBreakdown = allDates.map((d: any, idx: number) => {
+        // ၁။ ရက်အားလုံးအတွက် တွက်ချက်မှုကို fullDailyBreakdown ထဲမှာ အရင်လုပ်ပါ
+        const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
             const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
             const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
             
@@ -2024,8 +2025,12 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
             };
         });
 
-        const todayStr = getLocalTodayStr();
-        const pastDays = dailyBreakdown.filter(item => item.date <= todayStr);
+        const todayStr = getLocalTodayStr(); // ဥပမာ - "2026-09-05"
+
+        // ၂။ 🌟 Tracker တွင် ပြသရန် (ယနေ့မတိုင်ခင် ပြီးခဲ့တဲ့ရက်များအထိသာ ယူမည်) 🌟
+        dailyBreakdown = fullDailyBreakdown.filter(item => item.date < todayStr);
+
+        const pastDays = fullDailyBreakdown.filter(item => item.date <= todayStr);
         workedDaysCount = pastDays.filter(item => item.hasSales).length;
         missedDays = pastDays.filter(item => !item.hasSales);
         missedDaysCount = missedDays.length;
