@@ -1974,27 +1974,35 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     let missedDays: any[] = [];
 
     if (selectedStaff) {
-        const staffNum = extractNumber(selectedStaff.id) || extractNumber(selectedStaff.name);
-        const staffIdExact = String(selectedStaff.id).trim().toLowerCase(); 
-        const staffNameExact = String(selectedStaff.name).trim().toLowerCase(); 
+        const staffNameStr = String(selectedStaff.name || '').trim().toLowerCase();
+        const staffIdStr = String(selectedStaff.id || '').trim().toLowerCase();
+        
+        // 🌟 Staff App ကဲ့သို့ပင် နာမည် သို့မဟုတ် ID ထဲမှ နံပါတ်ကို သေချာ ထုတ်ယူမည် (ဥပမာ "Therapist No-6" မှ 6 ကို ယူမည်) 🌟
+        const nameMatch = staffNameStr.match(/\d+/);
+        const staffNum = nameMatch ? parseInt(nameMatch[0], 10) : (staffIdStr.match(/\d+/) ? parseInt(staffIdStr.match(/\d+/)![0], 10) : null);
+
+        const checkIsMatch = (pId: any, pName: any) => {
+            const pIdStr = String(pId || '').trim().toLowerCase();
+            const pNameStr = String(pName || '').trim().toLowerCase();
+            const pNumMatch = pIdStr.match(/\d+/) || pNameStr.match(/\d+/);
+            const pNum = pNumMatch ? parseInt(pNumMatch[0], 10) : null;
+
+            return pIdStr === staffIdStr || 
+                   pIdStr === `no-${staffNum}` ||
+                   pNameStr === staffNameStr || 
+                   (staffNum !== null && pNum === staffNum);
+        };
 
         mySummary = (matrixData.monthlySummary || []).find((d: any) => {
-            const rowStaffNo = String(d['Staff No'] || '').trim().toLowerCase();
-            const rowStaffName = String(d['Staff Name'] || '').trim().toLowerCase();
-            const rowNum = extractNumber(rowStaffNo);
-            return rowStaffNo === staffIdExact || rowStaffNo === `no-${staffNum}` || rowStaffName === staffNameExact || (staffNum !== null && rowNum === staffNum);
+            return checkIsMatch(d['Staff No'], d['Staff Name']);
         });
         
         myEntries = allEntries.filter((e: any) => {
-            const entryStaffId = String(e['Staff ID'] || '').trim().toLowerCase();
-            const entryStaffName = String(e['Staff Name'] || '').trim().toLowerCase();
-            const entryNum = extractNumber(entryStaffId);
-            return entryStaffId === staffIdExact || entryStaffId === `no-${staffNum}` || entryStaffName === staffNameExact || (staffNum !== null && entryNum === staffNum);
+            return checkIsMatch(e['Staff ID'], e['Staff Name']);
         });
 
         let cumActualPrior = 0;
 
-        // ၁။ ရက်အားလုံးအတွက် တွက်ချက်မှုကို fullDailyBreakdown ထဲမှာ အရင်လုပ်ပါ
         const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
             const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
             const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
@@ -2025,12 +2033,10 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
             };
         });
 
-        const todayStr = getLocalTodayStr(); // ဥပမာ - "2026-09-05"
-
-        // ၂။ 🌟 Tracker တွင် ပြသရန် (ယနေ့မတိုင်ခင် ပြီးခဲ့တဲ့ရက်များအထိသာ ယူမည်) 🌟
+        const todayStr = getLocalTodayStr();
         dailyBreakdown = fullDailyBreakdown.filter(item => item.date < todayStr);
 
-        const pastDays = fullDailyBreakdown.filter(item => item.date <= todayStr);
+        const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
         workedDaysCount = pastDays.filter(item => item.hasSales).length;
         missedDays = pastDays.filter(item => !item.hasSales);
         missedDaysCount = missedDays.length;
