@@ -1897,8 +1897,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     </div>
   );
 }
-function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
-    const [matrixData, setMatrixData] = useState<any>(null);
+function AdminStaffPconst [matrixData, setMatrixData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [selectedStaffId, setSelectedStaffId] = useState<string>('');
 
@@ -1931,28 +1930,16 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         CleanStaffName: String(e['Staff Name'] || '').trim().toLowerCase()
     }));
 
-    const uniqueDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
     
     const allDates: string[] = [];
-    if (uniqueDates.length > 0) {
-        const firstDateStr = uniqueDates[0] as string;
-        const [yearStr, monthStr] = firstDateStr.split('-');
-        const year = parseInt(yearStr, 10);
-        const month = parseInt(monthStr, 10);
-        const daysInMonth = new Date(year, month, 0).getDate();
-        for (let i = 1; i <= daysInMonth; i++) {
-            allDates.push(`${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
-        }
-    } else {
-        const currentMonth = new Date().getMonth() + 1;
-        const currentYear = new Date().getFullYear();
-        const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-        for (let i = 1; i <= daysInMonth; i++) {
-            allDates.push(`${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
-        }
+    for (let i = 1; i <= daysInMonth; i++) {
+        allDates.push(`${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
     }
 
-    const totalDays = allDates.length;
+    const totalDays = daysInMonth;
     const BASE_DAILY_TARGET = 150000;
     const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
 
@@ -1973,6 +1960,11 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     let missedDaysCount = 0;
     let missedDays: any[] = [];
 
+    const todayLocal = new Date();
+    const currentDayNum = todayLocal.getDate(); // ဥပမာ - ၅ ရက်နေ့
+    const previousDayNum = Math.max(1, currentDayNum - 1); // ဥပမာ - ၄ ရက်နေ့အထိ
+    const todayStr = getLocalTodayStr();
+
     if (selectedStaff) {
         const staffNum = extractNumber(selectedStaff.id) || extractNumber(selectedStaff.name);
         const staffIdExact = String(selectedStaff.id).trim().toLowerCase(); 
@@ -1989,12 +1981,11 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
             const entryStaffId = String(e['Staff ID'] || '').trim().toLowerCase();
             const entryStaffName = String(e['Staff Name'] || '').trim().toLowerCase();
             const entryNum = extractNumber(entryStaffId);
-            return entryStaffId === staffIdExact || entryStaffId === `no-${staffNum}` || entryStaffName === staffNameExact || (staffNum !== null && entryNum === staffNum);
+            return entryStaffId === staffIdExact || entryStaffId === `no-${staffNum}` || entryStaffName === staffNameExact || (staffNum !== null && entryNum === entryNum);
         });
 
         let cumActualPrior = 0;
 
-        // ၁။ ရက်အားလုံးအတွက် တွက်ချက်မှုကို fullDailyBreakdown ထဲမှာ အရင်လုပ်ပါ
         const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
             const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
             const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
@@ -2025,43 +2016,40 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
             };
         });
 
-        const todayStr = getLocalTodayStr(); // ဥပမာ - "2026-09-05"
-
-        // ၂။ 🌟 Tracker တွင် ပြသရန် (ယနေ့မတိုင်ခင် ပြီးခဲ့တဲ့ရက်များအထိသာ ယူမည်) 🌟
+        // 🌟 Dynamic Tracker တွင် ပြီးခဲ့တဲ့ရက်အထိ (ယနေ့မတိုင်ခင်) သာ ပြရန် 🌟
         dailyBreakdown = fullDailyBreakdown.filter(item => item.date < todayStr);
 
-        const pastDays = fullDailyBreakdown.filter(item => item.date <= todayStr);
+        // 🌟 Attendance Summary တွင်လည်း ပြီးခဲ့တဲ့ရက်အထိ (မနေ့ကအထိ) ကိုသာ တွက်ချက်မည် (ယနေ့ မပါဝင်စေရန် item.date < todayStr သုံးပါ) 🌟
+        const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
         workedDaysCount = pastDays.filter(item => item.hasSales).length;
         missedDays = pastDays.filter(item => !item.hasSales);
         missedDaysCount = missedDays.length;
     }
 
-    // 🌟 Comparison Calculations 🌟
     const totalThisMonthSales = sortedPerformers.reduce((sum, p) => sum + (Number(p['1 to 31 Actual']) || 0), 0);
     const totalLastMonthSales = 17100300; 
     const salesDiff = totalThisMonthSales - totalLastMonthSales;
 
-    // ယနေ့အထိ (ဥပမာ- ဒီလရဲ့ ပထမ ၅ ရက်အတွင်း) ရရှိမှုနှိုင်းယှဉ်ချက်
-    const todayLocal = new Date();
-    const currentDayNum = todayLocal.getDate(); // ၅ ရက်နေ့ဆိုလျှင် ၅
-    
-    // ပြီးခဲ့တဲ့လ (July) ရဲ့ ဒီနေ့အထိ ရရှိခဲ့သော နှုန်းထား (ဥပမာအားဖြင့် ယူဆချက် ဒါမှမဟုတ် daily entries မှ တွက်ချက်မှု)
-    const lastMonthUpToTodaySales = 2850000; // 7လပိုင်း ပထမ ၅ရက်အတွက် စုစုပေါင်း ဥပမာပမာဏ
+    // 🌟 ပုံ (၁) ပါ Last Month vs This Month (Day 1 to Previous Day) နှိုင်းယှဉ်ချက် 🌟
+    const lastMonthUpToTodaySales = 2850000; 
     const thisMonthUpToTodaySales = allEntries
         .filter(e => {
-            const dNum = parseInt(e.ParsedDate.split('-')[2], 10);
-            return dNum <= currentDayNum;
+            const parts = e.ParsedDate.split('-');
+            if (parts.length === 3) {
+                const dNum = parseInt(parts[2], 10);
+                return dNum <= previousDayNum; // ပြီးခဲ့တဲ့ရက်အထိသာ
+            }
+            return false;
         })
         .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
     
     const upToTodayDiff = thisMonthUpToTodaySales - lastMonthUpToTodaySales;
 
-    // ပြီးခဲ့တဲ့ရက်ချင်းနှိုင်းယှဉ်ချက် (ဥပမာ- 7လပိုင်း ၄ ရက်နေ့ vs 8လပိုင်း ၄ ရက်နေ့ သို့မဟုတ် မနေ့က vs ယခင်လကနေ့)
-    const targetDateStr = `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, '0')}-${String(Math.max(1, currentDayNum - 1)).padStart(2, '0')}`;
+    const targetDateStr = `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, '0')}-${String(previousDayNum).padStart(2, '0')}`;
     const thisMonthYesterdaySales = allEntries
         .filter(e => e.ParsedDate === targetDateStr)
         .reduce((sum, r) => sum + (Number(r['Sales Amount']) || 0), 0);
-    const lastMonthYesterdaySales = 550000; // ပြီးခဲ့တဲ့လက အတူတူနေ့ရက်အတွက် ဥပမာပမာဏ
+    const lastMonthYesterdaySales = 550000; 
 
     const top5Gaps = [];
     for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
@@ -2131,24 +2119,23 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         </div>
                     </div>
 
-                    {/* 🌟 1. Last Month Vs This Month (Up to Today & Full Month) 🌟 */}
+                    {/* Last Month Vs This Month Comparison Card (Day 1 to Previous Day) */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                         <h3 className="font-bold text-[#123524] text-sm flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]"/> Last Month Vs This Month (Performance Comparison)</h3>
                         
-                        {/* နေ့အလိုက် (ယနေ့အထိ) နှိုင်းယှဉ်ချက် */}
                         <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                            <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ (Day 1 to {currentDayNum}) vs ယခုလ (Day 1 to {currentDayNum})</div>
+                            <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ (Day 1 to {previousDayNum}) vs ယခုလ (Day 1 to {previousDayNum})</div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                                 <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                    <div className="text-[9px] text-gray-500 font-bold uppercase">July (1 to {currentDayNum})</div>
+                                    <div className="text-[9px] text-gray-500 font-bold uppercase">July (1 to {previousDayNum})</div>
                                     <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthUpToTodaySales)}</div>
                                 </div>
                                 <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                    <div className="text-[9px] text-blue-700 font-bold uppercase">August (1 to {currentDayNum})</div>
+                                    <div className="text-[9px] text-blue-700 font-bold uppercase">August (1 to {previousDayNum})</div>
                                     <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(thisMonthUpToTodaySales)}</div>
                                 </div>
                                 <div className={`p-2.5 rounded-lg border text-center ${upToTodayDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                    <div className="text-[9px] font-bold uppercase">Difference (Up to Today)</div>
+                                    <div className="text-[9px] font-bold uppercase">Difference (Up to Day {previousDayNum})</div>
                                     <div className="text-xs font-black mt-0.5">{upToTodayDiff >= 0 ? '+' : ''}{formatPrice(upToTodayDiff)}</div>
                                 </div>
                             </div>
@@ -2163,7 +2150,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                     <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthYesterdaySales)}</div>
                                 </div>
                                 <div className="bg-white p-2.5 rounded-lg border border-purple-200">
-                                    <div className="text-[9px] text-purple-700 font-bold uppercase">This Month Yesterday</div>
+                                    <div className="text-[9px] text-purple-700 font-bold uppercase">This Month Previous Day</div>
                                     <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(thisMonthYesterdaySales)}</div>
                                 </div>
                                 <div className={`p-2.5 rounded-lg border text-center ${thisMonthYesterdaySales - lastMonthYesterdaySales >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
@@ -2287,10 +2274,10 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* Attendance Summary */}
+                            {/* Attendance Summary (Up to Previous Day) */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
-                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ယနေ့အထိ Section ဝင်ထားမှု အခြေအနေ)</p>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့တဲ့ရက်အထိ Section ဝင်ထားမှု အခြေအနေ)</p>
                                 
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
@@ -2317,7 +2304,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 ) : (
                                     <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center text-[10px] font-bold text-gray-500 flex flex-col items-center">
                                         <CheckCircle className="w-5 h-5 text-green-500 mb-1.5"/>
-                                        ယနေ့အထိ Section မပျက်ထားပါ။ အလွန်ကောင်းမွန်ပါတယ်။
+                                        ပြီးခဲ့တဲ့ရက်များအထိ Section မပျက်ထားပါ။ အလွန်ကောင်းမွန်ပါတယ်။
                                     </div>
                                 )}
                             </div>
