@@ -2399,7 +2399,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 </h3>
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                                     {dailyBreakdown.map((item: any, idx: number) => (
-                                        <div key={idx} className={`p-4 rounded-xl border transition-all ${item.hasSales ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-50/70 border-dashed border-gray-200'}`}>
+                                        <div key={idx} className={"p-4 rounded-xl border transition-all " + (item.hasSales ? "bg-white border-gray-200 shadow-sm" : "bg-gray-50/70 border-dashed border-gray-200")}>
                                             <div className="flex justify-between items-center mb-2">
                                                 <div className="flex items-center space-x-2">
                                                     <span className="bg-[#123524] text-[#D4AF37] text-[10px] font-bold px-2 py-0.5 rounded">Day {item.dayNo}</span>
@@ -2432,8 +2432,8 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                             <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
                                                 <div>
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
-                                                    <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
-                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
+                                                    <span className={"font-black " + (item.dayActual >= item.dailyTarget ? "text-green-600" : "text-orange-600")}>
+                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? "Met" : formatPrice(item.dailyVariance)})</span>
                                                     </span>
                                                     <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
                                                         Total Actual: {formatPrice(item.cumActual)}
@@ -2457,7 +2457,6 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                     ))}
                                 </div>
                             </div>
-                        </>
                     )}
                 </div>
             )}
