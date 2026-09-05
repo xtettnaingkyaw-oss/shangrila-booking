@@ -552,37 +552,12 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     }, []);
 
     if (loading) return <div className="text-center py-20 text-[#D4AF37] font-bold animate-pulse text-xs uppercase tracking-widest">Loading Matrix Data...</div>;
-    if (!matrixData || !matrixData.topPerformers) return <div className="text-center py-20 text-gray-400 font-bold text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-4">No Matrix Data available. Admin needs to upload the Excel file.</div>;
-
-    const cleanStaffId = String(loggedInStaff.id || '').trim().toLowerCase();
-    const cleanStaffName = String(loggedInStaff.name || '').trim().toLowerCase();
-    
-    const nameMatch = cleanStaffName.match(/\d+/);
-    const staffNum = nameMatch ? parseInt(nameMatch[0], 10) : (String(loggedInStaff.id).match(/\d+/) ? parseInt(String(loggedInStaff.id).match(/\d+/)![0], 10) : null);
-
-    const checkIsMe = (pId: any, pName: any) => {
-        const pIdStr = String(pId || '').trim().toLowerCase();
-        const pNameStr = String(pName || '').trim().toLowerCase();
-        const pNumMatch = pIdStr.match(/\d+/) || pNameStr.match(/\d+/);
-        const pNum = pNumMatch ? parseInt(pNumMatch[0], 10) : null;
-
-        return pIdStr === cleanStaffId || 
-               pIdStr === `no-${staffNum}` ||
-               pNameStr === cleanStaffName || 
-               (staffNum !== null && pNum === staffNum);
-    };
-
-    const mySummary = (matrixData.monthlySummary || []).find((d: any) => {
-        return checkIsMe(d['Staff No'], d['Staff Name']);
-    });
-
-    const sortedPerformers = [...matrixData.topPerformers].sort((a, b) => (Number(b['1 to 31 Actual']) || 0) - (Number(a['1 to 31 Actual']) || 0));
-    const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => Number(p['1 to 31 Actual']) || 0), 1) : 1;
+    if (!matrixData || !matrixData.dailyEntries) return <div className="text-center py-20 text-gray-400 font-bold text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-4">No Matrix Data available. Admin needs to upload the Excel file.</div>;
 
     const parseExcelDate = (val: any) => {
         if (!val) return '';
         if (typeof val === 'number') {
-            const d = new Date((val - (25567 + 2)) * 86400 * 1000);
+            const d = new Date(Math.round((val - 25569) * 86400 * 1000));
             return d.toISOString().split('T')[0];
         }
         const str = String(val).trim();
@@ -597,45 +572,11 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         CleanStaffName: String(e['Staff Name'] || '').trim().toLowerCase()
     }));
 
-    // 🌟 ဝန်ထမ်း ID (No-7 နှင့် SGL-007) နှစ်မျိုးလုံးကို အလိုအလျောက် သိရှိစေရန်နှင့် Date မှန်ကန်စေရန် 🌟
-    // currentUser အစား loggedInStaff ဟု အမှန်တကယ် လက်ခံရရှိထားသော variable ကို ပြောင်းလဲအသုံးပြုထားပါသည်
-    const currentStaffNumMatch = loggedInStaff?.id?.match(/\d+/);
-    const currentStaffNum = currentStaffNumMatch ? parseInt(currentStaffNumMatch[0], 10) : null;
-
-    const myEntries = allEntries.filter((e: any) => {
-        // Staff ID တိုက်စစ်ခြင်း (No-7, SGL-007, SGL-7 အားလုံးကို အတူတူဟု သတ်မှတ်မည်)
-        const eId = String(e['Staff ID'] || '').trim();
-        const eNumMatch = eId.match(/\d+/);
-        const eNum = eNumMatch ? parseInt(eNumMatch[0], 10) : null;
-        
-        // currentUser အစား loggedInStaff သို့ ပြောင်းလဲထားပါသည်
-        const isMyEntry = eId === loggedInStaff?.id || (currentStaffNum !== null && eNum === currentStaffNum);
-        
-        if (isMyEntry) {
-            // Date များကို Timezone မလွဲစေဘဲ တိကျစွာ ပြောင်းလဲပေးခြင်း
-            let rawDate = e.ParsedDate || e.Date;
-            if (typeof rawDate === 'number') {
-                const dateObj = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-                e.ParsedDate = dateObj.toISOString().split('T')[0];
-            } else if (typeof rawDate === 'string') {
-                const parsed = new Date(rawDate);
-                if (!isNaN(parsed.getTime())) {
-                    const y = parsed.getFullYear();
-                    const m = String(parsed.getMonth() + 1).padStart(2, '0');
-                    const d = String(parsed.getDate()).padStart(2, '0');
-                    e.ParsedDate = `${y}-${m}-${d}`;
-                }
-            }
-            return true;
-        }
-        return false;
-    });
-
-    const uniqueDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
+    const uniqueDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort() as string[];
     
     const allDates: string[] = [];
     if (uniqueDates.length > 0) {
-        const firstDateStr = uniqueDates[0] as string;
+        const firstDateStr = uniqueDates[0];
         const [yearStr, monthStr] = firstDateStr.split('-');
         const year = parseInt(yearStr, 10);
         const month = parseInt(monthStr, 10);
@@ -656,8 +597,52 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     const BASE_DAILY_TARGET = 150000;
     const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
 
-    let cumActualPrior = 0;
+    // 🚀 3. DYNAMIC AGGREGATION FROM DAILY ENTRIES (Solves the Excel Auto-Update Bug) 🚀
+    const staffSalesMap = new Map();
+    allEntries.forEach((e: any) => {
+        const sId = String(e['Staff ID'] || '').trim().replace(/^SGL-0*/i, 'No-');
+        const amt = Number(e['Sales Amount']) || 0;
+        const comm = Number(e['Commission']) || 0;
+        if (!staffSalesMap.has(sId)) { staffSalesMap.set(sId, { actual: 0, commission: 0 }); }
+        staffSalesMap.get(sId).actual += amt;
+        staffSalesMap.get(sId).commission += comm;
+    });
 
+    const sortedPerformers = Array.from(staffSalesMap.entries()).map(([id, data]) => ({
+        'Staff ID': id,
+        '1 to 31 Actual': data.actual
+    })).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
+
+    const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => p['1 to 31 Actual']), 1) : 1;
+
+    const currentStaffNumMatch = loggedInStaff?.id?.match(/\d+/);
+    const currentStaffNum = currentStaffNumMatch ? parseInt(currentStaffNumMatch[0], 10) : null;
+    const cleanStaffId = String(loggedInStaff.id || '').trim().toLowerCase();
+
+    const checkIsMe = (pIdStr: string) => {
+        const pNumMatch = pIdStr.match(/\d+/);
+        const pNum = pNumMatch ? parseInt(pNumMatch[0], 10) : null;
+        return pIdStr.toLowerCase() === cleanStaffId || pIdStr.toLowerCase() === `no-${currentStaffNum}` || (currentStaffNum !== null && pNum === currentStaffNum);
+    };
+
+    let mySummary: any = null;
+    let myMappedId = '';
+    for (const [sId, data] of staffSalesMap.entries()) {
+        if (checkIsMe(sId)) {
+            myMappedId = sId;
+            mySummary = {
+                'Total Actual Sales': data.actual,
+                'Total Commessions': data.commission,
+                'Bonus': 0, 
+                'Final Pay': data.commission
+            };
+            break;
+        }
+    }
+
+    const myEntries = allEntries.filter((e: any) => checkIsMe(String(e['Staff ID'] || '').trim()));
+
+    let cumActualPrior = 0;
     const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
         const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
         const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
@@ -673,27 +658,11 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
         cumActualPrior = cumActual;
 
-        return {
-            dayNo: idx + 1,
-            date: d,
-            hasSales: dayRecords.length > 0,
-            services: dayRecords,
-            dayActual,
-            dailyTarget: BASE_DAILY_TARGET,
-            adjustedDailyTarget,
-            dailyVariance,
-            cumTarget: runningCumTarget,
-            cumActual,
-            remainingMonthlyTarget
-        };
+        return { dayNo: idx + 1, date: d, hasSales: dayRecords.length > 0, services: dayRecords, dayActual, dailyTarget: BASE_DAILY_TARGET, adjustedDailyTarget, dailyVariance, cumTarget: runningCumTarget, cumActual, remainingMonthlyTarget };
     });
 
     const todayStr = getLocalTodayStr();
-    
-    // 🌟 Tracker တွင် ယနေ့ရက် (Day 5) အထိ ပြရန် 🌟
     const dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
-
-    // 🌟 Attendance Summary တွင် ပြီးခဲ့တဲ့ရက်အထိ (Day 4 အထိ) သာ တွက်မည် 🌟
     const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
     const workedDaysCount = pastDays.filter(item => item.hasSales).length;
     const missedDays = pastDays.filter(item => !item.hasSales);
@@ -716,9 +685,9 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
                         <div className="flex items-end space-x-3 h-52 pb-2 pt-14 min-w-max border-b border-gray-100">
                             {sortedPerformers.map((p, idx) => {
-                                const actualSales = Number(p['1 to 31 Actual']) || 0;
+                                const actualSales = p['1 to 31 Actual'];
                                 const heightPercent = Math.max(5, (actualSales / maxActual) * 100);
-                                const isMe = checkIsMe(p['Staff ID'], p['Staff Name']);
+                                const isMe = checkIsMe(p['Staff ID']);
                                 const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
                                 
                                 let barColor = 'bg-gray-200 hover:bg-gray-300';
@@ -752,13 +721,13 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
                     <div className="space-y-3">
                         {sortedPerformers.map((p, idx) => {
-                            const isMe = checkIsMe(p['Staff ID'], p['Staff Name']);
+                            const isMe = checkIsMe(p['Staff ID']);
                             let badgeClass = "bg-gray-100 text-gray-600";
                             if (idx === 0) badgeClass = "bg-yellow-100 text-yellow-700 border border-yellow-300";
                             else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
                             else if (idx === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-300";
 
-                            const actualSales = Number(p['1 to 31 Actual']) || 0;
+                            const actualSales = p['1 to 31 Actual'];
                             const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
 
                             return (
@@ -786,10 +755,9 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
             {subTab === 'my_stats' && (
                 <div className="space-y-6">
                     {!mySummary ? (
-                        <div className="text-center py-10 text-gray-400 text-xs font-bold border-2 border-dashed border-gray-200 rounded-xl">Your data is not found in the uploaded Matrix.</div>
+                        <div className="text-center py-10 text-gray-400 text-xs font-bold border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">Your data is not found in the uploaded Matrix.</div>
                     ) : (
                         <>
-                            {/* Monthly Target Donut Card */}
                             <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
                                 <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center"><Target className="w-4 h-4 mr-2"/> Monthly Target</h3>
@@ -817,7 +785,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* Financial Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-yellow-600"/> Financial Summary</h3>
                                 <div className="space-y-3">
@@ -836,7 +803,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* Attendance & Sales Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
                                 <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
@@ -871,10 +837,9 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 )}
                             </div>
 
-                            {/* Dynamic Adjusted Daily Target Tracker */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
-                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
+                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Tracker</span>
                                 </h3>
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                                     {dailyBreakdown.map((item, idx) => (
@@ -892,8 +857,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                                     )}
                                                 </div>
                                             </div>
-
-                                            {item.hasSales ? (
+                                            {item.hasSales && (
                                                 <div className="space-y-1 my-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
                                                     {item.services.map((s: any, sIdx: number) => (
                                                         <div key={sIdx} className="flex justify-between text-xs font-semibold text-gray-800">
@@ -902,12 +866,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                                         </div>
                                                     ))}
                                                 </div>
-                                            ) : (
-                                                <div className="my-2 py-2 text-center text-xs text-gray-400 font-bold italic bg-gray-100/50 rounded-lg">
-                                                    No Sales / Section ဝင်ထားခြင်း မရှိပါ
-                                                </div>
                                             )}
-
                                             <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
                                                 <div>
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
@@ -918,12 +877,9 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                                         Total Actual: {formatPrice(item.cumActual)}
                                                     </span>
                                                 </div>
-                                                
                                                 <div className="text-right">
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
-                                                    <span className="font-bold text-[#123524]">
-                                                        {formatPrice(item.adjustedDailyTarget)}
-                                                    </span>
+                                                    <span className="font-bold text-[#123524]">{formatPrice(item.adjustedDailyTarget)}</span>
                                                     <span className="text-[9px] text-gray-500 block mt-1.5">
                                                         Remaining: <span className="font-bold text-red-500">{formatPrice(item.remainingMonthlyTarget)}</span>
                                                     </span>
