@@ -2017,11 +2017,11 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     const BASE_DAILY_TARGET = 150000;
     const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
 
-    // 🚀 1. DYNAMIC AGGREGATION FROM DAILY ENTRIES (Fixes Auto-Update Issue) 🚀
+    // 🌟 1. Web App ဘက်မှ အလိုအလျောက် တွက်ချက်မှု (Auto Update သေချာစေရန်) 🌟
     const staffSalesMap = new Map();
-    let displayThisMonthUpToToday = 0; 
-    let displayYesterdaySales = 0; 
-    let totalThisMonthSales = 0;
+    let calcThisMonthUpToToday = 0; 
+    let calcYesterdaySales = 0; 
+    let calcTotalThisMonthSales = 0;
 
     const todayStr = getLocalTodayStr();
     const prevD = new Date(); prevD.setDate(prevD.getDate() - 1);
@@ -2031,14 +2031,12 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         const sId = String(e['Staff ID'] || '').trim().replace(/^SGL-0*/i, 'No-');
         const amt = Number(e['Sales Amount']) || 0;
         
-        // Populate Staff Map
         if (!staffSalesMap.has(sId)) { staffSalesMap.set(sId, { actual: 0 }); }
         staffSalesMap.get(sId).actual += amt;
 
-        // Populate Comparison Sales
-        totalThisMonthSales += amt;
-        if (e.ParsedDate <= todayStr) displayThisMonthUpToToday += amt;
-        if (e.ParsedDate === prevDayStr) displayYesterdaySales += amt;
+        calcTotalThisMonthSales += amt;
+        if (e.ParsedDate <= todayStr) calcThisMonthUpToToday += amt;
+        if (e.ParsedDate === prevDayStr) calcYesterdaySales += amt;
     });
 
     const sortedPerformers = Array.from(staffSalesMap.entries()).map(([id, data]) => ({
@@ -2048,11 +2046,34 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
     const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => p['1 to 31 Actual']), 1) : 1;
 
-    // Default Previous Month Data for Comparison (Can be updated later if needed)
+    // 🌟 2. Excel ထဲက Custom Table အသစ်ကို ဖတ်မည့် Logic 🌟
     let lastMonthUpToTodaySales = 2061000; 
+    let displayThisMonthUpToToday = calcThisMonthUpToToday; 
     let lastMonthYesterdaySales = 939000; 
+    let displayYesterdaySales = calcYesterdaySales; 
     let totalLastMonthSales = 12235000; 
-    
+    let totalThisMonthSales = calcTotalThisMonthSales; 
+
+    if (matrixData && matrixData.topPerformers) {
+        const topDataRaw = matrixData.topPerformers;
+        for (const row of topDataRaw) {
+            const keys = Object.keys(row);
+            for (let i = 0; i < keys.length - 1; i++) {
+                const cellVal = String(row[keys[i]] || '').trim().toLowerCase();
+                const nextVal = Number(String(row[keys[i+1]] || '').replace(/,/g, ''));
+                
+                if (!isNaN(nextVal)) {
+                    if (cellVal === 'last month up to today') lastMonthUpToTodaySales = nextVal;
+                    else if (cellVal === 'this month up to today') displayThisMonthUpToToday = nextVal;
+                    else if (cellVal === 'last month yesterday' || cellVal === 'last month same day') lastMonthYesterdaySales = nextVal;
+                    else if (cellVal === 'this month yesterday') displayYesterdaySales = nextVal;
+                    else if (cellVal === 'last month total') totalLastMonthSales = nextVal;
+                    else if (cellVal === 'this month total') totalThisMonthSales = nextVal;
+                }
+            }
+        }
+    }
+
     let yesterdayDateTextStr = prevDayStr;
     let lastMonthNameStr = "AUGUST";
     let thisMonthNameStr = "THIS MONTH";
@@ -2095,7 +2116,6 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                 return eId === staffIdStr || eId === `no-${staffNum}` || (staffNum !== null && eNum === staffNum);
             });
 
-            // 🚀 2. DYNAMIC MY SUMMARY CALCULATION
             const totalMySales = myEntries.reduce((sum, e) => sum + (Number(e['Sales Amount']) || 0), 0);
             const totalMyComm = myEntries.reduce((sum, e) => sum + (Number(e['Commission']) || 0), 0);
             
@@ -2322,6 +2342,10 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                         <span className="text-xs font-semibold text-gray-600">Total Commissions</span>
                                         <span className="font-bold text-[#123524]">{formatPrice(mySummary['Total Commessions'])}</span>
                                     </div>
+                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                        <span className="text-xs font-semibold text-gray-600">Bonus</span>
+                                        <span className="font-bold text-blue-600">{formatPrice(mySummary['Bonus'])}</span>
+                                    </div>
                                     <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                                         <span className="text-xs font-bold text-yellow-800">Final Expected Pay</span>
                                         <span className="font-black text-yellow-700 text-lg">{formatPrice(mySummary['Final Pay'])}</span>
@@ -2379,12 +2403,21 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                                 <div>
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
                                                     <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
-                                                        {formatPrice(item.dayActual)}
+                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
+                                                    </span>
+                                                    <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
+                                                        Total Actual: {formatPrice(item.cumActual)}
                                                     </span>
                                                 </div>
                                                 <div className="text-right">
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
                                                     <span className="font-bold text-[#123524]">{formatPrice(item.adjustedDailyTarget)}</span>
+                                                    <span className="text-[9px] text-gray-500 block mt-1.5">
+                                                        Remaining: <span className="font-bold text-red-500">{formatPrice(item.remainingMonthlyTarget)}</span>
+                                                    </span>
+                                                    <span className="text-[9px] text-gray-500 block mt-0.5">
+                                                        Cum. Target: {formatPrice(item.cumTarget)}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
@@ -2398,3 +2431,4 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         </div>
     );
 }
+)
