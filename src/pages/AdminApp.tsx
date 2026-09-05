@@ -2355,18 +2355,36 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
-                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ ဝင်ရောက်မှု အခြေအနေ)</p>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
                                 
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
                                         <div className="text-[9px] text-green-600 font-bold uppercase tracking-wider mb-1">Worked Days</div>
-                                        <div className="text-2xl font-black text-green-700">{workedDaysCount}</div>
+                                        <div className="text-2xl font-black text-green-700">{workedDaysCount} <span className="text-[10px] font-bold text-green-600/70">/ {pastDays.length} Days</span></div>
                                     </div>
                                     <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">
                                         <div className="text-[9px] text-red-600 font-bold uppercase tracking-wider mb-1">Missed Days</div>
-                                        <div className="text-2xl font-black text-red-700">{missedDaysCount}</div>
+                                        <div className="text-2xl font-black text-red-700">{missedDaysCount} <span className="text-[10px] font-bold text-red-600/70">/ {pastDays.length} Days</span></div>
                                     </div>
                                 </div>
+
+                                {missedDaysCount > 0 ? (
+                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
+                                        <span className="text-[10px] font-bold text-gray-500 mb-2.5 block">Section မဝင်ထားသော ရက်များ :</span>
+                                        <div className="flex flex-wrap gap-2">
+                                            {missedDays.map(md => (
+                                                <span key={md.date} className="bg-white border border-red-200 text-red-500 text-[9px] font-bold px-2 py-1 rounded-md shadow-sm">
+                                                    Day {md.dayNo} ({md.date})
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center text-[10px] font-bold text-gray-500 flex flex-col items-center">
+                                        <CheckCircle className="w-5 h-5 text-green-500 mb-1.5"/>
+                                        ယနေ့အထိ Section မပျက်ထားပါ။ အလွန်ကောင်းမွန်ပါတယ်။
+                                    </div>
+                                )}
                             </div>
 
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
