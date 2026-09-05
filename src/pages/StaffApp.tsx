@@ -629,19 +629,15 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     let cumActualPrior = 0;
 
-    const todayStr = getLocalTodayStr(); // ဥပမာ - "2026-09-05"
+    const todayStr = getLocalTodayStr();
 
-        // 🌟 ယနေ့ရောက်ရှိနေတဲ့ရက်အထိ (Day 5 အပါအဝင်) ပြသရန် 🌟
         dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
-        
-        const daysRemaining = totalDays - idx;
-        const remainingTargetPrior = Math.max(0, monthlyTotalTarget - cumActualPrior);
-        const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTargetPrior / daysRemaining) : 0;
-        
-        const runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
-        const cumActual = cumActualPrior + dayActual;
-        const dailyVariance = dayActual - BASE_DAILY_TARGET;
-        const remainingMonthlyTarget = Math.max(0, monthlyTotalTarget - cumActual);
+
+        const pastDays = fullDailyBreakdown.filter(item => item.date <= todayStr);
+        workedDaysCount = pastDays.filter(item => item.hasSales).length;
+        missedDays = pastDays.filter(item => !item.hasSales);
+        missedDaysCount = missedDays.length;
+    }
 
         cumActualPrior = cumActual;
 
