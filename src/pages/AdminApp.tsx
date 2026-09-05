@@ -1957,6 +1957,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     </div>
   );
 }
+
 function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
     const [matrixData, setMatrixData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -1971,12 +1972,12 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     }, []);
 
     if (loading) return <div className="text-center py-20 text-[#D4AF37] font-bold animate-pulse text-xs uppercase tracking-widest">Loading Matrix Data...</div>;
-    if (!matrixData || !matrixData.topPerformers) return <div className="text-center py-20 text-gray-400 font-bold text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-4">No Matrix Data available. Please upload the Excel file in Settings.</div>;
+    if (!matrixData || !matrixData.dailyEntries) return <div className="text-center py-20 text-gray-400 font-bold text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-4">No Matrix Data available. Please upload the Excel file in Settings.</div>;
 
     const parseExcelDate = (val: any) => {
         if (!val) return '';
         if (typeof val === 'number') {
-            const d = new Date((val - (25567 + 2)) * 86400 * 1000);
+            const d = new Date(Math.round((val - 25569) * 86400 * 1000));
             return d.toISOString().split('T')[0];
         }
         const str = String(val).trim();
@@ -1991,11 +1992,11 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         CleanStaffName: String(e['Staff Name'] || '').trim().toLowerCase()
     }));
 
-    const uniqueDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
+    const uniqueDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort() as string[];
     
     const allDates: string[] = [];
     if (uniqueDates.length > 0) {
-        const firstDateStr = uniqueDates[0] as string;
+        const firstDateStr = uniqueDates[0];
         const [yearStr, monthStr] = firstDateStr.split('-');
         const year = parseInt(yearStr, 10);
         const month = parseInt(monthStr, 10);
@@ -2016,164 +2017,47 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     const BASE_DAILY_TARGET = 150000;
     const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
 
-    const sortedPerformers = [...matrixData.topPerformers].sort((a, b) => (Number(b['1 to 31 Actual']) || 0) - (Number(a['1 to 31 Actual']) || 0));
-    const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => Number(p['1 to 31 Actual']) || 0), 1) : 1;
+    // 🚀 1. DYNAMIC AGGREGATION FROM DAILY ENTRIES (Fixes Auto-Update Issue) 🚀
+    const staffSalesMap = new Map();
+    let displayThisMonthUpToToday = 0; 
+    let displayYesterdaySales = 0; 
+    let totalThisMonthSales = 0;
 
-    const extractNumber = (str: string) => {
-        const match = String(str).match(/\d+/);
-        return match ? parseInt(match[0], 10) : null;
-    };
+    const todayStr = getLocalTodayStr();
+    const prevD = new Date(); prevD.setDate(prevD.getDate() - 1);
+    const prevDayStr = prevD.getFullYear() + '-' + String(prevD.getMonth() + 1).padStart(2, '0') + '-' + String(prevD.getDate()).padStart(2, '0');
 
-    const selectedStaff = therapists.find(t => t.id === selectedStaffId);
-
-    let mySummary = null;
-    let myEntries: any[] = [];
-    let dailyBreakdown: any[] = [];
-    let workedDaysCount = 0;
-    let missedDaysCount = 0;
-    let missedDays: any[] = [];
-
-    if (selectedStaff) {
-        const staffNameStr = String(selectedStaff.name || '').trim().toLowerCase();
-        const staffIdStr = String(selectedStaff.id || '').trim().toLowerCase();
+    allEntries.forEach((e: any) => {
+        const sId = String(e['Staff ID'] || '').trim().replace(/^SGL-0*/i, 'No-');
+        const amt = Number(e['Sales Amount']) || 0;
         
-        // 🌟 Staff App ကဲ့သို့ပင် နာမည် သို့မဟုတ် ID ထဲမှ နံပါတ်ကို သေချာ ထုတ်ယူမည် (ဥပမာ "Therapist No-6" မှ 6 ကို ယူမည်) 🌟
-        const nameMatch = staffNameStr.match(/\d+/);
-        const staffNum = nameMatch ? parseInt(nameMatch[0], 10) : (staffIdStr.match(/\d+/) ? parseInt(staffIdStr.match(/\d+/)![0], 10) : null);
+        // Populate Staff Map
+        if (!staffSalesMap.has(sId)) { staffSalesMap.set(sId, { actual: 0 }); }
+        staffSalesMap.get(sId).actual += amt;
 
-        const checkIsMatch = (pId: any, pName: any) => {
-            const pIdStr = String(pId || '').trim().toLowerCase();
-            const pNameStr = String(pName || '').trim().toLowerCase();
-            const pNumMatch = pIdStr.match(/\d+/) || pNameStr.match(/\d+/);
-            const pNum = pNumMatch ? parseInt(pNumMatch[0], 10) : null;
+        // Populate Comparison Sales
+        totalThisMonthSales += amt;
+        if (e.ParsedDate <= todayStr) displayThisMonthUpToToday += amt;
+        if (e.ParsedDate === prevDayStr) displayYesterdaySales += amt;
+    });
 
-            return pIdStr === staffIdStr || 
-                   pIdStr === `no-${staffNum}` ||
-                   pNameStr === staffNameStr || 
-                   (staffNum !== null && pNum === staffNum);
-        };
+    const sortedPerformers = Array.from(staffSalesMap.entries()).map(([id, data]) => ({
+        'Staff ID': id,
+        '1 to 31 Actual': data.actual
+    })).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
 
-        mySummary = (matrixData.monthlySummary || []).find((d: any) => {
-            return checkIsMatch(d['Staff No'], d['Staff Name']);
-        });
-        
-        myEntries = allEntries.filter((e: any) => {
-            return checkIsMatch(e['Staff ID'], e['Staff Name']);
-        });
+    const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => p['1 to 31 Actual']), 1) : 1;
 
-        let cumActualPrior = 0;
-
-        const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
-            const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
-            const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
-            
-            const daysRemaining = totalDays - idx;
-            const remainingTargetPrior = Math.max(0, monthlyTotalTarget - cumActualPrior);
-            const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTargetPrior / daysRemaining) : 0;
-            
-            const runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
-            const cumActual = cumActualPrior + dayActual;
-            const dailyVariance = dayActual - BASE_DAILY_TARGET;
-            const remainingMonthlyTarget = Math.max(0, monthlyTotalTarget - cumActual);
-
-            cumActualPrior = cumActual;
-
-            return {
-                dayNo: idx + 1,
-                date: d,
-                hasSales: dayRecords.length > 0,
-                services: dayRecords,
-                dayActual,
-                dailyTarget: BASE_DAILY_TARGET,
-                adjustedDailyTarget,
-                dailyVariance,
-                cumTarget: runningCumTarget,
-                cumActual,
-                remainingMonthlyTarget
-            };
-        });
-
-        const todayStr = getLocalTodayStr(); // ဥပမာ - "2026-09-05"
-
-        // 🌟 ယနေ့ရောက်ရှိနေတဲ့ရက်အထိ (Day 5 အပါအဝင်) ပြသရန် 🌟
-        dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
-
-        const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
-        workedDaysCount = pastDays.filter(item => item.hasSales).length;
-        missedDays = pastDays.filter(item => !item.hasSales);
-        missedDaysCount = missedDays.length;
-    }
-
-    // 🌟 Comparison Calculations (Dynamic Extraction from Excel) 🌟
-    const todayLocal = new Date();
-    const currentDayNum = todayLocal.getDate(); 
-    const previousDayNum = Math.max(1, currentDayNum - 1); 
-
-    // Excel ရဲ့ Top Performers data ထဲကနေ Summary Data တွေကို အလိုအလျောက် ရှာဖွေခြင်း
+    // Default Previous Month Data for Comparison (Can be updated later if needed)
     let lastMonthUpToTodaySales = 2061000; 
-    let displayThisMonthUpToToday = 770000; 
     let lastMonthYesterdaySales = 939000; 
-    let displayYesterdaySales = 37000; 
+    let totalLastMonthSales = 12235000; 
     
-    let totalLastMonthSales = 12235000; // Aug Full Month Default
-    let totalThisMonthSales = 770000; // Sep Full Month Default
-
-    let yesterdayDateTextStr = "မနေ့ကရက်";
+    let yesterdayDateTextStr = prevDayStr;
     let lastMonthNameStr = "AUGUST";
-    let thisMonthNameStr = "SEPTEMBER";
+    let thisMonthNameStr = "THIS MONTH";
     let lastFullMonthNameStr = "AUGUST";
-    let thisFullMonthNameStr = "SEPTEMBER";
-
-    if (matrixData && matrixData.topPerformers) {
-        const topDataRaw = matrixData.topPerformers;
-        
-        for (const row of topDataRaw) {
-            const keys = Object.keys(row);
-            for (let i = 0; i < keys.length - 1; i++) {
-                const cellVal = String(row[keys[i]] || '').trim();
-                const nextValStr = String(row[keys[i+1]] || '').replace(/,/g, '');
-                const nextVal = Number(nextValStr);
-                
-                // Total ပါတဲ့ အကွက်တွေကို ရှာခြင်း
-                if (cellVal.includes('Total') && cellVal.includes('1 to')) {
-                    if (!isNaN(nextVal)) {
-                        const monthPrefix = cellVal.split('1 to')[0].trim().toUpperCase();
-                        const isFullMonth = cellVal.includes('31') || cellVal.includes('30');
-                        
-                        if (isFullMonth) {
-                            if (cellVal.toLowerCase().includes('aug')) {
-                                totalLastMonthSales = nextVal;
-                                lastFullMonthNameStr = monthPrefix;
-                            } else if (cellVal.toLowerCase().includes('sep')) {
-                                totalThisMonthSales = nextVal;
-                                thisFullMonthNameStr = monthPrefix;
-                            }
-                        } else {
-                            if (cellVal.toLowerCase().includes('aug')) {
-                                lastMonthUpToTodaySales = nextVal;
-                                lastMonthNameStr = monthPrefix;
-                            } else if (cellVal.toLowerCase().includes('sep')) {
-                                displayThisMonthUpToToday = nextVal;
-                                thisMonthNameStr = monthPrefix;
-                            }
-                        }
-                    }
-                }
-                
-                // နေ့အလိုက် အကွက်များကို ရှာခြင်း (ဥပမာ 4-Aug, 4-Sep)
-                if (cellVal.includes(`-0${previousDayNum}`) || cellVal.includes(`-${previousDayNum}-`) || cellVal.match(new RegExp(`^${previousDayNum}-[A-Za-z]+$`))) {
-                    if (!isNaN(nextVal)) {
-                        if (cellVal.toLowerCase().includes('aug') || cellVal.includes('-08-')) {
-                            lastMonthYesterdaySales = nextVal;
-                        } else if (cellVal.toLowerCase().includes('sep') || cellVal.includes('-09-')) {
-                            displayYesterdaySales = nextVal;
-                            yesterdayDateTextStr = cellVal.split(' ')[0]; 
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let thisFullMonthNameStr = "THIS MONTH";
 
     const salesDiff = totalThisMonthSales - totalLastMonthSales;
     const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
@@ -2184,11 +2068,71 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
         const p1 = sortedPerformers[i];
         const p2 = sortedPerformers[i + 1];
         const diff = (Number(p1['1 to 31 Actual']) || 0) - (Number(p2['1 to 31 Actual']) || 0);
-        top5Gaps.push({
-            rank1: `#${i + 1} (${p1['Staff ID']})`,
-            rank2: `#${i + 2} (${p2['Staff ID']})`,
-            diff
-        });
+        top5Gaps.push({ rank1: `#${i + 1} (${p1['Staff ID']})`, rank2: `#${i + 2} (${p2['Staff ID']})`, diff });
+    }
+
+    let myEntries: any[] = [];
+    let dailyBreakdown: any[] = [];
+    let workedDaysCount = 0;
+    let missedDaysCount = 0;
+    let missedDays: any[] = [];
+    
+    let mySummary = null;
+
+    if (selectedStaffId) {
+        const selectedStaff = therapists.find(t => t.id === selectedStaffId);
+        if (selectedStaff) {
+            const staffNameStr = String(selectedStaff.name || '').trim().toLowerCase();
+            const staffIdStr = String(selectedStaff.id || '').trim().toLowerCase();
+            
+            const nameMatch = staffNameStr.match(/\d+/);
+            const staffNum = nameMatch ? parseInt(nameMatch[0], 10) : (staffIdStr.match(/\d+/) ? parseInt(staffIdStr.match(/\d+/)![0], 10) : null);
+
+            myEntries = allEntries.filter((e: any) => {
+                const eId = String(e['Staff ID'] || '').trim().toLowerCase();
+                const eNumMatch = eId.match(/\d+/);
+                const eNum = eNumMatch ? parseInt(eNumMatch[0], 10) : null;
+                return eId === staffIdStr || eId === `no-${staffNum}` || (staffNum !== null && eNum === staffNum);
+            });
+
+            // 🚀 2. DYNAMIC MY SUMMARY CALCULATION
+            const totalMySales = myEntries.reduce((sum, e) => sum + (Number(e['Sales Amount']) || 0), 0);
+            const totalMyComm = myEntries.reduce((sum, e) => sum + (Number(e['Commission']) || 0), 0);
+            
+            if (myEntries.length > 0) {
+                mySummary = {
+                    'Total Actual Sales': totalMySales,
+                    'Total Commessions': totalMyComm,
+                    'Bonus': 0,
+                    'Final Pay': totalMyComm
+                };
+            }
+
+            let cumActualPrior = 0;
+            const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
+                const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
+                const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
+                
+                const daysRemaining = totalDays - idx;
+                const remainingTargetPrior = Math.max(0, monthlyTotalTarget - cumActualPrior);
+                const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTargetPrior / daysRemaining) : 0;
+                
+                const runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
+                const cumActual = cumActualPrior + dayActual;
+                const dailyVariance = dayActual - BASE_DAILY_TARGET;
+                const remainingMonthlyTarget = Math.max(0, monthlyTotalTarget - cumActual);
+
+                cumActualPrior = cumActual;
+
+                return { dayNo: idx + 1, date: d, hasSales: dayRecords.length > 0, services: dayRecords, dayActual, dailyTarget: BASE_DAILY_TARGET, adjustedDailyTarget, dailyVariance, cumTarget: runningCumTarget, cumActual, remainingMonthlyTarget };
+            });
+
+            dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
+            const pastDays = fullDailyBreakdown.filter(item => item.date < todayStr);
+            workedDaysCount = pastDays.filter(item => item.hasSales).length;
+            missedDays = pastDays.filter(item => !item.hasSales);
+            missedDaysCount = missedDays.length;
+        }
     }
 
     return (
@@ -2198,27 +2142,20 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                     <User className="w-4 h-4 mr-2 text-[#D4AF37]" /> Select Therapist to View Performance
                 </label>
                 <div className="relative">
-                    <select 
-                        value={selectedStaffId} 
-                        onChange={(e) => setSelectedStaffId(e.target.value)}
-                        className="w-full p-3 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-gray-800 appearance-none cursor-pointer shadow-sm"
-                    >
+                    <select value={selectedStaffId} onChange={(e) => setSelectedStaffId(e.target.value)} className="w-full p-3 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-gray-800 appearance-none cursor-pointer shadow-sm">
                         <option value="">-- Show Global Leaderboard --</option>
-                        {therapists.map(t => (
-                            <option key={t.id} value={t.id}>{t.name} (ID: {t.id})</option>
-                        ))}
+                        {therapists.map(t => (<option key={t.id} value={t.id}>{t.name} (ID: {t.id})</option>))}
                     </select>
                     <ChevronDown className="absolute right-4 top-3.5 w-5 h-5 text-gray-400 pointer-events-none" />
                 </div>
             </div>
 
             {!selectedStaffId ? (
-                // LEADERBOARD VIEW
                 <div className="space-y-6 animate-slide-up">
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
                         <div className="flex items-end space-x-3 h-52 pb-2 pt-14 min-w-max border-b border-gray-100">
                             {sortedPerformers.map((p, idx) => {
-                                const actualSales = Number(p['1 to 31 Actual']) || 0;
+                                const actualSales = p['1 to 31 Actual'];
                                 const heightPercent = Math.max(5, (actualSales / maxActual) * 100);
                                 const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
                                 
@@ -2247,31 +2184,27 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         </div>
                     </div>
 
-                   {/* Last Month Vs This Month Comparison */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8">
-                        <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-blue-500"/> Last Month Vs This Month (Performance Comparison)</h3>
-                        
+                        <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-blue-500"/> Last Month Vs This Month</h3>
                         <div className="space-y-6">
-                            {/* နေ့အလိုက် (Day 1 to Previous Day) နှိုင်းယှဉ်ချက် */}
                             <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                                <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ (Day 1 to {previousDayNum}) vs ယခုလ (Day 1 to {previousDayNum})</div>
+                                <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ vs ယခုလ (Up to Today)</div>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                                     <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                        <div className="text-[9px] text-gray-500 font-bold uppercase">{lastMonthNameStr} (1 to {previousDayNum})</div>
+                                        <div className="text-[9px] text-gray-500 font-bold uppercase">{lastMonthNameStr}</div>
                                         <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthUpToTodaySales)}</div>
                                     </div>
                                     <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                        <div className="text-[9px] text-blue-700 font-bold uppercase">{thisMonthNameStr} (1 to {previousDayNum})</div>
+                                        <div className="text-[9px] text-blue-700 font-bold uppercase">{thisMonthNameStr}</div>
                                         <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayThisMonthUpToToday)}</div>
                                     </div>
                                     <div className={`p-2.5 rounded-lg border text-center ${upToTodayDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                        <div className="text-[9px] font-bold uppercase">Difference (Up to Day {previousDayNum})</div>
+                                        <div className="text-[9px] font-bold uppercase">Difference</div>
                                         <div className="text-xs font-black mt-0.5">{upToTodayDiff >= 0 ? '+' : ''}{formatPrice(upToTodayDiff)}</div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* မနေ့က (Previous Day) နှိုင်းယှဉ်ချက် */}
                             <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100">
                                 <div className="text-xs font-bold text-purple-900 mb-2 flex items-center"><Clock className="w-3.5 h-3.5 mr-1.5"/> မနေ့ကနေ့ချင်းအလိုက်နှိုင်းယှဉ်ချက် ({yesterdayDateTextStr})</div>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
@@ -2290,14 +2223,13 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* တစ်လစာ စုစုပေါင်း နှိုင်းယှဉ်ချက် */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                                 <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
-                                    <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">{lastFullMonthNameStr} 1 TO 31 TOTAL</div>
+                                    <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">{lastFullMonthNameStr} TOTAL</div>
                                     <div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div>
                                 </div>
                                 <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
-                                    <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">{thisFullMonthNameStr} 1 TO 31 TOTAL</div>
+                                    <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">{thisFullMonthNameStr} TOTAL</div>
                                     <div className="text-sm font-black text-[#123524]">{formatPrice(totalThisMonthSales)}</div>
                                 </div>
                                 <div className={`p-3.5 rounded-xl border text-center ${salesDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
@@ -2308,7 +2240,6 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                         </div>
                     </div>
 
-                    {/* Top-5 Rank Gap Analysis */}
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                         <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-[#D4AF37]"/> Top-5 Rank Gap Analysis</h3>
                         <div className="space-y-2.5">
@@ -2328,7 +2259,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                             else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
                             else if (idx === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-300";
 
-                            const actualSales = Number(p['1 to 31 Actual']) || 0;
+                            const actualSales = p['1 to 31 Actual'];
                             const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
 
                             return (
@@ -2352,16 +2283,14 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                     </div>
                 </div>
             ) : (
-                // INDIVIDUAL STATS VIEW
                 <div className="space-y-6 animate-slide-up">
                     {!mySummary ? (
                         <div className="text-center py-10 text-gray-400 text-xs font-bold border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">Selected staff data is not found in the uploaded Matrix.</div>
                     ) : (
                         <>
-                            {/* Monthly Target Donut Card */}
                             <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-                                <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center"><Target className="w-4 h-4 mr-2"/> Monthly Target ({selectedStaff?.name})</h3>
+                                <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center"><Target className="w-4 h-4 mr-2"/> Monthly Target ({selectedStaffId})</h3>
                                 
                                 <div className="relative w-32 h-32 flex items-center justify-center bg-black/20 rounded-full border-4 border-white/5 shadow-inner">
                                     <div className="text-center">
@@ -2386,17 +2315,12 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* Financial Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-yellow-600"/> Financial Summary</h3>
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                                         <span className="text-xs font-semibold text-gray-600">Total Commissions</span>
                                         <span className="font-bold text-[#123524]">{formatPrice(mySummary['Total Commessions'])}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                                        <span className="text-xs font-semibold text-gray-600">Bonus</span>
-                                        <span className="font-bold text-blue-600">{formatPrice(mySummary['Bonus'])}</span>
                                     </div>
                                     <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                                         <span className="text-xs font-bold text-yellow-800">Final Expected Pay</span>
@@ -2405,45 +2329,25 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* Attendance Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
-                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ယနေ့အထိ Section ဝင်ထားမှု အခြေအနေ)</p>
+                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ ဝင်ရောက်မှု အခြေအနေ)</p>
                                 
                                 <div className="grid grid-cols-2 gap-3 mb-4">
                                     <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
                                         <div className="text-[9px] text-green-600 font-bold uppercase tracking-wider mb-1">Worked Days</div>
-                                        <div className="text-2xl font-black text-green-700">{workedDaysCount} <span className="text-[10px] font-bold text-green-600/70">Days</span></div>
+                                        <div className="text-2xl font-black text-green-700">{workedDaysCount}</div>
                                     </div>
                                     <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">
                                         <div className="text-[9px] text-red-600 font-bold uppercase tracking-wider mb-1">Missed Days</div>
-                                        <div className="text-2xl font-black text-red-700">{missedDaysCount} <span className="text-[10px] font-bold text-red-600/70">Days</span></div>
+                                        <div className="text-2xl font-black text-red-700">{missedDaysCount}</div>
                                     </div>
                                 </div>
-
-                                {missedDaysCount > 0 ? (
-                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
-                                        <span className="text-[10px] font-bold text-gray-500 mb-2.5 block">Section မဝင်ထားသော ရက်များ :</span>
-                                        <div className="flex flex-wrap gap-2">
-                                            {missedDays.map(md => (
-                                                <span key={md.date} className="bg-white border border-red-200 text-red-500 text-[9px] font-bold px-2 py-1 rounded-md shadow-sm">
-                                                    Day {md.dayNo} ({md.date})
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center text-[10px] font-bold text-gray-500 flex flex-col items-center">
-                                        <CheckCircle className="w-5 h-5 text-green-500 mb-1.5"/>
-                                        ယနေ့အထိ Section မပျက်ထားပါ။ အလွန်ကောင်းမွန်ပါတယ်။
-                                    </div>
-                                )}
                             </div>
 
-                            {/* Dynamic Adjusted Daily Target Tracker */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
-                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Target Tracker</span>
+                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Tracker</span>
                                 </h3>
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                                     {dailyBreakdown.map((item, idx) => (
@@ -2461,8 +2365,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                                     )}
                                                 </div>
                                             </div>
-
-                                            {item.hasSales ? (
+                                            {item.hasSales && (
                                                 <div className="space-y-1 my-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
                                                     {item.services.map((s: any, sIdx: number) => (
                                                         <div key={sIdx} className="flex justify-between text-xs font-semibold text-gray-800">
@@ -2471,34 +2374,17 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                                         </div>
                                                     ))}
                                                 </div>
-                                            ) : (
-                                                <div className="my-2 py-2 text-center text-xs text-gray-400 font-bold italic bg-gray-100/50 rounded-lg">
-                                                    No Sales / Section ဝင်ထားခြင်း မရှိပါ
-                                                </div>
                                             )}
-
                                             <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
                                                 <div>
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
                                                     <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
-                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
-                                                    </span>
-                                                    <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
-                                                        Total Actual: {formatPrice(item.cumActual)}
+                                                        {formatPrice(item.dayActual)}
                                                     </span>
                                                 </div>
-                                                
                                                 <div className="text-right">
                                                     <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
-                                                    <span className="font-bold text-[#123524]">
-                                                        {formatPrice(item.adjustedDailyTarget)}
-                                                    </span>
-                                                    <span className="text-[9px] text-gray-500 block mt-1.5">
-                                                        Remaining: <span className="font-bold text-red-500">{formatPrice(item.remainingMonthlyTarget)}</span>
-                                                    </span>
-                                                    <span className="text-[9px] text-gray-500 block mt-0.5">
-                                                        Cum. Target: {formatPrice(item.cumTarget)}
-                                                    </span>
+                                                    <span className="font-bold text-[#123524]">{formatPrice(item.adjustedDailyTarget)}</span>
                                                 </div>
                                             </div>
                                         </div>
