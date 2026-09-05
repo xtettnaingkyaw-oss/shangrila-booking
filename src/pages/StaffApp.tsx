@@ -538,7 +538,7 @@ function ActiveSessionDisplay({ session, onStop }: { session: Booking, onStop: (
    );
 }
 
-function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
+function StaffPefunction StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
     const [matrixData, setMatrixData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [subTab, setSubTab] = useState<'leaderboard' | 'my_stats'>('leaderboard');
@@ -554,16 +554,17 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     if (loading) return <div className="text-center py-20 text-[#D4AF37] font-bold animate-pulse text-xs uppercase tracking-widest">Loading Matrix Data...</div>;
     if (!matrixData || !matrixData.topPerformers) return <div className="text-center py-20 text-gray-400 font-bold text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-4">No Matrix Data available. Admin needs to upload the Excel file.</div>;
 
-    const extractNumber = (str: string) => {
-        const match = String(str).match(/\d+/);
-        return match ? parseInt(match[0], 10) : null;
-    };
-    
-    const staffNum = extractNumber(loggedInStaff.id) || extractNumber(loggedInStaff.name);
-    const staffIdExact = String(loggedInStaff.id).trim().toLowerCase(); 
-    const staffNameExact = String(loggedInStaff.name).trim().toLowerCase(); 
+    const cleanStaffId = String(loggedInStaff.id || '').trim().toLowerCase();
+    const cleanStaffName = String(loggedInStaff.name || '').trim().toLowerCase();
+    const staffNum = String(loggedInStaff.id).match(/\d+/) ? parseInt(String(loggedInStaff.id).match(/\d+/)![0], 10) : null;
 
-    const mySummary = (matrixData.monthlySummary || []).find((d: any) => extractNumber(d['Staff No']) === staffNum);
+    const mySummary = (matrixData.monthlySummary || []).find((d: any) => {
+        const rowId = String(d['Staff No'] || '').trim().toLowerCase();
+        const rowName = String(d['Staff Name'] || '').trim().toLowerCase();
+        const rowNum = String(d['Staff No']).match(/\d+/) ? parseInt(String(d['Staff No']).match(/\d+/)![0], 10) : null;
+        return rowId === cleanStaffId || rowName === cleanStaffName || (staffNum !== null && rowNum === staffNum);
+    });
+
     const sortedPerformers = [...matrixData.topPerformers].filter(p => p['1 to 31 Actual'] > 0).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
     const maxActual = sortedPerformers.length > 0 ? sortedPerformers[0]['1 to 31 Actual'] : 1;
 
@@ -586,9 +587,10 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     }));
 
     const myEntries = allEntries.filter((e: any) => {
-        return e.CleanStaffId === staffIdExact || 
-               e.CleanStaffName === staffNameExact ||
-               extractNumber(e['Staff ID']) === staffNum;
+        const eNum = String(e['Staff ID']).match(/\d+/) ? parseInt(String(e['Staff ID']).match(/\d+/)![0], 10) : null;
+        return e.CleanStaffId === cleanStaffId || 
+               e.CleanStaffName === cleanStaffName ||
+               (staffNum !== null && eNum === staffNum);
     });
 
     const allDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort();
@@ -638,12 +640,18 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         };
     });
 
-    // 🌟 ယနေ့အထိ Attendance တွက်ချက်ခြင်း 🌟
     const todayStr = getLocalTodayStr();
     const pastDays = dailyBreakdown.filter(item => item.date <= todayStr);
     const workedDaysCount = pastDays.filter(item => item.hasSales).length;
     const missedDays = pastDays.filter(item => !item.hasSales);
     const missedDaysCount = missedDays.length;
+
+    const checkIsMe = (pId: any, pName: any) => {
+        const pIdStr = String(pId || '').trim().toLowerCase();
+        const pNameStr = String(pName || '').trim().toLowerCase();
+        const pNum = pIdStr.match(/\d+/) ? parseInt(pIdStr.match(/\d+/)![0], 10) : null;
+        return pIdStr === cleanStaffId || pNameStr === cleanStaffName || (staffNum !== null && pNum === staffNum);
+    };
 
     return (
         <div className="animate-fade-in mt-4">
@@ -663,15 +671,15 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                         <div className="flex items-end space-x-3 h-52 pb-2 pt-14 min-w-max border-b border-gray-100">
                             {sortedPerformers.map((p, idx) => {
                                 const heightPercent = Math.max(5, (p['1 to 31 Actual'] / maxActual) * 100);
-                                const isMe = extractNumber(p['Staff ID']) === staffNum;
+                                const isMe = checkIsMe(p['Staff ID'], p['Staff Name']);
                                 const metPercent = monthlyTotalTarget > 0 ? (p['1 to 31 Actual'] / monthlyTotalTarget) * 100 : 0;
                                 
                                 let barColor = 'bg-gray-200 hover:bg-gray-300';
-                                if (idx === 0) barColor = 'bg-gradient-to-t from-[#123524] to-[#1a4a32] shadow-md'; // 1st
-                                else if (idx === 1) barColor = 'bg-gradient-to-t from-[#D4AF37] to-yellow-400 shadow-md'; // 2nd
-                                else if (idx === 2) barColor = 'bg-gradient-to-t from-gray-400 to-gray-300 shadow-md'; // 3rd
-                                else if (idx === 3) barColor = 'bg-gradient-to-t from-orange-400 to-orange-300 shadow-sm'; // 4th
-                                else if (idx === 4) barColor = 'bg-gradient-to-t from-blue-400 to-blue-300 shadow-sm'; // 5th
+                                if (idx === 0) barColor = 'bg-gradient-to-t from-[#123524] to-[#1a4a32] shadow-md'; 
+                                else if (idx === 1) barColor = 'bg-gradient-to-t from-[#D4AF37] to-yellow-400 shadow-md'; 
+                                else if (idx === 2) barColor = 'bg-gradient-to-t from-gray-400 to-gray-300 shadow-md'; 
+                                else if (idx === 3) barColor = 'bg-gradient-to-t from-orange-400 to-orange-300 shadow-sm'; 
+                                else if (idx === 4) barColor = 'bg-gradient-to-t from-blue-400 to-blue-300 shadow-sm'; 
 
                                 if (isMe && idx > 4) barColor = 'bg-gradient-to-t from-green-400 to-green-500 shadow-sm';
 
@@ -697,7 +705,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
                     <div className="space-y-3">
                         {sortedPerformers.slice(0, 10).map((p, idx) => {
-                            const isMe = extractNumber(p['Staff ID']) === staffNum;
+                            const isMe = checkIsMe(p['Staff ID'], p['Staff Name']);
                             let badgeClass = "bg-gray-100 text-gray-600";
                             if (idx === 0) badgeClass = "bg-yellow-100 text-yellow-700 border border-yellow-300";
                             else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
@@ -743,7 +751,8 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                         <div className="text-2xl font-black text-white">{mySummary['Total Actual Sales'] > 0 && monthlyTotalTarget > 0 ? Math.round((mySummary['Total Actual Sales'] / monthlyTotalTarget) * 100) : 0}%</div>
                                         <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-1">Achieved</div>
                                     </div>
-                                    <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                                    {/* 🌟 Fixed SVG viewBox to prevent clipping 🌟 */}
+                                    <svg viewBox="0 0 128 128" className="absolute inset-0 w-full h-full transform -rotate-90 overflow-visible">
                                         <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
                                         <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#D4AF37]" strokeDasharray="364" strokeDashoffset={364 - (364 * (mySummary['Total Actual Sales'] / monthlyTotalTarget))} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-out' }} />
                                     </svg>
@@ -780,7 +789,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                 </div>
                             </div>
 
-                            {/* 🌟 Attendance & Sales Summary (ယနေ့အထိ အခြေအနေ) 🌟 */}
+                            {/* Attendance & Sales Summary */}
                             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                                 <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
                                 <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ယနေ့အထိ Section ဝင်ထားမှု အခြေအနေ)</p>
