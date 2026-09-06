@@ -1158,12 +1158,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       setSavingCategory(cat.id); 
       try { 
           const batch = writeBatch(db);
+          // 🌟 Category တစ်ခုချင်းစီကို ၎င်း၏ သီးသန့် Document တွင်သာ သိမ်းမည် (1MB မကျော်နိုင်တော့ပါ)
           localCategories.forEach((c, idx) => {
               const cDocRef = doc(db, 'categories', c.id);
               batch.set(cDocRef, { ...c, order: idx });
           });
           
-          // 🌟 FIX DELAY: Save to appData so it loads instantly in Customer App
+          // ❌ appData ထဲသို့ ထပ်မထည့်တော့ပါ (1MB Error ကို ကာကွယ်ရန်)
+          // batch.update(doc(db, 'settings', 'appData'), { categories: localCategories });
           
           await batch.commit();
           alert('Saved Successfully. All categories are synced!'); 
@@ -1889,7 +1891,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                     )}
                                     
                                  <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
-    <input 
+   <input 
         type="file" 
         accept="image/*" 
         className="hidden" 
@@ -1900,7 +1902,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     const img = new Image();
-                    img.onload = () => {
+                    img.onload = async () => { // 🌟 async ပြောင်းထားသည်
                         const canvas = document.createElement('canvas');
                         const MAX_SIZE = 600; 
                         let width = img.width;
@@ -1928,7 +1930,15 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                         }
                         
                         const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
-                        updateItem(cIdx, iIdx, 'imageUrl', finalBase64);
+                        
+                        // 🌟 အရေးကြီး ပြင်ဆင်ချက်: Base64 ကို Database ထဲတိုက်ရိုက်မသိမ်းဘဲ Storage ပေါ်သို့ တင်မည်
+                        try {
+                            const fileName = `service_${Date.now()}.jpg`;
+                            const uploadedUrl = await uploadBase64ToStorage(finalBase64, 'services', fileName);
+                            updateItem(cIdx, iIdx, 'imageUrl', uploadedUrl); // Storage URL ကိုသာ သိမ်းမည်
+                        } catch(err) {
+                            alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။");
+                        }
                         
                         setUploadingImage(null);
                         e.target.value = '';
