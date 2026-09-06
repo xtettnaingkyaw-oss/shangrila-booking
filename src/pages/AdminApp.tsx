@@ -912,30 +912,34 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
   useEffect(() => {
       const fetchAndSyncCategories = async () => {
-          if (appData.categories && appData.categories.length === 4) return;
-          
-          const snap = await getDocs(collection(db, 'categories'));
-          const arr: any[] = [];
-          snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
-          
-          if (arr.length !== 4) {
-              const batch = writeBatch(db);
-              arr.forEach(cat => {
-                  if (cat.docId) batch.delete(doc(db, 'categories', cat.docId));
-              });
-              DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
-                  const cDocRef = doc(db, 'categories', cat.id);
-                  batch.set(cDocRef, { ...cat, order: idx });
-              });
+          try {
+              const snap = await getDocs(collection(db, 'categories'));
+              const arr: any[] = [];
+              snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
               
-              // 🌟 FIX DELAY: Save directly into appData to prevent the 3 second delay for Customer App
-              batch.update(doc(db, 'settings', 'appData'), { categories: DEFAULT_MENU_CATEGORIES });
-              
-              await batch.commit();
-              setLocalCategories(DEFAULT_MENU_CATEGORIES);
-          } else {
-              arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-              setLocalCategories(arr);
+              if (arr.length > 0) {
+                  arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+                  
+                  // 🌟 ပုံဟောင်းများ ပျောက်မသွားစေရန် appData ထဲမှ ပုံဟောင်းများရှိပါက ပြန်လည်ရယူပေးခြင်း
+                  if (appData.categories && appData.categories.length > 0) {
+                      arr.forEach(cat => {
+                          const backupCat = appData.categories.find((c: any) => c.id === cat.id);
+                          if (backupCat) {
+                              cat.items.forEach((item: any) => {
+                                  const backupItem = backupCat.items.find((i: any) => i.id === item.id);
+                                  if (!item.imageUrl && backupItem?.imageUrl) item.imageUrl = backupItem.imageUrl;
+                                  if (!item.description && backupItem?.description) item.description = backupItem.description;
+                              });
+                          }
+                      });
+                  }
+                  
+                  setLocalCategories(arr);
+              } else if (appData.categories && appData.categories.length > 0) {
+                  setLocalCategories(appData.categories);
+              }
+          } catch(e) {
+              console.error("Error fetching categories", e);
           }
       };
       fetchAndSyncCategories();
@@ -1158,14 +1162,13 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       setSavingCategory(cat.id); 
       try { 
           const batch = writeBatch(db);
-          // 🌟 Category တစ်ခုချင်းစီကို ၎င်း၏ သီးသန့် Document တွင်သာ သိမ်းမည် (1MB မကျော်နိုင်တော့ပါ)
           localCategories.forEach((c, idx) => {
               const cDocRef = doc(db, 'categories', c.id);
               batch.set(cDocRef, { ...c, order: idx });
           });
           
-          // ❌ appData ထဲသို့ ထပ်မထည့်တော့ပါ (1MB Error ကို ကာကွယ်ရန်)
-          // batch.update(doc(db, 'settings', 'appData'), { categories: localCategories });
+          // 🌟 Customer App ဘက်မှာ ချက်ချင်းပေါ်စေရန် appData ကိုပါ Update ပြန်လုပ်ပေးမည်
+          batch.update(doc(db, 'settings', 'appData'), { categories: localCategories });
           
           await batch.commit();
           alert('Saved Successfully. All categories are synced!'); 
