@@ -4,7 +4,6 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
-import * as XLSX from 'xlsx';
 
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
@@ -124,17 +123,16 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
       fetchRole();
   }, [loggedInAdmin, tab]);
 
-  useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
-        let rCount = 0;
-        snap.forEach(d => { if (d.data().resetRequested) rCount++; });
-        setResetRequestCount(rCount);
+useEffect(() => {
+    const q = query(collection(db, 'users'), where('resetRequested', '==', true));
+    const unsubUsers = onSnapshot(q, (snap) => {
+        setResetRequestCount(snap.size); // Loop ပတ်စရာမလိုတော့ပါ၊ အရေအတွက်ကို တန်းယူလိုက်ရုံပါပဲ
     });
     return () => unsubUsers();
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'bookings'));
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(300));
     const unsubscribe = onSnapshot(q, (snap) => {
       const data: Booking[] = []; let currentPendingCount = 0;
       snap.forEach((doc) => { 
@@ -983,11 +981,13 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     setSavingCategory('excel_upload');
     
     try {
-        // 🌟 မိုဘိုင်းဘရောက်ဆာများတွင် ပိုမိုတည်ငြိမ်သော FileReader ဖြင့် ဖတ်ရှုခြင်း 🌟
         const reader = new FileReader();
         
         reader.onload = async (event) => {
             try {
+                // 🌟 အပြောင်းအလဲလုပ်ထားသော နေရာ - ဖိုင်တင်မှသာ XLSX ကို Download ဆွဲပါမည် 🌟
+                const XLSX = await import('xlsx');
+
                 const binaryData = event.target?.result;
                 const workbook = XLSX.read(binaryData, { type: 'binary' });
 
