@@ -912,34 +912,30 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
   useEffect(() => {
       const fetchAndSyncCategories = async () => {
-          try {
-              const snap = await getDocs(collection(db, 'categories'));
-              const arr: any[] = [];
-              snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
+          if (appData.categories && appData.categories.length === 4) return;
+          
+          const snap = await getDocs(collection(db, 'categories'));
+          const arr: any[] = [];
+          snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
+          
+          if (arr.length !== 4) {
+              const batch = writeBatch(db);
+              arr.forEach(cat => {
+                  if (cat.docId) batch.delete(doc(db, 'categories', cat.docId));
+              });
+              DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
+                  const cDocRef = doc(db, 'categories', cat.id);
+                  batch.set(cDocRef, { ...cat, order: idx });
+              });
               
-              if (arr.length > 0) {
-                  arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-                  
-                  // 🌟 ပုံဟောင်းများ ပျောက်မသွားစေရန် appData ထဲမှ ပုံဟောင်းများရှိပါက ပြန်လည်ရယူပေးခြင်း
-                  if (appData.categories && appData.categories.length > 0) {
-                      arr.forEach(cat => {
-                          const backupCat = appData.categories.find((c: any) => c.id === cat.id);
-                          if (backupCat) {
-                              cat.items.forEach((item: any) => {
-                                  const backupItem = backupCat.items.find((i: any) => i.id === item.id);
-                                  if (!item.imageUrl && backupItem?.imageUrl) item.imageUrl = backupItem.imageUrl;
-                                  if (!item.description && backupItem?.description) item.description = backupItem.description;
-                              });
-                          }
-                      });
-                  }
-                  
-                  setLocalCategories(arr);
-              } else if (appData.categories && appData.categories.length > 0) {
-                  setLocalCategories(appData.categories);
-              }
-          } catch(e) {
-              console.error("Error fetching categories", e);
+              // 🌟 FIX DELAY: Save directly into appData to prevent the 3 second delay for Customer App
+              batch.update(doc(db, 'settings', 'appData'), { categories: DEFAULT_MENU_CATEGORIES });
+              
+              await batch.commit();
+              setLocalCategories(DEFAULT_MENU_CATEGORIES);
+          } else {
+              arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+              setLocalCategories(arr);
           }
       };
       fetchAndSyncCategories();
@@ -1167,8 +1163,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               batch.set(cDocRef, { ...c, order: idx });
           });
           
-          // 🌟 Customer App ဘက်မှာ ချက်ချင်းပေါ်စေရန် appData ကိုပါ Update ပြန်လုပ်ပေးမည်
-          batch.update(doc(db, 'settings', 'appData'), { categories: localCategories });
+          // 🌟 FIX DELAY: Save to appData so it loads instantly in Customer App
           
           await batch.commit();
           alert('Saved Successfully. All categories are synced!'); 
@@ -1894,7 +1889,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                     )}
                                     
                                  <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
-   <input 
+    <input 
         type="file" 
         accept="image/*" 
         className="hidden" 
@@ -1905,7 +1900,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     const img = new Image();
-                    img.onload = async () => { // 🌟 async ပြောင်းထားသည်
+                    img.onload = () => {
                         const canvas = document.createElement('canvas');
                         const MAX_SIZE = 600; 
                         let width = img.width;
@@ -1933,15 +1928,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                         }
                         
                         const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
-                        
-                        // 🌟 အရေးကြီး ပြင်ဆင်ချက်: Base64 ကို Database ထဲတိုက်ရိုက်မသိမ်းဘဲ Storage ပေါ်သို့ တင်မည်
-                        try {
-                            const fileName = `service_${Date.now()}.jpg`;
-                            const uploadedUrl = await uploadBase64ToStorage(finalBase64, 'services', fileName);
-                            updateItem(cIdx, iIdx, 'imageUrl', uploadedUrl); // Storage URL ကိုသာ သိမ်းမည်
-                        } catch(err) {
-                            alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။");
-                        }
+                        updateItem(cIdx, iIdx, 'imageUrl', finalBase64);
                         
                         setUploadingImage(null);
                         e.target.value = '';
