@@ -1127,90 +1127,22 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
   useEffect(() => { const fetchInstallSteps = async () => { try { const snap = await getDoc(doc(db, 'settings', 'appData')); if (snap.exists() && snap.data().installSteps) { setLocalInstallSteps(snap.data().installSteps); } } catch (e) { console.error(e); } }; fetchInstallSteps(); }, []);
 
-const handleSmartRecovery = async () => {
-      const confirmRun = window.confirm("Database အတွင်း ရောထွေးနေသော Key များကို Key အသစ် တစ်ခုတည်းသို့ စုစည်းပါမည်။ သေချာပါသလား?");
-      if(!confirmRun) return;
+  const handleChangeSecretKey = async () => {
+      if(!newSecretKey) return alert("Key အသစ် ရိုက်ထည့်ပါ");
+      if(newSecretKey.length < 10) return alert("Key အသစ်သည် အနည်းဆုံး စာလုံး ၁၀ လုံးရှိရပါမည်");
+      if(!window.confirm("သတိပြုရန်: ဤလုပ်ဆောင်ချက်သည် Database တစ်ခုလုံးရှိ Data များကို Key အသစ်ဖြင့် ပြောင်းလဲမည်ဖြစ်ပါသည်။ သေချာပါသလား?")) return;
       setMigratingKey(true);
-
-      const OLD_KEY = "Shangrila@2026!SecureKey_V1_tSn2171996";
-      const NEW_KEY = "Shangrila@2026!SecureKey_V5_2171996@tSn"; // ယခင်ပြောင်းရန်ကြိုးစားခဲ့သော Key အသစ်
-
-      // Key နှစ်မျိုးလုံးဖြင့် ဖြည်ကြည့်မည့် Function
-      const decryptWithBoth = (cipher: any) => {
-          if(!cipher || typeof cipher !== 'string' || !cipher.startsWith('U2FsdGVk')) return cipher;
-          try {
-              const bytes = CryptoJS.AES.decrypt(cipher, NEW_KEY);
-              const text = bytes.toString(CryptoJS.enc.Utf8);
-              if (text) return text;
-          } catch(e) {}
-          try {
-              const bytes = CryptoJS.AES.decrypt(cipher, OLD_KEY);
-              const text = bytes.toString(CryptoJS.enc.Utf8);
-              if (text) return text;
-          } catch(e) {}
-          return cipher;
-      };
-
-      // Key အသစ်ဖြင့်သာ ပြန်သိမ်းမည့် Function
-      const encryptWithNew = (cipher: any) => {
-          const plainText = decryptWithBoth(cipher);
-          if (!plainText || plainText.startsWith('U2FsdGVk')) return cipher; 
-          return CryptoJS.AES.encrypt(plainText, NEW_KEY).toString();
-      };
-
       try {
-          const cleanData = (obj: any) => {
-              const cleaned: any = {};
-              Object.keys(obj).forEach(key => { if (obj[key] !== undefined) cleaned[key] = obj[key]; });
-              return cleaned;
-          };
-
-          const allOperations: { ref: any, data: any }[] = [];
-
-          // 1. Users ပြုပြင်ခြင်း
-          const uSnap = await getDocs(collection(db, 'users')); 
-          uSnap.forEach(d => { 
-              const raw = d.data(); 
-              allOperations.push({ ref: doc(db, 'users', d.id), data: cleanData({ 
-                  name: encryptWithNew(raw.name), phone: encryptWithNew(raw.phone), password: encryptWithNew(raw.password), points: encryptWithNew(raw.points), dob: encryptWithNew(raw.dob) 
-              })});
-          }); 
-
-          // 2. Bookings ပြုပြင်ခြင်း
-          const bSnap = await getDocs(collection(db, 'bookings')); 
-          bSnap.forEach(d => { 
-              const raw = d.data(); 
-              allOperations.push({ ref: doc(db, 'bookings', d.id), data: cleanData({ 
-                  name: encryptWithNew(raw.name), phone: encryptWithNew(raw.phone), txId: encryptWithNew(raw.txId), specialRequest: encryptWithNew(raw.specialRequest) 
-              })});
-          }); 
-
-          // 3. Admins ပြုပြင်ခြင်း
-          const aSnap = await getDocs(collection(db, 'admins')); 
-          aSnap.forEach(d => { 
-              const raw = d.data(); 
-              allOperations.push({ ref: doc(db, 'admins', d.id), data: cleanData({ 
-                  username: encryptWithNew(raw.username), password: encryptWithNew(raw.password) 
-              })});
-          }); 
-
-          // Batch ဖြင့် သိမ်းဆည်းခြင်း (Firebase Limit မကျော်စေရန်)
-          const chunkSize = 400;
-          for (let i = 0; i < allOperations.length; i += chunkSize) {
-              const chunk = allOperations.slice(i, i + chunkSize);
-              const batch = writeBatch(db);
-              chunk.forEach(op => batch.update(op.ref, op.data));
-              await batch.commit();
-          }
-
-          alert("✅ Data အားလုံးကို ဘာမှမပျက်စေဘဲ Key အသစ်သို့ အောင်မြင်စွာ စုစည်းပြောင်းလဲပြီးပါပြီ။ \n\nယခု Vercel တွင် Key အသစ် (V5) ကို ထည့်သွင်းပြီး Redeploy လုပ်ပါ။");
-      } catch (error: any) {
-          console.error(error);
-          alert("Error: " + error.message);
-      }
+          const reEncrypt = (oldCipher: string) => { if(!oldCipher || !oldCipher.startsWith('U2FsdGVk')) return oldCipher; try { const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY); const originalText = bytes.toString(CryptoJS.enc.Utf8); if(!originalText) return oldCipher; return CryptoJS.AES.encrypt(originalText, newSecretKey).toString(); } catch(e) { return oldCipher; } };
+          const uSnap = await getDocs(collection(db, 'users')); const uPromises: any[] = []; uSnap.forEach(d => { const raw = d.data(); uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points), dob: reEncrypt(raw.dob) })); }); await Promise.all(uPromises);
+          const bSnap = await getDocs(collection(db, 'bookings')); const bPromises: any[] = []; bSnap.forEach(d => { const raw = d.data(); bPromises.push(updateDoc(doc(db, 'bookings', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), txId: reEncrypt(raw.txId), specialRequest: reEncrypt(raw.specialRequest) })); }); await Promise.all(bPromises);
+          const aSnap = await getDocs(collection(db, 'admins')); const aPromises: any[] = []; aSnap.forEach(d => { const raw = d.data(); aPromises.push(updateDoc(doc(db, 'admins', d.id), { username: reEncrypt(raw.username), password: reEncrypt(raw.password) })); }); await Promise.all(aPromises);
+          const tPromises: any[] = []; localTherapists.forEach(t => { tPromises.push(updateDoc(doc(db, 'therapists', t.id), { password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString() })); }); await Promise.all(tPromises);
+          alert("Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် Key အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
+      } catch(e) { console.error(e); alert("Error updating keys"); }
       setMigratingKey(false);
   };
-   
+
   const handleSaveVipSettings = async () => {
     if (!window.confirm(`Are you sure you want to save VIP Program settings?`)) return;
     setSavingCategory('vip_settings');
