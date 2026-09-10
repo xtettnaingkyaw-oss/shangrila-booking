@@ -976,6 +976,11 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const [googleSheetLink, setGoogleSheetLink] = useState<string>((appData as any).matrixSheetLink || '');
 
+   useEffect(() => {
+      if ((appData as any).matrixSheetLink) setGoogleSheetLink((appData as any).matrixSheetLink);
+  }, [(appData as any).matrixSheetLink]);
+  // 👆👆👆
+
  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
