@@ -974,6 +974,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+  const [googleSheetLink, setGoogleSheetLink] = useState<string>((appData as any).matrixSheetLink || '');
 
  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1118,7 +1119,132 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         e.target.value = '';
     }
 };
-  
+
+   const handleSyncFromGoogleSheet = async () => {
+      if (!googleSheetLink) return alert("https://docs.google.com/spreadsheets/d/1rzz4TERqchpvq6yZ-MV0sUSwQg9r5Eby/edit?usp=drivesdk&ouid=105789140939758859993&rtpof=true&sd=true");
+      
+      // Link ထဲမှ Document ID ကို ထုတ်ယူခြင်း
+      const match = googleSheetLink.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (!match) return alert("Link မှားယွင်းနေပါသည်။ 'https://docs.google.com/spreadsheets/d/...' ပါဝင်သော Link ဖြစ်ရပါမည်။");
+
+      const docId = match[1];
+      setSavingCategory('excel_upload');
+
+      try {
+          // CORS error မတက်စေရန် Proxy ခံ၍ Google Sheet ကို Excel (.xlsx) အနေဖြင့် တိုက်ရိုက်လှမ်းယူခြင်း
+          const exportUrl = `https://docs.google.com/spreadsheets/d/${docId}/export?format=xlsx`;
+          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(exportUrl)}`;
+
+          const response = await fetch(proxyUrl);
+          if (!response.ok) throw new Error("Google Sheet ကို ဆွဲယူ၍ မရပါ။ 'Anyone with the link' ဖွင့်ထားခြင်း ရှိမရှိ စစ်ဆေးပါ။");
+          
+          const arrayBuffer = await response.arrayBuffer();
+          const XLSX = await import('xlsx');
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+
+          let topData: any[] = [];
+          let monthlyData: any[] = [];
+          let entryData: any[] = [];
+
+          const allSheets = workbook.SheetNames.map(name => ({
+              name,
+              data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
+          }));
+
+          for (const sheet of allSheets) {
+              if (sheet.data.length === 0) continue;
+              const keys = Object.keys(sheet.data[0]).join(' ').toLowerCase();
+
+              if (keys.includes('staff id') && (keys.includes('actual') || keys.includes('1 to'))) {
+                  topData = sheet.data;
+              } else if (keys.includes('final pay') || keys.includes('commession') || keys.includes('commission')) {
+                  monthlyData = sheet.data;
+              } else if (keys.includes('date') && keys.includes('sales amount')) {
+                  entryData = sheet.data;
+              }
+          }
+
+          const findSheet = (keywords: string[]) => {
+              const sheetName = workbook.SheetNames.find(s => keywords.some(k => s.toLowerCase().includes(k.toLowerCase())));
+              return sheetName ? XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) : [];
+          };
+
+          if (topData.length === 0) topData = findSheet(['Top Performers', 'Top Performer', 'Top']);
+          if (monthlyData.length === 0) monthlyData = findSheet(['Monthly Summary', 'Monthly', 'Summary']);
+          if (entryData.length === 0) entryData = findSheet(['Daily Entry', 'Daily', 'Entry']);
+
+          if (topData.length === 0 && monthlyData.length === 0 && allSheets.length >= 3) {
+              entryData = allSheets[0].data;
+              topData = allSheets[1].data;
+              monthlyData = allSheets[2].data;
+          }
+
+          if (topData.length === 0 && monthlyData.length === 0) {
+              throw new Error("Sheet ထဲတွင် လိုအပ်သော Data များကို ရှာမတွေ့ပါ။");
+          }
+
+          // Data Normalization (ယခင်အတိုင်း)
+          const normalizedTopData = topData.map((row: any) => {
+              const newRow = { ...row };
+              const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
+              if (actualKey && actualKey !== '1 to 31 Actual') newRow['1 to 31 Actual'] = row[actualKey];
+              return newRow;
+          });
+
+          const normalizedEntryData = entryData.map((row: any) => {
+              const newRow = { ...row };
+              if (newRow['Staff ID']) {
+                  let sId = String(newRow['Staff ID']).trim();
+                  if (sId.toUpperCase().startsWith('SGL-')) {
+                      const numPart = parseInt(sId.split('-')[1], 10);
+                      if (!isNaN(numPart)) sId = "No-" + numPart;
+                  }
+                  newRow['Staff ID'] = sId;
+              }
+
+              const rawDate = row['Date'] || row['date'] || row['DATE'];
+              if (rawDate) {
+                  let parsedStr = '';
+                  if (typeof rawDate === 'number') {
+                      const utcDays = Math.floor(rawDate - 25569);
+                      const dateObj = new Date(utcDays * 86400 * 1000);
+                      parsedStr = dateObj.toISOString().split('T')[0];
+                  } else if (typeof rawDate === 'string') {
+                      const dateObj = new Date(rawDate.trim());
+                      if (!isNaN(dateObj.getTime())) {
+                          const y = dateObj.getFullYear();
+                          const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+                          const d = String(dateObj.getDate()).padStart(2, '0');
+                          parsedStr = y + "-" + m + "-" + d;
+                      } else {
+                          parsedStr = rawDate.trim();
+                      }
+                  }
+                  newRow.ParsedDate = parsedStr; 
+                  newRow.Date = parsedStr;
+              }
+              return newRow;
+          });
+
+          // Firebase သို့ သိမ်းဆည်းခြင်း
+          await setDoc(doc(db, 'settings', 'matrixData'), {
+              topPerformers: normalizedTopData,
+              monthlySummary: monthlyData,
+              dailyEntries: normalizedEntryData,
+              lastUpdated: Date.now()
+          }, { merge: true });
+
+          // နောက်တစ်ခေါက်အတွက် Link ကို မှတ်ထားပေးခြင်း
+          await setDoc(doc(db, 'settings', 'appData'), { matrixSheetLink: googleSheetLink }, { merge: true });
+          onSettingsUpdated({ ...appData, matrixSheetLink: googleSheetLink } as any);
+
+          alert("✅ Google Sheet မှ Data များကို အောင်မြင်စွာ Auto Sync ဆွဲယူပြီးပါပြီ။");
+      } catch (err: any) {
+          console.error("Sync Error:", err);
+          alert(`Auto Sync လုပ်ရာတွင် အမှားရှိနေပါသည်:\n${err.message}`);
+      }
+      setSavingCategory(null);
+  };
   const [newSecretKey, setNewSecretKey] = useState('');
   const [migratingKey, setMigratingKey] = useState(false);
 
@@ -1353,14 +1479,38 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
          )}
       </div>
 
-       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-600">
-          <h3 className="text-xl font-bold text-gray-800 flex items-center mb-2"><BarChart2 className="w-5 h-5 mr-2 text-blue-600" /> Upload Matrix Database (Excel)</h3>
-          <p className="text-xs text-gray-500 mb-4">Staff များ၏ Performance (Top Performers & Visual Charts) ကို ပြသရန် August_Shangri_La_Matrix_Database.xlsx ဖိုင်အား ဤနေရာတွင် တင်ပါ။</p>
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-600">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><BarChart2 className="w-5 h-5 mr-2 text-blue-600" /> Auto-Sync Matrix (Google Sheet)</h3>
+                  <p className="text-xs text-gray-500 mt-1">Staff များ၏ Performance ကို Google Sheet မှ တိုက်ရိုက် Auto Update လုပ်ရန်</p>
+              </div>
+          </div>
           
-          <label className="flex items-center justify-center w-full sm:w-auto px-6 py-4 bg-blue-50 text-blue-700 border-2 border-dashed border-blue-300 rounded-xl cursor-pointer hover:bg-blue-100 transition font-bold shadow-sm">
-              {savingCategory === 'excel_upload' ? 'Uploading & Parsing Data...' : '📊 Click to Upload Excel File'}
-              <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleExcelUpload} disabled={savingCategory === 'excel_upload'} />
-          </label>
+          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col sm:flex-row gap-3 items-center">
+              <input 
+                  type="text" 
+                  value={googleSheetLink} 
+                  onChange={(e) => setGoogleSheetLink(e.target.value)} 
+                  placeholder="Paste your Google Sheet link here..." 
+                  className="w-full flex-1 p-3 border border-gray-300 rounded-lg outline-none focus:border-blue-500 text-sm font-semibold"
+              />
+              <button 
+                  onClick={handleSyncFromGoogleSheet} 
+                  disabled={savingCategory === 'excel_upload'} 
+                  className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition flex items-center justify-center whitespace-nowrap"
+              >
+                  {savingCategory === 'excel_upload' ? 'Syncing Data...' : '🔄 Sync from Google Sheet'}
+              </button>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
+              <p className="text-[10px] font-bold text-gray-400 uppercase">Or upload Excel file manually</p>
+              <label className="text-xs font-bold text-gray-600 cursor-pointer hover:underline">
+                  [ Upload .xlsx File ]
+                  <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleExcelUpload} disabled={savingCategory === 'excel_upload'} />
+              </label>
+          </div>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
