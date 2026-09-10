@@ -1120,78 +1120,33 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     }
 };
 
-   const handleSyncFromGoogleSheet = async () => {
-      if (!googleSheetLink) return alert("https://docs.google.com/spreadsheets/d/1rzz4TERqchpvq6yZ-MV0sUSwQg9r5Eby/edit?usp=drivesdk&ouid=105789140939758859993&rtpof=true&sd=true");
-      
-      // Link ထဲမှ Document ID ကို ထုတ်ယူခြင်း
-      const match = googleSheetLink.match(/\/d\/([a-zA-Z0-9-_]+)/);
-      if (!match) return alert("Link မှားယွင်းနေပါသည်။ 'https://docs.google.com/spreadsheets/d/...' ပါဝင်သော Link ဖြစ်ရပါမည်။");
+ const handleSyncFromGoogleSheet = async () => {
+      // ဒီမှာ script.google.com ပါမပါ စစ်ဆေးတဲ့ကုဒ် ပြောင်းထားပါတယ်
+      if (!googleSheetLink) return alert("Google Sheet Web App URL (API Link) ထည့်ပေးပါ။");
+      if (!googleSheetLink.includes("script.google.com")) return alert("Link မှားယွင်းနေပါသည်။ 'https://script.google.com/macros/s/...' ဖြင့်စသော Web App URL ဖြစ်ရပါမည်။");
 
-      const docId = match[1];
       setSavingCategory('excel_upload');
 
       try {
-          // CORS error မတက်စေရန် Proxy ခံ၍ Google Sheet ကို Excel (.xlsx) အနေဖြင့် တိုက်ရိုက်လှမ်းယူခြင်း
-          const exportUrl = `https://docs.google.com/spreadsheets/d/${docId}/export?format=xlsx`;
-          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(exportUrl)}`;
-
-          const response = await fetch(proxyUrl);
-          if (!response.ok) throw new Error("Google Sheet ကို ဆွဲယူ၍ မရပါ။ 'Anyone with the link' ဖွင့်ထားခြင်း ရှိမရှိ စစ်ဆေးပါ။");
+          // Google Apps Script မှ JSON data ကို တိုက်ရိုက်ဆွဲယူခြင်း
+          const response = await fetch(googleSheetLink);
+          if (!response.ok) throw new Error("API ချိတ်ဆက်မှု မအောင်မြင်ပါ။");
           
-          const arrayBuffer = await response.arrayBuffer();
-          const XLSX = await import('xlsx');
-          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const rawData = await response.json();
 
-          let topData: any[] = [];
-          let monthlyData: any[] = [];
-          let entryData: any[] = [];
-
-          const allSheets = workbook.SheetNames.map(name => ({
-              name,
-              data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
-          }));
-
-          for (const sheet of allSheets) {
-              if (sheet.data.length === 0) continue;
-              const keys = Object.keys(sheet.data[0]).join(' ').toLowerCase();
-
-              if (keys.includes('staff id') && (keys.includes('actual') || keys.includes('1 to'))) {
-                  topData = sheet.data;
-              } else if (keys.includes('final pay') || keys.includes('commession') || keys.includes('commission')) {
-                  monthlyData = sheet.data;
-              } else if (keys.includes('date') && keys.includes('sales amount')) {
-                  entryData = sheet.data;
-              }
-          }
-
-          const findSheet = (keywords: string[]) => {
-              const sheetName = workbook.SheetNames.find(s => keywords.some(k => s.toLowerCase().includes(k.toLowerCase())));
-              return sheetName ? XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) : [];
-          };
-
-          if (topData.length === 0) topData = findSheet(['Top Performers', 'Top Performer', 'Top']);
-          if (monthlyData.length === 0) monthlyData = findSheet(['Monthly Summary', 'Monthly', 'Summary']);
-          if (entryData.length === 0) entryData = findSheet(['Daily Entry', 'Daily', 'Entry']);
-
-          if (topData.length === 0 && monthlyData.length === 0 && allSheets.length >= 3) {
-              entryData = allSheets[0].data;
-              topData = allSheets[1].data;
-              monthlyData = allSheets[2].data;
-          }
-
-          if (topData.length === 0 && monthlyData.length === 0) {
+          if (!rawData.topPerformers.length && !rawData.monthlySummary.length && !rawData.dailyEntries.length) {
               throw new Error("Sheet ထဲတွင် လိုအပ်သော Data များကို ရှာမတွေ့ပါ။");
           }
 
           // Data Normalization (ယခင်အတိုင်း)
-          const normalizedTopData = topData.map((row: any) => {
+          const normalizedTopData = rawData.topPerformers.map((row: any) => {
               const newRow = { ...row };
               const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
               if (actualKey && actualKey !== '1 to 31 Actual') newRow['1 to 31 Actual'] = row[actualKey];
               return newRow;
           });
 
-          const normalizedEntryData = entryData.map((row: any) => {
+          const normalizedEntryData = rawData.dailyEntries.map((row: any) => {
               const newRow = { ...row };
               if (newRow['Staff ID']) {
                   let sId = String(newRow['Staff ID']).trim();
@@ -1205,19 +1160,16 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               const rawDate = row['Date'] || row['date'] || row['DATE'];
               if (rawDate) {
                   let parsedStr = '';
-                  if (typeof rawDate === 'number') {
-                      const utcDays = Math.floor(rawDate - 25569);
-                      const dateObj = new Date(utcDays * 86400 * 1000);
-                      parsedStr = dateObj.toISOString().split('T')[0];
-                  } else if (typeof rawDate === 'string') {
-                      const dateObj = new Date(rawDate.trim());
-                      if (!isNaN(dateObj.getTime())) {
-                          const y = dateObj.getFullYear();
-                          const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-                          const d = String(dateObj.getDate()).padStart(2, '0');
-                          parsedStr = y + "-" + m + "-" + d;
+                  if (typeof rawDate === 'string' && rawDate.includes('T')) {
+                      parsedStr = rawDate.split('T')[0];
+                  } else if (rawDate instanceof Date) {
+                      parsedStr = rawDate.toISOString().split('T')[0];
+                  } else {
+                      const d = new Date(rawDate);
+                      if (!isNaN(d.getTime())) {
+                           parsedStr = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0') + "-" + String(d.getDate()).padStart(2, '0');
                       } else {
-                          parsedStr = rawDate.trim();
+                           parsedStr = String(rawDate).trim();
                       }
                   }
                   newRow.ParsedDate = parsedStr; 
@@ -1229,7 +1181,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           // Firebase သို့ သိမ်းဆည်းခြင်း
           await setDoc(doc(db, 'settings', 'matrixData'), {
               topPerformers: normalizedTopData,
-              monthlySummary: monthlyData,
+              monthlySummary: rawData.monthlySummary,
               dailyEntries: normalizedEntryData,
               lastUpdated: Date.now()
           }, { merge: true });
