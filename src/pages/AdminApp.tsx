@@ -1127,22 +1127,106 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
   useEffect(() => { const fetchInstallSteps = async () => { try { const snap = await getDoc(doc(db, 'settings', 'appData')); if (snap.exists() && snap.data().installSteps) { setLocalInstallSteps(snap.data().installSteps); } } catch (e) { console.error(e); } }; fetchInstallSteps(); }, []);
 
-  const handleChangeSecretKey = async () => {
+const handleChangeSecretKey = async () => {
       if(!newSecretKey) return alert("Key အသစ် ရိုက်ထည့်ပါ");
       if(newSecretKey.length < 10) return alert("Key အသစ်သည် အနည်းဆုံး စာလုံး ၁၀ လုံးရှိရပါမည်");
       if(!window.confirm("သတိပြုရန်: ဤလုပ်ဆောင်ချက်သည် Database တစ်ခုလုံးရှိ Data များကို Key အသစ်ဖြင့် ပြောင်းလဲမည်ဖြစ်ပါသည်။ သေချာပါသလား?")) return;
+      
       setMigratingKey(true);
       try {
-          const reEncrypt = (oldCipher: string) => { if(!oldCipher || !oldCipher.startsWith('U2FsdGVk')) return oldCipher; try { const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY); const originalText = bytes.toString(CryptoJS.enc.Utf8); if(!originalText) return oldCipher; return CryptoJS.AES.encrypt(originalText, newSecretKey).toString(); } catch(e) { return oldCipher; } };
-          const uSnap = await getDocs(collection(db, 'users')); const uPromises: any[] = []; uSnap.forEach(d => { const raw = d.data(); uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points), dob: reEncrypt(raw.dob) })); }); await Promise.all(uPromises);
-          const bSnap = await getDocs(collection(db, 'bookings')); const bPromises: any[] = []; bSnap.forEach(d => { const raw = d.data(); bPromises.push(updateDoc(doc(db, 'bookings', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), txId: reEncrypt(raw.txId), specialRequest: reEncrypt(raw.specialRequest) })); }); await Promise.all(bPromises);
-          const aSnap = await getDocs(collection(db, 'admins')); const aPromises: any[] = []; aSnap.forEach(d => { const raw = d.data(); aPromises.push(updateDoc(doc(db, 'admins', d.id), { username: reEncrypt(raw.username), password: reEncrypt(raw.password) })); }); await Promise.all(aPromises);
-          const tPromises: any[] = []; localTherapists.forEach(t => { tPromises.push(updateDoc(doc(db, 'therapists', t.id), { password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString() })); }); await Promise.all(tPromises);
-          alert("Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် Key အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
-      } catch(e) { console.error(e); alert("Error updating keys"); }
+          // Decrypt -> Encrypt ပြန်လုပ်ပေးမည့် Function
+          const reEncrypt = (oldCipher: any) => { 
+              if(!oldCipher || typeof oldCipher !== 'string' || !oldCipher.startsWith('U2FsdGVk')) return oldCipher; 
+              try { 
+                  const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY); 
+                  const originalText = bytes.toString(CryptoJS.enc.Utf8); 
+                  if(!originalText) return oldCipher; 
+                  return CryptoJS.AES.encrypt(originalText, newSecretKey).toString(); 
+              } catch(e) { return oldCipher; } 
+          };
+
+          // Undefined ဖြစ်နေသော Field များကို ဖယ်ရှားပေးမည့် Helper Function (Firebase Error ကို တားဆီးရန်)
+          const cleanData = (obj: any) => {
+              const cleaned: any = {};
+              Object.keys(obj).forEach(key => {
+                  if (obj[key] !== undefined) cleaned[key] = obj[key];
+              });
+              return cleaned;
+          };
+
+          const allOperations: { ref: any, data: any }[] = [];
+
+          // ၁။ Users များကို ပြောင်းလဲခြင်း
+          const uSnap = await getDocs(collection(db, 'users')); 
+          uSnap.forEach(d => { 
+              const raw = d.data(); 
+              const updatedData = cleanData({ 
+                  name: reEncrypt(raw.name), 
+                  phone: reEncrypt(raw.phone), 
+                  password: reEncrypt(raw.password), 
+                  points: reEncrypt(raw.points), 
+                  dob: reEncrypt(raw.dob) 
+              });
+              if (Object.keys(updatedData).length > 0) {
+                  allOperations.push({ ref: doc(db, 'users', d.id), data: updatedData });
+              }
+          }); 
+
+          // ၂။ Bookings များကို ပြောင်းလဲခြင်း
+          const bSnap = await getDocs(collection(db, 'bookings')); 
+          bSnap.forEach(d => { 
+              const raw = d.data(); 
+              const updatedData = cleanData({ 
+                  name: reEncrypt(raw.name), 
+                  phone: reEncrypt(raw.phone), 
+                  txId: reEncrypt(raw.txId), 
+                  specialRequest: reEncrypt(raw.specialRequest) 
+              });
+              if (Object.keys(updatedData).length > 0) {
+                  allOperations.push({ ref: doc(db, 'bookings', d.id), data: updatedData });
+              }
+          }); 
+
+          // ၃။ Admins များကို ပြောင်းလဲခြင်း
+          const aSnap = await getDocs(collection(db, 'admins')); 
+          aSnap.forEach(d => { 
+              const raw = d.data(); 
+              const updatedData = cleanData({ 
+                  username: reEncrypt(raw.username), 
+                  password: reEncrypt(raw.password) 
+              });
+              if (Object.keys(updatedData).length > 0) {
+                  allOperations.push({ ref: doc(db, 'admins', d.id), data: updatedData });
+              }
+          }); 
+
+          // ၄။ Therapists များကို ပြောင်းလဲခြင်း
+          localTherapists.forEach(t => { 
+              if (t.password) {
+                  allOperations.push({ 
+                      ref: doc(db, 'therapists', t.id), 
+                      data: { password: CryptoJS.AES.encrypt(t.password, newSecretKey).toString() } 
+                  });
+              }
+          }); 
+
+          // ၅။ Firebase ၏ Limit (500) မကျော်စေရန် Data များကို အပိုင်းလိုက် (Chunks) ခွဲပြီး Batch Write ဖြင့် သိမ်းခြင်း
+          const chunkSize = 400;
+          for (let i = 0; i < allOperations.length; i += chunkSize) {
+              const chunk = allOperations.slice(i, i + chunkSize);
+              const batch = writeBatch(db);
+              chunk.forEach(op => batch.update(op.ref, op.data));
+              await batch.commit();
+          }
+
+          alert("✅ Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် VITE_SECRET_KEY ကို အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
+          setNewSecretKey('');
+      } catch(e: any) { 
+          console.error(e); 
+          alert(`Error updating keys: ${e.message}`); // Error အတိအကျကို ပြသပေးမည်
+      }
       setMigratingKey(false);
   };
-
   const handleSaveVipSettings = async () => {
     if (!window.confirm(`Are you sure you want to save VIP Program settings?`)) return;
     setSavingCategory('vip_settings');
