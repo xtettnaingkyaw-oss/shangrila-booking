@@ -1120,7 +1120,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     }
 };
 
- const handconst handleSyncFromGoogleSheet = async () => {
+ const handleSyncFromGoogleSheet = async () => {
       if (!googleSheetLink) return alert("Google Sheet Web App URL (API Link) ထည့်ပေးပါ။");
       if (!googleSheetLink.includes("script.google.com")) return alert("Link မှားယွင်းနေပါသည်။ 'https://script.google.com/macros/s/...' ဖြင့်စသော Web App URL ဖြစ်ရပါမည်။");
 
