@@ -1120,15 +1120,13 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     }
 };
 
- const handleSyncFromGoogleSheet = async () => {
-      // ဒီမှာ script.google.com ပါမပါ စစ်ဆေးတဲ့ကုဒ် ပြောင်းထားပါတယ်
+ const handconst handleSyncFromGoogleSheet = async () => {
       if (!googleSheetLink) return alert("Google Sheet Web App URL (API Link) ထည့်ပေးပါ။");
       if (!googleSheetLink.includes("script.google.com")) return alert("Link မှားယွင်းနေပါသည်။ 'https://script.google.com/macros/s/...' ဖြင့်စသော Web App URL ဖြစ်ရပါမည်။");
 
       setSavingCategory('excel_upload');
 
       try {
-          // Google Apps Script မှ JSON data ကို တိုက်ရိုက်ဆွဲယူခြင်း
           const response = await fetch(googleSheetLink);
           if (!response.ok) throw new Error("API ချိတ်ဆက်မှု မအောင်မြင်ပါ။");
           
@@ -1138,23 +1136,35 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
               throw new Error("Sheet ထဲတွင် လိုအပ်သော Data များကို ရှာမတွေ့ပါ။");
           }
 
-          // Data Normalization (ယခင်အတိုင်း)
-          const normalizedTopData = rawData.topPerformers.map((row: any) => {
-              const newRow = { ...row };
+          // 🌟 ဤနေရာတွင် Firebase က လက်မခံသော အကွက်အလွတ် (Empty Keys) များကို ဖယ်ရှားပေးမည့်ကုဒ် ထည့်ထားပါသည် 🌟
+          const sanitizeRow = (row: any) => {
+              const clean: any = {};
+              Object.keys(row).forEach(k => {
+                  if (k && k.trim() !== '' && row[k] !== undefined) {
+                      clean[k.trim()] = row[k];
+                  }
+              });
+              return clean;
+          };
+
+          const normalizedTopData = rawData.topPerformers.map((r: any) => {
+              const row = sanitizeRow(r);
               const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
-              if (actualKey && actualKey !== '1 to 31 Actual') newRow['1 to 31 Actual'] = row[actualKey];
-              return newRow;
+              if (actualKey && actualKey !== '1 to 31 Actual') row['1 to 31 Actual'] = row[actualKey];
+              return row;
           });
 
-          const normalizedEntryData = rawData.dailyEntries.map((row: any) => {
-              const newRow = { ...row };
-              if (newRow['Staff ID']) {
-                  let sId = String(newRow['Staff ID']).trim();
+          const normalizedMonthlyData = rawData.monthlySummary.map((r: any) => sanitizeRow(r));
+
+          const normalizedEntryData = rawData.dailyEntries.map((r: any) => {
+              const row = sanitizeRow(r);
+              if (row['Staff ID']) {
+                  let sId = String(row['Staff ID']).trim();
                   if (sId.toUpperCase().startsWith('SGL-')) {
                       const numPart = parseInt(sId.split('-')[1], 10);
                       if (!isNaN(numPart)) sId = "No-" + numPart;
                   }
-                  newRow['Staff ID'] = sId;
+                  row['Staff ID'] = sId;
               }
 
               const rawDate = row['Date'] || row['date'] || row['DATE'];
@@ -1172,16 +1182,16 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                            parsedStr = String(rawDate).trim();
                       }
                   }
-                  newRow.ParsedDate = parsedStr; 
-                  newRow.Date = parsedStr;
+                  row.ParsedDate = parsedStr; 
+                  row.Date = parsedStr;
               }
-              return newRow;
+              return row;
           });
 
           // Firebase သို့ သိမ်းဆည်းခြင်း
           await setDoc(doc(db, 'settings', 'matrixData'), {
               topPerformers: normalizedTopData,
-              monthlySummary: rawData.monthlySummary,
+              monthlySummary: normalizedMonthlyData,
               dailyEntries: normalizedEntryData,
               lastUpdated: Date.now()
           }, { merge: true });
@@ -1197,61 +1207,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       }
       setSavingCategory(null);
   };
-  const [newSecretKey, setNewSecretKey] = useState('');
-  const [migratingKey, setMigratingKey] = useState(false);
-
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
-  const toggleSection = (sec: string) => setExpandedSection(prev => prev === sec ? null : sec);
-
-  useEffect(() => { const fetchInstallSteps = async () => { try { const snap = await getDoc(doc(db, 'settings', 'appData')); if (snap.exists() && snap.data().installSteps) { setLocalInstallSteps(snap.data().installSteps); } } catch (e) { console.error(e); } }; fetchInstallSteps(); }, []);
-
-  const handleChangeSecretKey = async () => {
-      if(!newSecretKey) return alert("Key အသစ် ရိုက်ထည့်ပါ");
-      if(newSecretKey.length < 10) return alert("Key အသစ်သည် အနည်းဆုံး စာလုံး ၁၀ လုံးရှိရပါမည်");
-      if(!window.confirm("သတိပြုရန်: ဤလုပ်ဆောင်ချက်သည် Database တစ်ခုလုံးရှိ Data များကို Key အသစ်ဖြင့် ပြောင်းလဲမည်ဖြစ်ပါသည်။ သေချာပါသလား?")) return;
-      setMigratingKey(true);
-      try {
-          const reEncrypt = (oldCipher: string) => { if(!oldCipher || !oldCipher.startsWith('U2FsdGVk')) return oldCipher; try { const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY); const originalText = bytes.toString(CryptoJS.enc.Utf8); if(!originalText) return oldCipher; return CryptoJS.AES.encrypt(originalText, newSecretKey).toString(); } catch(e) { return oldCipher; } };
-          const uSnap = await getDocs(collection(db, 'users')); const uPromises: any[] = []; uSnap.forEach(d => { const raw = d.data(); uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points), dob: reEncrypt(raw.dob) })); }); await Promise.all(uPromises);
-          const bSnap = await getDocs(collection(db, 'bookings')); const bPromises: any[] = []; bSnap.forEach(d => { const raw = d.data(); bPromises.push(updateDoc(doc(db, 'bookings', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), txId: reEncrypt(raw.txId), specialRequest: reEncrypt(raw.specialRequest) })); }); await Promise.all(bPromises);
-          const aSnap = await getDocs(collection(db, 'admins')); const aPromises: any[] = []; aSnap.forEach(d => { const raw = d.data(); aPromises.push(updateDoc(doc(db, 'admins', d.id), { username: reEncrypt(raw.username), password: reEncrypt(raw.password) })); }); await Promise.all(aPromises);
-          const tPromises: any[] = []; localTherapists.forEach(t => { tPromises.push(updateDoc(doc(db, 'therapists', t.id), { password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString() })); }); await Promise.all(tPromises);
-          alert("Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် Key အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
-      } catch(e) { console.error(e); alert("Error updating keys"); }
-      setMigratingKey(false);
-  };
-
-  const handleSaveVipSettings = async () => {
-    if (!window.confirm(`Are you sure you want to save VIP Program settings?`)) return;
-    setSavingCategory('vip_settings');
-    try { await setDoc(doc(db, 'settings', 'appData'), { vipSettings: localVipSettings }, { merge: true }); onSettingsUpdated({ ...appData, vipSettings: localVipSettings }); alert('VIP Membership Program saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null);
-  };
-
-  const updateVipTier = (tIdx: number, field: string, val: any) => { const updated = [...localVipSettings.tiers]; (updated[tIdx] as any)[field] = val; setLocalVipSettings({...localVipSettings, tiers: updated}); };
-  const updateVipRule = (rIdx: number, val: string) => { const updated = [...localVipSettings.rules]; updated[rIdx] = val; setLocalVipSettings({...localVipSettings, rules: updated}); };
-
-  const handleSaveCategory = async (cIdx: number) => { 
-      const cat = localCategories[cIdx]; 
-      if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; 
-      setSavingCategory(cat.id); 
-      try { 
-          const batch = writeBatch(db);
-          localCategories.forEach((c, idx) => {
-              const cDocRef = doc(db, 'categories', c.id);
-              batch.set(cDocRef, { ...c, order: idx });
-          });
-          
-          // 🌟 FIX DELAY: Save to appData so it loads instantly in Customer App
-          
-          await batch.commit();
-          alert('Saved Successfully. All categories are synced!'); 
-      } catch (e) { 
-          console.error(e);
-          alert('Update error.'); 
-      } 
-      setSavingCategory(null); 
-  };
-
   const handleSavePromotion = async () => { if (!window.confirm(`Are you sure you want to save promotion settings?`)) return; setSavingCategory('promotion'); try { await setDoc(doc(db, 'settings', 'appData'), { promotion: localPromotion }, { merge: true }); onSettingsUpdated({ ...appData, promotion: localPromotion }); alert('Promotion settings saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
                                                                                                                                                                                                             
   const handleSaveBranding = async () => { if (!window.confirm(`Are you sure you want to save branding settings?`)) return; setSavingCategory('branding'); try { await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true }); onSettingsUpdated({ ...appData, branding: localBranding }); alert('Branding saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
