@@ -974,12 +974,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [deletedTherapistIds, setDeletedTherapistIds] = useState<string[]>([]);
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
-  const [googleSheetLink, setGoogleSheetLink] = useState<string>((appData as any).matrixSheetLink || '');
-
-   useEffect(() => {
-      if ((appData as any).matrixSheetLink) setGoogleSheetLink((appData as any).matrixSheetLink);
-  }, [(appData as any).matrixSheetLink]);
-  // 👆👆👆
 
  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1124,94 +1118,62 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         e.target.value = '';
     }
 };
+  
+  const [newSecretKey, setNewSecretKey] = useState('');
+  const [migratingKey, setMigratingKey] = useState(false);
 
- const handleSyncFromGoogleSheet = async () => {
-      if (!googleSheetLink) return alert("Google Sheet Web App URL (API Link) ထည့်ပေးပါ။");
-      if (!googleSheetLink.includes("script.google.com")) return alert("Link မှားယွင်းနေပါသည်။ 'https://script.google.com/macros/s/...' ဖြင့်စသော Web App URL ဖြစ်ရပါမည်။");
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const toggleSection = (sec: string) => setExpandedSection(prev => prev === sec ? null : sec);
 
-      setSavingCategory('excel_upload');
+  useEffect(() => { const fetchInstallSteps = async () => { try { const snap = await getDoc(doc(db, 'settings', 'appData')); if (snap.exists() && snap.data().installSteps) { setLocalInstallSteps(snap.data().installSteps); } } catch (e) { console.error(e); } }; fetchInstallSteps(); }, []);
 
+  const handleChangeSecretKey = async () => {
+      if(!newSecretKey) return alert("Key အသစ် ရိုက်ထည့်ပါ");
+      if(newSecretKey.length < 10) return alert("Key အသစ်သည် အနည်းဆုံး စာလုံး ၁၀ လုံးရှိရပါမည်");
+      if(!window.confirm("သတိပြုရန်: ဤလုပ်ဆောင်ချက်သည် Database တစ်ခုလုံးရှိ Data များကို Key အသစ်ဖြင့် ပြောင်းလဲမည်ဖြစ်ပါသည်။ သေချာပါသလား?")) return;
+      setMigratingKey(true);
       try {
-          const response = await fetch(googleSheetLink);
-          if (!response.ok) throw new Error("API ချိတ်ဆက်မှု မအောင်မြင်ပါ။");
-          
-          const rawData = await response.json();
-
-          if (!rawData.topPerformers.length && !rawData.monthlySummary.length && !rawData.dailyEntries.length) {
-              throw new Error("Sheet ထဲတွင် လိုအပ်သော Data များကို ရှာမတွေ့ပါ။");
-          }
-
-          // 🌟 ဤနေရာတွင် Firebase က လက်မခံသော အကွက်အလွတ် (Empty Keys) များကို ဖယ်ရှားပေးမည့်ကုဒ် ထည့်ထားပါသည် 🌟
-          const sanitizeRow = (row: any) => {
-              const clean: any = {};
-              Object.keys(row).forEach(k => {
-                  if (k && k.trim() !== '' && row[k] !== undefined) {
-                      clean[k.trim()] = row[k];
-                  }
-              });
-              return clean;
-          };
-
-          const normalizedTopData = rawData.topPerformers.map((r: any) => {
-              const row = sanitizeRow(r);
-              const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
-              if (actualKey && actualKey !== '1 to 31 Actual') row['1 to 31 Actual'] = row[actualKey];
-              return row;
-          });
-
-          const normalizedMonthlyData = rawData.monthlySummary.map((r: any) => sanitizeRow(r));
-
-          const normalizedEntryData = rawData.dailyEntries.map((r: any) => {
-              const row = sanitizeRow(r);
-              if (row['Staff ID']) {
-                  let sId = String(row['Staff ID']).trim();
-                  if (sId.toUpperCase().startsWith('SGL-')) {
-                      const numPart = parseInt(sId.split('-')[1], 10);
-                      if (!isNaN(numPart)) sId = "No-" + numPart;
-                  }
-                  row['Staff ID'] = sId;
-              }
-
-              const rawDate = row['Date'] || row['date'] || row['DATE'];
-              if (rawDate) {
-                  let parsedStr = '';
-                  if (typeof rawDate === 'string' && rawDate.includes('T')) {
-                      parsedStr = rawDate.split('T')[0];
-                  } else if (rawDate instanceof Date) {
-                      parsedStr = rawDate.toISOString().split('T')[0];
-                  } else {
-                      const d = new Date(rawDate);
-                      if (!isNaN(d.getTime())) {
-                           parsedStr = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0') + "-" + String(d.getDate()).padStart(2, '0');
-                      } else {
-                           parsedStr = String(rawDate).trim();
-                      }
-                  }
-                  row.ParsedDate = parsedStr; 
-                  row.Date = parsedStr;
-              }
-              return row;
-          });
-
-          // Firebase သို့ သိမ်းဆည်းခြင်း
-          await setDoc(doc(db, 'settings', 'matrixData'), {
-              topPerformers: normalizedTopData,
-              monthlySummary: normalizedMonthlyData,
-              dailyEntries: normalizedEntryData,
-              lastUpdated: Date.now()
-          }, { merge: true });
-
-          // နောက်တစ်ခေါက်အတွက် Link ကို မှတ်ထားပေးခြင်း
-          await setDoc(doc(db, 'settings', 'appData'), { matrixSheetLink: googleSheetLink }, { merge: true });
-          onSettingsUpdated({ ...appData, matrixSheetLink: googleSheetLink } as any);
-
-          alert("✅ Google Sheet မှ Data များကို အောင်မြင်စွာ Auto Sync ဆွဲယူပြီးပါပြီ။");
-      } catch (err: any) {
-          console.error("Sync Error:", err);
-          alert(`Auto Sync လုပ်ရာတွင် အမှားရှိနေပါသည်:\n${err.message}`);
-      }
-      setSavingCategory(null);
+          const reEncrypt = (oldCipher: string) => { if(!oldCipher || !oldCipher.startsWith('U2FsdGVk')) return oldCipher; try { const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY); const originalText = bytes.toString(CryptoJS.enc.Utf8); if(!originalText) return oldCipher; return CryptoJS.AES.encrypt(originalText, newSecretKey).toString(); } catch(e) { return oldCipher; } };
+          const uSnap = await getDocs(collection(db, 'users')); const uPromises: any[] = []; uSnap.forEach(d => { const raw = d.data(); uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points), dob: reEncrypt(raw.dob) })); }); await Promise.all(uPromises);
+          const bSnap = await getDocs(collection(db, 'bookings')); const bPromises: any[] = []; bSnap.forEach(d => { const raw = d.data(); bPromises.push(updateDoc(doc(db, 'bookings', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), txId: reEncrypt(raw.txId), specialRequest: reEncrypt(raw.specialRequest) })); }); await Promise.all(bPromises);
+          const aSnap = await getDocs(collection(db, 'admins')); const aPromises: any[] = []; aSnap.forEach(d => { const raw = d.data(); aPromises.push(updateDoc(doc(db, 'admins', d.id), { username: reEncrypt(raw.username), password: reEncrypt(raw.password) })); }); await Promise.all(aPromises);
+          const tPromises: any[] = []; localTherapists.forEach(t => { tPromises.push(updateDoc(doc(db, 'therapists', t.id), { password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString() })); }); await Promise.all(tPromises);
+          alert("Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် Key အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
+      } catch(e) { console.error(e); alert("Error updating keys"); }
+      setMigratingKey(false);
   };
+
+  const handleSaveVipSettings = async () => {
+    if (!window.confirm(`Are you sure you want to save VIP Program settings?`)) return;
+    setSavingCategory('vip_settings');
+    try { await setDoc(doc(db, 'settings', 'appData'), { vipSettings: localVipSettings }, { merge: true }); onSettingsUpdated({ ...appData, vipSettings: localVipSettings }); alert('VIP Membership Program saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null);
+  };
+
+  const updateVipTier = (tIdx: number, field: string, val: any) => { const updated = [...localVipSettings.tiers]; (updated[tIdx] as any)[field] = val; setLocalVipSettings({...localVipSettings, tiers: updated}); };
+  const updateVipRule = (rIdx: number, val: string) => { const updated = [...localVipSettings.rules]; updated[rIdx] = val; setLocalVipSettings({...localVipSettings, rules: updated}); };
+
+  const handleSaveCategory = async (cIdx: number) => { 
+      const cat = localCategories[cIdx]; 
+      if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; 
+      setSavingCategory(cat.id); 
+      try { 
+          const batch = writeBatch(db);
+          localCategories.forEach((c, idx) => {
+              const cDocRef = doc(db, 'categories', c.id);
+              batch.set(cDocRef, { ...c, order: idx });
+          });
+          
+          // 🌟 FIX DELAY: Save to appData so it loads instantly in Customer App
+          
+          await batch.commit();
+          alert('Saved Successfully. All categories are synced!'); 
+      } catch (e) { 
+          console.error(e);
+          alert('Update error.'); 
+      } 
+      setSavingCategory(null); 
+  };
+
   const handleSavePromotion = async () => { if (!window.confirm(`Are you sure you want to save promotion settings?`)) return; setSavingCategory('promotion'); try { await setDoc(doc(db, 'settings', 'appData'), { promotion: localPromotion }, { merge: true }); onSettingsUpdated({ ...appData, promotion: localPromotion }); alert('Promotion settings saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
                                                                                                                                                                                                             
   const handleSaveBranding = async () => { if (!window.confirm(`Are you sure you want to save branding settings?`)) return; setSavingCategory('branding'); try { await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true }); onSettingsUpdated({ ...appData, branding: localBranding }); alert('Branding saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
@@ -1247,12 +1209,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         } catch (error) { alert('Error saving therapists.'); }
         setSavingCategory(null);
   };
-
-   const [newSecretKey, setNewSecretKey] = useState('');
-  const [migratingKey, setMigratingKey] = useState(false);
-
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
-  const toggleSection = (sec: string) => setExpandedSection(prev => prev === sec ? null : sec);
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); const fileName = `logo_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'branding', fileName); setLocalBranding({ ...localBranding, logoUrl: imageUrl }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const fileName = `pay_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'payments', fileName); const updated = [...localPaymentMethods]; updated[idx].logoUrl = imageUrl; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const fileName = `install_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'install_steps', fileName); const updated = [...localInstallSteps]; updated[idx].imageUrl = imageUrl; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
@@ -1397,38 +1353,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
          )}
       </div>
 
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-600">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><BarChart2 className="w-5 h-5 mr-2 text-blue-600" /> Auto-Sync Matrix (Google Sheet)</h3>
-                  <p className="text-xs text-gray-500 mt-1">Staff များ၏ Performance ကို Google Sheet မှ တိုက်ရိုက် Auto Update လုပ်ရန်</p>
-              </div>
-          </div>
+       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-600">
+          <h3 className="text-xl font-bold text-gray-800 flex items-center mb-2"><BarChart2 className="w-5 h-5 mr-2 text-blue-600" /> Upload Matrix Database (Excel)</h3>
+          <p className="text-xs text-gray-500 mb-4">Staff များ၏ Performance (Top Performers & Visual Charts) ကို ပြသရန် August_Shangri_La_Matrix_Database.xlsx ဖိုင်အား ဤနေရာတွင် တင်ပါ။</p>
           
-          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col sm:flex-row gap-3 items-center">
-              <input 
-                  type="text" 
-                  value={googleSheetLink} 
-                  onChange={(e) => setGoogleSheetLink(e.target.value)} 
-                  placeholder="Paste your Google Sheet link here..." 
-                  className="w-full flex-1 p-3 border border-gray-300 rounded-lg outline-none focus:border-blue-500 text-sm font-semibold"
-              />
-              <button 
-                  onClick={handleSyncFromGoogleSheet} 
-                  disabled={savingCategory === 'excel_upload'} 
-                  className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition flex items-center justify-center whitespace-nowrap"
-              >
-                  {savingCategory === 'excel_upload' ? 'Syncing Data...' : '🔄 Sync from Google Sheet'}
-              </button>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
-              <p className="text-[10px] font-bold text-gray-400 uppercase">Or upload Excel file manually</p>
-              <label className="text-xs font-bold text-gray-600 cursor-pointer hover:underline">
-                  [ Upload .xlsx File ]
-                  <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleExcelUpload} disabled={savingCategory === 'excel_upload'} />
-              </label>
-          </div>
+          <label className="flex items-center justify-center w-full sm:w-auto px-6 py-4 bg-blue-50 text-blue-700 border-2 border-dashed border-blue-300 rounded-xl cursor-pointer hover:bg-blue-100 transition font-bold shadow-sm">
+              {savingCategory === 'excel_upload' ? 'Uploading & Parsing Data...' : '📊 Click to Upload Excel File'}
+              <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleExcelUpload} disabled={savingCategory === 'excel_upload'} />
+          </label>
       </div>
 
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
