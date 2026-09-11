@@ -1223,31 +1223,38 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       const cat = localCategories[cIdx];
       if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return;
       setSavingCategory(cat.id);
+
       try {
-          // IMPORTANT: Save only the selected category.
-          // Do not re-upload existing images during Save. Images are uploaded immediately
-          // by handleServiceImageUpload() and the stored URL is already in imageUrl.
-          // Re-uploading old base64 images here could make an otherwise normal Save fail.
-          const categoryToSave: MenuCategory = JSON.parse(JSON.stringify(cat));
-          const categoryIndex = cIdx;
+          // FREE / SPARK PLAN:
+          // Categories are already read directly from the Firestore `categories`
+          // collection by AppDataContext. Do NOT copy Base64 service images into
+          // settings/appData because that duplicates the image data and can push
+          // the settings document over Firestore's document-size limit.
+          //
+          // Save only this category document. The Service image is already stored
+          // locally in item.imageUrl by handleServiceImageUpload().
+          const categoryToSave: MenuCategory = JSON.parse(JSON.stringify({
+              ...cat,
+              order: cIdx
+          }));
 
           await setDoc(
               doc(db, 'categories', categoryToSave.id),
-              { ...categoryToSave, order: categoryIndex },
+              categoryToSave,
               { merge: true }
           );
 
-          // Customer App loads categories from settings/appData, so keep that document in sync.
-          const nextCategories = localCategories.map((c, idx) => ({ ...c, order: idx }));
-          await setDoc(
-              doc(db, 'settings', 'appData'),
-              { categories: nextCategories },
-              { merge: true }
-          );
+          // Keep the Admin UI immediately in sync without writing the whole
+          // categories array (and its Base64 images) into settings/appData.
+          const nextCategories = localCategories.map((c, idx) => ({
+              ...c,
+              order: idx
+          }));
 
           setLocalCategories(nextCategories);
           onSettingsUpdated({ ...appData, categories: nextCategories });
-          alert('Saved Successfully. Category and Service Images are synced!');
+
+          alert('Saved Successfully. Category and Service Image are saved!');
       } catch (e: any) {
           console.error('Service Category Save Error:', e);
           alert(`Update error.\n\n${e?.code || e?.message || 'Unknown Firebase error'}`);
@@ -1371,8 +1378,24 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
               }
 
-              const finalBase64 = canvas.toDataURL('image/jpeg', 0.8);
-              updateItem(cIdx, iIdx, 'imageUrl', finalBase64);
+              const finalBase64 = canvas.toDataURL('image/jpeg', 0.72);
+
+              // Keep each service image comfortably below Firestore's document-size
+              // ceiling. If an image is still too large, progressively reduce quality.
+              let safeBase64 = finalBase64;
+              const MAX_BASE64_CHARS = 700 * 1024;
+
+              if (safeBase64.length > MAX_BASE64_CHARS) {
+                  safeBase64 = canvas.toDataURL('image/jpeg', 0.58);
+              }
+
+              if (safeBase64.length > MAX_BASE64_CHARS) {
+                  alert('ဒီပုံက Firestore Free Version အတွက် အရွယ်အစားကြီးနေပါတယ်။ ပိုသေးတဲ့ပုံတစ်ပုံကို ရွေးပေးပါ။');
+                  setUploadingImage(null);
+                  return;
+              }
+
+              updateItem(cIdx, iIdx, 'imageUrl', safeBase64);
               setUploadingImage(null);
 
               if (files.length > 1) {
