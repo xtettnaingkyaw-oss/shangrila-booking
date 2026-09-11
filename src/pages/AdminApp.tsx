@@ -1241,6 +1241,27 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (err) { alert("Upload error."); } setUploadingImage(null); 
   };
 
+   const handleServiceImageUpload = async (cIdx: number, iIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setUploadingImage(`service_${cIdx}_${iIdx}`);
+      try {
+          const base64 = await compressImage(file, 800, 800);
+          const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
+          const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
+
+          updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
+      } catch (err) {
+          console.error("Service Image Upload Error:", err);
+          alert("Upload error.");
+      } finally {
+          setUploadingImage(null);
+          if (e.target) e.target.value = '';
+      }
+  };
+   
+
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
   const updateTherapist = (tIdx: number, field: keyof TherapistProfile, val: any) => { const updated = [...localTherapists]; updated[tIdx] = { ...updated[tIdx], [field]: val }; setLocalTherapists(updated); };
   const removeTherapist = (tIdx: number) => { if (!window.confirm("Are you sure you want to delete this therapist?")) return; const t = localTherapists[tIdx]; if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]); const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated); };
@@ -1908,15 +1929,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                         </div>
                                     )}
                                     
-                                 <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
-   <input 
-    type="file" 
-    accept="image/*" 
-    className="hidden" 
-    onChange={(e) => handleServiceImageUpload(cIdx, iIdx, e)} 
-    disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
-/>
-                                    
+                                <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
+    <input 
+        type="file" 
+        accept="image/*" 
+        className="hidden" 
+        onChange={(e) => handleServiceImageUpload(cIdx, iIdx, e)} 
+        disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
+    />
     {uploadingImage === `service_${cIdx}_${iIdx}` ? 'UPLOADING...' : 'UPLOAD PHOTO'}
 </label>
                                 </div>
