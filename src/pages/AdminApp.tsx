@@ -1113,11 +1113,50 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
             return newRow;
         });
 
-        // 🌟 ၃။ Firebase သို့ သိမ်းဆည်းခြင်း 🌟
+        // 🌟 ၃။ Excel ရဲ့ Top Performers Sheet ထဲက Comparison Data 4 ခုကို တိတိကျကျ သိမ်းဆည်းခြင်း 🌟
+        const topPerformersSheet = workbook.Sheets['Top Performers'];
+
+        const readCellNumber = (address: string, fallback = 0) => {
+            const cell = topPerformersSheet?.[address];
+            const value = cell?.v;
+            if (typeof value === 'number' && Number.isFinite(value)) return value;
+            const parsed = Number(String(value ?? '').replace(/,/g, '').trim());
+            return Number.isFinite(parsed) ? parsed : fallback;
+        };
+
+        const excelI24 = readCellNumber('I24');
+        const excelI25 = readCellNumber('I25');
+        const excelI26 = readCellNumber('I26');
+        const excelI27 = readCellNumber('I27');
+        const excelI28 = readCellNumber('I28');
+        const excelJ28 = readCellNumber('J28');
+        const excelI30 = readCellNumber('I30');
+        const excelI31 = readCellNumber('I31', excelI25);
+
+        const comparisonData = {
+            upToToday: { lastMonth: excelI24, thisMonth: excelI25, difference: readCellNumber('J24', excelI25 - excelI24) },
+            yesterday: { lastMonth: excelI27, thisMonth: excelI26, difference: readCellNumber('J26', excelI26 - excelI27) },
+            target: { actual: excelI28, target: readCellNumber('I29', excelI28 * (1 + excelJ28)), growthPercent: excelJ28 * 100 },
+            fullMonth: { lastMonth: excelI30, thisMonth: excelI31, difference: readCellNumber('J30', excelI31 - excelI30) }
+        };
+
+        const validUploadDates = normalizedEntryData
+            .map((row: any) => String(row.ParsedDate || row.Date || '').trim())
+            .filter((date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+            .sort();
+        const reportDateStr = validUploadDates[validUploadDates.length - 1] || getLocalTodayStr();
+        const [reportYear, reportMonth] = reportDateStr.split('-').map(Number);
+        const reportDate = new Date(reportYear, reportMonth - 1, 1);
+        const previousMonthDate = new Date(reportYear, reportMonth - 2, 1);
+        const thisMonthName = reportDate.toLocaleString('en-US', { month: 'long' }).toUpperCase();
+        const previousMonthName = previousMonthDate.toLocaleString('en-US', { month: 'long' }).toUpperCase();
+
         await setDoc(doc(db, 'settings', 'matrixData'), {
             topPerformers: normalizedTopData,
             monthlySummary: monthlyData,
             dailyEntries: normalizedEntryData,
+            comparisonData,
+            comparisonMeta: { thisMonthName, previousMonthName, reportDate: reportDateStr },
             lastUpdated: Date.now()
         }, { merge: true });
 
@@ -2116,42 +2155,33 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 
     const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => p['1 to 31 Actual']), 1) : 1;
 
-    let lastMonthUpToTodaySales = 2061000; 
-    let displayThisMonthUpToToday = calcThisMonthUpToToday; 
-    let lastMonthYesterdaySales = 939000; 
-    let displayYesterdaySales = calcYesterdaySales; 
-    let totalLastMonthSales = 12235000; 
-    let totalThisMonthSales = calcTotalThisMonthSales; 
+    // 🌟 Excel Comparison Data ကို Firestore မှ Real-time ဖတ်မည်။
+    const comparison = matrixData.comparisonData || {};
+    const comparisonMeta = matrixData.comparisonMeta || {};
 
-    if (matrixData && matrixData.topPerformers) {
-        const topDataRaw = matrixData.topPerformers;
-        for (const row of topDataRaw) {
-            const keys = Object.keys(row);
-            for (let i = 0; i < keys.length - 1; i++) {
-                const cellVal = String(row[keys[i]] || '').trim().toLowerCase();
-                const nextVal = Number(String(row[keys[i+1]] || '').replace(/,/g, ''));
-                
-                if (!isNaN(nextVal)) {
-                    if (cellVal === 'last month up to today') lastMonthUpToTodaySales = nextVal;
-                    else if (cellVal === 'this month up to today') displayThisMonthUpToToday = nextVal;
-                    else if (cellVal === 'last month yesterday' || cellVal === 'last month same day') lastMonthYesterdaySales = nextVal;
-                    else if (cellVal === 'this month yesterday') displayYesterdaySales = nextVal;
-                    else if (cellVal === 'last month total') totalLastMonthSales = nextVal;
-                    else if (cellVal === 'this month total') totalThisMonthSales = nextVal;
-                }
-            }
-        }
-    }
+    const upToTodayData = comparison.upToToday || { lastMonth: 0, thisMonth: calcThisMonthUpToToday, difference: calcThisMonthUpToToday };
+    const yesterdayData = comparison.yesterday || { lastMonth: 0, thisMonth: calcYesterdaySales, difference: calcYesterdaySales };
+    const targetData = comparison.target || { actual: 0, target: 0, growthPercent: 0 };
+    const fullMonthData = comparison.fullMonth || { lastMonth: 0, thisMonth: calcTotalThisMonthSales, difference: calcTotalThisMonthSales };
 
-    let yesterdayDateTextStr = prevDayStr;
-    let lastMonthNameStr = "AUGUST";
-    let thisMonthNameStr = "THIS MONTH";
-    let lastFullMonthNameStr = "AUGUST";
-    let thisFullMonthNameStr = "THIS MONTH";
+    const lastMonthUpToTodaySales = Number(upToTodayData.lastMonth) || 0;
+    const displayThisMonthUpToToday = Number(upToTodayData.thisMonth) || 0;
+    const upToTodayDiff = Number(upToTodayData.difference) || (displayThisMonthUpToToday - lastMonthUpToTodaySales);
+    const lastMonthYesterdaySales = Number(yesterdayData.lastMonth) || 0;
+    const displayYesterdaySales = Number(yesterdayData.thisMonth) || 0;
+    const dayDifference = Number(yesterdayData.difference) || (displayYesterdaySales - lastMonthYesterdaySales);
+    const targetActual = Number(targetData.actual) || 0;
+    const targetAmount = Number(targetData.target) || 0;
+    const growthTargetPercent = Number(targetData.growthPercent) || 0;
+    const totalLastMonthSales = Number(fullMonthData.lastMonth) || 0;
+    const totalThisMonthSales = Number(fullMonthData.thisMonth) || 0;
+    const salesDiff = Number(fullMonthData.difference) || (totalThisMonthSales - totalLastMonthSales);
 
-    const salesDiff = totalThisMonthSales - totalLastMonthSales;
-    const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
-    const dayDifference = displayYesterdaySales - lastMonthYesterdaySales;
+    const yesterdayDateTextStr = prevDayStr;
+    const lastMonthNameStr = comparisonMeta.previousMonthName || 'PREVIOUS MONTH';
+    const thisMonthNameStr = comparisonMeta.thisMonthName || 'THIS MONTH';
+    const lastFullMonthNameStr = lastMonthNameStr;
+    const thisFullMonthNameStr = thisMonthNameStr;
 
     const top5Gaps = [];
     for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
@@ -2280,52 +2310,34 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                             <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                                 <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ vs ယခုလ (Up to Today)</div>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                                    <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                        <div className="text-[9px] text-gray-500 font-bold uppercase">{lastMonthNameStr}</div>
-                                        <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthUpToTodaySales)}</div>
-                                    </div>
-                                    <div className="bg-white p-2.5 rounded-lg border border-blue-200">
-                                        <div className="text-[9px] text-blue-700 font-bold uppercase">{thisMonthNameStr}</div>
-                                        <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayThisMonthUpToToday)}</div>
-                                    </div>
-                                    <div className={`p-2.5 rounded-lg border text-center ${upToTodayDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                        <div className="text-[9px] font-bold uppercase">Difference</div>
-                                        <div className="text-xs font-black mt-0.5">{upToTodayDiff >= 0 ? '+' : ''}{formatPrice(upToTodayDiff)}</div>
-                                    </div>
+                                    <div className="bg-white p-2.5 rounded-lg border border-blue-200"><div className="text-[9px] text-gray-500 font-bold uppercase">{lastMonthNameStr}</div><div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthUpToTodaySales)}</div></div>
+                                    <div className="bg-white p-2.5 rounded-lg border border-blue-200"><div className="text-[9px] text-blue-700 font-bold uppercase">{thisMonthNameStr}</div><div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayThisMonthUpToToday)}</div></div>
+                                    <div className={`p-2.5 rounded-lg border text-center ${upToTodayDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}><div className="text-[9px] font-bold uppercase">Difference</div><div className="text-xs font-black mt-0.5">{upToTodayDiff >= 0 ? '+' : ''}{formatPrice(upToTodayDiff)}</div></div>
                                 </div>
                             </div>
 
                             <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100">
                                 <div className="text-xs font-bold text-purple-900 mb-2 flex items-center"><Clock className="w-3.5 h-3.5 mr-1.5"/> မနေ့ကနေ့ချင်းအလိုက်နှိုင်းယှဉ်ချက် ({yesterdayDateTextStr})</div>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                                    <div className="bg-white p-2.5 rounded-lg border border-purple-200">
-                                        <div className="text-[9px] text-gray-500 font-bold uppercase">Last Month Same Day</div>
-                                        <div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthYesterdaySales)}</div>
-                                    </div>
-                                    <div className="bg-white p-2.5 rounded-lg border border-purple-200">
-                                        <div className="text-[9px] text-purple-700 font-bold uppercase">This Month Yesterday</div>
-                                        <div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayYesterdaySales)}</div>
-                                    </div>
-                                    <div className={`p-2.5 rounded-lg border text-center ${dayDifference >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                        <div className="text-[9px] font-bold uppercase">Day Difference</div>
-                                        <div className="text-xs font-black mt-0.5">{dayDifference >= 0 ? '+' : ''}{formatPrice(dayDifference)}</div>
-                                    </div>
+                                    <div className="bg-white p-2.5 rounded-lg border border-purple-200"><div className="text-[9px] text-gray-500 font-bold uppercase">Last Month Same Day</div><div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthYesterdaySales)}</div></div>
+                                    <div className="bg-white p-2.5 rounded-lg border border-purple-200"><div className="text-[9px] text-purple-700 font-bold uppercase">This Month Yesterday</div><div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayYesterdaySales)}</div></div>
+                                    <div className={`p-2.5 rounded-lg border text-center ${dayDifference >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}><div className="text-[9px] font-bold uppercase">Day Difference</div><div className="text-xs font-black mt-0.5">{dayDifference >= 0 ? '+' : ''}{formatPrice(dayDifference)}</div></div>
+                                </div>
+                            </div>
+
+                            <div className="bg-yellow-50/60 p-4 rounded-xl border border-yellow-200">
+                                <div className="text-xs font-bold text-yellow-900 mb-2 flex items-center"><Target className="w-3.5 h-3.5 mr-1.5"/> Today's Target</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                                    <div className="bg-white p-2.5 rounded-lg border border-yellow-200"><div className="text-[9px] text-gray-500 font-bold uppercase">Actual</div><div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(targetActual)}</div></div>
+                                    <div className="bg-white p-2.5 rounded-lg border border-yellow-200"><div className="text-[9px] text-yellow-700 font-bold uppercase">Target</div><div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(targetAmount)}</div></div>
+                                    <div className="bg-white p-2.5 rounded-lg border border-yellow-200"><div className="text-[9px] text-yellow-700 font-bold uppercase">Growth Target</div><div className="text-xs font-black text-yellow-700 mt-0.5">{growthTargetPercent.toFixed(0)}%</div></div>
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                                <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
-                                    <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">{lastFullMonthNameStr} TOTAL</div>
-                                    <div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div>
-                                </div>
-                                <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
-                                    <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">{thisFullMonthNameStr} TOTAL</div>
-                                    <div className="text-sm font-black text-[#123524]">{formatPrice(totalThisMonthSales)}</div>
-                                </div>
-                                <div className={`p-3.5 rounded-xl border text-center ${salesDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                                    <div className="text-[9px] font-bold uppercase tracking-wider mb-1">Full Month Difference</div>
-                                    <div className="text-sm font-black">{salesDiff >= 0 ? '+' : ''}{formatPrice(salesDiff)}</div>
-                                </div>
+                                <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center"><div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">{lastFullMonthNameStr} TOTAL</div><div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div></div>
+                                <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center"><div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">{thisFullMonthNameStr} TOTAL</div><div className="text-sm font-black text-[#123524]">{formatPrice(totalThisMonthSales)}</div></div>
+                                <div className={`p-3.5 rounded-xl border text-center ${salesDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}><div className="text-[9px] font-bold uppercase tracking-wider mb-1">Full Month Difference</div><div className="text-sm font-black">{salesDiff >= 0 ? '+' : ''}{formatPrice(salesDiff)}</div></div>
                             </div>
                         </div>
                     </div>
