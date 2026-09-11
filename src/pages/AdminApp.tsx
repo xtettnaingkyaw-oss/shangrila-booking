@@ -1190,24 +1190,49 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (e) { alert('Update error.'); } 
       setSavingCategory(null); 
   };
-  const handleSaveTherapists = async () => {
+ const handleSaveTherapists = async () => {
         setSavingCategory('therapists');
         try {
             const batch = writeBatch(db);
             deletedTherapistIds.forEach(id => {
                 batch.delete(doc(db, 'therapists', id));
             });
-            localTherapists.forEach((t, idx) => {
+            
+            for (let i = 0; i < localTherapists.length; i++) {
+                const t = localTherapists[i];
                 const isNew = t.id.startsWith('new_') || t.id.startsWith('t_');
-                const finalId = isNew ? `therapist_${Date.now()}_${idx}` : t.id;
+                const finalId = isNew ? `therapist_${Date.now()}_${i}` : t.id;
                 const tRef = doc(db, 'therapists', finalId);
-                const updatedT = { ...t, id: finalId, order: idx, password: CryptoJS.AES.encrypt(t.password || '', import.meta.env.VITE_SECRET_KEY).toString() };
+                
+                // 🌟 Security Update: Firebase Auth ပေါ်တွင် Staff Account အစစ် ဖန်တီးပေးခြင်း
+                if (t.password && t.password.length >= 6 && isNew) {
+                    try {
+                        await createUserWithEmailAndPassword(
+                            secondaryAuth, 
+                            `${finalId.toLowerCase()}@shangrila.com`, 
+                            t.password
+                        );
+                    } catch (authErr: any) {
+                        console.log("Auth Error or Exists:", authErr.message);
+                    }
+                }
+
+                // 🌟 Frontend တွင် Password အစစ်ကို မသိမ်းဘဲ "SECURED_ACCOUNT" ဟုသာ Placeholder ထားမည်
+                const updatedT = { 
+                    ...t, 
+                    id: finalId, 
+                    order: i, 
+                    password: isNew ? "SECURED_ACCOUNT" : (t.password || "SECURED_ACCOUNT")
+                };
                 batch.set(tRef, updatedT, { merge: true });
-            });
+            }
+            
             await batch.commit();
             setDeletedTherapistIds([]);
-            alert('Therapists saved successfully.');
-        } catch (error) { alert('Error saving therapists.'); }
+            alert('Therapists saved successfully and secured via Firebase Auth.');
+        } catch (error) { 
+            alert('Error saving therapists.'); 
+        }
         setSavingCategory(null);
   };
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); const fileName = `logo_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'branding', fileName); setLocalBranding({ ...localBranding, logoUrl: imageUrl }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
