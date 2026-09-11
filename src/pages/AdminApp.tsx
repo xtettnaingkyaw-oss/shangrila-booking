@@ -1219,26 +1219,41 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const updateVipTier = (tIdx: number, field: string, val: any) => { const updated = [...localVipSettings.tiers]; (updated[tIdx] as any)[field] = val; setLocalVipSettings({...localVipSettings, tiers: updated}); };
   const updateVipRule = (rIdx: number, val: string) => { const updated = [...localVipSettings.rules]; updated[rIdx] = val; setLocalVipSettings({...localVipSettings, rules: updated}); };
 
-  const handleSaveCategory = async (cIdx: number) => { 
-      const cat = localCategories[cIdx]; 
-      if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return; 
-      setSavingCategory(cat.id); 
-      try { 
-          const batch = writeBatch(db);
-          localCategories.forEach((c, idx) => {
-              const cDocRef = doc(db, 'categories', c.id);
-              batch.set(cDocRef, { ...c, order: idx });
-          });
-          
-          // 🌟 FIX DELAY: Save to appData so it loads instantly in Customer App
-          
-          await batch.commit();
-          alert('Saved Successfully. All categories are synced!'); 
-      } catch (e) { 
-          console.error(e);
-          alert('Update error.'); 
-      } 
-      setSavingCategory(null); 
+  const handleSaveCategory = async (cIdx: number) => {
+      const cat = localCategories[cIdx];
+      if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return;
+      setSavingCategory(cat.id);
+      try {
+          // IMPORTANT: Save only the selected category.
+          // Do not re-upload existing images during Save. Images are uploaded immediately
+          // by handleServiceImageUpload() and the stored URL is already in imageUrl.
+          // Re-uploading old base64 images here could make an otherwise normal Save fail.
+          const categoryToSave: MenuCategory = JSON.parse(JSON.stringify(cat));
+          const categoryIndex = cIdx;
+
+          await setDoc(
+              doc(db, 'categories', categoryToSave.id),
+              { ...categoryToSave, order: categoryIndex },
+              { merge: true }
+          );
+
+          // Customer App loads categories from settings/appData, so keep that document in sync.
+          const nextCategories = localCategories.map((c, idx) => ({ ...c, order: idx }));
+          await setDoc(
+              doc(db, 'settings', 'appData'),
+              { categories: nextCategories },
+              { merge: true }
+          );
+
+          setLocalCategories(nextCategories);
+          onSettingsUpdated({ ...appData, categories: nextCategories });
+          alert('Saved Successfully. Category and Service Images are synced!');
+      } catch (e: any) {
+          console.error('Service Category Save Error:', e);
+          alert(`Update error.\n\n${e?.code || e?.message || 'Unknown Firebase error'}`);
+      } finally {
+          setSavingCategory(null);
+      }
   };
 
   const handleSavePromotion = async () => { if (!window.confirm(`Are you sure you want to save promotion settings?`)) return; setSavingCategory('promotion'); try { await setDoc(doc(db, 'settings', 'appData'), { promotion: localPromotion }, { merge: true }); onSettingsUpdated({ ...appData, promotion: localPromotion }); alert('Promotion settings saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
@@ -1317,13 +1332,20 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       if (!files || files.length === 0) return;
       setUploadingImage(`service_${cIdx}_${iIdx}`);
       try {
-          const base64 = await compressImage(files[0], 900, 1200);
-          const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
+          // A Service currently has one imageUrl, so if several files are selected we use
+          // the first one for this Service and tell the user how many were accepted.
+          // The important part is that large originals are compressed before Storage upload.
+          const file = files[0];
+          const base64 = await compressImage(file, 1200, 1200);
+          const fileName = `service_${localCategories[cIdx]?.id || cIdx}_${localCategories[cIdx]?.items[iIdx]?.id || iIdx}_${Date.now()}.jpg`;
           const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
           updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
-      } catch (err) {
+          if (files.length > 1) {
+              alert(`ဒီ Service အတွက် ပုံ ၁ ပုံပဲ သတ်မှတ်ထားပါတယ်။\nရွေးထားတဲ့ ${files.length} ပုံထဲက ပထမပုံကို Upload လုပ်ပြီးပါပြီ။`);
+          }
+      } catch (err: any) {
           console.error("Service Image Upload Error:", err);
-          alert("Upload error.");
+          alert(`Upload error.\n\n${err?.code || err?.message || 'Image upload failed'}`);
       } finally {
           setUploadingImage(null);
       }
@@ -2003,50 +2025,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         accept="image/*" 
         className="hidden" 
         onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) {
-                setUploadingImage(`service_${cIdx}_${iIdx}`);
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const MAX_SIZE = 800; 
-                        let width = img.width;
-                        let height = img.height;
-
-                        if (width > height) {
-                            if (width > MAX_SIZE) {
-                                height *= MAX_SIZE / width;
-                                width = MAX_SIZE;
-                            }
-                        } else {
-                            if (height > MAX_SIZE) {
-                                width *= MAX_SIZE / height;
-                                height = MAX_SIZE;
-                            }
-                        }
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        
-                        if (ctx) {
-                            ctx.fillStyle = '#FFFFFF';
-                            ctx.fillRect(0, 0, width, height);
-                            ctx.drawImage(img, 0, 0, width, height);
-                        }
-                        
-                        const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
-                        
-                        // 🌟 State ထဲကို တိုက်ရိုက်သိမ်းမည် (Therapist အတိုင်း အတိအကျ)
-                        updateItem(cIdx, iIdx, 'imageUrl', finalBase64);
-                        
-                        setUploadingImage(null);
-                    };
-                    img.src = event.target?.result as string;
-                };
-                reader.readAsDataURL(file);
-            }
+            void handleServiceImageUpload(cIdx, iIdx, e.target.files);
             e.target.value = '';
         }} 
         disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
