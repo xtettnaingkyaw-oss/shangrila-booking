@@ -8,6 +8,7 @@ import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, C
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 
 import { CustomerBookingWizard } from './CustomerApp';
+import { useAppStore } from '../AppDataContext';
 
 const formatPrice = (price: any) => {
     const num = Number(price);
@@ -56,7 +57,10 @@ function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: 
   return <span className="text-yellow-600 border border-yellow-200 bg-yellow-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Pending</span>;
 }
 
-export default function StaffApp({ appData }: { appData: AppData }) {
+// Prop ကနေ appData ယူမည့်အစား Context ကနေ တိုက်ရိုက်ယူပါမည်
+export default function StaffApp() {
+  const { appData: globalAppData } = useAppStore(); // 🌟 Context ကို အသုံးပြုခြင်း
+
   const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
      const saved = localStorage.getItem('shangrila_staff_profile');
      return saved ? JSON.parse(saved) : null;
@@ -67,12 +71,15 @@ export default function StaffApp({ appData }: { appData: AppData }) {
      localStorage.removeItem('shangrila_staff_profile');
   };
 
+  // Data မတက်လာသေးခင် Loading ပြထားမည်
+  if (!globalAppData) return <div className="text-center py-20 font-bold text-gray-500">Loading Staff Portal...</div>;
+
   return (
     <div className="max-w-3xl mx-auto">
       {loggedInStaff ? (
-         <StaffSessionManager appData={appData} loggedInStaff={loggedInStaff} onLogout={handleLogout} />
+         <StaffSessionManager appData={globalAppData} loggedInStaff={loggedInStaff} onLogout={handleLogout} />
       ) : (
-         <StaffLogin therapists={appData.therapists} onLoginSuccess={(profile) => {
+         <StaffLogin therapists={globalAppData.therapists} onLoginSuccess={(profile) => {
              setLoggedInStaff(profile);
              localStorage.setItem('shangrila_staff_profile', JSON.stringify(profile));
          }} />
