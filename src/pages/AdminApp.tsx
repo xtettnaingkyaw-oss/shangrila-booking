@@ -1241,10 +1241,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (err) { alert("Upload error."); } setUploadingImage(null); 
   };
 
-   const handleServiceImageUpload = async (cIdx: number, iIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
       setUploadingImage(`service_${cIdx}_${iIdx}`);
       try {
           const base64 = await compressImage(file, 800, 800);
