@@ -1164,7 +1164,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           });
           
           // 🌟 FIX DELAY: Save to appData so it loads instantly in Customer App
-         batch.update(doc(db, 'settings', 'appData'), { categories: localCategories });
           
           await batch.commit();
           alert('Saved Successfully. All categories are synced!'); 
@@ -1891,65 +1890,56 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                     
                                  <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
     <input 
-    type="file" 
-    accept="image/*" 
-    className="hidden" 
-    onChange={(e) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setUploadingImage(`service_${cIdx}_${iIdx}`);
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = async () => {   // 🌟 ဤနေရာတွင် async ထည့်ပေးပါ
-                    const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 600; 
-                    let width = img.width;
-                    let height = img.height;
+        type="file" 
+        accept="image/*" 
+        className="hidden" 
+        onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+                setUploadingImage(`service_${cIdx}_${iIdx}`);
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_SIZE = 600; 
+                        let width = img.width;
+                        let height = img.height;
 
-                    if (width > height) {
-                        if (width > MAX_SIZE) {
-                            height *= MAX_SIZE / width;
-                            width = MAX_SIZE;
+                        if (width > height) {
+                            if (width > MAX_SIZE) {
+                                height *= MAX_SIZE / width;
+                                width = MAX_SIZE;
+                            }
+                        } else {
+                            if (height > MAX_SIZE) {
+                                width *= MAX_SIZE / height;
+                                height = MAX_SIZE;
+                            }
                         }
-                    } else {
-                        if (height > MAX_SIZE) {
-                            width *= MAX_SIZE / height;
-                            height = MAX_SIZE;
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        
+                        if (ctx) {
+                            ctx.fillStyle = '#FFFFFF';
+                            ctx.fillRect(0, 0, width, height);
+                            ctx.drawImage(img, 0, 0, width, height);
                         }
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    
-                    if (ctx) {
-                        ctx.fillStyle = '#FFFFFF';
-                        ctx.fillRect(0, 0, width, height);
-                        ctx.drawImage(img, 0, 0, width, height);
-                    }
-                    
-                    const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
-                    
-                    // 🌟 အောက်ပါ Storage သို့ သိမ်းသည့် ကုဒ်များကို အစားထိုးထည့်ပါ 🌟
-                    try {
-                        const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
-                        // Storage သို့ အရင်လှမ်းသိမ်းပြီး ရလာသော Link ကိုသာ Database ထဲထည့်မည်
-                        const uploadedUrl = await uploadBase64ToStorage(finalBase64, 'services', fileName);
-                        updateItem(cIdx, iIdx, 'imageUrl', uploadedUrl);
-                    } catch (err) {
-                        alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။");
-                    }
-                    
-                    setUploadingImage(null);
-                    e.target.value = '';
+                        
+                        const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
+                        updateItem(cIdx, iIdx, 'imageUrl', finalBase64);
+                        
+                        setUploadingImage(null);
+                        e.target.value = '';
+                    };
+                    img.src = event.target?.result as string;
                 };
-                img.src = event.target?.result as string;
-            };
-            reader.readAsDataURL(file);
-        }
-    }} 
-    disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
-/>
+                reader.readAsDataURL(file);
+            }
+        }} 
+        disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
+    />
                                     
     {uploadingImage === `service_${cIdx}_${iIdx}` ? 'UPLOADING...' : 'UPLOAD PHOTO'}
 </label>
