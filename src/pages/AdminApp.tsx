@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from '
 import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, addDoc, writeBatch, runTransaction, where, limit } from 'firebase/firestore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth, secondaryAuth } from '../firebase';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock } from 'lucide-react';
@@ -1328,6 +1330,51 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (err) { alert("Upload error."); } setUploadingImage(null); 
   };
 
+  const compressServiceImageToBlob = (file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.82): Promise<Blob> => {
+      return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+              const img = new Image();
+              img.onload = () => {
+                  let width = img.naturalWidth || img.width;
+                  let height = img.naturalHeight || img.height;
+                  if (!width || !height) { reject(new Error('Invalid image dimensions')); return; }
+                  const scale = Math.min(1, maxWidth / width, maxHeight / height);
+                  width = Math.max(1, Math.round(width * scale));
+                  height = Math.max(1, Math.round(height * scale));
+                  const canvas = document.createElement('canvas');
+                  canvas.width = width;
+                  canvas.height = height;
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) { reject(new Error('Canvas is not supported')); return; }
+                  ctx.drawImage(img, 0, 0, width, height);
+                  canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Image compression failed')), 'image/jpeg', quality);
+              };
+              img.onerror = () => reject(new Error('Could not decode image'));
+              img.src = event.target?.result as string;
+          };
+          reader.onerror = () => reject(new Error('Could not read image'));
+          reader.readAsDataURL(file);
+      });
+  };
+
+  const uploadServiceImageBlob = async (blob: Blob, fileName: string): Promise<string> => {
+      const fileRef = storageRef(storage, `services/${fileName}`);
+
+      // Never leave the Admin UI stuck on "UPLOADING..." forever.
+      // If Firebase Storage cannot complete the request, surface the real error.
+      const uploadPromise = uploadBytes(fileRef, blob, {
+          contentType: 'image/jpeg',
+          cacheControl: 'public,max-age=31536000'
+      });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Firebase Storage upload timed out after 30 seconds. Please check Firebase Storage Rules / network connection.')), 30000);
+      });
+
+      await Promise.race([uploadPromise, timeoutPromise]);
+      return await getDownloadURL(fileRef);
+  };
+
   const handleServiceImageUpload = async (cIdx: number, iIdx: number, files: FileList | null) => {
       if (!files || files.length === 0) return;
       setUploadingImage(`service_${cIdx}_${iIdx}`);
@@ -1336,9 +1383,13 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           // the first one for this Service and tell the user how many were accepted.
           // The important part is that large originals are compressed before Storage upload.
           const file = files[0];
-          const base64 = await compressImage(file, 1200, 1200);
+          // IMPORTANT: do not convert large service photos to Base64.
+          // Compress directly to a Blob and upload bytes to Firebase Storage.
+          // This avoids the mobile Safari / large-data-URL upload getting stuck at
+          // “UPLOADING...” for a long time.
+          const blob = await compressServiceImageToBlob(file, 1200, 1200, 0.82);
           const fileName = `service_${localCategories[cIdx]?.id || cIdx}_${localCategories[cIdx]?.items[iIdx]?.id || iIdx}_${Date.now()}.jpg`;
-          const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
+          const imageUrl = await uploadServiceImageBlob(blob, fileName);
           updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
           if (files.length > 1) {
               alert(`ဒီ Service အတွက် ပုံ ၁ ပုံပဲ သတ်မှတ်ထားပါတယ်။\nရွေးထားတဲ့ ${files.length} ပုံထဲက ပထမပုံကို Upload လုပ်ပြီးပါပြီ။`);
