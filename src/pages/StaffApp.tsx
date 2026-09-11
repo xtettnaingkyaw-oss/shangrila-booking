@@ -668,28 +668,32 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     let lastMonthUpToTodaySales = 2061000; 
     let lastMonthYesterdaySales = 939000; 
-    let totalLastMonthSales = 12235000; 
-    
+    let totalLastMonthSales = 12235000;
+
+    let displayThisMonthUpToToday = 0; 
+    let displayYesterdaySales = 0; 
+    let totalThisMonthSales = 0;
+
     if (matrixData && matrixData.topPerformers) {
         const topDataRaw = matrixData.topPerformers;
         for (const row of topDataRaw) {
-            const keys = Object.keys(row);
-            for (let i = 0; i < keys.length - 1; i++) {
-                const cellVal = String(row[keys[i]] || '').trim().toLowerCase();
-                const nextVal = Number(String(row[keys[i+1]] || '').replace(/,/g, ''));
+            const values = Object.values(row);
+            for (let i = 0; i < values.length - 1; i++) {
+                const cellVal = String(values[i] || '').trim().toLowerCase();
+                const nextVal = Number(String(values[i+1] || '').replace(/,/g, ''));
                 
                 if (!isNaN(nextVal)) {
-                    if (cellVal === 'last month up to today') lastMonthUpToTodaySales = nextVal;
-                    else if (cellVal === 'this month up to today') displayThisMonthUpToToday = nextVal;
-                    else if (cellVal === 'last month yesterday' || cellVal === 'last month same day') lastMonthYesterdaySales = nextVal;
-                    else if (cellVal === 'this month yesterday') displayYesterdaySales = nextVal;
-                    else if (cellVal === 'last month total') totalLastMonthSales = nextVal;
-                    else if (cellVal === 'this month total') totalThisMonthSales = nextVal;
+                    if (cellVal.includes('အရင်လ (၁)ရက်နေ့မှ ယနေ့အထိ စုစုပေါင်းငွေပမာဏ')) lastMonthUpToTodaySales = nextVal;
+                    else if (cellVal.includes('ယခုလ (၁)ရက်နေ့မှ ယနေ့အထိ စုစုပေါင်းငွေပမာဏ')) displayThisMonthUpToToday = nextVal;
+                    else if (cellVal.includes('ယခုလ၏ မနေ့ကနေ့ရက်က ရရှိငွေ')) displayYesterdaySales = nextVal;
+                    else if (cellVal.includes('အရင်လ၏ မနေ့ကနေ့ရက်က ရရှိငွေ')) lastMonthYesterdaySales = nextVal;
+                    else if (cellVal.includes('အရင်လ၏ တစ်လတာ ရရှိငွေစုစုပေါင်း')) totalLastMonthSales = nextVal;
+                    else if (cellVal.includes('ယခုလ၏ တစ်လတာ ရရှိငွေစုစုပေါင်း')) totalThisMonthSales = nextVal;
                 }
             }
         }
     }
-
+    
     let yesterdayDateTextStr = prevDayStr;
     let lastMonthNameStr = "AUGUST";
     let thisMonthNameStr = "THIS MONTH";
