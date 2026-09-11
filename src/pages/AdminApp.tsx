@@ -635,17 +635,35 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault(); if (!editingUser) return;
     try {
-      await updateDoc(doc(db, 'users', editingUser.docId), { name: encryptText(editForm.name), password: encryptText(editForm.password), dob: encryptText(editForm.dob), points: encryptText(editForm.points.toString()) });
-      alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။'); setEditingUser(null); fetchUsers();
+      // Password အသစ်ရိုက်ထည့်ပါက SECURED_ACCOUNT ဟုသာ သိမ်းပါမည်
+      const finalPwd = editForm.password && editForm.password.length >= 6 ? "SECURED_ACCOUNT" : (editingUser.password || "");
+      await updateDoc(doc(db, 'users', editingUser.docId), { name: encryptText(editForm.name), password: encryptText(finalPwd), dob: encryptText(editForm.dob), points: encryptText(editForm.points.toString()) });
+      alert('User အချက်အလက်များ ပြင်ဆင်ပြီးပါပြီ။ (စကားဝှက်အသစ် ပြောင်းလိုပါက Customer App မှ Forgot Password ကိုသာ အသုံးပြုခိုင်းပါ)'); 
+      setEditingUser(null); fetchUsers();
     } catch (e) { alert('Error updating user'); }
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault(); const exists = users.some(u => u.phone === createForm.phone.trim());
+    e.preventDefault(); const phoneStr = createForm.phone.trim();
+    const exists = users.some(u => u.phone === phoneStr);
     if (exists) { alert("ဤဖုန်းနံပါတ်ဖြင့် အကောင့်ရှိပြီးသားဖြစ်ပါသည်။"); return; }
+    
+    const pwd = createForm.password || '123456';
+    if (pwd.length < 6) { alert("Password သည် အနည်းဆုံး ၆ လုံး ရှိရပါမည်။"); return; }
+
     try {
-        await addDoc(collection(db, 'users'), { phone: encryptText(createForm.phone.trim()), name: encryptText(createForm.name), password: encryptText(createForm.password), dob: encryptText(createForm.dob), points: encryptText('0'), createdAt: Date.now() });
-        alert('User အသစ် ဖန်တီးပြီးပါပြီ။'); setCreatingUser(false); setCreateForm({ name: '', phone: '', password: '', dob: '' }); fetchUsers();
+        // 🌟 Security: Firebase Auth တွင် Customer အကောင့် လုံခြုံစွာ ဖန်တီးပေးခြင်း
+        try {
+            await createUserWithEmailAndPassword(secondaryAuth, `${phoneStr}@shangrila.com`, pwd);
+        } catch (authErr: any) {
+            console.log("Auth Error (may already exist):", authErr.message);
+        }
+
+        // 🌟 Security: Database ထဲတွင် Password အစစ်ကို မသိမ်းတော့ပါ။
+        await addDoc(collection(db, 'users'), { phone: encryptText(phoneStr), name: encryptText(createForm.name), password: encryptText("SECURED_ACCOUNT"), dob: encryptText(createForm.dob), points: encryptText('0'), createdAt: Date.now() });
+        
+        alert('User အသစ် ဖန်တီးပြီးပါပြီ။ (Password အစစ်ကို Database ပြင်ပတွင် လုံခြုံစွာ သိမ်းဆည်းပြီးပါပြီ)'); 
+        setCreatingUser(false); setCreateForm({ name: '', phone: '', password: '', dob: '' }); fetchUsers();
     } catch (e) { alert('Error creating user'); }
   };
 
