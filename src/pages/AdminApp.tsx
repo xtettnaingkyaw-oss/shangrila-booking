@@ -1240,22 +1240,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           const updated = [...localTherapists]; updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; setLocalTherapists(updated); 
       } catch (err) { alert("Upload error."); } setUploadingImage(null); 
   };
-
-      setUploadingImage(`service_${cIdx}_${iIdx}`);
-      try {
-          const base64 = await compressImage(file, 800, 800);
-          const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
-          const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
-
-          updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
-      } catch (err) {
-          console.error("Service Image Upload Error:", err);
-          alert("Upload error.");
-      } finally {
-          setUploadingImage(null);
-          if (e.target) e.target.value = '';
-      }
-  };
    
 
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
