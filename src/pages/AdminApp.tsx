@@ -1237,14 +1237,29 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       if (inputElement) inputElement.value = '';
   };
    
-  const handleImageUpload = async (tIdx: number, files: FileList | null) => { 
+ const handleImageUpload = async (tIdx: number, files: FileList | null) => { 
       if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('Max 5 photos allowed.'); return; } setUploadingImage(therapist.id); const newUrls: string[] = []; 
       try { 
           for (let i = 0; i < files.length; i++) { const base64 = await compressImage(files[i], 900, 1200); const fileName = `${therapist.id}_${Date.now()}_${i}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'therapists', fileName); newUrls.push(imageUrl); } 
           const updated = [...localTherapists]; updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; setLocalTherapists(updated); 
       } catch (err) { alert("Upload error."); } setUploadingImage(null); 
   };
-   
+
+  const handleServiceImageUpload = async (cIdx: number, iIdx: number, files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      setUploadingImage(`service_${cIdx}_${iIdx}`);
+      try {
+          const base64 = await compressImage(files[0], 900, 1200);
+          const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
+          const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
+          updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
+      } catch (err) {
+          console.error("Service Image Upload Error:", err);
+          alert("Upload error.");
+      } finally {
+          setUploadingImage(null);
+      }
+  };
 
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
   const updateTherapist = (tIdx: number, field: keyof TherapistProfile, val: any) => { const updated = [...localTherapists]; updated[tIdx] = { ...updated[tIdx], [field]: val }; setLocalTherapists(updated); };
