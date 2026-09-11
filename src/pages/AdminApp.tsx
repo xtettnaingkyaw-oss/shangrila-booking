@@ -1213,31 +1213,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const fileName = `pay_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'payments', fileName); const updated = [...localPaymentMethods]; updated[idx].logoUrl = imageUrl; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const fileName = `install_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'install_steps', fileName); const updated = [...localInstallSteps]; updated[idx].imageUrl = imageUrl; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
 
- const handleServiceImageUpload = async (cIdx: number, iIdx: number, files: FileList | null) => {
-      if (!files || files.length === 0) return;
-
-      setUploadingImage(`service_${cIdx}_${iIdx}`);
-      try {
-          // Therapist တွင်သုံးသည့် ပုံစံအတိုင်း အတိအကျ အသုံးပြုခြင်း
-          const base64 = await compressImage(files[0], 900, 1200);
-          const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
-          const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
-
-          updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
-      } catch (err) {
-          console.error("Service Image Upload Error:", err);
-          alert("Upload error.");
-      } finally {
-          setUploadingImage(null);
-      }
-  };
-      
-      // 🌟 Upload ပြီးတာနဲ့ Loading ကို ချက်ချင်းပြန်ပိတ်မည်
-      setUploadingImage(null);
-      if (inputElement) inputElement.value = '';
-  };
-   
- const handleImageUpload = async (tIdx: number, files: FileList | null) => { 
+  const handleImageUpload = async (tIdx: number, files: FileList | null) => { 
       if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('Max 5 photos allowed.'); return; } setUploadingImage(therapist.id); const newUrls: string[] = []; 
       try { 
           for (let i = 0; i < files.length; i++) { const base64 = await compressImage(files[i], 900, 1200); const fileName = `${therapist.id}_${Date.now()}_${i}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'therapists', fileName); newUrls.push(imageUrl); } 
@@ -1275,6 +1251,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const removePaymentMethod = (pIdx: number) => { if (!window.confirm("Are you sure?")) return; const updated = [...localPaymentMethods]; updated.splice(pIdx, 1); setLocalPaymentMethods(updated); };
 
   return (
+     
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#D4AF37]">
          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
