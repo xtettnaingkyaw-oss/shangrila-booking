@@ -1925,12 +1925,30 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                                         </div>
                                     )}
                                     
-                                <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
+                               <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
     <input 
         type="file" 
         accept="image/*" 
         className="hidden" 
-        onChange={(e) => handleServiceImageUpload(cIdx, iIdx, e)} 
+        onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+
+            setUploadingImage(`service_${cIdx}_${iIdx}`);
+            try {
+                const base64 = await compressImage(file, 800, 800);
+                const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
+                const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
+
+                updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
+            } catch (err) {
+                console.error("Service Image Upload Error:", err);
+                alert("Upload error.");
+            } finally {
+                setUploadingImage(null);
+                if (e.target) e.target.value = '';
+            }
+        }} 
         disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
     />
     {uploadingImage === `service_${cIdx}_${iIdx}` ? 'UPLOADING...' : 'UPLOAD PHOTO'}
