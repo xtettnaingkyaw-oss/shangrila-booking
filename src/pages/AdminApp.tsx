@@ -1213,27 +1213,24 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const fileName = `pay_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'payments', fileName); const updated = [...localPaymentMethods]; updated[idx].logoUrl = imageUrl; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const fileName = `install_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'install_steps', fileName); const updated = [...localInstallSteps]; updated[idx].imageUrl = imageUrl; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
 
- const handleServiceImageUpload = async (cIdx: number, iIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
-      // 🌟 React Error မတက်စေရန် input element ကို အပြင်ဘက်မှာ အရင်ဖမ်းထားပါမည်
-      const inputElement = e.target;
-      const file = inputElement.files?.[0];
-      
-      if (!file) return;
+ const handleServiceImageUpload = async (cIdx: number, iIdx: number, files: FileList | null) => {
+      if (!files || files.length === 0) return;
 
       setUploadingImage(`service_${cIdx}_${iIdx}`);
-      
       try {
-          // Therapist တွင်သုံးသည့်အတိုင်း ပုံကို Size ချုံ့ပါမည်
-          const base64 = await compressImage(file, 900, 1200);
-          
+          // Therapist တွင်သုံးသည့် ပုံစံအတိုင်း အတိအကျ အသုံးပြုခြင်း
+          const base64 = await compressImage(files[0], 900, 1200);
           const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
           const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
 
           updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
       } catch (err) {
           console.error("Service Image Upload Error:", err);
-          alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။");
-      } 
+          alert("Upload error.");
+      } finally {
+          setUploadingImage(null);
+      }
+  };
       
       // 🌟 Upload ပြီးတာနဲ့ Loading ကို ချက်ချင်းပြန်ပိတ်မည်
       setUploadingImage(null);
@@ -1921,24 +1918,9 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         type="file" 
         accept="image/*" 
         className="hidden" 
-        onChange={async (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-
-            setUploadingImage(`service_${cIdx}_${iIdx}`);
-            try {
-                const base64 = await compressImage(file, 800, 800);
-                const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
-                const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
-
-                updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
-            } catch (err) {
-                console.error("Service Image Upload Error:", err);
-                alert("Upload error.");
-            } finally {
-                setUploadingImage(null);
-                if (e.target) e.target.value = '';
-            }
+        onChange={(e) => {
+            handleServiceImageUpload(cIdx, iIdx, e.target.files);
+            e.target.value = '';
         }} 
         disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
     />
