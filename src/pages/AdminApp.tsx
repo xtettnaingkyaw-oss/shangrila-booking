@@ -279,7 +279,16 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                     {b.vipTierName ? (<div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-sm"><Crown className="w-3 h-3 mr-1 text-yellow-600" /> {b.vipTierName}</div>) : (b.discountPercent && b.discountPercent > 0) ? (<div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-sm"><Sparkles className="w-3 h-3 mr-1 text-green-600" /> Promo Active</div>) : null}
                 </td>
                 <td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>{b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}</td>
-                <td className="p-3 text-sm text-gray-700"><div className="font-semibold text-[#123524]">{b.date || '-'}</div><div className="text-gray-600 text-xs mt-1">{b.time || '-'}</div></td>
+               <td className="p-3 text-sm text-gray-700">
+    <div className="font-semibold text-[#123524]">{b.date || '-'}</div>
+    <div className="text-gray-600 text-xs mt-1 mb-2">{b.time || '-'}</div>
+    {b.createdAt && (
+        <div className="text-[9px] font-bold text-gray-400 flex flex-col gap-0.5 border-t border-gray-100 pt-1.5 mt-1.5 w-max">
+            <span className="uppercase text-[8px] tracking-wider text-blue-400">Submitted At:</span>
+            <span>{new Date(b.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+    )}
+</td>
                 <td className="p-3">
                     <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div><div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-1">{b.paymentMethod || 'Unknown'}</div>
                     {b.originalPrice && b.originalPrice > b.totalPrice ? (
