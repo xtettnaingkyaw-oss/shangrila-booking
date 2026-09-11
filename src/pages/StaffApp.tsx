@@ -666,22 +666,36 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     const myEntries = allEntries.filter((e: any) => checkIsMe(String(e['Staff ID'] || '').trim()));
 
+   let lastMonthUpToTodaySales = 2061000; 
+    let lastMonthYesterdaySales = 939000; 
+    let totalLastMonthSales = 12235000;
+
+    let displayThisMonthUpToToday = 0; 
+    let displayYesterdaySales = 0; 
+    let totalThisMonthSales = 0;
+
     if (matrixData && matrixData.topPerformers) {
         const topDataRaw = matrixData.topPerformers;
         for (const row of topDataRaw) {
-            const values = Object.values(row);
-            for (let i = 0; i < values.length - 1; i++) {
-                const cellVal = String(values[i] || '').trim().toLowerCase();
-                const nextVal = Number(String(values[i+1] || '').replace(/,/g, ''));
-                
-                if (!isNaN(nextVal)) {
-                    if (cellVal.includes('အရင်လ (၁)ရက်နေ့မှ ယနေ့အထိ စုစုပေါင်းငွေပမာဏ')) lastMonthUpToTodaySales = nextVal;
-                    else if (cellVal.includes('ယခုလ (၁)ရက်နေ့မှ ယနေ့အထိ စုစုပေါင်းငွေပမာဏ')) displayThisMonthUpToToday = nextVal;
-                    else if (cellVal.includes('ယခုလ၏ မနေ့ကနေ့ရက်က ရရှိငွေ')) displayYesterdaySales = nextVal;
-                    else if (cellVal.includes('အရင်လ၏ မနေ့ကနေ့ရက်က ရရှိငွေ')) lastMonthYesterdaySales = nextVal;
-                    else if (cellVal.includes('အရင်လ၏ တစ်လတာ ရရှိငွေစုစုပေါင်း')) totalLastMonthSales = nextVal;
-                    else if (cellVal.includes('ယခုလ၏ တစ်လတာ ရရှိငွေစုစုပေါင်း')) totalThisMonthSales = nextVal;
-                }
+            const rowValues = Object.values(row).map(v => String(v || '').trim());
+            const rowString = rowValues.join(' ');
+            
+            const numbersInRow = rowValues
+                .map(v => Number(v.replace(/,/g, '')))
+                .filter(n => !isNaN(n) && n > 0);
+
+            if (rowString.includes('အရင်လ (၁)ရက်နေ့မှ ယနေ့အထိ')) {
+                if (numbersInRow.length > 0) lastMonthUpToTodaySales = numbersInRow[0];
+            } else if (rowString.includes('ယခုလ (၁)ရက်နေ့မှ ယနေ့အထိ')) {
+                if (numbersInRow.length > 0) displayThisMonthUpToToday = numbersInRow[0];
+            } else if (rowString.includes('ယခုလ၏ မနေ့ကနေ့ရက်က ရရှိငွေ')) {
+                if (numbersInRow.length > 0) displayYesterdaySales = numbersInRow[0];
+            } else if (rowString.includes('အရင်လ၏ တူညီသည့်ရက်') || rowString.includes('အရင်လ၏ မနေ့က')) {
+                if (numbersInRow.length > 0) lastMonthYesterdaySales = numbersInRow[0];
+            } else if (rowString.includes('အရင်လ၏ တစ်လတာ ရရှိငွေစုစုပေါင်း')) {
+                if (numbersInRow.length > 0) totalLastMonthSales = numbersInRow[0];
+            } else if (rowString.includes('ယခုလ၏ တစ်လတာ ရရှိငွေစုစုပေါင်း')) {
+                if (numbersInRow.length > 0) totalThisMonthSales = numbersInRow[0];
             }
         }
     }
