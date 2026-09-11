@@ -6,6 +6,8 @@ import { encryptText, decryptText } from '../security';
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert } from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
+import { useAppStore } from '../AppDataContext';
+
 // ==========================================
 // CONSTANTS & HELPERS
 // ==========================================
@@ -2460,44 +2462,15 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const prevStatuses = useRef<Record<string, string>>({});
    const isFirstLoad = useRef(true);
 
-  const [realtimeVip, setRealtimeVip] = useState<any>(appData.vipSettings);
-   const [realtimeTherapists, setRealtimeTherapists] = useState<TherapistProfile[]>(appData.therapists || []);
-   const [realtimeCategories, setRealtimeCategories] = useState<MenuCategory[]>(appData.categories || []);
+  const { appData: globalAppData } = useAppStore(); // 🌟 Context မှ Data ကို ယူသုံးခြင်း
 
-   useEffect(() => {
-       const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
-           if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
-       });
-       return () => unsub();
-   }, []);
-
-   useEffect(() => {
-       const unsub = onSnapshot(collection(db, 'therapists'), (snap) => {
-           const arr: TherapistProfile[] = [];
-           snap.forEach(d => arr.push(d.data() as TherapistProfile));
-           arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-           if (arr.length > 0) setRealtimeTherapists(arr);
-       });
-       return () => unsub();
-   }, []);
-
-   // 🌟 သီးသန့်ခွဲထုတ်လိုက်သော Categories (Services) များကို လှမ်းခေါ်မည့် ကုဒ်အသစ် 🌟
-   useEffect(() => {
-       const unsub = onSnapshot(collection(db, 'categories'), (snap) => {
-           const arr: MenuCategory[] = [];
-           snap.forEach(d => arr.push(d.data() as MenuCategory));
-           arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-           if (arr.length > 0) setRealtimeCategories(arr);
-       });
-       return () => unsub();
-   }, []);
-
-   const mergedAppData = { 
-       ...appData, 
-       vipSettings: realtimeVip || appData.vipSettings || FALLBACK_VIP_SETTINGS,
-       therapists: realtimeTherapists.length > 0 ? realtimeTherapists : (appData.therapists || []),
-       categories: realtimeCategories.length > 0 ? realtimeCategories : (appData.categories || [])
-   };
+  const mergedAppData = { 
+      ...appData,
+      ...globalAppData,
+      vipSettings: globalAppData?.vipSettings || appData.vipSettings || FALLBACK_VIP_SETTINGS,
+      therapists: globalAppData?.therapists?.length ? globalAppData.therapists : (appData.therapists || []),
+      categories: globalAppData?.categories?.length ? globalAppData.categories : (appData.categories || [])
+  };
 
    useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
