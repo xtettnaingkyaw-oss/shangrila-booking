@@ -1219,18 +1219,18 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
       setUploadingImage(`service_${cIdx}_${iIdx}`);
       try {
-          // Therapist ပုံတင်တဲ့စနစ်အတိုင်း Compress လုပ်ပြီး Storage ပေါ်တင်ပါမည်
-          const base64 = await compressImage(file, 600, 600);
+          const base64 = await compressImage(file, 800, 800);
           const fileName = `service_${cIdx}_${iIdx}_${Date.now()}.jpg`;
-          const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName); // 'services' Folder ထဲသိမ်းမည်
-          
-          updateItem(cIdx, iIdx, 'imageUrl', imageUrl); // URL ကိုသာ DB ထဲသိမ်းမည်
+          const imageUrl = await uploadBase64ToStorage(base64, 'services', fileName);
+
+          updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
       } catch (err) {
-          alert("Error uploading service image.");
-          console.error(err);
+          console.error("Service Image Upload Error:", err);
+          alert("Upload error.");
+      } finally {
+          setUploadingImage(null);
+          if (e.target) e.target.value = '';
       }
-      setUploadingImage(null);
-      e.target.value = ''; // Input ကို Reset လုပ်မည်
   };
    
   const handleImageUpload = async (tIdx: number, files: FileList | null) => { 
