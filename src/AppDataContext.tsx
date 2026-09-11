@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { AppData, TherapistProfile, MenuCategory, DEFAULT_VIP_SETTINGS } from '../shared';
+import { db } from './firebase';
+import { AppData, TherapistProfile, MenuCategory, DEFAULT_VIP_SETTINGS } from './shared';
 
 interface AppDataContextProps {
   appData: AppData | null;
