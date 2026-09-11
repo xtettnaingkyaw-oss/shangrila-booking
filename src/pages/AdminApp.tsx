@@ -2,8 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from '
 import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, addDoc, writeBatch, runTransaction, where, limit } from 'firebase/firestore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth, secondaryAuth } from '../firebase';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock } from 'lucide-react';
@@ -1330,76 +1328,74 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (err) { alert("Upload error."); } setUploadingImage(null); 
   };
 
-  const compressServiceImageToBlob = (file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.82): Promise<Blob> => {
-      return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-              const img = new Image();
-              img.onload = () => {
-                  let width = img.naturalWidth || img.width;
-                  let height = img.naturalHeight || img.height;
-                  if (!width || !height) { reject(new Error('Invalid image dimensions')); return; }
-                  const scale = Math.min(1, maxWidth / width, maxHeight / height);
-                  width = Math.max(1, Math.round(width * scale));
-                  height = Math.max(1, Math.round(height * scale));
-                  const canvas = document.createElement('canvas');
-                  canvas.width = width;
-                  canvas.height = height;
-                  const ctx = canvas.getContext('2d');
-                  if (!ctx) { reject(new Error('Canvas is not supported')); return; }
-                  ctx.drawImage(img, 0, 0, width, height);
-                  canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Image compression failed')), 'image/jpeg', quality);
-              };
-              img.onerror = () => reject(new Error('Could not decode image'));
-              img.src = event.target?.result as string;
-          };
-          reader.onerror = () => reject(new Error('Could not read image'));
-          reader.readAsDataURL(file);
-      });
-  };
-
-  const uploadServiceImageBlob = async (blob: Blob, fileName: string): Promise<string> => {
-      const fileRef = storageRef(storage, `services/${fileName}`);
-
-      // Never leave the Admin UI stuck on "UPLOADING..." forever.
-      // If Firebase Storage cannot complete the request, surface the real error.
-      const uploadPromise = uploadBytes(fileRef, blob, {
-          contentType: 'image/jpeg',
-          cacheControl: 'public,max-age=31536000'
-      });
-      const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Firebase Storage upload timed out after 30 seconds. Please check Firebase Storage Rules / network connection.')), 30000);
-      });
-
-      await Promise.race([uploadPromise, timeoutPromise]);
-      return await getDownloadURL(fileRef);
-  };
-
-  const handleServiceImageUpload = async (cIdx: number, iIdx: number, files: FileList | null) => {
+  // FREE VERSION: Service images use the same local Base64 approach as the working
+  // Therapist upload. Firebase Storage is intentionally NOT used here.
+  // The compressed image is placed directly into item.imageUrl, and handleSaveCategory()
+  // persists it to Firestore. Existing imageUrl values are preserved when editing.
+  const handleServiceImageUpload = (cIdx: number, iIdx: number, files: FileList | null) => {
       if (!files || files.length === 0) return;
+
+      const file = files[0];
       setUploadingImage(`service_${cIdx}_${iIdx}`);
-      try {
-          // A Service currently has one imageUrl, so if several files are selected we use
-          // the first one for this Service and tell the user how many were accepted.
-          // The important part is that large originals are compressed before Storage upload.
-          const file = files[0];
-          // IMPORTANT: do not convert large service photos to Base64.
-          // Compress directly to a Blob and upload bytes to Firebase Storage.
-          // This avoids the mobile Safari / large-data-URL upload getting stuck at
-          // “UPLOADING...” for a long time.
-          const blob = await compressServiceImageToBlob(file, 1200, 1200, 0.82);
-          const fileName = `service_${localCategories[cIdx]?.id || cIdx}_${localCategories[cIdx]?.items[iIdx]?.id || iIdx}_${Date.now()}.jpg`;
-          const imageUrl = await uploadServiceImageBlob(blob, fileName);
-          updateItem(cIdx, iIdx, 'imageUrl', imageUrl);
-          if (files.length > 1) {
-              alert(`ဒီ Service အတွက် ပုံ ၁ ပုံပဲ သတ်မှတ်ထားပါတယ်။\nရွေးထားတဲ့ ${files.length} ပုံထဲက ပထမပုံကို Upload လုပ်ပြီးပါပြီ။`);
-          }
-      } catch (err: any) {
-          console.error("Service Image Upload Error:", err);
-          alert(`Upload error.\n\n${err?.code || err?.message || 'Image upload failed'}`);
-      } finally {
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+              const MAX_SIZE = 800;
+              let width = img.width;
+              let height = img.height;
+
+              // Same resize rule as the working Therapist upload.
+              if (width > height) {
+                  if (width > MAX_SIZE) {
+                      height *= MAX_SIZE / width;
+                      width = MAX_SIZE;
+                  }
+              } else {
+                  if (height > MAX_SIZE) {
+                      width *= MAX_SIZE / height;
+                      height = MAX_SIZE;
+                  }
+              }
+
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(width));
+              canvas.height = Math.max(1, Math.round(height));
+
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                  // Match Therapist behavior: white background + JPEG compression.
+                  ctx.fillStyle = '#FFFFFF';
+                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              }
+
+              const finalBase64 = canvas.toDataURL('image/jpeg', 0.8);
+              updateItem(cIdx, iIdx, 'imageUrl', finalBase64);
+              setUploadingImage(null);
+
+              if (files.length > 1) {
+                  alert(`ဒီ Service အတွက် ပုံ ၁ ပုံပဲ သတ်မှတ်ထားပါတယ်။\nရွေးထားတဲ့ ${files.length} ပုံထဲက ပထမပုံကို အသုံးပြုထားပါတယ်။`);
+              }
+          };
+
+          img.onerror = () => {
+              console.error('Service Image Error: Could not decode image.');
+              alert('Upload error. Image file ကို ဖတ်လို့မရပါ။');
+              setUploadingImage(null);
+          };
+
+          img.src = event.target?.result as string;
+      };
+
+      reader.onerror = () => {
+          console.error('Service Image Error: Could not read image.');
+          alert('Upload error. Image file ကို ဖတ်လို့မရပါ။');
           setUploadingImage(null);
-      }
+      };
+
+      reader.readAsDataURL(file);
   };
 
   const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
@@ -2076,12 +2072,12 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         accept="image/*" 
         className="hidden" 
         onChange={(e) => {
-            void handleServiceImageUpload(cIdx, iIdx, e.target.files);
+            handleServiceImageUpload(cIdx, iIdx, e.target.files);
             e.target.value = '';
         }} 
         disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
     />
-    {uploadingImage === `service_${cIdx}_${iIdx}` ? 'UPLOADING...' : 'UPLOAD PHOTO'}
+    {uploadingImage === `service_${cIdx}_${iIdx}` ? 'WAIT..' : 'UPLOAD PHOTO'}
 </label>
                                 </div>
                             </div>
