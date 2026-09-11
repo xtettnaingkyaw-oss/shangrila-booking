@@ -666,12 +666,12 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     const myEntries = allEntries.filter((e: any) => checkIsMe(String(e['Staff ID'] || '').trim()));
 
-  let lastMonthUpToTodaySales = 2061000; 
-    let lastMonthYesterdaySales = 939000; 
-    let totalLastMonthSales = 12235000;
-    let displayThisMonthUpToToday = 0; 
-    let displayYesterdaySales = 0; 
-    let totalThisMonthSales = 0;
+ lastMonthUpToTodaySales = 2061000; 
+    lastMonthYesterdaySales = 939000; 
+    totalLastMonthSales = 12235000;
+    displayThisMonthUpToToday = 0; 
+    displayYesterdaySales = 0; 
+    totalThisMonthSales = 0;
 
     if (matrixData && matrixData.topPerformers) {
         const topDataRaw = matrixData.topPerformers;
