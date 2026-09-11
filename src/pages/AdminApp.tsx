@@ -4,9 +4,9 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
-
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock } from 'lucide-react';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
+import { useAppStore } from '../AppDataContext';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -25,14 +25,13 @@ interface LocalAdminProfile extends AdminProfile { docId?: string; username?: st
 export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
 
-  const [realtimeVip, setRealtimeVip] = useState<VipSettings | undefined>(appData.vipSettings);
-  useEffect(() => {
-      const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
-          if (snap.exists() && snap.data().vipSettings) setRealtimeVip(snap.data().vipSettings);
-      });
-      return () => unsub();
-  }, []);
-  const mergedAppData = { ...appData, vipSettings: realtimeVip || appData.vipSettings || DEFAULT_VIP_SETTINGS };
+  const { appData: globalAppData } = useAppStore();
+
+  const mergedAppData = { 
+      ...appData, 
+      ...globalAppData,
+      vipSettings: globalAppData?.vipSettings || appData.vipSettings || DEFAULT_VIP_SETTINGS 
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -324,17 +323,19 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   useEffect(() => { fetchUsers(); }, []);
 
   useEffect(() => {
-      const unsub = onSnapshot(query(collection(db, 'point_history'), orderBy('createdAt', 'desc')), (snap) => {
+      const fetchPointsAndBookings = async () => {
+          // 🌟 Real-time onSnapshot အစား getDocs ဖြင့် တစ်ကြိမ်တည်းသာ ဆွဲယူပြီး Limit သက်သာစေပါမည်
+          const snap = await getDocs(query(collection(db, 'point_history'), orderBy('createdAt', 'desc')));
           const data: any[] = [];
           snap.forEach(doc => { const raw = doc.data(); data.push({ id: doc.id, phone: decryptText(raw.phone) || raw.phone, amount: Number(decryptText(raw.amount) || raw.amount), pointsEarned: Number(decryptText(raw.pointsEarned) || raw.pointsEarned), invoiceNo: raw.invoiceNo ? decryptText(raw.invoiceNo) : '-', type: decryptText(raw.type) || raw.type, date: raw.date, createdAt: raw.createdAt }); });
           setHistory(data);
-      });
-      const unsubB = onSnapshot(query(collection(db, 'bookings')), (snap) => {
-          const data: any[] = [];
-          snap.forEach(d => { const raw = d.data(); data.push({ phone: decryptText(raw.phone) || raw.phone, status: raw.status, date: raw.date, discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined }); });
-          setUserBookings(data);
-      });
-      return () => { unsub(); unsubB(); };
+
+          const snapB = await getDocs(collection(db, 'bookings'));
+          const dataB: any[] = [];
+          snapB.forEach(d => { const raw = d.data(); dataB.push({ phone: decryptText(raw.phone) || raw.phone, status: raw.status, date: raw.date, discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined }); });
+          setUserBookings(dataB);
+      };
+      fetchPointsAndBookings();
   }, []);
 
   useEffect(() => {
