@@ -822,28 +822,17 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
      return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    // 🌟 Index Error မဖြစ်စေရန် ရိုးရိုးရှင်းရှင်း ပြင်ဆင်ထားပါသည် 🌟
-    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150));
-    const unsub = onSnapshot(q, (snap) => {
-        const arr: Booking[] = [];
-        snap.forEach(d => {
-            const raw = d.data();
-            // ဒီနေ့နဲ့ ဒီနေ့နောက်ပိုင်း Booking များကိုသာ ယူမည်
-            if (raw.date >= todayStr) {
-                arr.push({ 
-                    id: d.id, 
-                    ...raw, 
-                    name: decryptText(raw.name), 
-                    phone: decryptText(raw.phone), 
-                    txId: decryptText(raw.txId), 
-                    specialRequest: decryptText(raw.specialRequest) 
-                } as Booking);
-            }
-        });
-        setBookings(arr);
-    });
-    return () => unsub();
+useEffect(() => {
+      const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
+      const unsub = onSnapshot(q, (snap) => {
+          const arr: Booking[] = [];
+          snap.forEach(d => {
+              const raw = d.data();
+              arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest), discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined } as Booking);
+          });
+          setBookings(arr);
+      });
+      return () => unsub();
   }, [todayStr]);
 
   const getNextSlotTime = (slot: string) => {
@@ -1201,13 +1190,11 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
     const fetchBookings = async () => {
        try {
            const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
-           // 🌟 Index ပြဿနာမရှိစေရန် where အစား orderBy ကို ပြောင်းသုံးထားပါသည် 🌟
-           const snap = await getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150)));
+           const snap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', currentMonthPrefix + '-01')));
            const data: any[] = [];
            snap.forEach(d => {
                const raw = d.data(); const decPhone = decryptText(raw.phone) || raw.phone;
-               // Frontend ရောက်မှ လိုအပ်တဲ့ Date ကို စစ်ထုတ်ပါမည်
-               if (decPhone === userPhone && raw.date >= currentMonthPrefix + '-01') { 
+               if (decPhone === userPhone) { 
                    data.push({ status: raw.status, discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined, date: raw.date }); 
                }
            });
