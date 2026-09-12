@@ -855,7 +855,6 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   };
 
 const generateTimeline = (therapistName: string) => {
-      // 🌟 Four Hands (၂ ယောက်တွဲ) များကိုပါ သိရှိစေရန် includes ဖြင့် ပြင်ဆင်ထားပါသည်
       const tBookings = bookings.filter(b => b.therapist && b.therapist.includes(therapistName) && b.date === todayStr && b.status !== 'cancelled' && b.status !== 'completed');
       const coveredMap = new Map<string, { service: string, status: string }>();
 
@@ -910,11 +909,12 @@ const generateTimeline = (therapistName: string) => {
       });
   };
 
-  let isCurrentlyActive = false; let activeServiceName = ''; let upcomingServices: string[] = []; let hasNightBooking = false;
+  const getTherapistStatus = (tName: string) => {
+      let blockedNow = new Set<string>();
+      let isCurrentlyActive = false; let activeServiceName = ''; let upcomingServices: string[] = []; let hasNightBooking = false;
       const currentHour = now.getHours(); const isPast6PM = currentHour >= 18;
       
       bookings.forEach(b => {
-          // 🌟 Four Hands (၂ ယောက်တွဲ) များကိုပါ သိရှိစေရန် includes ဖြင့် ပြင်ဆင်ထားပါသည်
           if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr || !b.therapist || !b.therapist.includes(tName)) return;
           const cleanServiceName = (b.service || '').split('(')[0].trim();
           const serviceLower = cleanServiceName.toLowerCase();
