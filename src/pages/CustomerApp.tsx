@@ -2224,12 +2224,9 @@ const renderServiceSelection = (currentStep: number) => (
       
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         {appData.therapists.map((therapist, idx) => {
-          // 🌟 ဤနေရာတွင် selectedTherapist အစား therapist သို့ အမည်ပြောင်းထားပါသည် 🌟
           const isSelected = formData.therapist?.id === therapist.id || formData.therapist2?.id === therapist.id;
           
           return (
-            <div 
-              key={return (
             <div 
               key={idx} 
               onClick={() => {
@@ -2292,7 +2289,8 @@ const renderServiceSelection = (currentStep: number) => (
         </button>
       </div>
     </div>
-  )};
+    );
+ };
 
   return (
     <div>
