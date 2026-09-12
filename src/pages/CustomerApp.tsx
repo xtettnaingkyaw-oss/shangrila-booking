@@ -822,13 +822,24 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
      return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
+  useEffect(() => {useEffect(() => {
+    // 🌟 Index Error မဖြစ်စေရန် ရိုးရိုးရှင်းရှင်း ပြင်ဆင်ထားပါသည် 🌟
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150));
     const unsub = onSnapshot(q, (snap) => {
         const arr: Booking[] = [];
         snap.forEach(d => {
             const raw = d.data();
-            arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest), discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined } as Booking);
+            // ဒီနေ့နဲ့ ဒီနေ့နောက်ပိုင်း Booking များကိုသာ ယူမည်
+            if (raw.date >= todayStr) {
+                arr.push({ 
+                    id: d.id, 
+                    ...raw, 
+                    name: decryptText(raw.name), 
+                    phone: decryptText(raw.phone), 
+                    txId: decryptText(raw.txId), 
+                    specialRequest: decryptText(raw.specialRequest) 
+                } as Booking);
+            }
         });
         setBookings(arr);
     });
