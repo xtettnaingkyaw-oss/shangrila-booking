@@ -541,7 +541,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
    const handleDeleteBooking = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
-   // 🌟 1. Admin ဖက်မှ တိုက်ရိုက်ပိတ်ပေးနိုင်သော Functions များ 🌟
    const handleForceCompleteBooking = async (id: string) => {
        if(window.confirm('ဒီ Service ကို ပြီးဆုံးပြီ (Completed) အဖြစ် သတ်မှတ်မည် သေချာပါသလား?')) {
            await updateDoc(doc(db, 'bookings', id), { status: 'completed', actualEndTimeMillis: Date.now() });
@@ -554,7 +553,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
        }
    };
 
-   // 🌟 2. ဒီနေ့အတွက် Stats တွက်ချက်ပေးမည့် Functions များ 🌟
    const getTodayServiceStats = (tName: string) => {
        const tBookings = bookings.filter(b => b.therapist && b.therapist.includes(tName) && b.date === todayStr && (b.status === 'completed' || b.status === 'in_progress'));
        return {
@@ -567,7 +565,19 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
        return outpasses.filter(o => o.therapist === tName && o.date === todayStr).length;
    };
 
-   const activeBookings = bookings.filter(b => b.status === 'in_progress'); const activeOutpasses = outpasses.filter(o => o.status === 'out');
+   const activeBookings = bookings.filter(b => b.status === 'in_progress'); 
+   const activeOutpasses = outpasses.filter(o => o.status === 'out');
+
+   // 🌟 ဒီနေ့တစ်နေ့တာလုံးအတွက် ဝန်ထမ်းအားလုံး၏ Stats ကို တွက်ချက်ခြင်း 🌟
+   const allTherapistsStats = therapists.map(t => {
+       const serviceStats = getTodayServiceStats(t.name);
+       const opCount = getTodayOutpassCount(t.name);
+       return { name: t.name, sections: serviceStats.count, outpasses: opCount };
+   });
+   
+   // အရေအတွက် ၁ ခုနှင့်အထက် ရှိသူများကိုသာ စစ်ထုတ်ပြီး အများဆုံးမှ အနည်းဆုံးသို့ စီစဉ်ခြင်း
+   const serviceLeaderboard = [...allTherapistsStats].filter(s => s.sections > 0).sort((a,b) => b.sections - a.sections);
+   const outpassLeaderboard = [...allTherapistsStats].filter(s => s.outpasses > 0).sort((a,b) => b.outpasses - a.outpasses);
 
    return (
        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -583,6 +593,8 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
 
            {view === 'dashboard' && (
               <div className="space-y-8 animate-fade-in">
+                 
+                 {/* ================== SERVICES SECTION ================== */}
                  <div>
                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
                      {activeBookings.length === 0 ? (<p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently in service.</p>) : (
@@ -591,7 +603,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                                  const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
                                  const isLate = b.expectedEndTimeMillis ? now > b.expectedEndTimeMillis : false;
                                  let lateText = 'OVERTIME (LATE)'; if (isLate && b.expectedEndTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - b.expectedEndTimeMillis) / 1000))}`;
-                                 
                                  const tStats = getTodayServiceStats(b.therapist);
 
                                  return (
@@ -606,13 +617,11 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                                              <div className="text-gray-500"><span className="font-bold text-gray-600">End:</span> <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>{formatMillis(b.expectedEndTimeMillis)}</span></div>
                                          </div>
 
-                                         {/* 🌟 3. Section Count & Force Complete Button 🌟 */}
                                          <div className="mt-auto pt-3 border-t border-dashed border-gray-300/50">
                                             <div className="flex justify-between items-center mb-1">
                                                 <span className="text-[10px] font-bold text-gray-600">Today Sections: <span className="text-orange-600">{tStats.count}</span></span>
                                             </div>
                                             <div className="text-[9px] text-gray-500 truncate mb-3" title={tStats.names.join(', ')}>{tStats.names.join(', ')}</div>
-                                            
                                             <button onClick={() => handleForceCompleteBooking(b.id!)} className="w-full py-2 bg-white border border-gray-300 rounded-lg text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:text-green-700 hover:border-green-300 transition-colors flex items-center justify-center">
                                                 <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> ပြီးဆုံးပြီဟု သတ်မှတ်မည်
                                             </button>
@@ -622,16 +631,36 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                              })}
                          </div>
                      )}
+
+                     {/* 🌟 All Staff Today's Total Sections 🌟 */}
+                     <div className="mt-6 pt-5 border-t border-gray-100">
+                         <h4 className="text-[11px] font-bold text-gray-500 mb-3 uppercase tracking-wider flex items-center">
+                             <Activity className="w-3.5 h-3.5 mr-1.5 text-orange-400" />
+                             Today's Total Sections (All Staff)
+                         </h4>
+                         <div className="flex flex-wrap gap-2.5">
+                             {serviceLeaderboard.length === 0 ? (
+                                 <span className="text-xs text-gray-400 font-semibold bg-gray-50 px-3 py-2 rounded-lg border border-dashed border-gray-200">ဒီနေ့အတွက် Section ဝင်ထားသော ဝန်ထမ်းမရှိသေးပါ။</span>
+                             ) : (
+                                 serviceLeaderboard.map(s => (
+                                     <div key={s.name} className="bg-white border border-orange-200 px-3 py-2 rounded-xl flex items-center justify-between gap-3 shadow-sm hover:border-orange-400 transition-colors">
+                                         <span className="text-xs font-bold text-gray-700">{s.name}</span>
+                                         <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-2 py-1 rounded-md">{s.sections} Sections</span>
+                                     </div>
+                                 ))
+                             )}
+                         </div>
+                     </div>
                  </div>
                  
-                 <div>
+                 {/* ================== OUTPASS SECTION ================== */}
+                 <div className="pt-4">
                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
                      {activeOutpasses.length === 0 ? (<p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently on out pass.</p>) : (
                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                              {activeOutpasses.map(o => {
                                  const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
                                  let lateText = 'OVERTIME (LATE)'; if (isLate && o.expectedInTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - o.expectedInTimeMillis) / 1000))}`;
-                                 
                                  const opCount = getTodayOutpassCount(o.therapist);
 
                                  return (
@@ -645,7 +674,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                                              <div className="text-gray-500"><span className="font-bold text-gray-600">Return:</span> <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>{formatMillis(o.expectedInTimeMillis)}</span></div>
                                          </div>
 
-                                         {/* 🌟 4. Outpass Count & Force Return Button 🌟 */}
                                          <div className="mt-auto pt-3 border-t border-dashed border-gray-300/50">
                                             <div className="flex justify-between items-center mb-3">
                                                 <span className="text-[10px] font-bold text-gray-600">Today Outpasses:</span>
@@ -660,6 +688,27 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                              })}
                          </div>
                      )}
+
+                     {/* 🌟 All Staff Today's Total Outpasses 🌟 */}
+                     <div className="mt-6 pt-5 border-t border-gray-100">
+                         <h4 className="text-[11px] font-bold text-gray-500 mb-3 uppercase tracking-wider flex items-center">
+                             <Coffee className="w-3.5 h-3.5 mr-1.5 text-purple-400" />
+                             Today's Outpass Usage (All Staff)
+                         </h4>
+                         <div className="flex flex-wrap gap-2.5">
+                             {outpassLeaderboard.length === 0 ? (
+                                 <span className="text-xs text-gray-400 font-semibold bg-gray-50 px-3 py-2 rounded-lg border border-dashed border-gray-200">ဒီနေ့အတွက် Out Pass သုံးထားသော ဝန်ထမ်းမရှိသေးပါ။</span>
+                             ) : (
+                                 outpassLeaderboard.map(s => (
+                                     <div key={s.name} className="bg-white border border-purple-200 px-3 py-2 rounded-xl flex items-center justify-between gap-3 shadow-sm hover:border-purple-400 transition-colors">
+                                         <span className="text-xs font-bold text-gray-700">{s.name}</span>
+                                         <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-1 rounded-md">{s.outpasses} / 4</span>
+                                     </div>
+                                 ))
+                             )}
+                         </div>
+                     </div>
+
                  </div>
               </div>
            )}
