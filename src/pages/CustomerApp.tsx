@@ -2489,11 +2489,15 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 
   const { appData: globalAppData } = useAppStore(); // 🌟 Context မှ Data ကို ယူသုံးခြင်း
 
+  // 🌟 နာမည်တူနေသော Therapist များကို ဖယ်ရှားပြီး တစ်ယောက်ကို တစ်ခုသာ ပြသရန် (Auto Deduplicate) 🌟
+  const rawTherapists = globalAppData?.therapists?.length ? globalAppData.therapists : (appData.therapists || []);
+  const uniqueTherapists = Array.from(new Map(rawTherapists.map(t => [t.name, t])).values());
+
   const mergedAppData = { 
       ...appData,
       ...globalAppData,
       vipSettings: globalAppData?.vipSettings || appData.vipSettings || FALLBACK_VIP_SETTINGS,
-      therapists: globalAppData?.therapists?.length ? globalAppData.therapists : (appData.therapists || []),
+      therapists: uniqueTherapists,
       categories: globalAppData?.categories?.length ? globalAppData.categories : (appData.categories || [])
   };
 
