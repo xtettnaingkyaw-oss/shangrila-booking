@@ -568,8 +568,9 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
    const activeBookings = bookings.filter(b => b.status === 'in_progress'); 
    const activeOutpasses = outpasses.filter(o => o.status === 'out');
 
-   // 🌟 ဒီနေ့တစ်နေ့တာလုံးအတွက် ဝန်ထမ်းအားလုံး၏ Stats ကို တွက်ချက်ခြင်း 🌟
-   const allTherapistsStats = therapists.map(t => {
+// 🌟 ဒီနေ့တစ်နေ့တာလုံးအတွက် ဝန်ထမ်းအားလုံး၏ Stats ကို တွက်ချက်ခြင်း (ပွားနေပါက ၁ ခုတည်းပြရန်) 🌟
+   const uniqueTherapists = Array.from(new Map(therapists.map(t => [t.name, t])).values());
+   const allTherapistsStats = uniqueTherapists.map(t => {
        const serviceStats = getTodayServiceStats(t.name);
        const opCount = getTodayOutpassCount(t.name);
        return { name: t.name, sections: serviceStats.count, outpasses: opCount };
