@@ -605,9 +605,9 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
 
     const staffSalesMap = new Map();
-    let displayThisMonthUpToToday = 0; 
-    let displayYesterdaySales = 0; 
-    let totalThisMonthSales = 0;
+    let calcThisMonthUpToToday = 0; 
+    let calcYesterdaySales = 0; 
+    let calcTotalThisMonthSales = 0;
 
     const todayStr = getLocalTodayStr();
     const prevD = new Date(); prevD.setDate(prevD.getDate() - 1);
@@ -621,9 +621,9 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         staffSalesMap.get(sId).actual += amt;
         staffSalesMap.get(sId).commission += (Number(e['Commission']) || 0);
 
-        totalThisMonthSales += amt;
-        if (e.ParsedDate <= todayStr) displayThisMonthUpToToday += amt;
-        if (e.ParsedDate === prevDayStr) displayYesterdaySales += amt;
+        calcTotalThisMonthSales += amt;
+        if (e.ParsedDate <= todayStr) calcThisMonthUpToToday += amt;
+        if (e.ParsedDate === prevDayStr) calcYesterdaySales += amt;
     });
 
     const sortedPerformers = Array.from(staffSalesMap.entries()).map(([id, data]) => ({
@@ -666,48 +666,31 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     const myEntries = allEntries.filter((e: any) => checkIsMe(String(e['Staff ID'] || '').trim()));
 
- lastMonthUpToTodaySales = 2061000; 
-    lastMonthYesterdaySales = 939000; 
-    totalLastMonthSales = 12235000;
-    displayThisMonthUpToToday = 0; 
-    displayYesterdaySales = 0; 
-    totalThisMonthSales = 0;
+    // 🌟 Admin App တွင် အသုံးပြုထားသော တိကျသည့် Comparison Data ကို တိုက်ရိုက်ခေါ်ယူခြင်း (ReferenceError ပြဿနာ လုံးဝရှင်းလင်းသွားပါမည်) 🌟
+    const comparison = matrixData.comparisonData || {};
+    const comparisonMeta = matrixData.comparisonMeta || {};
 
-    if (matrixData && matrixData.topPerformers) {
-        const topDataRaw = matrixData.topPerformers;
-        for (const row of topDataRaw) {
-            const rowValues = Object.values(row).map(v => String(v || '').trim());
-            const rowString = rowValues.join(' ');
-            
-            const numbersInRow = rowValues
-                .map(v => Number(v.replace(/,/g, '')))
-                .filter(n => !isNaN(n) && n > 0);
+    const upToTodayData = comparison.upToToday || { lastMonth: 0, thisMonth: calcThisMonthUpToToday, difference: calcThisMonthUpToToday };
+    const yesterdayData = comparison.yesterday || { lastMonth: 0, thisMonth: calcYesterdaySales, difference: calcYesterdaySales };
+    const fullMonthData = comparison.fullMonth || { lastMonth: 0, thisMonth: calcTotalThisMonthSales, difference: calcTotalThisMonthSales };
 
-            if (rowString.includes('အရင်လ (၁)ရက်နေ့မှ ယနေ့အထိ')) {
-                if (numbersInRow.length > 0) lastMonthUpToTodaySales = numbersInRow[0];
-            } else if (rowString.includes('ယခုလ (၁)ရက်နေ့မှ ယနေ့အထိ')) {
-                if (numbersInRow.length > 0) displayThisMonthUpToToday = numbersInRow[0];
-            } else if (rowString.includes('ယခုလ၏ မနေ့ကနေ့ရက်က ရရှိငွေ')) {
-                if (numbersInRow.length > 0) displayYesterdaySales = numbersInRow[0];
-            } else if (rowString.includes('အရင်လ၏ တူညီသည့်ရက်') || rowString.includes('အရင်လ၏ မနေ့က')) {
-                if (numbersInRow.length > 0) lastMonthYesterdaySales = numbersInRow[0];
-            } else if (rowString.includes('အရင်လ၏ တစ်လတာ ရရှိငွေစုစုပေါင်း')) {
-                if (numbersInRow.length > 0) totalLastMonthSales = numbersInRow[0];
-            } else if (rowString.includes('ယခုလ၏ တစ်လတာ ရရှိငွေစုစုပေါင်း')) {
-                if (numbersInRow.length > 0) totalThisMonthSales = numbersInRow[0];
-            }
-        }
-    }
+    const lastMonthUpToTodaySales = Number(upToTodayData.lastMonth) || 0;
+    const displayThisMonthUpToToday = Number(upToTodayData.thisMonth) || 0;
+    const upToTodayDiff = Number(upToTodayData.difference) || (displayThisMonthUpToToday - lastMonthUpToTodaySales);
     
-    let yesterdayDateTextStr = prevDayStr;
-    let lastMonthNameStr = "AUGUST";
-    let thisMonthNameStr = "THIS MONTH";
-    let lastFullMonthNameStr = "AUGUST";
-    let thisFullMonthNameStr = "THIS MONTH";
+    const lastMonthYesterdaySales = Number(yesterdayData.lastMonth) || 0;
+    const displayYesterdaySales = Number(yesterdayData.thisMonth) || 0;
+    const dayDifference = Number(yesterdayData.difference) || (displayYesterdaySales - lastMonthYesterdaySales);
+    
+    const totalLastMonthSales = Number(fullMonthData.lastMonth) || 0;
+    const totalThisMonthSales = Number(fullMonthData.thisMonth) || 0;
+    const salesDiff = Number(fullMonthData.difference) || (totalThisMonthSales - totalLastMonthSales);
 
-    const salesDiff = totalThisMonthSales - totalLastMonthSales;
-    const upToTodayDiff = displayThisMonthUpToToday - lastMonthUpToTodaySales;
-    const dayDifference = displayYesterdaySales - lastMonthYesterdaySales;
+    const yesterdayDateTextStr = prevDayStr;
+    const lastMonthNameStr = comparisonMeta.previousMonthName || 'PREVIOUS MONTH';
+    const thisMonthNameStr = comparisonMeta.thisMonthName || 'THIS MONTH';
+    const lastFullMonthNameStr = lastMonthNameStr;
+    const thisFullMonthNameStr = thisMonthNameStr;
 
     const top5Gaps = [];
     for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
