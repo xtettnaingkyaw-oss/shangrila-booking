@@ -1602,7 +1602,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const promoActive = checkPromoActive();
   const isBirthday = () => { if (!userProfile?.dob || !formData.date) return false; const dobParts = userProfile.dob.split('-'); const bookParts = formData.date.split('-'); return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; };
 
-  let finalDiscountPercent = 0; let discountLabel = '';
+  // 🌟 VIP Discount မှန်ကန်စေရန် အပိုင်းသစ် 🌟
   let finalDiscountPercent = 0; let discountLabel = '';
   if (promoActive) {
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
@@ -1610,6 +1610,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   } else if (vipSettings.isActive && userProfile) {
       const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
       const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
+      
       const tierPercent = userTier ? userTier.discountPercent : 0; 
       const tierLabel = userTier ? `${userTier.name} Discount (${tierPercent}%)` : '';
       
@@ -1627,19 +1628,23 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
       let bdayPercent = 0; let bdayLabel = '';
       if (userTier && isBirthday()) {
           if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) { 
-              bdayPercent = Math.min(100, 20 + monthlyPts); bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`; 
+              bdayPercent = Math.min(100, 20 + monthlyPts); 
+              bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`; 
           } else { 
-              bdayPercent = 50; bdayLabel = `VIP Birthday Bonus (50%)`; 
+              bdayPercent = 50; 
+              bdayLabel = `VIP Birthday Bonus (50%)`; 
           }
       }
 
-      // 🌟 VIP Discount ရွေးချယ်မှု Priority အမှန် (VVIP 20% အမြဲတမ်း ရစေရန်) 🌟
       if (bdayPercent > Math.max(oneTimePercent, tierPercent)) { 
-          finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; 
+          finalDiscountPercent = bdayPercent; 
+          discountLabel = bdayLabel; 
       } else if (tierPercent >= oneTimePercent && tierPercent > 0) { 
-          finalDiscountPercent = tierPercent; discountLabel = tierLabel; 
+          finalDiscountPercent = tierPercent; 
+          discountLabel = tierLabel; 
       } else if (oneTimePercent > 0) { 
-          finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; 
+          finalDiscountPercent = oneTimePercent; 
+          discountLabel = oneTimeLabel; 
       }
   }
 
