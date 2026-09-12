@@ -823,12 +823,16 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
+    // 🌟 Index ပြဿနာမရှိစေရန် where အစား orderBy ကို ပြောင်းသုံးထားပါသည် 🌟
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150));
     const unsub = onSnapshot(q, (snap) => {
         const arr: Booking[] = [];
         snap.forEach(d => {
             const raw = d.data();
-            arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking);
+            // Frontend ရောက်မှ လိုအပ်တဲ့ Date ကို စစ်ထုတ်ပါမည်
+            if (raw.date >= todayStr) {
+                arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking);
+            }
         });
         setBookings(arr);
     });
@@ -1193,11 +1197,15 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
     const fetchBookings = async () => {
        try {
            const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
-           const snap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', currentMonthPrefix + '-01')));
+           // 🌟 Index ပြဿနာမရှိစေရန် where အစား orderBy ကို ပြောင်းသုံးထားပါသည် 🌟
+           const snap = await getDocs(query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150)));
            const data: any[] = [];
            snap.forEach(d => {
                const raw = d.data(); const decPhone = decryptText(raw.phone) || raw.phone;
-               if (decPhone === userPhone) { data.push({ status: raw.status, discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined, date: raw.date }); }
+               // Frontend ရောက်မှ လိုအပ်တဲ့ Date ကို စစ်ထုတ်ပါမည်
+               if (decPhone === userPhone && raw.date >= currentMonthPrefix + '-01') { 
+                   data.push({ status: raw.status, discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined, date: raw.date }); 
+               }
            });
            setUserBookings(data);
        } catch(e) {}
@@ -1528,10 +1536,17 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const isFourHands = useMemo(() => { return (formData.selectedItem?.name || '').toLowerCase().includes('four hands'); }, [formData.selectedItem]);
 
   useEffect(() => {
-      const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
+      // 🌟 Index ပြဿနာမရှိစေရန် where အစား orderBy ကို ပြောင်းသုံးထားပါသည် 🌟
+      const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150));
       const unsub = onSnapshot(q, (snap) => {
           const arr: Booking[] = [];
-          snap.forEach(d => { const raw = d.data(); arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest), discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined } as Booking); });
+          snap.forEach(d => { 
+              const raw = d.data(); 
+              // Frontend ရောက်မှ လိုအပ်တဲ့ Date ကို စစ်ထုတ်ပါမည်
+              if (raw.date >= todayStr) {
+                  arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest), discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined } as Booking); 
+              }
+          });
           setAllBookings(arr);
       });
       return () => unsub();
@@ -1588,13 +1603,16 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const isBirthday = () => { if (!userProfile?.dob || !formData.date) return false; const dobParts = userProfile.dob.split('-'); const bookParts = formData.date.split('-'); return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; };
 
   let finalDiscountPercent = 0; let discountLabel = '';
+  let finalDiscountPercent = 0; let discountLabel = '';
   if (promoActive) {
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
       discountLabel = `${promoTitle} (${finalDiscountPercent}%)`;
   } else if (vipSettings.isActive && userProfile) {
       const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
       const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
-      const tierPercent = userTier ? userTier.discountPercent : 0; const tierLabel = userTier ? `VIP Member Discount (${tierPercent}%)` : '';
+      const tierPercent = userTier ? userTier.discountPercent : 0; 
+      const tierLabel = userTier ? `${userTier.name} Discount (${tierPercent}%)` : '';
+      
       let oneTimePercent = 0; let oneTimeLabel = ''; const possibleTiers = [40, 30, 20, 10]; 
       if (!userTier) {
           for (const tier of possibleTiers) {
@@ -1605,14 +1623,24 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
               }
           }
       }
+      
       let bdayPercent = 0; let bdayLabel = '';
       if (userTier && isBirthday()) {
-          if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) { bdayPercent = Math.min(100, 20 + monthlyPts); bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`; } 
-          else { bdayPercent = 50; bdayLabel = `VIP Birthday Bonus (50%)`; }
+          if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) { 
+              bdayPercent = Math.min(100, 20 + monthlyPts); bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`; 
+          } else { 
+              bdayPercent = 50; bdayLabel = `VIP Birthday Bonus (50%)`; 
+          }
       }
-      if (bdayPercent >= oneTimePercent && bdayPercent >= tierPercent && bdayPercent > 0) { finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; }
-      else if (oneTimePercent >= tierPercent && oneTimePercent > 0) { finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; }
-      else if (tierPercent > 0) { finalDiscountPercent = tierPercent; discountLabel = tierLabel; }
+
+      // 🌟 VIP Discount ရွေးချယ်မှု Priority အမှန် (VVIP 20% အမြဲတမ်း ရစေရန်) 🌟
+      if (bdayPercent > Math.max(oneTimePercent, tierPercent)) { 
+          finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; 
+      } else if (tierPercent >= oneTimePercent && tierPercent > 0) { 
+          finalDiscountPercent = tierPercent; discountLabel = tierLabel; 
+      } else if (oneTimePercent > 0) { 
+          finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; 
+      }
   }
 
   const calculateSubTotal = () => {
