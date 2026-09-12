@@ -822,7 +822,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
      return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {useEffect(() => {
+  useEffect(() => {
     // 🌟 Index Error မဖြစ်စေရန် ရိုးရိုးရှင်းရှင်း ပြင်ဆင်ထားပါသည် 🌟
     const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150));
     const unsub = onSnapshot(q, (snap) => {
@@ -854,7 +854,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       return slot;
   };
 
-const generateTimeline = (therapistName: string) => {
+  const generateTimeline = (therapistName: string) => {
       const tBookings = bookings.filter(b => b.therapist && b.therapist.includes(therapistName) && b.date === todayStr && b.status !== 'cancelled' && b.status !== 'completed');
       const coveredMap = new Map<string, { service: string, status: string }>();
 
@@ -987,7 +987,6 @@ const generateTimeline = (therapistName: string) => {
                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
                    <div className="bg-[#123524] p-4 flex items-center justify-between">
                        <div className="flex items-center">
-                           {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
                            {(viewingDetails.images?.[0] || viewingDetails.imageUrl) ? (
                                <img src={viewingDetails.images?.[0] || viewingDetails.imageUrl} loading="lazy" className="w-10 h-10 rounded-full object-cover mr-3 border border-[#D4AF37]"/>
                            ) : (
@@ -1028,7 +1027,6 @@ const generateTimeline = (therapistName: string) => {
              return (
                 <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
                    <div className={`w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border object-cover ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale opacity-80' : 'border-orange-200'}`}>
-                       {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
                        {(t.images?.[0] || t.imageUrl) ? (
                            <img src={t.images?.[0] || t.imageUrl} loading="lazy" className="w-full h-full object-cover object-top" />
                        ) : (
@@ -1067,7 +1065,6 @@ const generateTimeline = (therapistName: string) => {
                          <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
                              <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">{idx + 1}</div>
                              <div className={`w-full aspect-[3/4] bg-gray-100 relative ${isFullyBooked ? 'grayscale opacity-80' : ''}`}>
-                                 {/* 🌟 5 Photos Array System အသစ်နှင့် အံဝင်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
                                  {(t.images?.[0] || t.imageUrl) ? (
                                      <img src={t.images?.[0] || t.imageUrl} loading="lazy" className="w-full h-full object-cover object-top" />
                                  ) : (
