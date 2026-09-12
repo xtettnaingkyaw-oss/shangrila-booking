@@ -2442,28 +2442,30 @@ const renderServiceSelection = (currentStep: number) => (
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <h3 className="text-sm font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Deposit Payment</h3>
+          {/* 🌟 Payment Design အသစ် နှင့် OTP-Style TxID 🌟 */}
+          <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+            <h3 className="text-sm font-bold tracking-widest uppercase mb-5 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Deposit Payment</h3>
             {isStaffMode ? (
-              <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
+              <div className="bg-green-50 p-5 rounded-xl border border-green-200 text-center shadow-sm">
                   <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
                   <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm and Start Now" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
               </div>
             ) : (
               <>
-                <div className="relative mb-4">
-                  <label className="block mb-2 text-sm font-semibold text-gray-700" style={{ color: THEME.primary }}>ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
-                  <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm">
-                    {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" loading="lazy" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
+                <div className="relative mb-5">
+                  <label className="block mb-2.5 text-[11px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
+                  <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-4 bg-[#123524] rounded-xl cursor-pointer flex justify-between items-center shadow-md border border-[#1a4a32] hover:bg-[#153e2a] transition-colors">
+                    {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" loading="lazy" className="w-6 h-6 mr-3 object-contain bg-white rounded p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
                     <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
                   </div>
                   {paymentDropdownOpen && (
                     <><div className="fixed inset-0 z-40" onClick={() => setPaymentDropdownOpen(false)}></div>
-                      <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-lg shadow-xl overflow-hidden border border-[#1a4a32]">
-                        {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" loading="lazy" className="w-7 h-7 mr-3 object-contain bg-white rounded-sm p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
+                      <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-xl shadow-2xl overflow-hidden border border-[#D4AF37]/30">
+                        {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" loading="lazy" className="w-7 h-7 mr-3 object-contain bg-white rounded p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
                       </div></>
                   )}
                 </div>
+                
                 {selectedPaymentConfig && (
                   <div className="relative overflow-hidden bg-gradient-to-br from-[#123524] to-[#1a4a32] p-5 sm:p-6 rounded-2xl shadow-lg border border-[#D4AF37]/30 text-white mb-6 animate-fade-in">
                       <div className="absolute -top-10 -right-10 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full blur-3xl pointer-events-none"></div>
@@ -2548,6 +2550,16 @@ const renderServiceSelection = (currentStep: number) => (
                         })}
                     </div>
                 </div>
+              </>
+            )}
+          </div>
+
+          <div className="mt-8 flex justify-between">
+            <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
+            <button disabled={loading || (!isStaffMode && !formData.paymentMethod)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : (staffClockIn && formData.date === todayStr ? 'CONFIRM AND START NOW' : 'CONFIRM BOOKING')}</button>
+          </div>
+        </form>
+      )}
 
           <div className="mt-8 flex justify-between">
             <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
