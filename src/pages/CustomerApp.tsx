@@ -2271,18 +2271,31 @@ const renderServiceSelection = (currentStep: number) => (
                 )}
               </div>
 
-              {/* 🌟 2. Book Now Button လှလှလေး ပြန်ထည့်ထားပါသည် 🌟 */}
+              {/* 🌟 Book Now နှိပ်လိုက်သည်နှင့် Dashboard မှာကဲ့သို့ အရောင်ပြောင်းပြီး တန်းကျော်မည့် အပိုင်း 🌟 */}
               <div className="p-2.5 sm:p-3 text-center flex-1 flex flex-col justify-between bg-gray-50/30">
                 <h4 className={`font-bold text-[11px] sm:text-xs mb-2.5 truncate ${isSelected ? 'text-[#123524]' : 'text-gray-800'}`}>{therapist.name}</h4>
                 <button 
                    type="button"
-                   className={`w-full py-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center border shadow-sm ${
-                      isSelected 
-                      ? 'bg-[#123524] text-[#D4AF37] border-[#123524]' 
-                      : 'bg-gradient-to-r from-yellow-50 to-white text-[#123524] hover:bg-yellow-100 border-[#D4AF37]/40'
-                   }`}
+                   onClick={(e) => {
+                      e.stopPropagation();
+                      if (is4Hands) {
+                          if (!formData.therapist) { 
+                              setFormData({...formData, therapist: therapist}); 
+                          } else if (!formData.therapist2 && formData.therapist.id !== therapist.id) {
+                              setFormData({...formData, therapist2: therapist});
+                              setTimeout(() => handleNextStep(currentStep + 1), 50);
+                          } else {
+                              if (formData.therapist?.id === therapist.id) setFormData({...formData, therapist: null});
+                              if (formData.therapist2?.id === therapist.id) setFormData({...formData, therapist2: null});
+                          }
+                      } else {
+                          setFormData({...formData, therapist: therapist, therapist2: null});
+                          setTimeout(() => handleNextStep(currentStep + 1), 50); // ချက်ချင်း Service Page သို့သွားမည်
+                      }
+                   }}
+                   className="w-full py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center border shadow-sm bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]"
                 >
-                   {isSelected ? <><CheckCircle className="w-3 h-3 mr-1.5" /> Selected</> : 'Book Now'}
+                   Book Now
                 </button>
               </div>
             </div>
