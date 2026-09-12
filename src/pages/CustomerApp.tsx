@@ -2400,7 +2400,7 @@ const renderServiceSelection = (currentStep: number) => (
         </div>
       )}
 
-      {step === 4 && (
+    {step === 4 && (
         <form onSubmit={handleSubmit} className="animate-fade-in pb-10 px-2 sm:px-0">
           <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Confirm Booking</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်မှတ်တမ်းအား ပြန်လည်စစ်ဆေးပြီး အတည်ပြုပေးပါ)</p></div>
           
@@ -2442,48 +2442,121 @@ const renderServiceSelection = (currentStep: number) => (
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <h3 className="text-sm font-bold tracking-widest uppercase mb-4 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Deposit Payment</h3>
+          {/* 🌟 Payment Design အသစ် နှင့် OTP-Style TxID 🌟 */}
+          <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+            <h3 className="text-sm font-bold tracking-widest uppercase mb-5 flex items-center" style={{ color: THEME.primary }}><CreditCard className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Deposit Payment</h3>
             {isStaffMode ? (
-              <div className="bg-green-50 p-5 rounded-lg border border-green-200 text-center shadow-sm">
+              <div className="bg-green-50 p-5 rounded-xl border border-green-200 text-center shadow-sm">
                   <span className="font-bold text-green-800 text-lg flex justify-center items-center"><CheckCircle className="w-5 h-5 mr-2"/> Cash Payment in Shop</span>
                   <p className="text-xs font-semibold text-green-600 mt-2">{staffClockIn && formData.date === todayStr ? '"Confirm and Start Now" နှိပ်သည်နှင့် ဝန်ဆောင်မှုကို စတင်ပါမည်။' : 'ဤဘိုကင်ကို စနစ်မှ အလိုအလျောက် အတည်ပြု (Approve) ပါမည်။'}</p>
               </div>
             ) : (
               <>
-                <div className="relative mb-4">
-                  <label className="block mb-2 text-sm font-semibold text-gray-700" style={{ color: THEME.primary }}>ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
-                  <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-3 bg-[#123524] rounded-lg cursor-pointer flex justify-between items-center shadow-sm">
-                    {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" loading="lazy" className="w-6 h-6 mr-3 object-contain bg-white rounded-sm p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
+                <div className="relative mb-5">
+                  <label className="block mb-2.5 text-[11px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider">ငွေလွှဲမည့် စနစ် ရွေးချယ်ရန်</label>
+                  <div onClick={() => setPaymentDropdownOpen(!paymentDropdownOpen)} className="w-full p-4 bg-[#123524] rounded-xl cursor-pointer flex justify-between items-center shadow-md border border-[#1a4a32] hover:bg-[#153e2a] transition-colors">
+                    {selectedPaymentConfig ? (<div className="flex items-center font-bold text-[#D4AF37]">{selectedPaymentConfig.logoUrl && <img src={selectedPaymentConfig.logoUrl} alt="" loading="lazy" className="w-6 h-6 mr-3 object-contain bg-white rounded p-0.5" />}{selectedPaymentConfig.name}</div>) : (<span className="font-bold text-[#D4AF37]">-- ရွေးချယ်ပါ --</span>)}
                     <ChevronDown className="w-5 h-5 text-[#D4AF37]" />
                   </div>
                   {paymentDropdownOpen && (
                     <><div className="fixed inset-0 z-40" onClick={() => setPaymentDropdownOpen(false)}></div>
-                      <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-lg shadow-xl overflow-hidden border border-[#1a4a32]">
-                        {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" loading="lazy" className="w-7 h-7 mr-3 object-contain bg-white rounded-sm p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
+                      <div className="absolute z-50 w-full mt-2 bg-[#123524] rounded-xl shadow-2xl overflow-hidden border border-[#D4AF37]/30">
+                        {safePaymentMethods.map(pm => (<div key={pm.id} className="p-4 flex items-center cursor-pointer hover:bg-[#1a4a32] border-b border-[#1a4a32] transition-colors" onClick={() => { setFormData({ ...formData, paymentMethod: pm.name }); setPaymentDropdownOpen(false); }}>{pm.logoUrl && <img src={pm.logoUrl} alt="" loading="lazy" className="w-7 h-7 mr-3 object-contain bg-white rounded p-1" />}<span className="font-bold text-[#D4AF37] text-base">{pm.name}</span></div>))}
                       </div></>
                   )}
                 </div>
+                
                 {selectedPaymentConfig && (
-                  <div className="bg-yellow-50 p-5 rounded-lg mb-5 border border-yellow-200 animate-fade-in">
-                    <p className="text-sm text-gray-700 mb-4 leading-relaxed">Booking အတည်ပြုနိုင်ရန် <strong className="text-yellow-700 font-bold">ကျသင့်ငွေ၏ တစ်ဝက် ({formatPrice(calculateTotal() / 2)})</strong> စရံငွေအား {selectedPaymentConfig.name} သို့ လွှဲပေးပါ။</p>
-                    <div className="flex flex-col space-y-3 bg-white p-4 rounded-md border border-yellow-100">
-                      <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အကောင့်:</span> <strong className="tracking-widest text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountNumber}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountNumber)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
-                      <div className="flex items-center justify-between sm:justify-start"><span className="text-gray-500 text-sm w-16 inline-block">အမည်:</span> <strong className="text-gray-800 text-lg sm:mr-4">{selectedPaymentConfig.accountName}</strong><button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountName)} className="flex items-center px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 rounded transition"><Copy className="w-3 h-3 mr-1" /> Copy</button></div>
-                    </div>
+                  <div className="relative overflow-hidden bg-gradient-to-br from-[#123524] to-[#1a4a32] p-5 sm:p-6 rounded-2xl shadow-lg border border-[#D4AF37]/30 text-white mb-6 animate-fade-in">
+                      <div className="absolute -top-10 -right-10 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full blur-3xl pointer-events-none"></div>
+                      <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full blur-3xl pointer-events-none"></div>
+                      
+                      <div className="relative z-10">
+                          <p className="text-[11px] sm:text-xs text-gray-300 mb-5 leading-relaxed bg-black/20 p-3.5 rounded-xl border border-white/5">
+                              Booking အတည်ပြုနိုင်ရန် <strong className="text-[#D4AF37] font-bold text-sm tracking-wide">ကျသင့်ငွေ၏ တစ်ဝက် ({formatPrice(calculateTotal() / 2)})</strong> စရံငွေအား {selectedPaymentConfig.name} သို့ လွှဲပေးပါ။
+                          </p>
+                          
+                          <div className="space-y-3 sm:space-y-4">
+                              <div className="flex justify-between items-center bg-black/30 p-3.5 sm:p-4 rounded-xl border border-white/10 shadow-inner">
+                                  <div>
+                                      <div className="text-[9px] text-[#D4AF37]/80 uppercase tracking-widest mb-1.5 font-bold">Account Number</div>
+                                      <div className="text-lg sm:text-xl font-mono font-bold tracking-widest text-[#D4AF37]">{selectedPaymentConfig.accountNumber}</div>
+                                  </div>
+                                  <button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountNumber)} className="bg-[#D4AF37] hover:bg-yellow-500 text-[#123524] px-4 py-2.5 rounded-lg text-[10px] font-bold flex items-center transition shadow-sm border border-[#D4AF37] active:scale-95"><Copy className="w-3.5 h-3.5 sm:mr-1.5"/><span className="hidden sm:inline">COPY</span></button>
+                              </div>
+                              
+                              <div className="flex justify-between items-center bg-black/30 p-3.5 sm:p-4 rounded-xl border border-white/10 shadow-inner">
+                                  <div>
+                                      <div className="text-[9px] text-gray-400 uppercase tracking-widest mb-1.5 font-bold">Account Name</div>
+                                      <div className="text-sm font-bold text-white tracking-wide">{selectedPaymentConfig.accountName}</div>
+                                  </div>
+                                  <button type="button" onClick={() => handleCopy(selectedPaymentConfig.accountName)} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-lg text-[10px] font-bold flex items-center transition border border-white/20 active:scale-95"><Copy className="w-3.5 h-3.5 sm:mr-1.5"/><span className="hidden sm:inline">COPY</span></button>
+                              </div>
+                          </div>
+                      </div>
                   </div>
                 )}
+                
                 {selectedPaymentConfig && (
-                  <div className="text-center mb-4 p-3 rounded bg-red-50 border border-red-100 animate-fade-in"><p className="text-sm text-red-600 font-bold">စရံငွေလွှဲပြီး ဘိုကင်အတည်ပြုရန် ကျန်သောအချိန်</p><div className="text-2xl font-mono font-bold text-red-700 mt-1">{formattedCountdown}</div></div>
+                  <div className="text-center mb-6 p-4 rounded-xl bg-red-50 border border-red-100 animate-fade-in shadow-sm">
+                      <p className="text-[10px] sm:text-xs text-red-600 font-bold uppercase tracking-wider mb-1 flex items-center justify-center"><Clock className="w-3.5 h-3.5 mr-1.5" /> စရံငွေလွှဲရန် ကျန်သောအချိန်</p>
+                      <div className="text-2xl sm:text-3xl font-mono font-black text-red-600">{formattedCountdown}</div>
+                  </div>
                 )}
-                <div><label className="block mb-2 text-sm font-bold" style={{ color: THEME.gold }}>ငွေလွှဲ Transaction ID (နောက်ဆုံး ၆ လုံး) ထည့်ပေးပါ</label><input required type="text" name="txId" maxLength={6} minLength={6} placeholder="e.g. 123456" value={formData.txId} onChange={handleChange} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-center text-2xl tracking-[0.5em] font-bold text-gray-800" /></div>
+                
+                <div className="mt-2 mb-2 bg-gray-50/50 p-4 sm:p-6 rounded-2xl border border-gray-100">
+                    <label className="block mb-4 text-xs sm:text-sm font-bold text-center tracking-widest uppercase flex flex-col items-center gap-1" style={{ color: THEME.gold }}>
+                        <span>ငွေလွှဲ Transaction ID ထည့်သွင်းရန်</span>
+                        <span className="text-[9px] sm:text-[10px] text-gray-400 lowercase font-semibold tracking-normal">(နောက်ဆုံး ၆ လုံး)</span>
+                    </label>
+                    <div className="flex justify-center gap-2 sm:gap-3" dir="ltr">
+                        {Array.from({ length: 6 }).map((_, idx) => {
+                            const val = (formData.txId || '').split('')[idx] || '';
+                            return (
+                                <input
+                                    key={idx}
+                                    id={`txId-${idx}`}
+                                    type="text"
+                                    inputMode="text"
+                                    maxLength={1}
+                                    value={val}
+                                    onChange={(e) => {
+                                        const inputVal = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(-1).toUpperCase();
+                                        let str = formData.txId || '';
+                                        str = str.padEnd(6, ' ');
+                                        const newStr = str.substring(0, idx) + (inputVal || ' ') + str.substring(idx + 1);
+                                        setFormData({ ...formData, txId: newStr.trimEnd() });
+                                        
+                                        if (inputVal && idx < 5) {
+                                            document.getElementById(`txId-${idx + 1}`)?.focus();
+                                        }
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Backspace' && !val && idx > 0) {
+                                            document.getElementById(`txId-${idx - 1}`)?.focus();
+                                        }
+                                    }}
+                                    onClick={(e) => {
+                                        const currentLength = (formData.txId || '').length;
+                                        if (idx > currentLength && currentLength < 6) {
+                                            document.getElementById(`txId-${currentLength}`)?.focus();
+                                        }
+                                    }}
+                                    className={`w-10 h-12 sm:w-12 sm:h-14 bg-white border-2 rounded-xl text-center text-lg sm:text-xl font-black text-[#123524] shadow-sm transition-all uppercase outline-none
+                                        ${val ? 'border-[#D4AF37] ring-2 ring-[#D4AF37]/20' : 'border-gray-200 focus:border-gray-400'}
+                                    `}
+                                />
+                            );
+                        })}
+                    </div>
+                </div>
               </>
             )}
           </div>
 
           <div className="mt-8 flex justify-between">
             <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
-            <button disabled={loading || (!isStaffMode && !formData.paymentMethod)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : (staffClockIn && formData.date === todayStr ? 'CONFIRM AND START NOW' : 'CONFIRM BOOKING')}</button>
+            <button disabled={loading || (!isStaffMode && !formData.paymentMethod) || (!isStaffMode && (formData.txId || '').trim().length !== 6)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : (staffClockIn && formData.date === todayStr ? 'CONFIRM AND START NOW' : 'CONFIRM BOOKING')}</button>
           </div>
         </form>
       )}
