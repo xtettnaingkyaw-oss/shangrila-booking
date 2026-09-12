@@ -2229,6 +2229,8 @@ const renderServiceSelection = (currentStep: number) => (
           
           return (
             <div 
+              key={return (
+            <div 
               key={idx} 
               onClick={() => {
                 if (is4Hands) {
@@ -2240,38 +2242,39 @@ const renderServiceSelection = (currentStep: number) => (
                   setFormData({...formData, therapist: formData.therapist?.id === therapist.id ? null : therapist, therapist2: null});
                 }
               }}
-              className={`bg-white rounded-[1rem] overflow-hidden border-2 cursor-pointer transition-all ${isSelected ? 'border-[#123524] shadow-md scale-105' : 'border-transparent shadow-sm hover:border-[#D4AF37]/50'}`}
+              className={`w-full bg-white border ${isSelected ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.01]' : 'border-gray-100 shadow-sm hover:border-[#D4AF37]/60 hover:shadow-md'} rounded-[1rem] transition-all duration-300 flex flex-col relative overflow-hidden group cursor-pointer`}
             >
-              <div className="aspect-[3/4] bg-gray-50 relative border-b border-gray-100/80">
-                {(therapist.images?.[0] || therapist.imageUrl) ? (
-                  <img src={therapist.images?.[0] || therapist.imageUrl} alt={therapist.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
-                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Therapist</span>
+              {isSelected && (
+                  <div className="absolute top-0 right-0 bg-[#123524] text-[#D4AF37] p-1.5 rounded-bl-xl z-20 shadow-sm">
+                      <CheckCircle className="w-3.5 h-3.5" />
                   </div>
-                )}
-                {isSelected && (
-                  <div className="absolute top-2 right-2 bg-[#123524] text-[#D4AF37] p-1.5 rounded-full z-10 shadow-sm">
-                    <CheckCircle className="w-4 h-4" />
+              )}
+              
+              <div className="w-full aspect-[3/4] bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2.5">
+                {(therapist.images?.[0] || therapist.imageUrl) ? (
+                  <img src={therapist.images?.[0] || therapist.imageUrl} alt={therapist.name} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 rounded-[0.8rem]">
+                      <User className="w-8 h-8 mb-1 opacity-40 text-[#D4AF37]" />
+                      <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Therapist</span>
                   </div>
                 )}
                 
-                {/* 🌟 2. Multiple Photos ရှိရင် ပြမည့် Button 🌟 */}
-               {therapist.images && therapist.images.length > 1 && (
+                {therapist.images && therapist.images.length > 1 && (
                   <button 
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setViewGallery({ images: therapist.images, index: 0 });
                     }}
-                    className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center shadow-md border border-white/20 hover:bg-black transition-colors z-20 whitespace-nowrap"
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center shadow-md border border-white/20 hover:bg-black transition-colors z-20 whitespace-nowrap"
                   >
                     <ImageIcon className="w-3 h-3 mr-1"/> နောက်ထပ်ပုံများကြည့်ရန်
                   </button>
                 )}
               </div>
-              <div className="p-3 text-center">
-                <h4 className="font-bold text-[#123524] text-sm">{therapist.name}</h4>
+              <div className="p-2 sm:p-3 text-center flex-1 flex flex-col justify-center">
+                <h4 className={`font-bold text-sm ${isSelected ? 'text-[#123524]' : 'text-gray-800'}`}>{therapist.name}</h4>
               </div>
             </div>
           );
