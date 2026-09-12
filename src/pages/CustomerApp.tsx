@@ -2266,12 +2266,24 @@ const renderServiceSelection = (currentStep: number) => (
                     }}
                     className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center shadow-md border border-white/20 hover:bg-black transition-colors z-20 whitespace-nowrap"
                   >
-                    <ImageIcon className="w-3 h-3 mr-1"/> နောက်ထပ်ပုံများကြည့်ရန်
+                    <ImageIcon className="w-3 h-3 mr-1"/> နောက်ထပ်ပုံများ
                   </button>
                 )}
               </div>
-              <div className="p-2 sm:p-3 text-center flex-1 flex flex-col justify-center">
-                <h4 className={`font-bold text-sm ${isSelected ? 'text-[#123524]' : 'text-gray-800'}`}>{therapist.name}</h4>
+
+              {/* 🌟 2. Book Now Button လှလှလေး ပြန်ထည့်ထားပါသည် 🌟 */}
+              <div className="p-2.5 sm:p-3 text-center flex-1 flex flex-col justify-between bg-gray-50/30">
+                <h4 className={`font-bold text-[11px] sm:text-xs mb-2.5 truncate ${isSelected ? 'text-[#123524]' : 'text-gray-800'}`}>{therapist.name}</h4>
+                <button 
+                   type="button"
+                   className={`w-full py-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center border shadow-sm ${
+                      isSelected 
+                      ? 'bg-[#123524] text-[#D4AF37] border-[#123524]' 
+                      : 'bg-gradient-to-r from-yellow-50 to-white text-[#123524] hover:bg-yellow-100 border-[#D4AF37]/40'
+                   }`}
+                >
+                   {isSelected ? <><CheckCircle className="w-3 h-3 mr-1.5" /> Selected</> : 'Book Now'}
+                </button>
               </div>
             </div>
           );
