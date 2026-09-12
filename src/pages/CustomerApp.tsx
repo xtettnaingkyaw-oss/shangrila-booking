@@ -823,16 +823,12 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
   }, []);
 
   useEffect(() => {
-    // 🌟 Index ပြဿနာမရှိစေရန် where အစား orderBy ကို ပြောင်းသုံးထားပါသည် 🌟
-    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(150));
+    const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
     const unsub = onSnapshot(q, (snap) => {
         const arr: Booking[] = [];
         snap.forEach(d => {
             const raw = d.data();
-            // Frontend ရောက်မှ လိုအပ်တဲ့ Date ကို စစ်ထုတ်ပါမည်
-            if (raw.date >= todayStr) {
-                arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking);
-            }
+            arr.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest), discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined } as Booking);
         });
         setBookings(arr);
     });
@@ -847,8 +843,9 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       return slot;
   };
 
-  const generateTimeline = (therapistName: string) => {
-      const tBookings = bookings.filter(b => b.therapist === therapistName && b.date === todayStr && b.status !== 'cancelled' && b.status !== 'completed');
+const generateTimeline = (therapistName: string) => {
+      // 🌟 Four Hands (၂ ယောက်တွဲ) များကိုပါ သိရှိစေရန် includes ဖြင့် ပြင်ဆင်ထားပါသည်
+      const tBookings = bookings.filter(b => b.therapist && b.therapist.includes(therapistName) && b.date === todayStr && b.status !== 'cancelled' && b.status !== 'completed');
       const coveredMap = new Map<string, { service: string, status: string }>();
 
       tBookings.forEach(b => {
@@ -902,13 +899,12 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
       });
   };
 
-  const getTherapistStatus = (tName: string) => {
-      let blockedNow = new Set<string>();
-      let isCurrentlyActive = false; let activeServiceName = ''; let upcomingServices: string[] = []; let hasNightBooking = false;
+  let isCurrentlyActive = false; let activeServiceName = ''; let upcomingServices: string[] = []; let hasNightBooking = false;
       const currentHour = now.getHours(); const isPast6PM = currentHour >= 18;
       
       bookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr || b.therapist !== tName) return;
+          // 🌟 Four Hands (၂ ယောက်တွဲ) များကိုပါ သိရှိစေရန် includes ဖြင့် ပြင်ဆင်ထားပါသည်
+          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr || !b.therapist || !b.therapist.includes(tName)) return;
           const cleanServiceName = (b.service || '').split('(')[0].trim();
           const serviceLower = cleanServiceName.toLowerCase();
           const isNight = serviceLower.includes('night') || serviceLower.includes('24 hour') || serviceLower.includes('day and night');
