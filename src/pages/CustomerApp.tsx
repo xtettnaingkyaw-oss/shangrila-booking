@@ -1999,7 +1999,8 @@ const renderServiceSelection = (currentStep: number) => (
                       <h3 className="text-[#D4AF37] font-bold text-sm tracking-wide flex items-center"><Info className="w-4 h-4 mr-2" /> {viewDesc.title}</h3>
                       <button onClick={() => setViewDesc(null)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-4 h-4"/></button>
                   </div>
-                  <div className="p-6 text-[11px] sm:text-xs text-gray-700 leading-relaxed text-center font-semibold bg-gray-50/50">
+                  {/* 🌟 ဤနေရာတွင် whitespace-pre-wrap နှင့် text-left ထည့်သွင်းထားပါသည် 🌟 */}
+                  <div className="p-6 text-[11px] sm:text-xs text-gray-700 leading-relaxed text-left font-semibold bg-gray-50/50 whitespace-pre-wrap">
                       {viewDesc.desc || 'အကောင်းဆုံးသော ဝန်ဆောင်မှုဖြင့် လူကြီးမင်း၏ ပင်ပန်းနွမ်းနယ်မှုများကို အပြည့်အဝ ပြေပျောက်စေပါမည်။'}
                   </div>
                   <div className="p-4 border-t border-gray-100 bg-white">
