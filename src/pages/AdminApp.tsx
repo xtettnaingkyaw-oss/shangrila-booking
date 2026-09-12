@@ -541,6 +541,32 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
    const handleDeleteBooking = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
    const handleDeleteOutpass = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
 
+   // 🌟 1. Admin ဖက်မှ တိုက်ရိုက်ပိတ်ပေးနိုင်သော Functions များ 🌟
+   const handleForceCompleteBooking = async (id: string) => {
+       if(window.confirm('ဒီ Service ကို ပြီးဆုံးပြီ (Completed) အဖြစ် သတ်မှတ်မည် သေချာပါသလား?')) {
+           await updateDoc(doc(db, 'bookings', id), { status: 'completed', actualEndTimeMillis: Date.now() });
+       }
+   };
+
+   const handleForceReturnOutpass = async (id: string) => {
+       if(window.confirm('ဒီ Out Pass ကို ပြန်ရောက်ပြီ (Returned) အဖြစ် သတ်မှတ်မည် သေချာပါသလား?')) {
+           await updateDoc(doc(db, 'outpasses', id), { status: 'returned', inTimeMillis: Date.now() });
+       }
+   };
+
+   // 🌟 2. ဒီနေ့အတွက် Stats တွက်ချက်ပေးမည့် Functions များ 🌟
+   const getTodayServiceStats = (tName: string) => {
+       const tBookings = bookings.filter(b => b.therapist && b.therapist.includes(tName) && b.date === todayStr && (b.status === 'completed' || b.status === 'in_progress'));
+       return {
+           count: tBookings.length,
+           names: tBookings.map(b => (b.service || '').split('(')[0].trim())
+       };
+   };
+
+   const getTodayOutpassCount = (tName: string) => {
+       return outpasses.filter(o => o.therapist === tName && o.date === todayStr).length;
+   };
+
    const activeBookings = bookings.filter(b => b.status === 'in_progress'); const activeOutpasses = outpasses.filter(o => o.status === 'out');
 
    return (
@@ -551,7 +577,6 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                  <button onClick={() => setView('dashboard')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'dashboard' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Dashboard</button>
                  <button onClick={() => setView('service')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services List</button>
                  <button onClick={() => setView('outpass')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'outpass' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Passes List</button>
-                 {/* 🌟 New Performance Tab 🌟 */}
                  <button onClick={() => setView('performance')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition flex items-center justify-center ${view === 'performance' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}><TrendingUp className="w-3.5 h-3.5 mr-1.5"/> Performance Stats</button>
               </div>
            </div>
@@ -566,13 +591,39 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                                  const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
                                  const isLate = b.expectedEndTimeMillis ? now > b.expectedEndTimeMillis : false;
                                  let lateText = 'OVERTIME (LATE)'; if (isLate && b.expectedEndTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - b.expectedEndTimeMillis) / 1000))}`;
+                                 
+                                 const tStats = getTodayServiceStats(b.therapist);
+
                                  return (
-                                     <div key={b.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : (isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200')} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}><div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : (isOutcall ? 'bg-blue-500' : 'bg-orange-500')} animate-pulse`}></div><div className="flex justify-between items-start mb-2"><div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{b.therapist}</div><span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : (isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>{isLate ? lateText : (isOutcall ? 'Outcall' : 'In Room')}</span></div><div className="text-sm font-semibold text-gray-800 truncate mb-1" title={b.service}>{b.service.split('(')[0]}</div><div className="text-xs text-gray-500 mb-4 flex items-center"><User className="w-3 h-3 mr-1 text-gray-400" />Cust: {b.name}</div><div className={`flex justify-between items-center text-xs border-t pt-3 ${isLate ? 'border-red-200' : (isOutcall ? 'border-blue-200/50' : 'border-orange-200/50')}`}><div className="text-gray-500"><span className="font-bold text-gray-600">Start:</span> {formatMillis(b.startTimeMillis)}</div><div className="text-gray-500"><span className="font-bold text-gray-600">End:</span> <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>{formatMillis(b.expectedEndTimeMillis)}</span></div></div></div>
+                                     <div key={b.id} className={`p-4 rounded-xl border flex flex-col ${isLate ? 'bg-red-50/60 border-red-300' : (isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200')} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
+                                         <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : (isOutcall ? 'bg-blue-500' : 'bg-orange-500')} animate-pulse`}></div>
+                                         <div className="flex justify-between items-start mb-2"><div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{b.therapist}</div><span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : (isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>{isLate ? lateText : (isOutcall ? 'Outcall' : 'In Room')}</span></div>
+                                         <div className="text-sm font-semibold text-gray-800 truncate mb-1" title={b.service}>{b.service.split('(')[0]}</div>
+                                         <div className="text-xs text-gray-500 mb-3 flex items-center"><User className="w-3 h-3 mr-1 text-gray-400" />Cust: {b.name}</div>
+                                         
+                                         <div className={`flex justify-between items-center text-xs border-t pt-3 mb-3 ${isLate ? 'border-red-200' : (isOutcall ? 'border-blue-200/50' : 'border-orange-200/50')}`}>
+                                             <div className="text-gray-500"><span className="font-bold text-gray-600">Start:</span> {formatMillis(b.startTimeMillis)}</div>
+                                             <div className="text-gray-500"><span className="font-bold text-gray-600">End:</span> <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>{formatMillis(b.expectedEndTimeMillis)}</span></div>
+                                         </div>
+
+                                         {/* 🌟 3. Section Count & Force Complete Button 🌟 */}
+                                         <div className="mt-auto pt-3 border-t border-dashed border-gray-300/50">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-[10px] font-bold text-gray-600">Today Sections: <span className="text-orange-600">{tStats.count}</span></span>
+                                            </div>
+                                            <div className="text-[9px] text-gray-500 truncate mb-3" title={tStats.names.join(', ')}>{tStats.names.join(', ')}</div>
+                                            
+                                            <button onClick={() => handleForceCompleteBooking(b.id!)} className="w-full py-2 bg-white border border-gray-300 rounded-lg text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:text-green-700 hover:border-green-300 transition-colors flex items-center justify-center">
+                                                <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> ပြီးဆုံးပြီဟု သတ်မှတ်မည်
+                                            </button>
+                                         </div>
+                                     </div>
                                  );
                              })}
                          </div>
                      )}
                  </div>
+                 
                  <div>
                      <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
                      {activeOutpasses.length === 0 ? (<p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently on out pass.</p>) : (
@@ -580,8 +631,31 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
                              {activeOutpasses.map(o => {
                                  const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
                                  let lateText = 'OVERTIME (LATE)'; if (isLate && o.expectedInTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - o.expectedInTimeMillis) / 1000))}`;
+                                 
+                                 const opCount = getTodayOutpassCount(o.therapist);
+
                                  return (
-                                     <div key={o.id} className={`p-4 rounded-xl border ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}><div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div><div className="flex justify-between items-start mb-2"><div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div><span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>{isLate ? lateText : 'Out Pass'}</span></div><div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div><div className={`flex justify-between items-center text-xs border-t ${isLate ? 'border-red-200' : 'border-purple-200/50'} pt-3`}><div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div><div className="text-gray-500"><span className="font-bold text-gray-600">Return:</span> <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>{formatMillis(o.expectedInTimeMillis)}</span></div></div></div>
+                                     <div key={o.id} className={`p-4 rounded-xl border flex flex-col ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
+                                         <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div>
+                                         <div className="flex justify-between items-start mb-2"><div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div><span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>{isLate ? lateText : 'Out Pass'}</span></div>
+                                         <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div>
+                                         
+                                         <div className={`flex justify-between items-center text-xs border-t ${isLate ? 'border-red-200' : 'border-purple-200/50'} pt-3 mb-3`}>
+                                             <div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div>
+                                             <div className="text-gray-500"><span className="font-bold text-gray-600">Return:</span> <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>{formatMillis(o.expectedInTimeMillis)}</span></div>
+                                         </div>
+
+                                         {/* 🌟 4. Outpass Count & Force Return Button 🌟 */}
+                                         <div className="mt-auto pt-3 border-t border-dashed border-gray-300/50">
+                                            <div className="flex justify-between items-center mb-3">
+                                                <span className="text-[10px] font-bold text-gray-600">Today Outpasses:</span>
+                                                <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">{opCount} / 4 Times</span>
+                                            </div>
+                                            <button onClick={() => handleForceReturnOutpass(o.id!)} className="w-full py-2 bg-white border border-gray-300 rounded-lg text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:text-green-700 hover:border-green-300 transition-colors flex items-center justify-center">
+                                                <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> ပြန်ရောက်ပြီဟု သတ်မှတ်မည်
+                                            </button>
+                                         </div>
+                                     </div>
                                  );
                              })}
                          </div>
