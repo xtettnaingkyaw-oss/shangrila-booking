@@ -1414,22 +1414,40 @@ const handleSaveTherapists = async () => {
                 if(id) batch.delete(doc(db, 'therapists', id));
             });
 
-            // 🌟 PROFESSIONAL FIX: WebP Format ဖြင့် HD အကြည်မပျက်ဘဲ File Size ကို 90% အထိ လျှော့ချမည် 🌟
-            const compressImageHD = (base64Str: string): Promise<string> => {
+            // 🌟 ၁။ မျက်စိနောက်နေသော "တစ္ဆေ Data (Ghosts)" များကို Auto ရှင်းထုတ်ပေးမည် 🌟
+            const uniqueTherapistsMap = new Map();
+            for (const t of localTherapists) {
+                if (uniqueTherapistsMap.has(t.name)) {
+                    const existing = uniqueTherapistsMap.get(t.name);
+                    // 'therapist_' နှင့် စသော အကောင့်အမှန်ကိုသာ ဦးစားပေး သိမ်းဆည်းမည်
+                    if (!t.id.startsWith('t_') && !t.id.startsWith('new_')) {
+                        uniqueTherapistsMap.set(t.name, t);
+                    }
+                } else {
+                    uniqueTherapistsMap.set(t.name, t);
+                }
+            }
+            const cleanTherapists = Array.from(uniqueTherapistsMap.values());
+
+            // 🌟 ၂။ ပုံများကို 1MB လုံးဝမကျော်အောင် အစွမ်းကုန် သေးပေးမည့် စနစ် (Ultra Compression) 🌟
+            const compressImageUltra = (base64Str: string): Promise<string> => {
                 return new Promise((resolve) => {
                     if (!base64Str || !base64Str.startsWith('data:image')) return resolve(base64Str);
                     const img = new Image();
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
-                        // 800px သည် ဖုန်းနှင့် App များအတွက် ကြည်လင်ပြတ်သားသော HD Size ဖြစ်သည်
-                        const MAX_WIDTH = 800; 
+                        const MAX_WIDTH = 300; 
                         let width = img.width; let height = img.height;
                         if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
                         canvas.width = width; canvas.height = height;
                         const ctx = canvas.getContext('2d');
-                        ctx?.drawImage(img, 0, 0, width, height);
-                        // WEBP format ဖြင့် သိမ်းမည် (အရည်အသွေး 0.8 / 80% HD)
-                        resolve(canvas.toDataURL('image/webp', 0.8)); 
+                        if (ctx) {
+                            ctx.fillStyle = '#FFFFFF'; // PNG အကြည်များကို အဖြူခံပြောင်းမည်
+                            ctx.fillRect(0, 0, width, height);
+                            ctx.drawImage(img, 0, 0, width, height);
+                        }
+                        // JPEG 60% ဖြင့် File Size ကို ၁၀ ဆ ခန့် သေးငယ်စေမည်
+                        resolve(canvas.toDataURL('image/jpeg', 0.6)); 
                     };
                     img.onerror = () => resolve(base64Str);
                     img.src = base64Str;
@@ -1438,9 +1456,9 @@ const handleSaveTherapists = async () => {
             
             const finalTherapistsToSync: any[] = [];
             
-            for (let i = 0; i < localTherapists.length; i++) {
-                const t = localTherapists[i];
-                const isNew = t.id.startsWith('new_'); 
+            for (let i = 0; i < cleanTherapists.length; i++) {
+                const t = cleanTherapists[i];
+                const isNew = t.id.startsWith('new_') || t.id.startsWith('t_'); 
                 const finalId = isNew ? `therapist_${Date.now()}_${i}` : t.id;
                 const tRef = doc(db, 'therapists', finalId);
                 
@@ -1452,10 +1470,9 @@ const handleSaveTherapists = async () => {
                     }
                 }
 
-                // ပုံဟောင်း/ပုံသစ် အားလုံးကို Save မနှိပ်ခင် HD WebP သို့ ပြောင်းလဲမည်
                 const compressedImages = [];
                 for (const img of (t.images || [])) {
-                    compressedImages.push(await compressImageHD(img));
+                    compressedImages.push(await compressImageUltra(img));
                 }
 
                 const updatedT = JSON.parse(JSON.stringify({ 
@@ -1470,14 +1487,13 @@ const handleSaveTherapists = async () => {
                 finalTherapistsToSync.push(updatedT);
             }
             
-            // Limit 1MB ကို မကျော်တော့ဘဲ လုံခြုံစွာ သိမ်းနိုင်မည်
             batch.set(doc(db, 'settings', 'appData'), { therapists: finalTherapistsToSync }, { merge: true });
             
             await batch.commit();
             
             setLocalTherapists(finalTherapistsToSync);
             setDeletedTherapistIds([]);
-            alert('Therapists saved successfully in HD WebP Format!');
+            alert('Therapists saved successfully! Data optimized and duplicates completely removed.');
         } catch (error: any) { 
             console.error(error);
             alert('Error saving therapists: ' + error.message); 
