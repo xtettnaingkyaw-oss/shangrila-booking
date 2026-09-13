@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Calendar, Wallet, Banknote, Trash2, X, CheckCircle } from 'lucide-react';
+import { Calendar, Wallet, Banknote, Trash2, X, CheckCircle, Search } from 'lucide-react';
 import { THEME, formatPrice } from '../shared';
 
 const CATEGORIES = [
@@ -16,6 +16,7 @@ const CATEGORIES = [
   "အခြား ဖောက်ဖျက်မှုများ"
 ];
 
+// Helper functions
 const getDaysOverdue = (dateStr: string) => {
   const dToday = new Date();
   dToday.setHours(0, 0, 0, 0);
@@ -32,6 +33,9 @@ const calculateAmount = (p: any) => {
   return Number(p.amount) * Math.pow(2, days); 
 };
 
+// ==========================================
+// 1. ADMIN PENALTY & LOAN MANAGEMENT VIEW
+// ==========================================
 export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   const uniqueTherapists = Array.from(new Map(therapists.map(t => [t.name, t])).values());
 
@@ -53,6 +57,11 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   const [startDate, setStartDate] = useState(`${currentYear}-${currentMonth}-01`);
   const [endDate, setEndDate] = useState(`${currentYear}-${currentMonth}-${lastDayOfMonth}`);
 
+  // 🌟 အသစ်တိုးထားသော Filter States များ 🌟
+  const [historyFilter, setHistoryFilter] = useState('');
+  const [depositFilter, setDepositFilter] = useState('');
+  const [loanFilter, setLoanFilter] = useState('');
+
   useEffect(() => {
     const unsubP = onSnapshot(query(collection(db, 'penalties'), orderBy('createdAt', 'desc')), snap => setPenalties(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
     const unsubD = onSnapshot(query(collection(db, 'deposits'), orderBy('createdAt', 'desc')), snap => setDeposits(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -60,12 +69,13 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     return () => { unsubP(); unsubD(); unsubL(); };
   }, []);
 
-  const filteredPenalties = penalties.filter(p => (!startDate || p.date >= startDate) && (!endDate || p.date <= endDate));
-  const filteredLoans = loans.filter(l => (!startDate || l.date >= startDate) && (!endDate || l.date <= endDate));
-  const filteredDeposits = deposits.filter(d => (!startDate || d.date >= startDate) && (!endDate || d.date <= endDate));
+  // 🌟 Dropdown Filter ပါ ပေါင်းစစ်ထားသော Data များ 🌟
+  const filteredPenalties = penalties.filter(p => (!startDate || p.date >= startDate) && (!endDate || p.date <= endDate) && (historyFilter === '' || String(p.therapistId) === historyFilter));
+  const filteredLoans = loans.filter(l => (!startDate || l.date >= startDate) && (!endDate || l.date <= endDate) && (loanFilter === '' || String(l.therapistId) === loanFilter));
+  const filteredDeposits = deposits.filter(d => (!startDate || d.date >= startDate) && (!endDate || d.date <= endDate) && (depositFilter === '' || String(d.therapistId) === depositFilter));
 
   const getStats = (id: string, name: string) => {
-    const p = filteredPenalties.filter(item => String(item.therapistId) === String(id) || item.therapistName === name);
+    const p = penalties.filter(item => String(item.therapistId) === String(id) || item.therapistName === name);
     const unpaid = p.filter(item => !item.isPaid);
     const paid = p.filter(item => item.isPaid);
     
@@ -254,61 +264,69 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       )}
 
       {subTab === 'history' && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[700px]">
-            <thead>
-              <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase">
-                <th className="p-3">ရက်စွဲ / အခြေအနေ</th>
-                <th className="p-3">ဝန်ထမ်းအမည်</th>
-                <th className="p-3">အကြောင်းအရာ & မှတ်ချက်</th>
-                <th className="p-3 text-right">ကျသင့်ငွေ</th>
-                <th className="p-3 text-center">လုပ်ဆောင်ချက်</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPenalties.map(p => {
-                const days = getDaysOverdue(p.date);
-                const amount = calculateAmount(p);
-                const isOverdue = !p.isPaid && days > 0;
-                return (
-                  <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 text-xs">
-                    <td className="p-3">
-                      <span className="font-bold text-gray-800">{p.date}</span>
-                      <div className="mt-0.5">
-                        {p.isPaid ? (
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${p.paidMethod === 'deposit' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                            {p.paidMethod === 'deposit' ? 'အပ်ငွေမှ နှုတ်ပြီး' : 'ပေးဆောင်ပြီး'}
-                          </span>
-                        ) : (
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                            {isOverdue ? `ရက်လွန် (${days} ရက်)` : 'ယနေ့ဆောင်ရန်'}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-3 font-bold text-[#123524]">{p.therapistName}</td>
-                    <td className="p-3">
-                      <div className="font-semibold text-gray-800">{p.category}</div>
-                      {p.remark && <div className="text-red-500 text-[11px] mt-0.5">- {p.remark}</div>}
-                    </td>
-                    <td className={`p-3 text-right font-black text-sm ${p.isPaid ? 'text-green-600' : 'text-red-600'}`}>{formatPrice(amount)}</td>
-                    <td className="p-3 text-center">
-                      <div className="flex justify-center gap-1.5">
-                        {!p.isPaid && (
-                          <>
-                            <button onClick={() => handleMarkAsPaid(p, 'cash')} className="bg-green-50 text-green-700 p-1.5 rounded-lg border border-green-200 hover:bg-green-100 font-bold text-[10px]" title="လက်ငင်းပေးမည်">Cash</button>
-                            <button onClick={() => handleMarkAsPaid(p, 'deposit')} className="bg-blue-50 text-blue-700 p-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 font-bold text-[10px]" title="အပ်ငွေမှနှုတ်မည်">Deposit</button>
-                          </>
-                        )}
-                        <button onClick={() => {if(window.confirm('ဖျက်ရန်သေချာပါသလား?')) deleteDoc(doc(db, 'penalties', p.id));}} className="text-red-400 hover:text-red-600 p-1.5"><Trash2 size={14}/></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredPenalties.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-gray-400">မှတ်တမ်းမရှိသေးပါ။</td></tr>}
-            </tbody>
-          </table>
+        <div className="bg-white rounded-xl shadow overflow-hidden border border-gray-200">
+          <h3 className="p-4 bg-gray-50 font-bold text-gray-700 border-b flex justify-between items-center">
+            <span>ဒဏ်ကြေး မှတ်တမ်းများ</span>
+            <select value={historyFilter} onChange={e => setHistoryFilter(e.target.value)} className="p-2 border border-gray-300 rounded-lg text-xs outline-none bg-white focus:border-[#D4AF37] font-bold shadow-sm">
+              <option value="">All Therapists</option>
+              {uniqueTherapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[700px]">
+              <thead>
+                <tr className="bg-white border-b-2 border-gray-100 text-xs text-gray-500 uppercase">
+                  <th className="p-3">Name / Date</th>
+                  <th className="p-3">Category & Status</th>
+                  <th className="p-3 text-right">Amount</th>
+                  <th className="p-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPenalties.map(p => {
+                  const days = getDaysOverdue(p.date);
+                  const amount = calculateAmount(p);
+                  const isOverdue = !p.isPaid && days > 0;
+                  return (
+                    <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 text-xs">
+                      <td className="p-3">
+                        <div className="font-bold text-[#123524] text-sm">{p.therapistName}</div>
+                        <div className="text-gray-500 font-bold text-[10px] mt-0.5">{p.date}</div>
+                      </td>
+                      <td className="p-3">
+                        <div className="font-semibold text-gray-800">{p.category}</div>
+                        {p.remark && <div className="text-red-500 text-[11px] mt-0.5">- {p.remark}</div>}
+                        <div className="mt-1.5">
+                          {p.isPaid ? (
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${p.paidMethod === 'deposit' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                              {p.paidMethod === 'deposit' ? 'အပ်ငွေမှ နှုတ်ပြီး' : 'ပေးဆောင်ပြီး'}
+                            </span>
+                          ) : (
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                              {isOverdue ? `ရက်လွန် (${days} ရက်)` : 'ယနေ့ဆောင်ရန်'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className={`p-3 text-right font-black text-sm ${p.isPaid ? 'text-green-600' : 'text-red-600'}`}>{formatPrice(amount)}</td>
+                      <td className="p-3 text-center">
+                        <div className="flex justify-center gap-1.5">
+                          {!p.isPaid && (
+                            <>
+                              <button onClick={() => handleMarkAsPaid(p, 'cash')} className="bg-green-50 text-green-700 p-1.5 rounded-lg border border-green-200 hover:bg-green-100 font-bold text-[10px]" title="လက်ငင်းပေးမည်">Cash</button>
+                              <button onClick={() => handleMarkAsPaid(p, 'deposit')} className="bg-blue-50 text-blue-700 p-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 font-bold text-[10px]" title="အပ်ငွေမှနှုတ်မည်">Deposit</button>
+                            </>
+                          )}
+                          <button onClick={() => {if(window.confirm('ဖျက်ရန်သေချာပါသလား?')) deleteDoc(doc(db, 'penalties', p.id));}} className="text-red-400 hover:text-red-600 p-1.5"><Trash2 size={14}/></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredPenalties.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-gray-400">မှတ်တမ်းမရှိသေးပါ။</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -325,12 +343,18 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
           </form>
 
           <div className="bg-white rounded-xl shadow overflow-hidden border border-gray-200">
-             <h3 className="p-4 bg-gray-50 font-bold text-gray-700 border-b">အပ်ငွေ / အနှုတ် မှတ်တမ်းများ</h3>
+             <h3 className="p-4 bg-gray-50 font-bold text-gray-700 border-b flex justify-between items-center">
+               <span>အပ်ငွေ / အနှုတ် မှတ်တမ်းများ</span>
+               <select value={depositFilter} onChange={e => setDepositFilter(e.target.value)} className="p-2 border border-gray-300 rounded-lg text-xs outline-none bg-white focus:border-[#D4AF37] font-bold shadow-sm">
+                 <option value="">All Therapists</option>
+                 {uniqueTherapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+               </select>
+             </h3>
              <div className="overflow-x-auto">
                <table className="w-full text-sm text-left">
                  <thead>
-                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                     <th className="p-3">Date / Name</th>
+                   <tr className="bg-white border-b-2 border-gray-100 text-xs text-gray-500 uppercase">
+                     <th className="p-3">Name / Date</th>
                      <th className="p-3">Note</th>
                      <th className="p-3 text-right">Amount</th>
                      <th className="p-3 text-center">Action</th>
@@ -340,8 +364,8 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                    {filteredDeposits.map(d => (
                      <tr key={d.id} className="border-b hover:bg-gray-50">
                        <td className="p-3">
-                         <div className="font-bold text-gray-800">{d.date}</div>
-                         <div className="text-[#123524] font-bold text-[10px] mt-0.5">{d.therapistName}</div>
+                         <div className="font-bold text-[#123524] text-sm">{d.therapistName}</div>
+                         <div className="text-gray-500 font-bold text-[10px] mt-0.5">{d.date}</div>
                        </td>
                        <td className="p-3 text-gray-600 text-xs">{d.note}</td>
                        <td className={`p-3 text-right font-bold ${d.amount > 0 ? 'text-blue-600' : 'text-red-600'}`}>
@@ -388,14 +412,18 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
           </form>
 
           <div className="bg-white rounded-xl shadow overflow-hidden border border-gray-200">
-             <h3 className="p-4 bg-purple-50 font-bold text-purple-900 border-b flex justify-between">
+             <h3 className="p-4 bg-purple-50 font-bold text-purple-900 border-b flex justify-between items-center">
                <span>ကြိုထုတ်ငွေ / ပြန်ဆပ်ငွေ မှတ်တမ်းများ</span>
+               <select value={loanFilter} onChange={e => setLoanFilter(e.target.value)} className="p-2 border border-purple-200 rounded-lg text-xs outline-none bg-white focus:border-purple-400 font-bold shadow-sm">
+                 <option value="">All Therapists</option>
+                 {uniqueTherapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+               </select>
              </h3>
              <div className="overflow-x-auto">
                <table className="w-full text-sm text-left">
                  <thead>
-                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                     <th className="p-3">Date / Name</th>
+                   <tr className="bg-white border-b-2 border-gray-100 text-xs text-gray-500 uppercase">
+                     <th className="p-3">Name / Date</th>
                      <th className="p-3">Type & Note</th>
                      <th className="p-3 text-right">Amount</th>
                      <th className="p-3 text-center">Action</th>
@@ -405,8 +433,8 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                    {filteredLoans.map(l => (
                      <tr key={l.id} className="border-b hover:bg-purple-50">
                        <td className="p-3">
-                         <div className="font-bold text-gray-800">{l.date}</div>
-                         <div className="text-[#123524] font-bold text-[10px] mt-0.5">{l.therapistName}</div>
+                         <div className="font-bold text-[#123524] text-sm">{l.therapistName}</div>
+                         <div className="text-gray-500 font-bold text-[10px] mt-0.5">{l.date}</div>
                        </td>
                        <td className="p-3 text-gray-600 text-xs">
                          {l.amount < 0 ? (
@@ -463,6 +491,9 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   );
 }
 
+// ==========================================
+// 2. STAFF PENALTY & LOAN VIEW (For Staff App)
+// ==========================================
 export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
   const [penalties, setPenalties] = useState<any[]>([]);
   const [loans, setLoans] = useState<any[]>([]);
