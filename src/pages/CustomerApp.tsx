@@ -814,12 +814,12 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
                          <button 
                              onClick={(e) => { e.stopPropagation(); openGallery(t); }}
                              disabled={loadingGalleryId === t.id}
-                             className="mx-auto mt-2 bg-black/60 hover:bg-black/80 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center justify-center border border-white/20 transition-all shadow-sm z-10 relative cursor-pointer disabled:opacity-50"
+                             className="mx-auto mt-3 bg-black/60 backdrop-blur-md hover:bg-black/90 text-[#D4AF37] px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wider flex items-center justify-center border border-[#D4AF37]/40 hover:border-[#D4AF37] transition-all duration-300 shadow-lg z-10 relative cursor-pointer disabled:opacity-50 hover:-translate-y-0.5"
                          >
                              {loadingGalleryId === t.id ? (
-                                 <span className="animate-pulse">Loading HD...</span>
+                                 <span className="animate-pulse flex items-center"><ImageIcon className="w-3 h-3 mr-1 animate-spin"/> Loading...</span>
                              ) : (
-                                 <><ImageIcon className="w-3 h-3 mr-1"/> ဓာတ်ပုံများကြည့်ရန်</>
+                                 <><ImageIcon className="w-3.5 h-3.5 mr-1.5"/> နောက်ထပ်ပုံများကြည့်ရန်</>
                              )}
                          </button>
                      )}
@@ -2301,12 +2301,12 @@ const renderServiceSelection = (currentStep: number) => (
                       e.stopPropagation();
                       openGallery(therapist);
                     }}
-                    className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center shadow-md border border-white/20 hover:bg-black transition-colors z-20 whitespace-nowrap disabled:opacity-50"
+                    className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md text-[#D4AF37] px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wider flex items-center shadow-lg border border-[#D4AF37]/40 hover:bg-black/90 hover:-translate-y-0.5 hover:border-[#D4AF37] transition-all duration-300 z-20 whitespace-nowrap disabled:opacity-50"
                   >
                     {loadingGalleryId === therapist.id ? (
-                        <span className="animate-pulse">Loading HD...</span>
+                        <span className="animate-pulse flex items-center"><ImageIcon className="w-3 h-3 mr-1 animate-spin"/> Loading...</span>
                     ) : (
-                        <><ImageIcon className="w-3 h-3 mr-1"/> ဓာတ်ပုံများ</>
+                        <><ImageIcon className="w-3.5 h-3.5 mr-1.5"/> နောက်ထပ်ပုံများကြည့်ရန်</>
                     )}
                   </button>
                 )}
