@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Calendar, Wallet, Banknote, Trash2, X, CheckCircle, FilePlus, ClipboardList, Download, AlertCircle } from 'lucide-react';
+import { Calendar, Wallet, Banknote, Trash2, X, CheckCircle } from 'lucide-react';
 import { THEME, formatPrice } from '../shared';
 
 const CATEGORIES = [
   "ဆိုင်သန့်ရှင်းရေးတာဝန် ပျက်ကွက်ခြင်း", 
   "Out Pass စည်းကမ်းများ", 
-  "Jibble Clock In/ Clock Out စည်းကမ်းများ", 
+  "Section Clock In/ Clock Out စည်းကမ်းများ", 
   "ဆူညံခြင်း၊ ဂိမ်းကစားခြင်း၊ စလော့ဆော့ခြင်း", 
   "ဧည့်သည်အား ဝန်ဆောင်မှုအားနည်းခြင်း", 
   "စည်းကမ်းမဲ့ ဆေးလိပ်၊ အရက်၊ မူးယစ်ဆေးသုံးခြင်း၊ ဝန်ထမ်းအချင်းချင်း ရန်ဖြစ်ခြင်း", 
@@ -37,15 +37,18 @@ const calculateAmount = (p: any) => {
 // 1. ADMIN PENALTY & LOAN MANAGEMENT VIEW
 // ==========================================
 export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
+  // 🌟 ဤနေရာတွင် နာမည်ပွားနေသော ဝန်ထမ်းများကို (၁) ခုတည်းအဖြစ် စစ်ထုတ်လိုက်ပါသည် 🌟
+  const uniqueTherapists = Array.from(new Map(therapists.map(t => [t.name, t])).values());
+
   const [subTab, setSubTab] = useState<'dashboard' | 'add' | 'history' | 'deposits' | 'loans'>('dashboard');
   const [penalties, setPenalties] = useState<any[]>([]);
   const [deposits, setDeposits] = useState<any[]>([]); 
   const [loans, setLoans] = useState<any[]>([]); 
   const [selectedTherapist, setSelectedTherapist] = useState<any>(null);
   
-  const [formData, setFormData] = useState({ therapistId: therapists[0]?.id || '1', category: CATEGORIES[0], amount: '', remark: '', date: new Date().toISOString().split('T')[0] });
-  const [depositForm, setDepositForm] = useState({ therapistId: therapists[0]?.id || '1', amount: '', note: '' });
-  const [loanForm, setLoanForm] = useState({ therapistId: therapists[0]?.id || '1', amount: '', note: '', date: new Date().toISOString().split('T')[0], type: 'borrow', repayMethod: 'cash' });
+  const [formData, setFormData] = useState({ therapistId: uniqueTherapists[0]?.id || '1', category: CATEGORIES[0], amount: '', remark: '', date: new Date().toISOString().split('T')[0] });
+  const [depositForm, setDepositForm] = useState({ therapistId: uniqueTherapists[0]?.id || '1', amount: '', note: '' });
+  const [loanForm, setLoanForm] = useState({ therapistId: uniqueTherapists[0]?.id || '1', amount: '', note: '', date: new Date().toISOString().split('T')[0], type: 'borrow', repayMethod: 'cash' });
 
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -86,7 +89,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   const handleSubmitPenalty = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!formData.amount) return alert("ပမာဏဖြည့်ပါ");
-    const tObj = therapists.find(t => String(t.id) === String(formData.therapistId));
+    const tObj = uniqueTherapists.find(t => String(t.id) === String(formData.therapistId));
     await addDoc(collection(db, 'penalties'), { 
       ...formData, 
       amount: Number(formData.amount), 
@@ -103,7 +106,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     e.preventDefault();
     if(!depositForm.amount) return alert("ပမာဏဖြည့်ပါ");
     await addDoc(collection(db, 'deposits'), {
-      therapistId: depositForm.amount,
+      therapistId: depositForm.therapistId,
       amount: Number(depositForm.amount), 
       date: new Date().toISOString().split('T')[0],
       type: 'deposit',
@@ -191,7 +194,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       {/* SubTab 1: Dashboard Overview */}
       {subTab === 'dashboard' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {therapists.map(t => {
+          {uniqueTherapists.map(t => {
             const stats = getStats(t.id, t.name);
             const hasUnpaid = stats.unpaidCount > 0;
             const cardClass = hasUnpaid ? 'border-red-300 bg-red-50/40' : 'border-gray-200 bg-gray-50/40';
@@ -221,7 +224,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-1">ဝန်ထမ်းရွေးချယ်ရန်</label>
             <select className="w-full p-3 border rounded-xl text-xs bg-white font-bold" value={formData.therapistId} onChange={e => setFormData({...formData, therapistId: e.target.value})}>
-              {therapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {uniqueTherapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
           <div>
@@ -312,7 +315,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
           <form onSubmit={handleSubmitDeposit} className="max-w-lg mx-auto bg-gray-50 p-6 rounded-2xl border border-gray-200 space-y-4">
             <h3 className="font-bold text-base text-[#123524] flex items-center"><Wallet className="w-4 h-4 mr-2"/> အပ်ငွေသွင်းရန်</h3>
             <select className="w-full p-3 border rounded-xl text-xs bg-white font-bold" value={depositForm.therapistId} onChange={e => setDepositForm({...depositForm, therapistId: e.target.value})}>
-              {therapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {uniqueTherapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <input type="number" placeholder="အပ်ငွေပမာဏ (ကျပ်)" className="w-full p-3 border rounded-xl text-xs bg-white font-bold" value={depositForm.amount} onChange={e => setDepositForm({...depositForm, amount: e.target.value})} required min="0"/>
             <input type="text" placeholder="မှတ်ချက် (ဥပမာ- ကြိုတင်အပ်ငွေ)" className="w-full p-3 border rounded-xl text-xs bg-white" value={depositForm.note} onChange={e => setDepositForm({...depositForm, note: e.target.value})} />
@@ -331,7 +334,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
               <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-green-700"><input type="radio" name="loanType" checked={loanForm.type === 'repay'} onChange={() => setLoanForm({...loanForm, type: 'repay'})}/> ပြန်ဆပ်မည်</label>
             </div>
             <select className="w-full p-3 border rounded-xl text-xs bg-white font-bold" value={loanForm.therapistId} onChange={e => setLoanForm({...loanForm, therapistId: e.target.value})}>
-              {therapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {uniqueTherapists.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <input type="date" className="w-full p-3 border rounded-xl text-xs bg-white font-bold" value={loanForm.date} onChange={e => setLoanForm({...loanForm, date: e.target.value})} required/>
             {loanForm.type === 'repay' && (
