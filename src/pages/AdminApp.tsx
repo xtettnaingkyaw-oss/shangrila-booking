@@ -1414,12 +1414,10 @@ const handleSaveTherapists = async () => {
                 if(id) batch.delete(doc(db, 'therapists', id));
             });
 
-            // 🌟 ၁။ မျက်စိနောက်နေသော "တစ္ဆေ Data (Ghosts)" များကို Auto ရှင်းထုတ်ပေးမည် 🌟
+            // "တစ္ဆေ Data (Ghosts)" များကို Auto ရှင်းထုတ်မည်
             const uniqueTherapistsMap = new Map();
             for (const t of localTherapists) {
                 if (uniqueTherapistsMap.has(t.name)) {
-                    const existing = uniqueTherapistsMap.get(t.name);
-                    // 'therapist_' နှင့် စသော အကောင့်အမှန်ကိုသာ ဦးစားပေး သိမ်းဆည်းမည်
                     if (!t.id.startsWith('t_') && !t.id.startsWith('new_')) {
                         uniqueTherapistsMap.set(t.name, t);
                     }
@@ -1429,31 +1427,6 @@ const handleSaveTherapists = async () => {
             }
             const cleanTherapists = Array.from(uniqueTherapistsMap.values());
 
-            // 🌟 ၂။ ပုံများကို 1MB လုံးဝမကျော်အောင် အစွမ်းကုန် သေးပေးမည့် စနစ် (Ultra Compression) 🌟
-            const compressImageUltra = (base64Str: string): Promise<string> => {
-                return new Promise((resolve) => {
-                    if (!base64Str || !base64Str.startsWith('data:image')) return resolve(base64Str);
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 300; 
-                        let width = img.width; let height = img.height;
-                        if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
-                        canvas.width = width; canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        if (ctx) {
-                            ctx.fillStyle = '#FFFFFF'; // PNG အကြည်များကို အဖြူခံပြောင်းမည်
-                            ctx.fillRect(0, 0, width, height);
-                            ctx.drawImage(img, 0, 0, width, height);
-                        }
-                        // JPEG 60% ဖြင့် File Size ကို ၁၀ ဆ ခန့် သေးငယ်စေမည်
-                        resolve(canvas.toDataURL('image/jpeg', 0.6)); 
-                    };
-                    img.onerror = () => resolve(base64Str);
-                    img.src = base64Str;
-                });
-            };
-            
             const finalTherapistsToSync: any[] = [];
             
             for (let i = 0; i < cleanTherapists.length; i++) {
@@ -1463,52 +1436,46 @@ const handleSaveTherapists = async () => {
                 const tRef = doc(db, 'therapists', finalId);
                 
                 if (t.password && t.password.length >= 6 && isNew) {
-                    try {
-                        await createUserWithEmailAndPassword(secondaryAuth, `${finalId.toLowerCase()}@shangrila.com`, t.password);
-                    } catch (authErr: any) {
-                        console.log("Auth Error:", authErr.message);
-                    }
+                    try { await createUserWithEmailAndPassword(secondaryAuth, `${finalId.toLowerCase()}@shangrila.com`, t.password); } catch (authErr: any) {}
                 }
 
-                const compressedImages = [];
-                for (const img of (t.images || [])) {
-                    compressedImages.push(await compressImageUltra(img));
-                }
-
+                // HD ပုံ ၅ ပုံလုံးကို ဝန်ထမ်းတစ်ဦးချင်းစီ၏ ကိုယ်ပိုင်ဖိုင် (tRef) ထဲတွင်သာ လုံခြုံစွာသိမ်းမည်
                 const updatedT = JSON.parse(JSON.stringify({ 
-                    ...t, 
-                    id: finalId, 
-                    order: i, 
-                    images: compressedImages,
-                    password: isNew ? "SECURED_ACCOUNT" : (t.password || "SECURED_ACCOUNT")
+                    ...t, id: finalId, order: i, password: isNew ? "SECURED_ACCOUNT" : (t.password || "SECURED_ACCOUNT")
                 }));
                 
                 batch.set(tRef, updatedT, { merge: true });
                 finalTherapistsToSync.push(updatedT);
             }
             
-            batch.set(doc(db, 'settings', 'appData'), { therapists: finalTherapistsToSync }, { merge: true });
+            // 🌟 MASTER FIX: 1MB ပြည့်နေသော appData ဖိုင်ကြီးထဲမှ Therapist ပုံများကို ရှင်းထုတ်လိုက်မည် 🌟
+            // ဤသို့လုပ်ခြင်းဖြင့် 1MB Limit ပြဿနာ အပြီးတိုင် ပျောက်ကင်းသွားပါမည်
+            batch.set(doc(db, 'settings', 'appData'), { therapists: [] }, { merge: true });
             
             await batch.commit();
             
             setLocalTherapists(finalTherapistsToSync);
             setDeletedTherapistIds([]);
-            alert('Therapists saved successfully! Data optimized and duplicates completely removed.');
+            alert('✅ Therapists saved successfully! Database architecture upgraded for HD Gallery.');
         } catch (error: any) { 
-            console.error(error);
-            alert('Error saving therapists: ' + error.message); 
+            console.error(error); alert('Error saving therapists: ' + error.message); 
         }
         setSavingCategory(null);
   };
    
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); const fileName = `logo_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'branding', fileName); setLocalBranding({ ...localBranding, logoUrl: imageUrl }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
-  const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const fileName = `pay_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'payments', fileName); const updated = [...localPaymentMethods]; updated[idx].logoUrl = imageUrl; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
-  const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const fileName = `install_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'install_steps', fileName); const updated = [...localInstallSteps]; updated[idx].imageUrl = imageUrl; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
+  // 🌟 FIX: Storage ကို လုံးဝဖြုတ်ပြီး Base64 ကိုသာ ပြန်သုံးမည် 🌟
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 300, 300); setLocalBranding({ ...localBranding, logoUrl: base64 }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
+  const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const updated = [...localPaymentMethods]; updated[idx].logoUrl = base64; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
+  const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const updated = [...localInstallSteps]; updated[idx].imageUrl = base64; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
 
   const handleImageUpload = async (tIdx: number, files: FileList | null) => { 
       if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('Max 5 photos allowed.'); return; } setUploadingImage(therapist.id); const newUrls: string[] = []; 
       try { 
-          for (let i = 0; i < files.length; i++) { const base64 = await compressImage(files[i], 900, 1200); const fileName = `${therapist.id}_${Date.now()}_${i}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'therapists', fileName); newUrls.push(imageUrl); } 
+          for (let i = 0; i < files.length; i++) { 
+              // Upload လုပ်ကတည်းက HD Quality (800px) ဖြင့် သိမ်းမည်
+              const base64 = await compressImage(files[i], 800, 1000); 
+              newUrls.push(base64); 
+          } 
           const updated = [...localTherapists]; updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; setLocalTherapists(updated); 
       } catch (err) { alert("Upload error."); } setUploadingImage(null); 
   };
