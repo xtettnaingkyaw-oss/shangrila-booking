@@ -1405,7 +1405,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (e) { alert('Update error.'); } 
       setSavingCategory(null); 
   };
- const handleSaveTherapists = async () => {
+ const handleSaveTherconst handleSaveTherapists = async () => {
         setSavingCategory('therapists');
         try {
             const batch = writeBatch(db);
@@ -1419,7 +1419,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                 const finalId = isNew ? `therapist_${Date.now()}_${i}` : t.id;
                 const tRef = doc(db, 'therapists', finalId);
                 
-                // 🌟 Security Update: Firebase Auth ပေါ်တွင် Staff Account အစစ် ဖန်တီးပေးခြင်း
                 if (t.password && t.password.length >= 6 && isNew) {
                     try {
                         await createUserWithEmailAndPassword(
@@ -1432,7 +1431,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                     }
                 }
 
-                // 🌟 Frontend တွင် Password အစစ်ကို မသိမ်းဘဲ "SECURED_ACCOUNT" ဟုသာ Placeholder ထားမည်
                 const updatedT = { 
                     ...t, 
                     id: finalId, 
@@ -1548,7 +1546,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       reader.readAsDataURL(file);
   };
 
-  const addTherapist = () => setLocalTherapists([...localTherapists, { id: `t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
+  const addTherapist = () => setLocalTherapists([...localTherapists, { id: `new_t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
   const updateTherapist = (tIdx: number, field: keyof TherapistProfile, val: any) => { const updated = [...localTherapists]; updated[tIdx] = { ...updated[tIdx], [field]: val }; setLocalTherapists(updated); };
   const removeTherapist = (tIdx: number) => { if (!window.confirm("Are you sure you want to delete this therapist?")) return; const t = localTherapists[tIdx]; if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]); const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated); };
   const moveTherapistUp = (tIdx: number) => { if (tIdx === 0) return; const updated = [...localTherapists]; const temp = updated[tIdx - 1]; updated[tIdx - 1] = updated[tIdx]; updated[tIdx] = temp; setLocalTherapists(updated); };
