@@ -2683,7 +2683,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                                                         {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
                                                     </span>
                                                     <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
-                                                        Total Actual: {formatPrice(item.cumActual)}
+                                                       Total Actual: {formatPrice(item.cumActual)}
                                                     </span>
                                                 </div>
                                                 <div className="text-right">
@@ -2706,5 +2706,3 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                 </div>
             )}
         </div>
-    );
-}
