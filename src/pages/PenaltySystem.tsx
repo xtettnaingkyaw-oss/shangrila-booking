@@ -392,9 +392,9 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
   const [deposits, setDeposits] = useState<any[]>([]);
 
   useEffect(() => {
-    const unsubP = onSnapshot(collection(db, 'penalties'), snap => setPenalties(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((p: any) => p.therapistName === therapistName)));
-    const unsubL = onSnapshot(collection(db, 'loans'), snap => setLoans(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    const unsubD = onSnapshot(collection(db, 'deposits'), snap => setDeposits(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const unsubP = onSnapshot(collection(db, 'penalties'), snap => setPenalties(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((p: any) => p.therapistName === therapistName).sort((a:any, b:any) => b.createdAt - a.createdAt)));
+    const unsubL = onSnapshot(collection(db, 'loans'), snap => setLoans(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((l: any) => l.therapistName === therapistName || l.therapistId).sort((a:any, b:any) => b.createdAt - a.createdAt)));
+    const unsubD = onSnapshot(collection(db, 'deposits'), snap => setDeposits(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((d: any) => d.therapistName === therapistName || d.therapistId)));
     return () => { unsubP(); unsubL(); unsubD(); };
   }, [therapistName]);
 
@@ -421,21 +421,70 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
         </div>
       </div>
 
-      <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider">ဒဏ်ကြေးမှတ်တမ်းများ</h4>
-      <div className="space-y-2.5">
-        {penalties.length === 0 ? <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">ဒဏ်ကြေး မှတ်တမ်း မရှိပါ</p> : (
-          penalties.map(p => (
-            <div key={p.id} className={`p-3 rounded-xl border text-xs flex justify-between items-center ${p.isPaid ? 'bg-green-50/60 border-green-200' : 'bg-red-50/60 border-red-200'}`}>
-              <div>
-                <span className="font-bold text-gray-800">{p.date}</span>
-                <p className="font-semibold text-gray-600 mt-0.5">{p.category}</p>
-              </div>
-              <div className="text-right">
-                <span className={`font-black ${p.isPaid ? 'text-green-700' : 'text-red-600'}`}>{formatPrice(calculateAmount(p))}</span>
-                <span className={`block text-[9px] font-bold uppercase ${p.isPaid ? 'text-green-600' : 'text-red-500'}`}>{p.isPaid ? 'Paid' : 'Unpaid'}</span>
-              </div>
+      <div className="space-y-6">
+        {/* ဒဏ်ကြေးမှတ်တမ်းများ */}
+        <div>
+          <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider border-b pb-2">ဒဏ်ကြေး မှတ်တမ်းများ</h4>
+          <div className="space-y-2.5">
+            {penalties.length === 0 ? <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">ဒဏ်ကြေး မှတ်တမ်း မရှိပါ</p> : (
+              penalties.map(p => {
+                const days = getDaysOverdue(p.date);
+                const amount = calculateAmount(p);
+                const isOverdue = !p.isPaid && days > 0;
+                
+                return (
+                  <div key={p.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${p.isPaid ? 'bg-green-50/60 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="flex justify-between items-start mb-1.5">
+                      <span className="font-bold text-gray-800 text-sm">{p.date}</span>
+                      <div className="text-right">
+                        <span className={`font-black text-sm ${p.isPaid ? 'text-green-700' : 'text-red-600'}`}>{formatPrice(amount)}</span>
+                      </div>
+                    </div>
+                    
+                    <p className="font-semibold text-gray-700">{p.category}</p>
+                    {p.remark && <p className="text-red-500 font-semibold text-[11px] mt-1">- {p.remark}</p>}
+                    
+                    <div className="mt-2 pt-2 border-t border-gray-200/60 flex justify-between items-center">
+                      {p.isPaid ? (
+                        <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded">✓ ပေးဆောင်ပြီး ({p.paidMethod === 'deposit' ? 'အပ်ငွေမှနှုတ်သည်' : 'လက်ငင်း'})</span>
+                      ) : (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                          {isOverdue ? `! ရက်လွန်နေသည် (${days} ရက်)` : '• ယနေ့ဆောင်ရန်'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* ချေးငွေ/ကြိုထုတ်ငွေ မှတ်တမ်းများ */}
+        {(loans.length > 0) && (
+          <div>
+            <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider border-b pb-2">ကြိုထုတ်ငွေ / ပြန်ဆပ်ငွေ မှတ်တမ်းများ</h4>
+            <div className="space-y-2.5">
+              {loans.map(l => (
+                <div key={l.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${l.amount > 0 ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
+                  <div className="flex justify-between items-start mb-1.5">
+                    <span className="font-bold text-gray-800 text-sm">{l.date}</span>
+                    <span className={`font-black text-sm ${l.amount > 0 ? 'text-purple-700' : 'text-blue-700'}`}>
+                      {l.amount > 0 ? '' : '-'}{formatPrice(Math.abs(Number(l.amount)))}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {l.amount < 0 ? (
+                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">ပြန်ဆပ်</span>
+                    ) : (
+                      <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold">ကြိုထုတ်</span>
+                    )}
+                    <span className="text-gray-600 font-semibold">{l.note}</span>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))
+          </div>
         )}
       </div>
     </div>
