@@ -4,11 +4,12 @@ import { collection, query, onSnapshot, doc, updateDoc, addDoc, where } from 'fi
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
-import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy, TrendingUp, Target, Award, Star, Crown } from 'lucide-react';
+import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy, TrendingUp, Target, Award, Star, Crown, Banknote } from 'lucide-react';
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 
 import { CustomerBookingWizard } from './CustomerApp';
 import { useAppStore } from '../AppDataContext';
+import { StaffPenaltyView } from './PenaltySystem'; // 🌟 Add Penalty View Import 🌟
 
 const formatPrice = (price: any) => {
     const num = Number(price);
@@ -57,9 +58,8 @@ function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: 
   return <span className="text-yellow-600 border border-yellow-200 bg-yellow-50 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center w-fit"><Clock className="w-3 h-3 mr-1"/> Pending</span>;
 }
 
-// Prop ကနေ appData ယူမည့်အစား Context ကနေ တိုက်ရိုက်ယူပါမည်
 export default function StaffApp() {
-  const { appData: globalAppData } = useAppStore(); // 🌟 Context ကို အသုံးပြုခြင်း
+  const { appData: globalAppData } = useAppStore();
 
   const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
      const saved = localStorage.getItem('shangrila_staff_profile');
@@ -71,7 +71,6 @@ export default function StaffApp() {
      localStorage.removeItem('shangrila_staff_profile');
   };
 
-  // Data မတက်လာသေးခင် Loading ပြထားမည်
   if (!globalAppData) return <div className="text-center py-20 font-bold text-gray-500">Loading Staff Portal...</div>;
 
   return (
@@ -141,7 +140,8 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    const [activeSession, setActiveSession] = useState<Booking | null>(null);
    const [showClockInFlow, setShowClockInFlow] = useState(false);
    const [loading, setLoading] = useState(true);
-   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance'>('service');
+   // 🌟 Added 'financials' tab 🌟
+   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials'>('service');
 
    useEffect(() => {
        const q = query(collection(db, 'bookings'), where('therapist', '==', loggedInStaff.name));
@@ -200,16 +200,20 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                <button onClick={onLogout} className="text-[10px] sm:text-xs font-bold text-red-500 flex items-center bg-red-50 px-2 sm:px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100 whitespace-nowrap"><LogOut className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Log Out</span></button>
            </div>
 
-           <div className="flex space-x-1 sm:space-x-2 mb-6 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
-               <button onClick={() => setStaffTab('service')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'service' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Service</button>
-               <button onClick={() => setStaffTab('history')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'history' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>History</button>
-               <button onClick={() => setStaffTab('outpass')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Pass</button>
-               <button onClick={() => setStaffTab('performance')} className={`flex-1 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'performance' ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] shadow text-[#D4AF37]' : 'text-gray-500 hover:bg-gray-100'}`}><Sparkles className="w-3 h-3 inline mb-0.5 mr-1"/>Matrix</button>
+           {/* 🌟 Added Tab for 'Finance' 🌟 */}
+           <div className="flex space-x-1 sm:space-x-2 mb-6 bg-gray-50 p-1.5 rounded-xl border border-gray-100 overflow-x-auto scrollbar-hide whitespace-nowrap">
+               <button onClick={() => setStaffTab('service')} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'service' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Service</button>
+               <button onClick={() => setStaffTab('history')} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'history' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>History</button>
+               <button onClick={() => setStaffTab('outpass')} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Pass</button>
+               <button onClick={() => setStaffTab('performance')} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'performance' ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] shadow text-[#D4AF37]' : 'text-gray-500 hover:bg-gray-100'}`}><Sparkles className="w-3 h-3 inline mb-0.5 mr-1"/>Matrix</button>
+               <button onClick={() => setStaffTab('financials')} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'financials' ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:bg-gray-100'}`}><Banknote className="w-3 h-3 inline mb-0.5 mr-1"/>Finance</button>
            </div>
 
            {staffTab === 'history' && <StaffDailyHistoryTab loggedInStaff={loggedInStaff} />}
            {staffTab === 'outpass' && <StaffOutPassTab appData={appData} loggedInStaff={loggedInStaff} />}
            {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={loggedInStaff} />}
+           {/* 🌟 Display Penalty View Component 🌟 */}
+           {staffTab === 'financials' && <StaffPenaltyView therapistName={loggedInStaff.name} />}
            
            {staffTab === 'service' && (
                activeSession ? (
@@ -633,22 +637,16 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => p['1 to 31 Actual']), 1) : 1;
 
-    // 🌟 1. FIX: Therapist ရဲ့ Name ထဲမှ ဂဏန်းကို အရင်ဆွဲထုတ်မည် 🌟
     const staffNameStr = String(loggedInStaff?.name || '').trim().toLowerCase();
     const staffIdStr = String(loggedInStaff?.id || '').trim().toLowerCase();
     const nameMatch = staffNameStr.match(/\d+/);
-    
-    // နာမည်ထဲမှာ ဂဏန်းမပါမှသာ ID ထဲက ဂဏန်းကို ယူပါမည်
     const currentStaffNum = nameMatch ? parseInt(nameMatch[0], 10) : (staffIdStr.match(/\d+/) ? parseInt(staffIdStr.match(/\d+/)![0], 10) : null);
 
     const checkIsMe = (pIdStr: string) => {
         const pIdClean = String(pIdStr || '').trim().toLowerCase();
         const pNumMatch = pIdClean.match(/\d+/);
         const pNum = pNumMatch ? parseInt(pNumMatch[0], 10) : null;
-        
-        return pIdClean === staffIdStr || 
-               pIdClean === `no-${currentStaffNum}` || 
-               (currentStaffNum !== null && pNum === currentStaffNum);
+        return pIdClean === staffIdStr || pIdClean === `no-${currentStaffNum}` || (currentStaffNum !== null && pNum === currentStaffNum);
     };
 
     let mySummary: any = null;
@@ -666,7 +664,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
     const myEntries = allEntries.filter((e: any) => checkIsMe(String(e['Staff ID'] || '').trim()));
 
-    // 🌟 Admin App တွင် အသုံးပြုထားသော တိကျသည့် Comparison Data ကို တိုက်ရိုက်ခေါ်ယူခြင်း (ReferenceError ပြဿနာ လုံးဝရှင်းလင်းသွားပါမည်) 🌟
     const comparison = matrixData.comparisonData || {};
     const comparisonMeta = matrixData.comparisonMeta || {};
 
@@ -691,14 +688,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     const thisMonthNameStr = comparisonMeta.thisMonthName || 'THIS MONTH';
     const lastFullMonthNameStr = lastMonthNameStr;
     const thisFullMonthNameStr = thisMonthNameStr;
-
-    const top5Gaps = [];
-    for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
-        const p1 = sortedPerformers[i];
-        const p2 = sortedPerformers[i + 1];
-        const diff = (Number(p1['1 to 31 Actual']) || 0) - (Number(p2['1 to 31 Actual']) || 0);
-        top5Gaps.push({ rank1: `#${i + 1} (${p1['Staff ID']})`, rank2: `#${i + 2} (${p2['Staff ID']})`, diff });
-    }
 
     let cumActualPrior = 0;
     const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
@@ -829,18 +818,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                                     <div className="text-sm font-black">{salesDiff >= 0 ? '+' : ''}{formatPrice(salesDiff)}</div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                        <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-[#D4AF37]"/> Top-5 Rank Gap Analysis</h3>
-                        <div className="space-y-2.5">
-                            {top5Gaps.map((gap, gIdx) => (
-                                <div key={gIdx} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs font-semibold">
-                                    <span className="text-gray-700">{gap.rank1} &nbsp;vs&nbsp; {gap.rank2}</span>
-                                    <span className="font-black text-[#123524]">Gap: {formatPrice(gap.diff)}</span>
-                                </div>
-                            ))}
                         </div>
                     </div>
 
