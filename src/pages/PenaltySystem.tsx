@@ -7,7 +7,7 @@ import { THEME, formatPrice } from '../shared';
 const CATEGORIES = [
   "ဆိုင်သန့်ရှင်းရေးတာဝန် ပျက်ကွက်ခြင်း", 
   "Out Pass စည်းကမ်းများ", 
-  "Section Clock In/ Clock Out စည်းကမ်းများ", 
+  "Jibble Clock In/ Clock Out စည်းကမ်းများ", 
   "ဆူညံခြင်း၊ ဂိမ်းကစားခြင်း၊ စလော့ဆော့ခြင်း", 
   "ဧည့်သည်အား ဝန်ဆောင်မှုအားနည်းခြင်း", 
   "စည်းကမ်းမဲ့ ဆေးလိပ်၊ အရက်၊ မူးယစ်ဆေးသုံးခြင်း၊ ဝန်ထမ်းအချင်းချင်း ရန်ဖြစ်ခြင်း", 
@@ -16,7 +16,6 @@ const CATEGORIES = [
   "အခြား ဖောက်ဖျက်မှုများ"
 ];
 
-// Helper functions
 const getDaysOverdue = (dateStr: string) => {
   const dToday = new Date();
   dToday.setHours(0, 0, 0, 0);
@@ -33,11 +32,7 @@ const calculateAmount = (p: any) => {
   return Number(p.amount) * Math.pow(2, days); 
 };
 
-// ==========================================
-// 1. ADMIN PENALTY & LOAN MANAGEMENT VIEW
-// ==========================================
 export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
-  // 🌟 ဤနေရာတွင် နာမည်ပွားနေသော ဝန်ထမ်းများကို (၁) ခုတည်းအဖြစ် စစ်ထုတ်လိုက်ပါသည် 🌟
   const uniqueTherapists = Array.from(new Map(therapists.map(t => [t.name, t])).values());
 
   const [subTab, setSubTab] = useState<'dashboard' | 'add' | 'history' | 'deposits' | 'loans'>('dashboard');
@@ -67,6 +62,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
 
   const filteredPenalties = penalties.filter(p => (!startDate || p.date >= startDate) && (!endDate || p.date <= endDate));
   const filteredLoans = loans.filter(l => (!startDate || l.date >= startDate) && (!endDate || l.date <= endDate));
+  const filteredDeposits = deposits.filter(d => (!startDate || d.date >= startDate) && (!endDate || d.date <= endDate));
 
   const getStats = (id: string, name: string) => {
     const p = filteredPenalties.filter(item => String(item.therapistId) === String(id) || item.therapistName === name);
@@ -76,12 +72,13 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     const totalUnpaid = unpaid.reduce((sum, item) => sum + calculateAmount(item), 0);
     const totalPaid = paid.reduce((sum, item) => sum + calculateAmount(item), 0);
     
-    const d_all = deposits.filter(item => String(item.therapistId) === String(id));
+    const d_all = deposits.filter(item => String(item.therapistId) === String(id) || item.therapistName === name);
     const depositBalance = d_all.reduce((sum, item) => sum + Number(item.amount), 0);
 
-    const l_all = loans.filter(item => String(item.therapistId) === String(id));
+    const l_all = loans.filter(item => String(item.therapistId) === String(id) || item.therapistName === name);
     const totalLoan = l_all.reduce((sum, item) => sum + Number(item.amount), 0);
-    const l_filtered = filteredLoans.filter(item => String(item.therapistId) === String(id));
+    
+    const l_filtered = filteredLoans.filter(item => String(item.therapistId) === String(id) || item.therapistName === name);
 
     return { count: p.length, unpaidCount: unpaid.length, totalUnpaid, totalPaid, depositBalance, totalLoan, list: p, loanList: l_filtered };
   };
@@ -105,8 +102,10 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   const handleSubmitDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!depositForm.amount) return alert("ပမာဏဖြည့်ပါ");
+    const tObj = uniqueTherapists.find(t => String(t.id) === String(depositForm.therapistId));
     await addDoc(collection(db, 'deposits'), {
       therapistId: depositForm.therapistId,
+      therapistName: tObj?.name || 'Unknown',
       amount: Number(depositForm.amount), 
       date: new Date().toISOString().split('T')[0],
       type: 'deposit',
@@ -120,12 +119,13 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   const handleSubmitLoan = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!loanForm.amount) return alert("ပမာဏဖြည့်ပါ");
+    const tObj = uniqueTherapists.find(t => String(t.id) === String(loanForm.therapistId));
     const amountNum = Number(loanForm.amount);
     let finalAmount = amountNum;
     let finalNote = loanForm.note;
 
     if (loanForm.type === 'repay') {
-      const currentBalance = getStats(loanForm.therapistId, '').totalLoan;
+      const currentBalance = getStats(loanForm.therapistId, tObj?.name || '').totalLoan;
       if (amountNum > currentBalance) return alert(`လက်ကျန် ကြိုထုတ်ငွေ (${currentBalance.toLocaleString()} Ks) ထက် ကျော်လွန်၍ ဆပ်၍မရပါ။`);
       finalAmount = -amountNum;
       finalNote = !finalNote ? (loanForm.repayMethod === 'cash' ? 'လက်ငင်းငွေဖြင့် ပြန်ဆပ်သည်' : 'လစာထဲမှ နှုတ်၍ ပြန်ဆပ်သည်') : (loanForm.repayMethod === 'cash' ? '[လက်ငင်း] ' : '[လစာဖြတ်] ') + finalNote;
@@ -135,6 +135,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
 
     await addDoc(collection(db, 'loans'), {
       therapistId: loanForm.therapistId,
+      therapistName: tObj?.name || 'Unknown',
       amount: finalAmount, 
       date: loanForm.date,
       type: loanForm.type,
@@ -149,13 +150,19 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   const handleMarkAsPaid = async (p: any, method: 'cash' | 'deposit') => {
     const currentAmt = calculateAmount(p);
     if (method === 'deposit') {
-      const d = deposits.filter(item => String(item.therapistId) === String(p.therapistId));
+      const d = deposits.filter(item => String(item.therapistId) === String(p.therapistId) || item.therapistName === p.therapistName);
       const depositBalance = d.reduce((sum, item) => sum + Number(item.amount), 0);
       if (depositBalance < currentAmt) return alert(`အပ်ငွေလက်ကျန် (${depositBalance.toLocaleString()} Ks) မလုံလောက်ပါ။`);
       
       if(window.confirm(`အပ်ငွေထဲမှ ${currentAmt.toLocaleString()} Ks နှုတ်မည်မှာ သေချာပါသလား?`)) {
         await addDoc(collection(db, 'deposits'), {
-          therapistId: p.therapistId, amount: -currentAmt, date: new Date().toISOString().split('T')[0], type: 'deduction', note: `${p.date} ရက်စွဲပါ ဒဏ်ကြေး ဖြတ်တောက်ခြင်း`, createdAt: Date.now()
+          therapistId: p.therapistId, 
+          therapistName: p.therapistName,
+          amount: -currentAmt, 
+          date: new Date().toISOString().split('T')[0], 
+          type: 'deduction', 
+          note: `${p.date} ရက်စွဲပါ ဒဏ်ကြေး ဖြတ်တောက်ခြင်း`, 
+          createdAt: Date.now()
         });
         await updateDoc(doc(db, 'penalties', p.id), { isPaid: true, paidMethod: 'deposit', finalAmount: currentAmt, paidDate: new Date().toISOString().split('T')[0] });
       }
@@ -179,8 +186,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
         </div>
       </div>
 
-      {/* Date Filter Bar */}
-      {(subTab === 'dashboard' || subTab === 'history' || subTab === 'loans') && (
+      {(subTab === 'dashboard' || subTab === 'history' || subTab === 'loans' || subTab === 'deposits') && (
         <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 mb-6 flex flex-col sm:flex-row gap-3 items-center justify-between">
           <span className="text-xs font-bold text-gray-700 flex items-center"><Calendar size={16} className="mr-1.5 text-[#D4AF37]" /> ရက်စွဲအလိုက် စစ်ထုတ်ရန်:</span>
           <div className="flex gap-2 items-center w-full sm:w-auto">
@@ -191,7 +197,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
         </div>
       )}
 
-      {/* SubTab 1: Dashboard Overview */}
       {subTab === 'dashboard' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {uniqueTherapists.map(t => {
@@ -209,7 +214,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                   {stats.totalUnpaid > 0 && <p className="font-bold text-red-600">မဆောင်ရသေး: {formatPrice(stats.totalUnpaid)} ({stats.unpaidCount} ခု)</p>}
                   {stats.totalPaid > 0 && <p className="font-bold text-green-700">ပေးဆောင်ပြီး: {formatPrice(stats.totalPaid)}</p>}
                   {stats.totalLoan > 0 && <p className="font-bold text-purple-700">ကြိုထုတ်ငွေ: {formatPrice(stats.totalLoan)}</p>}
-                  {stats.count === 0 && stats.totalLoan === 0 && <p className="text-gray-400 font-semibold">မှတ်တမ်းမရှိပါ</p>}
+                  {stats.count === 0 && stats.totalLoan === 0 && stats.depositBalance === 0 && <p className="text-gray-400 font-semibold">မှတ်တမ်းမရှိပါ</p>}
                 </div>
               </div>
             );
@@ -217,7 +222,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
         </div>
       )}
 
-      {/* SubTab 2: Issue Penalty Form */}
       {subTab === 'add' && (
         <form onSubmit={handleSubmitPenalty} className="max-w-lg mx-auto bg-gray-50 p-6 rounded-2xl border border-gray-200 space-y-4">
           <h3 className="font-bold text-base text-[#123524]">ဝန်ထမ်း ဒဏ်ကြေးအသစ် တပ်ဆင်ရန်</h3>
@@ -249,7 +253,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
         </form>
       )}
 
-      {/* SubTab 3: Penalties History */}
       {subTab === 'history' && (
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[700px]">
@@ -309,7 +312,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
         </div>
       )}
 
-      {/* SubTab 4: Deposits */}
       {subTab === 'deposits' && (
         <div className="space-y-6">
           <form onSubmit={handleSubmitDeposit} className="max-w-lg mx-auto bg-gray-50 p-6 rounded-2xl border border-gray-200 space-y-4">
@@ -321,10 +323,45 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
             <input type="text" placeholder="မှတ်ချက် (ဥပမာ- ကြိုတင်အပ်ငွေ)" className="w-full p-3 border rounded-xl text-xs bg-white" value={depositForm.note} onChange={e => setDepositForm({...depositForm, note: e.target.value})} />
             <button className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold text-xs shadow hover:bg-blue-700 transition">အပ်ငွေ စာရင်းသွင်းမည်</button>
           </form>
+
+          <div className="bg-white rounded-xl shadow overflow-hidden border border-gray-200">
+             <h3 className="p-4 bg-gray-50 font-bold text-gray-700 border-b">အပ်ငွေ / အနှုတ် မှတ်တမ်းများ</h3>
+             <div className="overflow-x-auto">
+               <table className="w-full text-sm text-left">
+                 <thead>
+                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                     <th className="p-3">Date / Name</th>
+                     <th className="p-3">Note</th>
+                     <th className="p-3 text-right">Amount</th>
+                     <th className="p-3 text-center">Action</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {filteredDeposits.map(d => (
+                     <tr key={d.id} className="border-b hover:bg-gray-50">
+                       <td className="p-3">
+                         <div className="font-bold text-gray-800">{d.date}</div>
+                         <div className="text-[#123524] font-bold text-[10px] mt-0.5">{d.therapistName}</div>
+                       </td>
+                       <td className="p-3 text-gray-600 text-xs">{d.note}</td>
+                       <td className={`p-3 text-right font-bold ${d.amount > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                         {d.amount > 0 ? '+' : ''}{Number(d.amount).toLocaleString()} Ks
+                       </td>
+                       <td className="p-3 text-center">
+                         <button onClick={() => {if(window.confirm('ဖျက်ရန်သေချာပါသလား?')) deleteDoc(doc(db, 'deposits', d.id));}} className="text-gray-400 hover:text-red-600 p-1">
+                           <Trash2 size={16}/>
+                         </button>
+                       </td>
+                     </tr>
+                   ))}
+                   {filteredDeposits.length === 0 && <tr><td colSpan={4} className="p-6 text-center text-gray-400">မှတ်တမ်းမရှိသေးပါ</td></tr>}
+                 </tbody>
+               </table>
+             </div>
+          </div>
         </div>
       )}
 
-      {/* SubTab 5: Loans / Advance */}
       {subTab === 'loans' && (
         <div className="space-y-6">
           <form onSubmit={handleSubmitLoan} className="max-w-lg mx-auto bg-gray-50 p-6 rounded-2xl border border-gray-200 space-y-4">
@@ -349,10 +386,54 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
               {loanForm.type === 'borrow' ? 'ကြိုထုတ်ငွေ စာရင်းသွင်းမည်' : 'ပြန်ဆပ်ငွေ စာရင်းသွင်းမည်'}
             </button>
           </form>
+
+          <div className="bg-white rounded-xl shadow overflow-hidden border border-gray-200">
+             <h3 className="p-4 bg-purple-50 font-bold text-purple-900 border-b flex justify-between">
+               <span>ကြိုထုတ်ငွေ / ပြန်ဆပ်ငွေ မှတ်တမ်းများ</span>
+             </h3>
+             <div className="overflow-x-auto">
+               <table className="w-full text-sm text-left">
+                 <thead>
+                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
+                     <th className="p-3">Date / Name</th>
+                     <th className="p-3">Type & Note</th>
+                     <th className="p-3 text-right">Amount</th>
+                     <th className="p-3 text-center">Action</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {filteredLoans.map(l => (
+                     <tr key={l.id} className="border-b hover:bg-purple-50">
+                       <td className="p-3">
+                         <div className="font-bold text-gray-800">{l.date}</div>
+                         <div className="text-[#123524] font-bold text-[10px] mt-0.5">{l.therapistName}</div>
+                       </td>
+                       <td className="p-3 text-gray-600 text-xs">
+                         {l.amount < 0 ? (
+                           <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[9px] font-bold mr-2">ပြန်ဆပ်</span>
+                         ) : (
+                           <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[9px] font-bold mr-2">ကြိုထုတ်</span>
+                         )}
+                         {l.note}
+                       </td>
+                       <td className={`p-3 text-right font-bold ${l.amount > 0 ? 'text-purple-700' : 'text-green-600'}`}>
+                         {l.amount > 0 ? '+' : ''}{Number(l.amount).toLocaleString()} Ks
+                       </td>
+                       <td className="p-3 text-center">
+                         <button onClick={() => {if(window.confirm('ဖျက်ရန်သေချာပါသလား?')) deleteDoc(doc(db, 'loans', l.id));}} className="text-gray-400 hover:text-red-600 p-1">
+                           <Trash2 size={16}/>
+                         </button>
+                       </td>
+                     </tr>
+                   ))}
+                   {filteredLoans.length === 0 && <tr><td colSpan={4} className="p-6 text-center text-gray-400">မှတ်တမ်းမရှိသေးပါ</td></tr>}
+                 </tbody>
+               </table>
+             </div>
+          </div>
         </div>
       )}
 
-      {/* Detail Modal for Admin */}
       {selectedTherapist && (
         <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedTherapist(null)}>
           <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl relative max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -382,10 +463,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   );
 }
 
-
-// ==========================================
-// 2. STAFF PENALTY & LOAN VIEW (For Staff App)
-// ==========================================
 export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
   const [penalties, setPenalties] = useState<any[]>([]);
   const [loans, setLoans] = useState<any[]>([]);
@@ -393,8 +470,8 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
 
   useEffect(() => {
     const unsubP = onSnapshot(collection(db, 'penalties'), snap => setPenalties(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((p: any) => p.therapistName === therapistName).sort((a:any, b:any) => b.createdAt - a.createdAt)));
-    const unsubL = onSnapshot(collection(db, 'loans'), snap => setLoans(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((l: any) => l.therapistName === therapistName || l.therapistId).sort((a:any, b:any) => b.createdAt - a.createdAt)));
-    const unsubD = onSnapshot(collection(db, 'deposits'), snap => setDeposits(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((d: any) => d.therapistName === therapistName || d.therapistId)));
+    const unsubL = onSnapshot(collection(db, 'loans'), snap => setLoans(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((l: any) => l.therapistName === therapistName).sort((a:any, b:any) => b.createdAt - a.createdAt)));
+    const unsubD = onSnapshot(collection(db, 'deposits'), snap => setDeposits(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((d: any) => d.therapistName === therapistName).sort((a:any, b:any) => b.createdAt - a.createdAt)));
     return () => { unsubP(); unsubL(); unsubD(); };
   }, [therapistName]);
 
@@ -422,7 +499,6 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
       </div>
 
       <div className="space-y-6">
-        {/* ဒဏ်ကြေးမှတ်တမ်းများ */}
         <div>
           <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider border-b pb-2">ဒဏ်ကြေး မှတ်တမ်းများ</h4>
           <div className="space-y-2.5">
@@ -460,22 +536,47 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
           </div>
         </div>
 
-        {/* ချေးငွေ/ကြိုထုတ်ငွေ မှတ်တမ်းများ */}
+        {(deposits.length > 0) && (
+          <div>
+            <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider border-b pb-2">အပ်ငွေ / ဖြတ်တောက်မှု မှတ်တမ်းများ</h4>
+            <div className="space-y-2.5">
+              {deposits.map(d => (
+                <div key={d.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${d.amount > 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+                  <div className="flex justify-between items-start mb-1.5">
+                    <span className="font-bold text-gray-800 text-sm">{d.date}</span>
+                    <span className={`font-black text-sm ${d.amount > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                      {d.amount > 0 ? '+' : ''}{formatPrice(Number(d.amount))}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {d.amount < 0 ? (
+                      <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">နှုတ်ယူမှု</span>
+                    ) : (
+                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">အပ်ငွေသွင်း</span>
+                    )}
+                    <span className="text-gray-600 font-semibold">{d.note}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {(loans.length > 0) && (
           <div>
             <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider border-b pb-2">ကြိုထုတ်ငွေ / ပြန်ဆပ်ငွေ မှတ်တမ်းများ</h4>
             <div className="space-y-2.5">
               {loans.map(l => (
-                <div key={l.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${l.amount > 0 ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
+                <div key={l.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${l.amount > 0 ? 'bg-purple-50 border-purple-200' : 'bg-green-50 border-green-200'}`}>
                   <div className="flex justify-between items-start mb-1.5">
                     <span className="font-bold text-gray-800 text-sm">{l.date}</span>
-                    <span className={`font-black text-sm ${l.amount > 0 ? 'text-purple-700' : 'text-blue-700'}`}>
+                    <span className={`font-black text-sm ${l.amount > 0 ? 'text-purple-700' : 'text-green-700'}`}>
                       {l.amount > 0 ? '' : '-'}{formatPrice(Math.abs(Number(l.amount)))}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     {l.amount < 0 ? (
-                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">ပြန်ဆပ်</span>
+                      <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">ပြန်ဆပ်</span>
                     ) : (
                       <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold">ကြိုထုတ်</span>
                     )}
