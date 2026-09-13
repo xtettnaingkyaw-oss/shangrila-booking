@@ -1410,16 +1410,15 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         try {
             const batch = writeBatch(db);
             
-            // Delete removed therapists
+            // ဖျက်လိုက်တဲ့ ဝန်ထမ်းအဟောင်းများကို ရှင်းလင်းမည်
             deletedTherapistIds.forEach(id => {
-                batch.delete(doc(db, 'therapists', id));
+                if(id) batch.delete(doc(db, 'therapists', id));
             });
             
             const finalTherapistsToSync: any[] = [];
             
             for (let i = 0; i < localTherapists.length; i++) {
                 const t = localTherapists[i];
-                // 🌟 FIX: အသစ်ဆိုတာကို 'new_' နဲ့စတာကိုပဲ သတ်မှတ်ပါမည် 🌟
                 const isNew = t.id.startsWith('new_'); 
                 const finalId = isNew ? `therapist_${Date.now()}_${i}` : t.id;
                 const tRef = doc(db, 'therapists', finalId);
@@ -1436,29 +1435,33 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                     }
                 }
 
-                const updatedT = { 
+                // 🌟 FIX: Firebase မှ Error မတက်စေရန် Undefined ဖြစ်နေသော Data များကို ရှင်းလင်းမည် 🌟
+                const updatedT = JSON.parse(JSON.stringify({ 
                     ...t, 
                     id: finalId, 
                     order: i, 
                     password: isNew ? "SECURED_ACCOUNT" : (t.password || "SECURED_ACCOUNT")
-                };
+                }));
+                
                 batch.set(tRef, updatedT, { merge: true });
                 finalTherapistsToSync.push(updatedT);
             }
             
-            // 🌟 CRITICAL FIX: Master ဖိုင်ထဲမှာပါ အဟောင်းတွေကို Overwrite ဖျက်ပစ်မည် 🌟
-            batch.update(doc(db, 'settings', 'appData'), { therapists: finalTherapistsToSync });
+            // 🌟 CRITICAL FIX: .update အစား .set {merge: true} ကိုသုံး၍ Error လုံးဝကင်းစင်စေမည် 🌟
+            batch.set(doc(db, 'settings', 'appData'), { therapists: finalTherapistsToSync }, { merge: true });
             
             await batch.commit();
             
             setLocalTherapists(finalTherapistsToSync);
             setDeletedTherapistIds([]);
             alert('Therapists saved successfully and secured via Firebase Auth.');
-        } catch (error) { 
-            alert('Error saving therapists.'); 
+        } catch (error: any) { 
+            console.error(error);
+            alert('Error saving therapists: ' + error.message); 
         }
         setSavingCategory(null);
   };
+   
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 400, 400); const fileName = `logo_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'branding', fileName); setLocalBranding({ ...localBranding, logoUrl: imageUrl }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const fileName = `pay_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'payments', fileName); const updated = [...localPaymentMethods]; updated[idx].logoUrl = imageUrl; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
   const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const fileName = `install_${Date.now()}.jpg`; const imageUrl = await uploadBase64ToStorage(base64, 'install_steps', fileName); const updated = [...localInstallSteps]; updated[idx].imageUrl = imageUrl; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
