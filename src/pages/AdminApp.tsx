@@ -1410,10 +1410,30 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         try {
             const batch = writeBatch(db);
             
-            // ဖျက်လိုက်တဲ့ ဝန်ထမ်းအဟောင်းများကို ရှင်းလင်းမည်
+            // ၁။ ဖျက်လိုက်တဲ့ ဝန်ထမ်းအဟောင်းများကို ရှင်းလင်းမည်
             deletedTherapistIds.forEach(id => {
                 if(id) batch.delete(doc(db, 'therapists', id));
             });
+
+            // 🌟 ၂။ ဓာတ်ပုံ File Size ကြီးနေပါက အလိုအလျောက် သေးပေးမည့် Function 🌟
+            const compressImage = (base64Str: string): Promise<string> => {
+                return new Promise((resolve) => {
+                    if (!base64Str || !base64Str.startsWith('data:image')) return resolve(base64Str);
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 300; // ဓာတ်ပုံ Size ကို သေးပေးမည်
+                        let width = img.width; let height = img.height;
+                        if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx?.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.6)); // File Size အလွန်သေးသွားမည်
+                    };
+                    img.onerror = () => resolve(base64Str);
+                    img.src = base64Str;
+                });
+            };
             
             const finalTherapistsToSync: any[] = [];
             
@@ -1425,21 +1445,23 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                 
                 if (t.password && t.password.length >= 6 && isNew) {
                     try {
-                        await createUserWithEmailAndPassword(
-                            secondaryAuth, 
-                            `${finalId.toLowerCase()}@shangrila.com`, 
-                            t.password
-                        );
+                        await createUserWithEmailAndPassword(secondaryAuth, `${finalId.toLowerCase()}@shangrila.com`, t.password);
                     } catch (authErr: any) {
-                        console.log("Auth Error or Exists:", authErr.message);
+                        console.log("Auth Error:", authErr.message);
                     }
                 }
 
-                // 🌟 FIX: Firebase မှ Error မတက်စေရန် Undefined ဖြစ်နေသော Data များကို ရှင်းလင်းမည် 🌟
+                // 🌟 ၃။ ဓာတ်ပုံများကို Compress လုပ်ပြီးမှ သိမ်းမည် 🌟
+                const compressedImages = [];
+                for (const img of (t.images || [])) {
+                    compressedImages.push(await compressImage(img));
+                }
+
                 const updatedT = JSON.parse(JSON.stringify({ 
                     ...t, 
                     id: finalId, 
                     order: i, 
+                    images: compressedImages,
                     password: isNew ? "SECURED_ACCOUNT" : (t.password || "SECURED_ACCOUNT")
                 }));
                 
@@ -1447,7 +1469,6 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                 finalTherapistsToSync.push(updatedT);
             }
             
-            // 🌟 CRITICAL FIX: .update အစား .set {merge: true} ကိုသုံး၍ Error လုံးဝကင်းစင်စေမည် 🌟
             batch.set(doc(db, 'settings', 'appData'), { therapists: finalTherapistsToSync }, { merge: true });
             
             await batch.commit();
