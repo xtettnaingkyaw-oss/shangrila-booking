@@ -57,7 +57,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   const [startDate, setStartDate] = useState(`${currentYear}-${currentMonth}-01`);
   const [endDate, setEndDate] = useState(`${currentYear}-${currentMonth}-${lastDayOfMonth}`);
 
-  // 🌟 အသစ်တိုးထားသော Filter States များ 🌟
   const [historyFilter, setHistoryFilter] = useState('');
   const [depositFilter, setDepositFilter] = useState('');
   const [loanFilter, setLoanFilter] = useState('');
@@ -69,7 +68,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     return () => { unsubP(); unsubD(); unsubL(); };
   }, []);
 
-  // 🌟 Dropdown Filter ပါ ပေါင်းစစ်ထားသော Data များ 🌟
   const filteredPenalties = penalties.filter(p => (!startDate || p.date >= startDate) && (!endDate || p.date <= endDate) && (historyFilter === '' || String(p.therapistId) === historyFilter));
   const filteredLoans = loans.filter(l => (!startDate || l.date >= startDate) && (!endDate || l.date <= endDate) && (loanFilter === '' || String(l.therapistId) === loanFilter));
   const filteredDeposits = deposits.filter(d => (!startDate || d.date >= startDate) && (!endDate || d.date <= endDate) && (depositFilter === '' || String(d.therapistId) === depositFilter));
@@ -498,6 +496,9 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
   const [penalties, setPenalties] = useState<any[]>([]);
   const [loans, setLoans] = useState<any[]>([]);
   const [deposits, setDeposits] = useState<any[]>([]);
+  
+  // 🌟 Active Sub-Tab (default: penalties) 🌟
+  const [activeView, setActiveView] = useState<'penalties' | 'loans' | 'deposits'>('penalties');
 
   useEffect(() => {
     const unsubP = onSnapshot(collection(db, 'penalties'), snap => setPenalties(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((p: any) => p.therapistName === therapistName).sort((a:any, b:any) => b.createdAt - a.createdAt)));
@@ -514,110 +515,131 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mt-6 animate-fade-in">
       <h3 className="text-base font-bold text-[#123524] mb-4 flex items-center"><Banknote className="w-5 h-5 mr-2 text-[#D4AF37]"/> ကျွန်ုပ်၏ ဒဏ်ကြေးနှင့် ချေးငွေစာရင်း</h3>
       
+      {/* Clickable Summary Tabs */}
       <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-red-50 p-3 rounded-xl border border-red-200 text-center">
+        <div 
+          onClick={() => setActiveView('penalties')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${activeView === 'penalties' ? 'bg-red-50 border-red-400 shadow-md scale-[1.02]' : 'bg-red-50/40 border-red-100 hover:border-red-300'}`}
+        >
           <span className="text-[10px] font-bold text-red-600 uppercase block">မဆောင်ရသေး ဒဏ်ကြေး</span>
           <span className="text-sm sm:text-base font-black text-red-700">{formatPrice(totalUnpaidPenalties)}</span>
         </div>
-        <div className="bg-purple-50 p-3 rounded-xl border border-purple-200 text-center">
+        <div 
+          onClick={() => setActiveView('loans')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${activeView === 'loans' ? 'bg-purple-50 border-purple-400 shadow-md scale-[1.02]' : 'bg-purple-50/40 border-purple-100 hover:border-purple-300'}`}
+        >
           <span className="text-[10px] font-bold text-purple-700 uppercase block">ကြိုထုတ်ငွေ လက်ကျန်</span>
           <span className="text-sm sm:text-base font-black text-purple-800">{formatPrice(totalLoanBalance)}</span>
         </div>
-        <div className="bg-blue-50 p-3 rounded-xl border border-blue-200 text-center">
+        <div 
+          onClick={() => setActiveView('deposits')}
+          className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${activeView === 'deposits' ? 'bg-blue-50 border-blue-400 shadow-md scale-[1.02]' : 'bg-blue-50/40 border-blue-100 hover:border-blue-300'}`}
+        >
           <span className="text-[10px] font-bold text-blue-700 uppercase block">အပ်ငွေ လက်ကျန်</span>
           <span className="text-sm sm:text-base font-black text-blue-800">{formatPrice(totalDeposit)}</span>
         </div>
       </div>
 
       <div className="space-y-6">
-        <div>
-          <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider border-b pb-2">ဒဏ်ကြေး မှတ်တမ်းများ</h4>
-          <div className="space-y-2.5">
-            {penalties.length === 0 ? <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">ဒဏ်ကြေး မှတ်တမ်း မရှိပါ</p> : (
-              penalties.map(p => {
-                const days = getDaysOverdue(p.date);
-                const amount = calculateAmount(p);
-                const isOverdue = !p.isPaid && days > 0;
-                
-                return (
-                  <div key={p.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${p.isPaid ? 'bg-green-50/60 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className="flex justify-between items-start mb-1.5">
-                      <span className="font-bold text-gray-800 text-sm">{p.date}</span>
-                      <div className="text-right">
-                        <span className={`font-black text-sm ${p.isPaid ? 'text-green-700' : 'text-red-600'}`}>{formatPrice(amount)}</span>
+        
+        {/* Penalties View */}
+        {activeView === 'penalties' && (
+          <div className="animate-fade-in">
+            <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider border-b pb-2">ဒဏ်ကြေး မှတ်တမ်းများ</h4>
+            <div className="space-y-2.5">
+              {penalties.length === 0 ? <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">ဒဏ်ကြေး မှတ်တမ်း မရှိပါ</p> : (
+                penalties.map(p => {
+                  const days = getDaysOverdue(p.date);
+                  const amount = calculateAmount(p);
+                  const isOverdue = !p.isPaid && days > 0;
+                  
+                  return (
+                    <div key={p.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${p.isPaid ? 'bg-green-50/60 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                      <div className="flex justify-between items-start mb-1.5">
+                        <span className="font-bold text-gray-800 text-sm">{p.date}</span>
+                        <div className="text-right">
+                          <span className={`font-black text-sm ${p.isPaid ? 'text-green-700' : 'text-red-600'}`}>{formatPrice(amount)}</span>
+                        </div>
+                      </div>
+                      
+                      <p className="font-semibold text-gray-700">{p.category}</p>
+                      {p.remark && <p className="text-red-500 font-semibold text-[11px] mt-1">- {p.remark}</p>}
+                      
+                      <div className="mt-2 pt-2 border-t border-gray-200/60 flex justify-between items-center">
+                        {p.isPaid ? (
+                          <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded">✓ ပေးဆောင်ပြီး ({p.paidMethod === 'deposit' ? 'အပ်ငွေမှနှုတ်သည်' : 'လက်ငင်း'})</span>
+                        ) : (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            {isOverdue ? `! ရက်လွန်နေသည် (${days} ရက်)` : '• ယနေ့ဆောင်ရန်'}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    
-                    <p className="font-semibold text-gray-700">{p.category}</p>
-                    {p.remark && <p className="text-red-500 font-semibold text-[11px] mt-1">- {p.remark}</p>}
-                    
-                    <div className="mt-2 pt-2 border-t border-gray-200/60 flex justify-between items-center">
-                      {p.isPaid ? (
-                        <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded">✓ ပေးဆောင်ပြီး ({p.paidMethod === 'deposit' ? 'အပ်ငွေမှနှုတ်သည်' : 'လက်ငင်း'})</span>
-                      ) : (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {isOverdue ? `! ရက်လွန်နေသည် (${days} ရက်)` : '• ယနေ့ဆောင်ရန်'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
+                  );
+                })
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        {(deposits.length > 0) && (
-          <div>
+        {/* Deposits View */}
+        {activeView === 'deposits' && (
+          <div className="animate-fade-in">
             <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider border-b pb-2">အပ်ငွေ / ဖြတ်တောက်မှု မှတ်တမ်းများ</h4>
             <div className="space-y-2.5">
-              {deposits.map(d => (
-                <div key={d.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${d.amount > 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
-                  <div className="flex justify-between items-start mb-1.5">
-                    <span className="font-bold text-gray-800 text-sm">{d.date}</span>
-                    <span className={`font-black text-sm ${d.amount > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                      {d.amount > 0 ? '+' : ''}{formatPrice(Number(d.amount))}
-                    </span>
+              {deposits.length === 0 ? <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">အပ်ငွေ မှတ်တမ်း မရှိပါ</p> : (
+                deposits.map(d => (
+                  <div key={d.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${d.amount > 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="flex justify-between items-start mb-1.5">
+                      <span className="font-bold text-gray-800 text-sm">{d.date}</span>
+                      <span className={`font-black text-sm ${d.amount > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                        {d.amount > 0 ? '+' : ''}{formatPrice(Number(d.amount))}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {d.amount < 0 ? (
+                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">နှုတ်ယူမှု</span>
+                      ) : (
+                        <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">အပ်ငွေသွင်း</span>
+                      )}
+                      <span className="text-gray-600 font-semibold">{d.note}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    {d.amount < 0 ? (
-                      <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">နှုတ်ယူမှု</span>
-                    ) : (
-                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">အပ်ငွေသွင်း</span>
-                    )}
-                    <span className="text-gray-600 font-semibold">{d.note}</span>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
 
-        {(loans.length > 0) && (
-          <div>
+        {/* Loans View */}
+        {activeView === 'loans' && (
+          <div className="animate-fade-in">
             <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wider border-b pb-2">ကြိုထုတ်ငွေ / ပြန်ဆပ်ငွေ မှတ်တမ်းများ</h4>
             <div className="space-y-2.5">
-              {loans.map(l => (
-                <div key={l.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${l.amount > 0 ? 'bg-purple-50 border-purple-200' : 'bg-green-50 border-green-200'}`}>
-                  <div className="flex justify-between items-start mb-1.5">
-                    <span className="font-bold text-gray-800 text-sm">{l.date}</span>
-                    <span className={`font-black text-sm ${l.amount > 0 ? 'text-purple-700' : 'text-green-700'}`}>
-                      {l.amount > 0 ? '' : '-'}{formatPrice(Math.abs(Number(l.amount)))}
-                    </span>
+              {loans.length === 0 ? <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">ချေးငွေ မှတ်တမ်း မရှိပါ</p> : (
+                loans.map(l => (
+                  <div key={l.id} className={`p-3.5 rounded-xl border text-xs flex flex-col ${l.amount > 0 ? 'bg-purple-50 border-purple-200' : 'bg-green-50 border-green-200'}`}>
+                    <div className="flex justify-between items-start mb-1.5">
+                      <span className="font-bold text-gray-800 text-sm">{l.date}</span>
+                      <span className={`font-black text-sm ${l.amount > 0 ? 'text-purple-700' : 'text-green-700'}`}>
+                        {l.amount > 0 ? '' : '-'}{formatPrice(Math.abs(Number(l.amount)))}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {l.amount < 0 ? (
+                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">ပြန်ဆပ်</span>
+                      ) : (
+                        <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold">ကြိုထုတ်</span>
+                      )}
+                      <span className="text-gray-600 font-semibold">{l.note}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    {l.amount < 0 ? (
-                      <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">ပြန်ဆပ်</span>
-                    ) : (
-                      <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold">ကြိုထုတ်</span>
-                    )}
-                    <span className="text-gray-600 font-semibold">{l.note}</span>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
