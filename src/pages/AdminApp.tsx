@@ -1405,17 +1405,22 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (e) { alert('Update error.'); } 
       setSavingCategory(null); 
   };
- const handleSaveTherconst handleSaveTherapists = async () => {
+ const handleSaveTherapists = async () => {
         setSavingCategory('therapists');
         try {
             const batch = writeBatch(db);
+            
+            // Delete removed therapists
             deletedTherapistIds.forEach(id => {
                 batch.delete(doc(db, 'therapists', id));
             });
             
+            const finalTherapistsToSync: any[] = [];
+            
             for (let i = 0; i < localTherapists.length; i++) {
                 const t = localTherapists[i];
-                const isNew = t.id.startsWith('new_') || t.id.startsWith('t_');
+                // 🌟 FIX: အသစ်ဆိုတာကို 'new_' နဲ့စတာကိုပဲ သတ်မှတ်ပါမည် 🌟
+                const isNew = t.id.startsWith('new_'); 
                 const finalId = isNew ? `therapist_${Date.now()}_${i}` : t.id;
                 const tRef = doc(db, 'therapists', finalId);
                 
@@ -1438,9 +1443,15 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                     password: isNew ? "SECURED_ACCOUNT" : (t.password || "SECURED_ACCOUNT")
                 };
                 batch.set(tRef, updatedT, { merge: true });
+                finalTherapistsToSync.push(updatedT);
             }
             
+            // 🌟 CRITICAL FIX: Master ဖိုင်ထဲမှာပါ အဟောင်းတွေကို Overwrite ဖျက်ပစ်မည် 🌟
+            batch.update(doc(db, 'settings', 'appData'), { therapists: finalTherapistsToSync });
+            
             await batch.commit();
+            
+            setLocalTherapists(finalTherapistsToSync);
             setDeletedTherapistIds([]);
             alert('Therapists saved successfully and secured via Firebase Auth.');
         } catch (error) { 
