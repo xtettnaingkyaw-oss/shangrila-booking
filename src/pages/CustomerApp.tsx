@@ -742,6 +742,22 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
 
 export function TherapistsGallery({ appData }: { appData: AppData }) {
     const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
+    const [loadingGalleryId, setLoadingGalleryId] = useState<string | null>(null);
+
+    const openGallery = async (t: TherapistProfile) => {
+        setLoadingGalleryId(t.id);
+        try {
+            const docSnap = await getDoc(doc(db, 'therapists', t.id));
+            if (docSnap.exists() && docSnap.data().images && docSnap.data().images.length > 0) {
+                setViewGallery({ images: docSnap.data().images, index: 0 });
+            } else if (t.images && t.images.length > 0) {
+                setViewGallery({ images: t.images, index: 0 });
+            }
+        } catch (e) {
+            if (t.images && t.images.length > 0) setViewGallery({ images: t.images, index: 0 });
+        }
+        setLoadingGalleryId(null);
+    };
 
     return (
         <div className="max-w-4xl mx-auto px-4 pb-20 animate-fade-in relative">
@@ -793,13 +809,18 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
                   
                   <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
                      <h3 className="font-bold text-white text-lg drop-shadow-md">{t.name}</h3>
-                     {/* 🌟 Button အသစ် 🌟 */}
-                     {t.images && t.images.length > 1 && (
+                     {/* 🌟 On-Demand HD Gallery Button 🌟 */}
+                     {t.images && t.images.length > 0 && (
                          <button 
-                             onClick={(e) => { e.stopPropagation(); setViewGallery({ images: t.images, index: 0 }); }}
-                             className="mx-auto mt-2 bg-black/60 hover:bg-black/80 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center justify-center border border-white/20 transition-all shadow-sm z-10 relative cursor-pointer"
+                             onClick={(e) => { e.stopPropagation(); openGallery(t); }}
+                             disabled={loadingGalleryId === t.id}
+                             className="mx-auto mt-2 bg-black/60 hover:bg-black/80 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center justify-center border border-white/20 transition-all shadow-sm z-10 relative cursor-pointer disabled:opacity-50"
                          >
-                             <ImageIcon className="w-3 h-3 mr-1"/> နောက်ထပ်ပုံများကြည့်ရန်
+                             {loadingGalleryId === t.id ? (
+                                 <span className="animate-pulse">Loading HD...</span>
+                             ) : (
+                                 <><ImageIcon className="w-3 h-3 mr-1"/> ဓာတ်ပုံများကြည့်ရန်</>
+                             )}
                          </button>
                      )}
                   </div>
@@ -1503,11 +1524,26 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, therapist2: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
-  
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
   const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
+  const [loadingGalleryId, setLoadingGalleryId] = useState<string | null>(null);
   const [viewDesc, setViewDesc] = useState<{title: string, desc: string} | null>(null);
+
+  const openGallery = async (t: TherapistProfile) => {
+      setLoadingGalleryId(t.id);
+      try {
+          const docSnap = await getDoc(doc(db, 'therapists', t.id));
+          if (docSnap.exists() && docSnap.data().images && docSnap.data().images.length > 0) {
+              setViewGallery({ images: docSnap.data().images, index: 0 });
+          } else if (t.images && t.images.length > 0) {
+              setViewGallery({ images: t.images, index: 0 });
+          }
+      } catch (e) {
+          if (t.images && t.images.length > 0) setViewGallery({ images: t.images, index: 0 });
+      }
+      setLoadingGalleryId(null);
+  };
   const [successMsg, setSuccessMsg] = useState('');
   const [alertMessage, setAlertMessage] = useState('');
   
@@ -2257,16 +2293,21 @@ const renderServiceSelection = (currentStep: number) => (
                   </div>
                 )}
                 
-                {therapist.images && therapist.images.length > 1 && (
+                {therapist.images && therapist.images.length > 0 && (
                   <button 
                     type="button"
+                    disabled={loadingGalleryId === therapist.id}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setViewGallery({ images: therapist.images, index: 0 });
+                      openGallery(therapist);
                     }}
-                    className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center shadow-md border border-white/20 hover:bg-black transition-colors z-20 whitespace-nowrap"
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/70 text-[#D4AF37] px-3 py-1.5 rounded-full text-[9px] font-bold tracking-widest flex items-center shadow-md border border-white/20 hover:bg-black transition-colors z-20 whitespace-nowrap disabled:opacity-50"
                   >
-                    <ImageIcon className="w-3 h-3 mr-1"/> နောက်ထပ်ပုံများ
+                    {loadingGalleryId === therapist.id ? (
+                        <span className="animate-pulse">Loading HD...</span>
+                    ) : (
+                        <><ImageIcon className="w-3 h-3 mr-1"/> ဓာတ်ပုံများ</>
+                    )}
                   </button>
                 )}
               </div>
