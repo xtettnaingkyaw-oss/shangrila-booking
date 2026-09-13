@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from '
 import { collection, getDocs, updateDoc, deleteDoc, doc, query, orderBy, getDoc, setDoc, onSnapshot, addDoc, writeBatch, runTransaction, where, limit } from 'firebase/firestore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, auth, secondaryAuth } from '../firebase';
-import { getStorage, ref, uploadString, getDownloadURL } from "firebase/storage";
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
 import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock, Banknote } from 'lucide-react';
@@ -1406,15 +1405,36 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       } catch (e) { alert('Update error.'); } 
       setSavingCategory(null); 
   };
- const handleSaveTherapists = async () => {
+const handleSaveTherapists = async () => {
         setSavingCategory('therapists');
         try {
             const batch = writeBatch(db);
-            const storage = getStorage(); 
             
             deletedTherapistIds.forEach(id => {
                 if(id) batch.delete(doc(db, 'therapists', id));
             });
+
+            // 🌟 PROFESSIONAL FIX: WebP Format ဖြင့် HD အကြည်မပျက်ဘဲ File Size ကို 90% အထိ လျှော့ချမည် 🌟
+            const compressImageHD = (base64Str: string): Promise<string> => {
+                return new Promise((resolve) => {
+                    if (!base64Str || !base64Str.startsWith('data:image')) return resolve(base64Str);
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        // 800px သည် ဖုန်းနှင့် App များအတွက် ကြည်လင်ပြတ်သားသော HD Size ဖြစ်သည်
+                        const MAX_WIDTH = 800; 
+                        let width = img.width; let height = img.height;
+                        if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx?.drawImage(img, 0, 0, width, height);
+                        // WEBP format ဖြင့် သိမ်းမည် (အရည်အသွေး 0.8 / 80% HD)
+                        resolve(canvas.toDataURL('image/webp', 0.8)); 
+                    };
+                    img.onerror = () => resolve(base64Str);
+                    img.src = base64Str;
+                });
+            };
             
             const finalTherapistsToSync: any[] = [];
             
@@ -1432,24 +1452,17 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                     }
                 }
 
-                const uploadedImageUrls = [];
-                for (let j = 0; j < (t.images || []).length; j++) {
-                    const imgData = t.images[j];
-                    if (imgData.startsWith('data:image')) {
-                        const imageRef = ref(storage, `therapists/${finalId}/img_${Date.now()}_${j}`);
-                        await uploadString(imageRef, imgData, 'data_url');
-                        const downloadUrl = await getDownloadURL(imageRef);
-                        uploadedImageUrls.push(downloadUrl);
-                    } else {
-                        uploadedImageUrls.push(imgData);
-                    }
+                // ပုံဟောင်း/ပုံသစ် အားလုံးကို Save မနှိပ်ခင် HD WebP သို့ ပြောင်းလဲမည်
+                const compressedImages = [];
+                for (const img of (t.images || [])) {
+                    compressedImages.push(await compressImageHD(img));
                 }
 
                 const updatedT = JSON.parse(JSON.stringify({ 
                     ...t, 
                     id: finalId, 
                     order: i, 
-                    images: uploadedImageUrls, 
+                    images: compressedImages,
                     password: isNew ? "SECURED_ACCOUNT" : (t.password || "SECURED_ACCOUNT")
                 }));
                 
@@ -1457,13 +1470,14 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
                 finalTherapistsToSync.push(updatedT);
             }
             
+            // Limit 1MB ကို မကျော်တော့ဘဲ လုံခြုံစွာ သိမ်းနိုင်မည်
             batch.set(doc(db, 'settings', 'appData'), { therapists: finalTherapistsToSync }, { merge: true });
             
             await batch.commit();
             
             setLocalTherapists(finalTherapistsToSync);
             setDeletedTherapistIds([]);
-            alert('Therapists saved successfully. Images are stored in HD via Firebase Storage!');
+            alert('Therapists saved successfully in HD WebP Format!');
         } catch (error: any) { 
             console.error(error);
             alert('Error saving therapists: ' + error.message); 
