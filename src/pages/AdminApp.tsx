@@ -2458,7 +2458,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                 <div className="relative">
                     <select value={selectedStaffId} onChange={(e) => setSelectedStaffId(e.target.value)} className="w-full p-3 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-gray-800 appearance-none cursor-pointer shadow-sm">
                         <option value="">-- Show Global Leaderboard --</option>
-                        {Array.from(new Map(therapists.map(t => [t.name, t])).values()).map((t: any) => (<option key={t.id} value={t.id}>{t.name} (ID: {t.id})</option>))}
+{Array.from(new Map(therapists.map(t => [t.name, t])).values()).map((t: any) => (<option key={t.id} value={t.id}>{t.name}</option>))}
                     </select>
                     <ChevronDown className="absolute right-4 top-3.5 w-5 h-5 text-gray-400 pointer-events-none" />
                 </div>
