@@ -8,6 +8,7 @@ import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, Shi
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
 import { useAppStore } from '../AppDataContext';
 import { AdminPenaltyManager } from './PenaltySystem';
+import { ..., Timer, ... } from 'lucide-react';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -535,6 +536,10 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
    const [outpasses, setOutpasses] = useState<OutPass[]>([]);
    const todayStr = getLocalTodayStr(); const [now, setNow] = useState(Date.now());
    
+   // 🌟 Admin Clock-In Modal States 🌟
+   const [showClockInModal, setShowClockInModal] = useState(false);
+   const { appData: globalAppData } = useAppStore(); // Service Menu တွေဆွဲထုတ်ရန်
+   
    useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 15000); return () => clearInterval(timer); }, []);
    useEffect(() => { const unsub = onSnapshot(query(collection(db, 'outpasses'), orderBy('outTimeMillis', 'desc')), snap => { const arr: OutPass[] = []; snap.forEach(d => arr.push({id: d.id, ...d.data()} as OutPass)); setOutpasses(arr); }); return () => unsub(); }, []);
    
@@ -598,9 +603,90 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
            {view === 'dashboard' && (
               <div className="space-y-8 animate-fade-in">
                  
+                 {/* 🌟 ADMIN MANUAL CLOCK IN MODAL 🌟 */}
+                 {showClockInModal && (
+                    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+                        <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm animate-slide-up border border-gray-200">
+                            <div className="flex justify-between items-center mb-4 border-b pb-3">
+                                <h3 className="text-lg font-bold text-[#123524] flex items-center"><Timer className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manual Clock In</h3>
+                                <button onClick={() => setShowClockInModal(false)} className="text-gray-400 hover:text-red-500"><X className="w-5 h-5"/></button>
+                            </div>
+                            
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                const form = e.target as HTMLFormElement;
+                                const tName = (form.elements.namedItem('therapist') as HTMLSelectElement).value;
+                                const svc = (form.elements.namedItem('service') as HTMLSelectElement).value;
+                                const customSvc = (form.elements.namedItem('customService') as HTMLInputElement).value;
+                                const finalService = svc === 'custom' ? customSvc : svc;
+                                
+                                if (!tName || (!svc && !customSvc)) { alert('အချက်အလက်များ ပြည့်စုံအောင် ဖြည့်ပါ။'); return; }
+                                if(window.confirm(`${tName} အတွက် ${finalService} Service စတင်မည် သေချာပါသလား?`)) {
+                                    try {
+                                        await addDoc(collection(db, 'bookings'), {
+                                            name: encryptText('Walk-in (Admin Manual)'),
+                                            phone: encryptText('09000000000'), // Default Admin Entry
+                                            service: finalService,
+                                            therapist: tName,
+                                            date: todayStr,
+                                            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                            status: 'in_progress',
+                                            paymentMethod: 'Cash Payment in Shop',
+                                            txId: encryptText('ADMIN'),
+                                            totalPrice: 0, // Admin သွင်းတာမို့ 0 အဖြစ်သာထားမည် (Report မလွဲစေရန်)
+                                            createdAt: Date.now(),
+                                            startTimeMillis: Date.now(),
+                                            expectedEndTimeMillis: Date.now() + (60 * 60 * 1000) // Default 1 Hour
+                                        });
+                                        setShowClockInModal(false);
+                                        alert('✅ အောင်မြင်စွာ Clock-in ဝင်ပြီးပါပြီ။');
+                                    } catch(err) { alert('Error: ' + err); }
+                                }
+                            }} className="space-y-4">
+                                
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Select Therapist</label>
+                                    <select name="therapist" required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-[#123524]">
+                                        <option value="">-- ရွေးချယ်ပါ --</option>
+                                        {Array.from(new Map(therapists.map(t => [t.name, t])).values()).map((t: any) => (<option key={t.id} value={t.name}>{t.name}</option>))}
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Select Service</label>
+                                    <select name="service" required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-gray-700 mb-2" onChange={(e) => {
+                                        const customInput = document.getElementById('customServiceInput') as HTMLInputElement;
+                                        if(customInput) customInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
+                                    }}>
+                                        <option value="">-- ရွေးချယ်ပါ --</option>
+                                        {globalAppData?.categories?.flatMap(c => c.items).map((item, idx) => (
+                                            <option key={idx} value={`${item.name} (${item.duration})`}>{item.name} ({item.duration})</option>
+                                        ))}
+                                        <option value="custom">-- အခြား (Custom Service) --</option>
+                                    </select>
+                                    <input type="text" id="customServiceInput" name="customService" placeholder="Service အမည် ရိုက်ထည့်ပါ..." className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-gray-700 hidden" />
+                                </div>
+                                
+                                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                                    <p className="text-[10px] text-yellow-700 font-semibold leading-relaxed">မှတ်ချက်: ဤနေရာမှ ဝင်သော Service များသည် ငွေစာရင်း (Sale Report) တွက်ချက်မှုထဲတွင် <strong className="font-bold text-red-500">မပါဝင်ပါ။</strong> ဝန်ထမ်းအခြေအနေ (Active Status) ပြသရန်အတွက်သာ ရည်ရွယ်ပါသည်။</p>
+                                </div>
+
+                                <button type="submit" className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-lg font-bold shadow-md hover:bg-[#1a4a32] transition">
+                                    Start Service Now
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                 )}
+
                  {/* ================== SERVICES SECTION ================== */}
                  <div>
-                     <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
+                     <div className="flex justify-between items-center mb-3 border-b border-gray-100 pb-2">
+                         <h3 className="text-sm font-bold text-gray-700 flex items-center"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
+                         <button onClick={() => setShowClockInModal(true)} className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-bold border border-blue-200 flex items-center transition shadow-sm">
+                             <Timer className="w-3.5 h-3.5 mr-1.5"/> Admin Clock In
+                         </button>
+                     </div>
                      {activeBookings.length === 0 ? (<p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently in service.</p>) : (
                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                              {activeBookings.map(b => {
