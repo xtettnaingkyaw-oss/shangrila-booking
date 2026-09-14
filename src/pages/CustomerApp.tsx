@@ -865,7 +865,13 @@ useEffect(() => {
   };
 
   const generateTimeline = (therapistName: string) => {
-      const tBookings = bookings.filter(b => b.therapist && b.therapist.includes(therapistName) && b.date === todayStr && b.status !== 'cancelled' && b.status !== 'completed');
+      // 🌟 FIX: Name Exact Match ဖြင့်သာ စစ်ဆေးမည် (No-1 တွင် No-12 မရောသွားစေရန်) 🌟
+      const tBookings = bookings.filter(b => {
+          if (!b.therapist || b.date !== todayStr || b.status === 'cancelled' || b.status === 'completed') return false;
+          // Four Hands ကဲ့သို့ နာမည် နှစ်ခုပါလာပါက ခွဲထုတ်ပြီး အတိအကျ စစ်မည်
+          const names = b.therapist.split('&').map(n => n.trim().replace('(Any Available)', '').trim());
+          return names.includes(therapistName.trim());
+      });
       const coveredMap = new Map<string, { service: string, status: string }>();
 
       tBookings.forEach(b => {
@@ -925,7 +931,12 @@ useEffect(() => {
       const currentHour = now.getHours(); const isPast6PM = currentHour >= 18;
       
       bookings.forEach(b => {
-          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr || !b.therapist || !b.therapist.includes(tName)) return;
+          if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr || !b.therapist) return;
+          
+          // 🌟 FIX: Name Exact Match ဖြင့်သာ စစ်ဆေးမည် 🌟
+          const names = b.therapist.split('&').map(n => n.trim().replace('(Any Available)', '').trim());
+          if (!names.includes(tName.trim())) return; // အတိအကျ မတူလျှင် ကျော်သွားမည်
+        
           const cleanServiceName = (b.service || '').split('(')[0].trim();
           const serviceLower = cleanServiceName.toLowerCase();
           const isNight = serviceLower.includes('night') || serviceLower.includes('24 hour') || serviceLower.includes('day and night');
