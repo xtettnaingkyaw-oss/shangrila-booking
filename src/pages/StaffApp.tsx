@@ -142,7 +142,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    const [loading, setLoading] = useState(true);
    const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials' | 'roster'>('service');
    
-   // 🌟 Duty Roster Noti States 🌟
    const [rosterData, setRosterData] = useState<any>(null);
    const [hasRosterNoti, setHasRosterNoti] = useState(false);
    const [unpaidPenaltyCount, setUnpaidPenaltyCount] = useState(0);
@@ -153,18 +152,10 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            let foundActive = null;
            snap.forEach((doc) => {
                const raw = doc.data();
-               const b = { 
-                   id: doc.id, 
-                   ...raw,
-                   name: decryptText(raw.name) || raw.name,
-                   phone: decryptText(raw.phone) || raw.phone,
-                   txId: decryptText(raw.txId) || raw.txId,
-                   specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
-               } as Booking;
+               const b = { id: doc.id, ...raw, name: decryptText(raw.name) || raw.name, phone: decryptText(raw.phone) || raw.phone, txId: decryptText(raw.txId) || raw.txId, specialRequest: decryptText(raw.specialRequest) || raw.specialRequest } as Booking;
                if (b.status === 'in_progress') foundActive = b;
            });
-           setActiveSession(foundActive);
-           setLoading(false);
+           setActiveSession(foundActive); setLoading(false);
        });
        return () => unsubscribe();
    }, [loggedInStaff.name]);
@@ -172,8 +163,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    useEffect(() => {
        const q = query(collection(db, 'penalties'), where('therapistName', '==', loggedInStaff.name));
        const unsubscribe = onSnapshot(q, (snap) => {
-           let count = 0;
-           snap.forEach((doc) => { if (doc.data().isPaid === false) count++; });
+           let count = 0; snap.forEach((doc) => { if (doc.data().isPaid === false) count++; });
            setUnpaidPenaltyCount(count);
        });
        return () => unsubscribe();
@@ -202,13 +192,8 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
        if (!activeSession || !activeSession.id) return;
        if (!window.confirm("Are you sure you want to STOP this service now?")) return;
        try {
-           const now = Date.now();
-           const overtimeMillis = Math.max(0, now - (activeSession.expectedEndTimeMillis || now));
-           await updateDoc(doc(db, 'bookings', activeSession.id), {
-               status: 'completed',
-               actualEndTimeMillis: now,
-               overtimeSeconds: Math.floor(overtimeMillis / 1000)
-           });
+           const now = Date.now(); const overtimeMillis = Math.max(0, now - (activeSession.expectedEndTimeMillis || now));
+           await updateDoc(doc(db, 'bookings', activeSession.id), { status: 'completed', actualEndTimeMillis: now, overtimeSeconds: Math.floor(overtimeMillis / 1000) });
            setActiveSession(null);
        } catch (error) { console.error(error); alert("Error stopping session."); }
    };
@@ -220,14 +205,14 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            <div className="flex justify-between items-center mb-6 pb-6 border-b border-gray-100">
                <div className="flex items-center">
                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden mr-3 sm:mr-4 border-2 border-[#123524] shadow-sm flex-shrink-0">
-                       {loggedInStaff.images && loggedInStaff.images[0] ? <img src={loggedInStaff.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 sm:p-3 text-gray-400 bg-gray-100" />}
+                       {loggedInStaff.images && loggedInStaff.images[0] ? <img src={loggedInStaff.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 sm:p-3 text-gray-400 bg-gray-100"/>}
                    </div>
                    <div>
                        <h2 className="text-xl sm:text-2xl font-bold text-[#123524]">{loggedInStaff.name}</h2>
                        <p className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">Professional Therapist</p>
                    </div>
                </div>
-               <button onClick={onLogout} className="text-[10px] sm:text-xs font-bold text-red-500 flex items-center bg-red-50 px-2 sm:px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100 whitespace-nowrap"><LogOut className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Log Out</span></button>
+               <button onClick={onLogout} className="text-[10px] sm:text-xs font-bold text-red-500 flex items-center bg-red-50 px-2 sm:px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100 whitespace-nowrap"><LogOut className="w-3.5 h-3.5 sm:mr-1"/> <span className="hidden sm:inline">Log Out</span></button>
            </div>
 
            <div className="flex space-x-1 sm:space-x-2 mb-6 bg-gray-50 p-1.5 rounded-xl border border-gray-100 overflow-x-auto scrollbar-hide whitespace-nowrap relative">
@@ -253,37 +238,55 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={loggedInStaff} />}
            {staffTab === 'financials' && <StaffPenaltyView therapistName={loggedInStaff.name} />}
            
+           {/* 🌟 DUTY ROSTER VIEW (Dropdown ပါဝင်သည်) 🌟 */}
            {staffTab === 'roster' && (
                <div className="space-y-4 animate-fade-in mt-4">
                    <div className="text-center mb-6 border-b border-gray-100 pb-4">
-                       <h2 className="text-xl font-bold text-[#123524] tracking-wider mb-2 flex justify-center items-center"><ClipboardList className="w-5 h-5 mr-2 text-[#D4AF37]"/> Duty Roster</h2>
-                       <p className="text-xs text-gray-400 font-bold">ယခုအပတ်အတွက် သန့်ရှင်းရေးနှင့် တာဝန်ခွဲဝေမှုများ</p>
-                       {rosterData?.lastRotated && <span className="inline-block mt-3 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold border border-blue-100">Last Updated: {rosterData.lastRotated}</span>}
+                       <h2 className="text-xl font-bold text-[#123524] tracking-wider mb-1 flex justify-center items-center"><ClipboardList className="w-5 h-5 mr-2 text-[#D4AF37]"/> Duty Roster</h2>
+                       <p className="text-[10px] text-gray-500 font-semibold mb-2">(အသေးစိတ်ဖတ်ရန် တာဝန်ခေါင်းစဉ်များကို နှိပ်ပါ)</p>
+                       {rosterData?.lastRotated && <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold border border-blue-100">Last Updated: {rosterData.lastRotated}</span>}
                    </div>
 
-                   {rosterData?.assignments ? (
-                       <div className="space-y-4">
-                           {[
-                               { id: 'reception', title: '၁။ ဧည့်ကြိုနှင့် ဧည့်ခန်းစောင့်တာဝန်' },
-                               { id: 'water_garbage', title: '၂။ ရေစောင့်တင်ရန်နှင့် အမှိုက်ပစ်တာဝန်' },
-                               { id: 'laundry_rooms', title: '၃။ တဘက်/အခင်းလျှော်နှင့် အခန်းသန့်ရှင်းရေး' },
-                               { id: 'kitchen_cooking', title: '၄။ မီးဖိုချောင်နှင့် ထမင်းချက်တာဝန်' },
-                               { id: 'bathroom_toilet', title: '၅။ ရေချိုးခန်းနှင့် အိမ်သာ သန့်ရှင်းရေး' }
-                           ].map(task => {
+                   {rosterData?.assignments && rosterData?.tasks ? (
+                       <div className="space-y-3">
+                           {rosterData.tasks.map((task: any) => {
                                const assignedIds = rosterData.assignments[task.id] || [];
                                const isMyDuty = assignedIds.includes(loggedInStaff.id);
+                               
                                return (
-                                   <div key={task.id} className={`p-4 rounded-xl border ${isMyDuty ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] border-[#D4AF37] shadow-lg shadow-[#123524]/20 transform scale-[1.02] transition-transform' : 'bg-gray-50 border-gray-200 shadow-sm'}`}>
-                                       <div className="flex items-start justify-between mb-3"><h3 className={`font-bold text-sm leading-relaxed ${isMyDuty ? 'text-[#D4AF37]' : 'text-[#123524]'}`}>{task.title}</h3>{isMyDuty && <span className="bg-[#D4AF37] text-[#123524] text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ml-2 whitespace-nowrap shadow-sm">Your Duty</span>}</div>
-                                       <div className="flex flex-wrap gap-2">
-                                           {assignedIds.length === 0 ? (<span className={`text-[10px] italic font-semibold ${isMyDuty ? 'text-gray-300' : 'text-gray-400'}`}>No staff assigned</span>) : (
-                                               assignedIds.map((id: string) => {
-                                                   const tProfile = appData.therapists.find(t => t.id === id); const isMe = id === loggedInStaff.id;
-                                                   return (<span key={id} className={`text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center shadow-sm ${isMe ? 'bg-white text-[#123524]' : 'bg-white border border-gray-200 text-gray-700'}`}><User className={`w-3 h-3 mr-1.5 ${isMe ? 'text-[#D4AF37]' : 'text-gray-400'}`}/> {tProfile ? tProfile.name : id}</span>);
-                                               })
-                                           )}
+                                   <details key={task.id} className={`group rounded-xl border ${isMyDuty ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] border-[#D4AF37] shadow-lg transform scale-[1.02] transition-transform' : 'bg-gray-50 border-gray-200 shadow-sm'} overflow-hidden`}>
+                                       
+                                       {/* ခေါင်းစဉ် (Summary) */}
+                                       <summary className="p-4 flex items-center justify-between cursor-pointer outline-none list-none">
+                                           <h3 className={`font-bold text-sm leading-relaxed pr-2 ${isMyDuty ? 'text-[#D4AF37]' : 'text-[#123524]'}`}>{task.title}</h3>
+                                           <div className="flex items-center gap-2">
+                                               {isMyDuty && <span className="bg-[#D4AF37] text-[#123524] text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest shadow-sm">Your Duty</span>}
+                                               <ChevronDown className={`w-4 h-4 transition-transform group-open:rotate-180 ${isMyDuty ? 'text-[#D4AF37]' : 'text-gray-400'}`}/>
+                                           </div>
+                                       </summary>
+
+                                       {/* အသေးစိတ် (Details Content) */}
+                                       <div className={`p-4 pt-0 border-t ${isMyDuty ? 'border-white/10' : 'border-gray-200'} bg-black/5`}>
+                                            <div className="mt-3 py-3 px-3 rounded-lg bg-black/10">
+                                                <ul className="space-y-1.5">
+                                                    {task.desc.map((d:string, i:number) => (
+                                                        <li key={i} className={`flex items-start text-[11px] font-semibold leading-relaxed ${isMyDuty ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                            <span className="mr-2 mt-0.5">•</span><span>{d}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+
+                                            <div className="flex flex-wrap gap-2 mt-3">
+                                               {assignedIds.length === 0 ? (<span className={`text-[10px] italic font-semibold ${isMyDuty ? 'text-gray-300' : 'text-gray-400'}`}>No staff assigned</span>) : (
+                                                   assignedIds.map((id: string) => {
+                                                       const tProfile = appData.therapists.find(t => t.id === id); const isMe = id === loggedInStaff.id;
+                                                       return (<span key={id} className={`text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center shadow-sm ${isMe ? 'bg-white text-[#123524]' : 'bg-white border border-gray-200 text-gray-700'}`}><User className={`w-3 h-3 mr-1.5 ${isMe ? 'text-[#D4AF37]' : 'text-gray-400'}`}/> {tProfile ? tProfile.name : id}</span>);
+                                                   })
+                                               )}
+                                           </div>
                                        </div>
-                                   </div>
+                                   </details>
                                );
                            })}
                        </div>
