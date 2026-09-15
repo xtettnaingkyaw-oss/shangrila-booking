@@ -4,7 +4,7 @@ import { collection, query, onSnapshot, doc, updateDoc, addDoc, where } from 'fi
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
-import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy, TrendingUp, Target, Award, Star, Crown, Banknote, ClipboardList } from 'lucide-react';
+import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy, TrendingUp, Target, Award, Star, Crown, Banknote, ClipboardList, Bell } from 'lucide-react';
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 
 import { CustomerBookingWizard } from './CustomerApp';
@@ -226,7 +226,11 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                    {/* 🌟 View More Button (Noti Indicator ပါဝင်သည်) 🌟 */}
                    <button onClick={() => setShowMoreTabs(!showMoreTabs)} className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition flex items-center justify-center ${['history', 'financials', 'roster'].includes(staffTab) || showMoreTabs ? 'bg-gray-200 text-[#123524] shadow-inner' : 'text-gray-500 hover:bg-gray-100'}`}>
                        More <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${showMoreTabs ? 'rotate-180' : ''}`} />
-                       {(unpaidPenaltyCount > 0 || hasRosterNoti) && <span className="absolute top-1 right-2 bg-red-500 w-2 h-2 rounded-full shadow-sm animate-pulse border border-white"></span>}
+                       {(unpaidPenaltyCount > 0 || hasRosterNoti) && (
+                           <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-100 border border-red-200 rounded-full flex items-center justify-center shadow-sm">
+                               <Bell className="w-3 h-3 text-red-500 animate-pulse fill-red-500 origin-top" style={{ animation: 'wiggle 1s ease-in-out infinite' }} />
+                           </span>
+                       )}
                    </button>
                </div>
 
