@@ -145,6 +145,39 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    // 🌟 Duty Roster Noti States 🌟
    const [rosterData, setRosterData] = useState<any>(null);
    const [hasRosterNoti, setHasRosterNoti] = useState(false);
+   const [unpaidPenaltyCount, setUnpaidPenaltyCount] = useState(0);
+
+   useEffect(() => {
+       const q = query(collection(db, 'bookings'), where('therapist', '==', loggedInStaff.name));
+       const unsubscribe = onSnapshot(q, (snap) => {
+           let foundActive = null;
+           snap.forEach((doc) => {
+               const raw = doc.data();
+               const b = { 
+                   id: doc.id, 
+                   ...raw,
+                   name: decryptText(raw.name) || raw.name,
+                   phone: decryptText(raw.phone) || raw.phone,
+                   txId: decryptText(raw.txId) || raw.txId,
+                   specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
+               } as Booking;
+               if (b.status === 'in_progress') foundActive = b;
+           });
+           setActiveSession(foundActive);
+           setLoading(false);
+       });
+       return () => unsubscribe();
+   }, [loggedInStaff.name]);
+
+   useEffect(() => {
+       const q = query(collection(db, 'penalties'), where('therapistName', '==', loggedInStaff.name));
+       const unsubscribe = onSnapshot(q, (snap) => {
+           let count = 0;
+           snap.forEach((doc) => { if (doc.data().isPaid === false) count++; });
+           setUnpaidPenaltyCount(count);
+       });
+       return () => unsubscribe();
+   }, [loggedInStaff.name]);
 
    useEffect(() => {
        const unsub = onSnapshot(doc(db, 'settings', 'dutyRoster'), (docSnap) => {
@@ -164,49 +197,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
        setStaffTab('roster'); setHasRosterNoti(false);
        if (rosterData?.updatedAt) localStorage.setItem('shangrila_roster_last_seen', rosterData.updatedAt.toString());
    };
-   
-   // 🌟 အသစ်တိုးထားသော State (မဆောင်ရသေးသော ဒဏ်ကြေးအရေအတွက်ကို ရေတွက်ရန်) 🌟
-   const [unpaidPenaltyCount, setUnpaidPenaltyCount] = useState(0);
-
-   useEffect(() => {
-       const q = query(collection(db, 'bookings'), where('therapist', '==', loggedInStaff.name));
-       const unsubscribe = onSnapshot(q, (snap) => {
-           let foundActive = null;
-           snap.forEach((doc) => {
-               const raw = doc.data();
-               const b = { 
-                   id: doc.id, 
-                   ...raw,
-                   name: decryptText(raw.name) || raw.name,
-                   phone: decryptText(raw.phone) || raw.phone,
-                   txId: decryptText(raw.txId) || raw.txId,
-                   specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
-               } as Booking;
-               
-               if (b.status === 'in_progress') {
-                   foundActive = b;
-               }
-           });
-           setActiveSession(foundActive);
-           setLoading(false);
-       });
-       return () => unsubscribe();
-   }, [loggedInStaff.name]);
-
-   // 🌟 အသစ်တိုးထားသော Effect (ဒဏ်ကြေးများကို အမြဲစောင့်ကြည့်နေရန်) 🌟
-   useEffect(() => {
-       const q = query(collection(db, 'penalties'), where('therapistName', '==', loggedInStaff.name));
-       const unsubscribe = onSnapshot(q, (snap) => {
-           let count = 0;
-           snap.forEach((doc) => {
-               if (doc.data().isPaid === false) {
-                   count++;
-               }
-           });
-           setUnpaidPenaltyCount(count);
-       });
-       return () => unsubscribe();
-   }, [loggedInStaff.name]);
 
    const handleStopSession = async () => {
        if (!activeSession || !activeSession.id) return;
@@ -246,17 +236,11 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                <button onClick={() => setStaffTab('outpass')} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Pass</button>
                <button onClick={() => setStaffTab('performance')} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'performance' ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] shadow text-[#D4AF37]' : 'text-gray-500 hover:bg-gray-100'}`}><Sparkles className="w-3 h-3 inline mb-0.5 mr-1"/>Matrix</button>
                
-               {/* 🌟 ပြင်ဆင်ထားသော Fine & Loan ခလုတ် (Noti ပါဝင်သည်) 🌟 */}
                <button onClick={() => setStaffTab('financials')} className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'financials' ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:bg-gray-100'}`}>
                    <Banknote className="w-3 h-3 inline mb-0.5 mr-1"/>Fine & Loan
-                   {unpaidPenaltyCount > 0 && (
-                       <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full shadow-md animate-pulse">
-                           {unpaidPenaltyCount}
-                       </span>
-                   )}
+                   {unpaidPenaltyCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full shadow-md animate-pulse">{unpaidPenaltyCount}</span>}
                </button>
                
-              {/* 🌟 Duty Roster Button (Noti) 🌟 */}
                <button onClick={handleGoToRoster} className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'roster' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}>
                    <ClipboardList className={`w-3 h-3 inline mb-0.5 mr-1 ${staffTab === 'roster' ? 'animate-bounce' : ''}`} />Duties
                    {hasRosterNoti && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] w-3.5 h-3.5 flex items-center justify-center rounded-full shadow-md animate-ping"></span>}
@@ -269,7 +253,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={loggedInStaff} />}
            {staffTab === 'financials' && <StaffPenaltyView therapistName={loggedInStaff.name} />}
            
-           {/* 🌟 DUTY ROSTER VIEW 🌟 */}
            {staffTab === 'roster' && (
                <div className="space-y-4 animate-fade-in mt-4">
                    <div className="text-center mb-6 border-b border-gray-100 pb-4">
@@ -334,8 +317,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                )
            )}
        </div>
-   );
-}
    );
 }
 
