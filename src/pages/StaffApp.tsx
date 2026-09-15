@@ -228,7 +228,8 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                        More <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${showMoreTabs ? 'rotate-180' : ''}`} />
                        {(unpaidPenaltyCount > 0 || hasRosterNoti) && (
                            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-100 border border-red-200 rounded-full flex items-center justify-center shadow-sm">
-                               <Bell className="w-3 h-3 text-red-500 animate-pulse fill-red-500 origin-top" style={{ animation: 'wiggle 1s ease-in-out infinite' }} />
+                               <style>{`@keyframes bell-ring { 0%, 100% { transform: rotate(-15deg); } 50% { transform: rotate(15deg); } }`}</style>
+                               <Bell className="w-3 h-3 text-red-500 fill-red-500 origin-top" style={{ animation: 'bell-ring 0.3s ease-in-out infinite' }} />
                            </span>
                        )}
                    </button>
