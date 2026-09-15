@@ -256,7 +256,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                    )}
                </button>
                
-               {/* 🌟 Duty Roster Button (Noti) 🌟 */}
+              {/* 🌟 Duty Roster Button (Noti) 🌟 */}
                <button onClick={handleGoToRoster} className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'roster' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}>
                    <ClipboardList className={`w-3 h-3 inline mb-0.5 mr-1 ${staffTab === 'roster' ? 'animate-bounce' : ''}`} />Duties
                    {hasRosterNoti && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] w-3.5 h-3.5 flex items-center justify-center rounded-full shadow-md animate-ping"></span>}
