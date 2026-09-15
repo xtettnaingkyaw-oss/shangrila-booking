@@ -309,6 +309,33 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                    )}
                </div>
            )}
+
+           {staffTab === 'service' && (
+               activeSession ? (
+                   <ActiveSessionDisplay session={activeSession} onStop={handleStopSession} />
+               ) : showClockInFlow ? (
+                   <div className="animate-fade-in mt-4">
+                       <div className="flex items-center justify-between mb-6">
+                           <button onClick={() => setShowClockInFlow(false)} className="text-xs font-bold text-gray-500 flex items-center bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200"><ChevronLeft className="w-3 h-3 mr-1"/> BACK</button>
+                       </div>
+                       <div className="text-center mb-8 border-b border-gray-100 pb-6">
+                           <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><CalendarPlus className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Clock In</h2>
+                           <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
+                       </div>
+                       <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} staffClockIn={true} staffClockInSuccess={() => setShowClockInFlow(false)} preselectedStaff={loggedInStaff.name}/>
+                   </div>
+               ) : (
+                   <div className="text-center py-16 sm:py-20 border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50 mt-4">
+                       <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white rounded-full mx-auto flex items-center justify-center mb-6 sm:mb-8 text-[#D4AF37] shadow-inner border border-gray-100"><CheckCircle className="w-10 h-10 sm:w-12 sm:h-12" /></div>
+                       <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">Ready For Service</h3>
+                       <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-8 sm:mb-10 max-w-sm mx-auto leading-relaxed px-4">No active session. Please click the button below to Clock In and start tracking your service time.</p>
+                       <button onClick={() => setShowClockInFlow(true)} className="px-6 sm:px-10 py-3 sm:py-4 bg-[#123524] text-white rounded-xl font-bold shadow-lg flex items-center mx-auto hover:bg-green-900 transition text-sm"><Sparkles className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-[#D4AF37]"/> Clock In / Start New Service</button>
+                   </div>
+               )
+           )}
+       </div>
+   );
+}
    );
 }
 
