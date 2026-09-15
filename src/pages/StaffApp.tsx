@@ -4,7 +4,7 @@ import { collection, query, onSnapshot, doc, updateDoc, addDoc, where } from 'fi
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
-import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy, TrendingUp, Target, Award, Star, Crown, Banknote } from 'lucide-react';
+import { LogOut, User, Clock, CheckCircle, ChevronLeft, CalendarPlus, History, Coffee, Sparkles, Trash2, Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy, TrendingUp, Target, Award, Star, Crown, Banknote, ClipboardList } from 'lucide-react';
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 
 import { CustomerBookingWizard } from './CustomerApp';
@@ -140,7 +140,30 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
    const [activeSession, setActiveSession] = useState<Booking | null>(null);
    const [showClockInFlow, setShowClockInFlow] = useState(false);
    const [loading, setLoading] = useState(true);
-   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials'>('service');
+   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials' | 'roster'>('service');
+   
+   // 🌟 Duty Roster Noti States 🌟
+   const [rosterData, setRosterData] = useState<any>(null);
+   const [hasRosterNoti, setHasRosterNoti] = useState(false);
+
+   useEffect(() => {
+       const unsub = onSnapshot(doc(db, 'settings', 'dutyRoster'), (docSnap) => {
+           if (docSnap.exists()) {
+               const data = docSnap.data();
+               setRosterData(data);
+               const lastSeen = localStorage.getItem('shangrila_roster_last_seen');
+               if (!lastSeen || Number(lastSeen) < (data.updatedAt || 0)) {
+                   if (staffTab !== 'roster') setHasRosterNoti(true);
+               }
+           }
+       });
+       return () => unsub();
+   }, [staffTab]);
+
+   const handleGoToRoster = () => {
+       setStaffTab('roster'); setHasRosterNoti(false);
+       if (rosterData?.updatedAt) localStorage.setItem('shangrila_roster_last_seen', rosterData.updatedAt.toString());
+   };
    
    // 🌟 အသစ်တိုးထားသော State (မဆောင်ရသေးသော ဒဏ်ကြေးအရေအတွက်ကို ရေတွက်ရန်) 🌟
    const [unpaidPenaltyCount, setUnpaidPenaltyCount] = useState(0);
@@ -232,6 +255,13 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                        </span>
                    )}
                </button>
+               
+               {/* 🌟 Duty Roster Button (Noti) 🌟 */}
+               <button onClick={handleGoToRoster} className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'roster' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}>
+                   <ClipboardList className={`w-3 h-3 inline mb-0.5 mr-1 ${staffTab === 'roster' ? 'animate-bounce' : ''}`} />Duties
+                   {hasRosterNoti && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] w-3.5 h-3.5 flex items-center justify-center rounded-full shadow-md animate-ping"></span>}
+                   {hasRosterNoti && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] w-3.5 h-3.5 flex items-center justify-center rounded-full shadow-md"></span>}
+               </button>
            </div>
 
            {staffTab === 'history' && <StaffDailyHistoryTab loggedInStaff={loggedInStaff} />}
@@ -239,30 +269,46 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={loggedInStaff} />}
            {staffTab === 'financials' && <StaffPenaltyView therapistName={loggedInStaff.name} />}
            
-           {staffTab === 'service' && (
-               activeSession ? (
-                   <ActiveSessionDisplay session={activeSession} onStop={handleStopSession} />
-               ) : showClockInFlow ? (
-                   <div className="animate-fade-in mt-4">
-                       <div className="flex items-center justify-between mb-6">
-                           <button onClick={() => setShowClockInFlow(false)} className="text-xs font-bold text-gray-500 flex items-center bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200"><ChevronLeft className="w-3 h-3 mr-1"/> BACK</button>
-                       </div>
-                       <div className="text-center mb-8 border-b border-gray-100 pb-6">
-                           <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><CalendarPlus className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Clock In</h2>
-                           <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
-                       </div>
-                       <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} staffClockIn={true} staffClockInSuccess={() => setShowClockInFlow(false)} preselectedStaff={loggedInStaff.name}/>
+           {/* 🌟 DUTY ROSTER VIEW 🌟 */}
+           {staffTab === 'roster' && (
+               <div className="space-y-4 animate-fade-in mt-4">
+                   <div className="text-center mb-6 border-b border-gray-100 pb-4">
+                       <h2 className="text-xl font-bold text-[#123524] tracking-wider mb-2 flex justify-center items-center"><ClipboardList className="w-5 h-5 mr-2 text-[#D4AF37]"/> Duty Roster</h2>
+                       <p className="text-xs text-gray-400 font-bold">ယခုအပတ်အတွက် သန့်ရှင်းရေးနှင့် တာဝန်ခွဲဝေမှုများ</p>
+                       {rosterData?.lastRotated && <span className="inline-block mt-3 px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold border border-blue-100">Last Updated: {rosterData.lastRotated}</span>}
                    </div>
-               ) : (
-                   <div className="text-center py-16 sm:py-20 border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50 mt-4">
-                       <div className="w-20 h-20 sm:w-24 sm:h-24 bg-white rounded-full mx-auto flex items-center justify-center mb-6 sm:mb-8 text-[#D4AF37] shadow-inner border border-gray-100"><CheckCircle className="w-10 h-10 sm:w-12 sm:h-12" /></div>
-                       <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">Ready For Service</h3>
-                       <p className="text-[10px] sm:text-xs font-bold text-gray-500 mb-8 sm:mb-10 max-w-sm mx-auto leading-relaxed px-4">No active session. Please click the button below to Clock In and start tracking your service time.</p>
-                       <button onClick={() => setShowClockInFlow(true)} className="px-6 sm:px-10 py-3 sm:py-4 bg-[#123524] text-white rounded-xl font-bold shadow-lg flex items-center mx-auto hover:bg-green-900 transition text-sm"><Sparkles className="w-4 h-4 sm:w-5 sm:h-5 mr-2 text-[#D4AF37]"/> Clock In / Start New Service</button>
-                   </div>
-               )
+
+                   {rosterData?.assignments ? (
+                       <div className="space-y-4">
+                           {[
+                               { id: 'reception', title: '၁။ ဧည့်ကြိုနှင့် ဧည့်ခန်းစောင့်တာဝန်' },
+                               { id: 'water_garbage', title: '၂။ ရေစောင့်တင်ရန်နှင့် အမှိုက်ပစ်တာဝန်' },
+                               { id: 'laundry_rooms', title: '၃။ တဘက်/အခင်းလျှော်နှင့် အခန်းသန့်ရှင်းရေး' },
+                               { id: 'kitchen_cooking', title: '၄။ မီးဖိုချောင်နှင့် ထမင်းချက်တာဝန်' },
+                               { id: 'bathroom_toilet', title: '၅။ ရေချိုးခန်းနှင့် အိမ်သာ သန့်ရှင်းရေး' }
+                           ].map(task => {
+                               const assignedIds = rosterData.assignments[task.id] || [];
+                               const isMyDuty = assignedIds.includes(loggedInStaff.id);
+                               return (
+                                   <div key={task.id} className={`p-4 rounded-xl border ${isMyDuty ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] border-[#D4AF37] shadow-lg shadow-[#123524]/20 transform scale-[1.02] transition-transform' : 'bg-gray-50 border-gray-200 shadow-sm'}`}>
+                                       <div className="flex items-start justify-between mb-3"><h3 className={`font-bold text-sm leading-relaxed ${isMyDuty ? 'text-[#D4AF37]' : 'text-[#123524]'}`}>{task.title}</h3>{isMyDuty && <span className="bg-[#D4AF37] text-[#123524] text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ml-2 whitespace-nowrap shadow-sm">Your Duty</span>}</div>
+                                       <div className="flex flex-wrap gap-2">
+                                           {assignedIds.length === 0 ? (<span className={`text-[10px] italic font-semibold ${isMyDuty ? 'text-gray-300' : 'text-gray-400'}`}>No staff assigned</span>) : (
+                                               assignedIds.map((id: string) => {
+                                                   const tProfile = appData.therapists.find(t => t.id === id); const isMe = id === loggedInStaff.id;
+                                                   return (<span key={id} className={`text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center shadow-sm ${isMe ? 'bg-white text-[#123524]' : 'bg-white border border-gray-200 text-gray-700'}`}><User className={`w-3 h-3 mr-1.5 ${isMe ? 'text-[#D4AF37]' : 'text-gray-400'}`}/> {tProfile ? tProfile.name : id}</span>);
+                                               })
+                                           )}
+                                       </div>
+                                   </div>
+                               );
+                           })}
+                       </div>
+                   ) : (
+                       <div className="text-center p-10 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs font-bold">တာဝန်ခွဲဝေထားခြင်း မရှိသေးပါ။</div>
+                   )}
+               </div>
            )}
-       </div>
    );
 }
 
