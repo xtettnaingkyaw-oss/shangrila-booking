@@ -191,37 +191,51 @@ export function DutyRosterSystem({ therapists }: { therapists: TherapistProfile[
                 )}
             </div>
 
-            {rosterView === 'dashboard' ? (
-                /* 🌟 OVERVIEW DASHBOARD VIEW 🌟 */
+           {rosterView === 'dashboard' ? (
+                /* 🌟 OVERVIEW DASHBOARD VIEW (Task-Centric) 🌟 */
                 <div className="animate-fade-in space-y-6">
                     <div className="flex justify-between items-center mb-2">
-                        <h3 className="text-sm font-bold text-gray-700 flex items-center"><Users className="w-4 h-4 mr-1.5 text-gray-400"/> Therapist Duty Status</h3>
-                        <div className="text-[10px] font-bold">
-                            <span className="text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100 mr-2">Assigned: {therapists.length - unassignedTherapists.length}</span>
+                        <h3 className="text-sm font-bold text-gray-700 flex items-center"><ClipboardList className="w-4 h-4 mr-1.5 text-[#D4AF37]"/> Duty Assignments Overview</h3>
+                        <div className="text-[10px] font-bold flex gap-2">
+                            <span className="text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">Assigned Staff: {therapists.length - unassignedTherapists.length}</span>
                             {unassignedTherapists.length > 0 && <span className="text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100">Unassigned: {unassignedTherapists.length}</span>}
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {therapists.map(t => {
-                            const myDuties = tasks.filter(task => (assignments[task.id] || []).includes(t.id));
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                        {tasks.map(task => {
+                            const assignedStaffIds = assignments[task.id] || [];
+                            const IconComp = ICON_MAP[task.iconName] || Coffee;
+
                             return (
-                                <div key={t.id} className={`p-4 rounded-xl border transition-all flex flex-col items-center text-center ${myDuties.length > 0 ? 'bg-white border-gray-200 shadow-sm hover:border-[#D4AF37]/50 hover:shadow-md' : 'bg-red-50/30 border-red-100'}`}>
-                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 shadow-sm border-2 ${myDuties.length > 0 ? 'bg-gray-50 border-gray-100' : 'bg-red-50 border-red-200'}`}>
-                                        <User className={`w-6 h-6 ${myDuties.length > 0 ? 'text-[#D4AF37]' : 'text-red-400'}`} />
+                                <div key={task.id} className={`p-5 rounded-2xl border flex flex-col ${task.bg} ${task.border} shadow-sm transition-all hover:shadow-md`}>
+                                    <div className="flex items-start mb-4">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 bg-white shadow-sm border ${task.border} flex-shrink-0`}>
+                                            <IconComp className={`w-5 h-5 ${task.color}`} />
+                                        </div>
+                                        <div className="flex-1 pt-0.5">
+                                            <h4 className={`font-bold text-sm leading-snug ${task.color}`}>{task.title}</h4>
+                                        </div>
                                     </div>
-                                    <h4 className="font-bold text-sm text-[#123524] mb-1 truncate w-full px-1">{t.name}</h4>
-                                    <div className="w-6 h-0.5 bg-[#D4AF37]/50 rounded-full mb-3"></div>
-                                    <div className="flex flex-col gap-1.5 w-full">
-                                        {myDuties.length === 0 ? (
-                                            <span className="text-[10px] text-red-500 font-bold bg-red-50 py-1 rounded-md border border-red-100">Duty မသတ်မှတ်ရသေးပါ</span>
+                                    
+                                    <div className="w-full h-px bg-black/5 mb-4"></div>
+                                    
+                                    <div className="flex flex-col gap-2.5 flex-1">
+                                        {assignedStaffIds.length === 0 ? (
+                                            <div className="flex-1 flex items-center justify-center border-2 border-dashed border-gray-300/50 rounded-xl bg-white/50 p-4">
+                                                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">No Staff Assigned</span>
+                                            </div>
                                         ) : (
-                                            myDuties.map(task => {
-                                                const IconC = ICON_MAP[task.iconName] || Coffee;
+                                            assignedStaffIds.map(staffId => {
+                                                const t = therapists.find(th => th.id === staffId);
                                                 return (
-                                                    <span key={task.id} className={`flex items-center justify-center gap-1.5 text-[10px] px-2 py-1.5 rounded-md border font-bold ${task.color} ${task.bg} ${task.border}`}>
-                                                        <IconC className="w-3 h-3"/> {task.shortName || task.title.split('။ ')[1] || task.title}
-                                                    </span>
-                                                )
+                                                    <div key={staffId} className="flex items-center bg-white px-3.5 py-2.5 rounded-xl shadow-sm border border-white/60">
+                                                        <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center mr-3 border border-gray-200 flex-shrink-0">
+                                                            <User className="w-4 h-4 text-gray-500" />
+                                                        </div>
+                                                        <span className="text-xs font-bold text-gray-800">{t ? t.name : staffId}</span>
+                                                    </div>
+                                                );
                                             })
                                         )}
                                     </div>
