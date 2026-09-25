@@ -550,12 +550,15 @@ export function AdminHRManagement() {
     const [approvalForm, setApprovalForm] = useState({ password: '', displayTherapistName: '' });
     const [processing, setProcessing] = useState(false);
     
-    // 🌟 ViewTab တွင် 'positions' ကိုပါ ထပ်တိုးပါ 🌟
     const [viewTab, setViewTab] = useState<'requests' | 'active' | 'positions'>('requests');
     
-    // 🌟 Admin အတွက် Job Positions State 🌟
+    // 🌟 Job Positions States 🌟
     const [jobPositions, setJobPositions] = useState<string[]>(['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security']);
     const [newPosition, setNewPosition] = useState('');
+    
+    // 🌟 Edit လုပ်ရန်အတွက် States အသစ်များ 🌟
+    const [editingPosIndex, setEditingPosIndex] = useState<number | null>(null);
+    const [editPosText, setEditPosText] = useState('');
 
     useEffect(() => {
         const unsubReq = onSnapshot(query(collection(db, 'onboarding_requests'), orderBy('createdAt', 'desc')), snap => {
@@ -565,7 +568,6 @@ export function AdminHRManagement() {
             const arr: any[] = []; snap.forEach(d => arr.push({ id: d.id, ...d.data() })); setActiveStaff(arr);
         });
         
-        // 🌟 Positions များကိုပါ Database မှ ဆွဲယူရန် 🌟
         const unsubHR = onSnapshot(doc(db, 'settings', 'hrSettings'), (docSnap) => {
             if (docSnap.exists() && docSnap.data().positions) {
                 setJobPositions(docSnap.data().positions);
@@ -577,7 +579,7 @@ export function AdminHRManagement() {
         return () => { unsubReq(); unsubStaff(); unsubHR(); };
     }, []);
 
-    // 🌟 ရာထူး အသစ်ထည့်ရန်နှင့် ဖျက်ရန် Functions 🌟
+    // 🌟 ရာထူး အသစ်ထည့်ရန် Function 🌟
     const handleAddPosition = async (e: React.FormEvent) => {
         e.preventDefault();
         if(!newPosition.trim()) return;
@@ -588,10 +590,36 @@ export function AdminHRManagement() {
         setNewPosition('');
     };
 
+    // 🌟 ရာထူး ဖျက်ရန် Function 🌟
     const handleDeletePosition = async (posToDelete: string) => {
         if(!window.confirm(`"${posToDelete}" ကို စာရင်းမှ ဖျက်မည် သေချာပါသလား?`)) return;
         const updated = jobPositions.filter(p => p !== posToDelete);
         await setDoc(doc(db, 'settings', 'hrSettings'), { positions: updated }, { merge: true });
+    };
+
+    // 🌟 ရာထူး အထက်အောက်ရွှေ့ရန် Functions 🌟
+    const movePositionUp = async (index: number) => {
+        if (index === 0) return;
+        const updated = [...jobPositions];
+        [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
+        await setDoc(doc(db, 'settings', 'hrSettings'), { positions: updated }, { merge: true });
+    };
+
+    const movePositionDown = async (index: number) => {
+        if (index === jobPositions.length - 1) return;
+        const updated = [...jobPositions];
+        [updated[index + 1], updated[index]] = [updated[index], updated[index + 1]];
+        await setDoc(doc(db, 'settings', 'hrSettings'), { positions: updated }, { merge: true });
+    };
+
+    // 🌟 ရာထူး အမည်ပြင်ဆင်ခြင်းကို သိမ်းရန် Function 🌟
+    const handleSaveEditPosition = async (index: number) => {
+        if (!editPosText.trim()) return;
+        const updated = [...jobPositions];
+        updated[index] = editPosText.trim();
+        await setDoc(doc(db, 'settings', 'hrSettings'), { positions: updated }, { merge: true });
+        setEditingPosIndex(null);
+        setEditPosText('');
     };
 
     const handleApprove = async (e: React.FormEvent) => {
@@ -664,7 +692,6 @@ export function AdminHRManagement() {
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
             
-            {/* ... Modal တွေ ... */}
             {selectedReq && (
                 <div className="fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up">
@@ -742,7 +769,6 @@ export function AdminHRManagement() {
                     Active Staff List
                     {updateRequestedCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse"></span>}
                 </button>
-                {/* 🌟 ရာထူးများ ပြင်ရန် Tab ခလုတ်သစ် 🌟 */}
                 <button onClick={() => setViewTab('positions')} className={`px-4 py-2 text-xs font-bold rounded-lg transition relative ${viewTab === 'positions' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>
                     Job Positions
                 </button>
@@ -817,11 +843,11 @@ export function AdminHRManagement() {
                 </div>
             )}
 
-            {/* 🌟 Job Positions Manage လုပ်မည့် နေရာ 🌟 */}
+            {/* 🌟 Job Positions Manage လုပ်မည့် နေရာ (Edit & Reorder အပြည့်အစုံပါသည်) 🌟 */}
             {viewTab === 'positions' && (
-                <div className="max-w-2xl bg-white p-6 border border-gray-200 rounded-2xl shadow-sm animate-fade-in">
+                <div className="max-w-2xl bg-white p-6 border border-gray-200 rounded-2xl shadow-sm animate-fade-in mt-2">
                     <h3 className="font-bold text-[#123524] mb-2 text-lg">Manage Job Positions</h3>
-                    <p className="text-xs text-gray-500 mb-6">ဝန်ထမ်းများ Onboarding Form ဖြည့်ရာတွင် ရွေးချယ်နိုင်မည့် ရာထူးများကို အတိုး/အလျော့ ပြုလုပ်နိုင်ပါသည်။</p>
+                    <p className="text-xs text-gray-500 mb-6">ဝန်ထမ်းများ Onboarding Form ဖြည့်ရာတွင် ရွေးချယ်နိုင်မည့် ရာထူးများကို အတိုး/အလျော့/အထက်အောက် ပြုလုပ်နိုင်ပါသည်။</p>
                     
                     <form onSubmit={handleAddPosition} className="flex gap-3 mb-8">
                         <input 
@@ -839,18 +865,61 @@ export function AdminHRManagement() {
 
                     <div className="space-y-3">
                         {jobPositions.length === 0 && <p className="text-xs text-gray-400 text-center py-4">ရာထူးများ မရှိသေးပါ။</p>}
-                        {jobPositions.map(pos => (
-                            <div key={pos} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200 hover:border-[#D4AF37] transition">
-                                <span className="font-bold text-gray-700">{pos}</span>
-                                <button onClick={() => handleDeletePosition(pos)} className="text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-lg transition" title="Delete">
-                                    <Trash2 className="w-4 h-4"/>
-                                </button>
+                        {jobPositions.map((pos, idx) => (
+                            <div key={idx} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-200 hover:border-[#D4AF37] transition shadow-sm group">
+                                
+                                {/* 🌟 အထက်/အောက် ရွှေ့ရန် ခလုတ်များ 🌟 */}
+                                <div className="flex flex-col gap-1 mr-4">
+                                    <button type="button" onClick={() => movePositionUp(idx)} disabled={idx === 0} className="p-0.5 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-30 transition">
+                                        <ChevronUp className="w-3 h-3 text-gray-600" />
+                                    </button>
+                                    <button type="button" onClick={() => movePositionDown(idx)} disabled={idx === jobPositions.length - 1} className="p-0.5 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-30 transition">
+                                        <ChevronDown className="w-3 h-3 text-gray-600" />
+                                    </button>
+                                </div>
+
+                                {/* 🌟 ရာထူးအမည် သို့မဟုတ် ပြင်ဆင်ရန် Input 🌟 */}
+                                <div className="flex-1">
+                                    {editingPosIndex === idx ? (
+                                        <input 
+                                            type="text" 
+                                            value={editPosText} 
+                                            onChange={(e) => setEditPosText(e.target.value)} 
+                                            className="w-full p-2 text-sm border-2 border-[#D4AF37] rounded-lg outline-none font-bold text-gray-800"
+                                            autoFocus
+                                        />
+                                    ) : (
+                                        <span className="font-bold text-gray-700">{pos}</span>
+                                    )}
+                                </div>
+
+                                {/* 🌟 Edit / Save / Delete Actions 🌟 */}
+                                <div className="flex items-center gap-2 ml-4">
+                                    {editingPosIndex === idx ? (
+                                        <>
+                                            <button onClick={() => setEditingPosIndex(null)} className="text-gray-500 bg-gray-200 hover:bg-gray-300 p-2.5 rounded-lg transition" title="Cancel">
+                                                <X className="w-4 h-4"/>
+                                            </button>
+                                            <button onClick={() => handleSaveEditPosition(idx)} className="text-white bg-green-600 hover:bg-green-700 p-2.5 rounded-lg transition shadow-sm" title="Save">
+                                                <CheckCircle className="w-4 h-4"/>
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button onClick={() => { setEditingPosIndex(idx); setEditPosText(pos); }} className="text-blue-600 bg-blue-50 hover:bg-blue-100 p-2.5 rounded-lg transition opacity-0 group-hover:opacity-100 focus:opacity-100" title="Edit Name">
+                                                <Edit className="w-4 h-4"/>
+                                            </button>
+                                            <button onClick={() => handleDeletePosition(pos)} className="text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-lg transition" title="Delete Position">
+                                                <Trash2 className="w-4 h-4"/>
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>
                 </div>
             )}
-
         </div>
     );
 }
