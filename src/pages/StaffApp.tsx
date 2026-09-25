@@ -148,14 +148,14 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
            <label className="block text-left text-xs font-bold text-gray-500 mb-1">Select Therapist</label>
            <div className="relative">
                {/* 🌟 ဤနေရာတွင် onChange သည့်အခါ t.id ကို သိမ်းဆည်းရန် value={t.id} ဟု ပြင်ဆင်ထားပါသည် 🌟 */}
-               <select required value={therapistId} onChange={e=>setTherapistId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider appearance-none cursor-pointer text-gray-800">
-                   <option value="" disabled>-- Select Your Profile --</option>
-                   {Array.from(new Map(therapists.map((t: any) => [t.name, t])).values()).map((t: any) => (
-                       <option key={t.id} value={t.id}>
-                           {t.name} {t.onboardingData ? `(${t.id})` : ''}
-                       </option>
-                   ))}
-               </select>
+              <select required value={therapistId} onChange={e=>setTherapistId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider appearance-none cursor-pointer text-gray-800">
+   <option value="" disabled>-- Select Your Profile --</option>
+   {Array.from(new Map(therapists.map((t: any) => [t.name, t])).values()).map((t: any) => (
+       <option key={t.id} value={t.id}>
+           {t.name}
+       </option>
+   ))}
+</select>
                <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-400"><ChevronDown className="w-4 h-4" /></div>
            </div>
         </div>
