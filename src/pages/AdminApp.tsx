@@ -2387,6 +2387,17 @@ const handleSaveTherapists = async () => {
                                 </div>
                             </div>
                         </div>
+                        
+                    </div>
+                 ))}
+               </div>
+             </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
     const [matrixData, setMatrixData] = useState<any>(null);
