@@ -126,13 +126,24 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
       fetchRole();
   }, [loggedInAdmin, tab]);
 
+// 🌟 Pending Onboarding Requests အရေအတွက်ကို ယူရန် State နှင့် useEffect 🌟
+const [onboardingPendingCount, setOnboardingPendingCount] = useState(0);
+
+useEffect(() => {
+    const q = query(collection(db, 'onboarding_requests'), where('status', '==', 'pending'));
+    const unsubReq = onSnapshot(q, (snap) => {
+        setOnboardingPendingCount(snap.size);
+    });
+    return () => unsubReq();
+}, []);
+
 useEffect(() => {
     const q = query(collection(db, 'users'), where('resetRequested', '==', true));
     const unsubUsers = onSnapshot(q, (snap) => {
-        setResetRequestCount(snap.size); // Loop ပတ်စရာမလိုတော့ပါ၊ အရေအတွက်ကို တန်းယူလိုက်ရုံပါပဲ
+        setResetRequestCount(snap.size); 
     });
     return () => unsubUsers();
-  }, []);
+}, []);
 
    // 🌟 အသစ်ထည့်ထားသော useEffect (Staff Profile Update တောင်းဆိုမှု အရေအတွက်ကို ယူရန်) 🌟
  useEffect(() => {
@@ -188,8 +199,12 @@ useEffect(() => {
         {hasAccess('settings') && (<button onClick={() => setTab('roster')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ClipboardList className="w-4 h-4 mr-2" /> Duty Roster</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('hr')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'hr' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
     <UserPlus className="w-4 h-4 mr-2" /> HR Management 
-    {/* 🌟 Update Request ရှိရင် အနီစက်ပြမည့် အပိုင်း 🌟 */}
-    {updateRequestCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{updateRequestCount}</span>}
+    {/* 🌟 Pending Request သို့မဟုတ် Update Request တစ်ခုခုရှိလျှင် အနီစက်ပြမည် 🌟 */}
+    {(updateRequestCount > 0 || onboardingPendingCount > 0) && (
+        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
+            {updateRequestCount + onboardingPendingCount}
+        </span>
+    )}
 </button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('settings')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>)}
         <button onClick={onLogout} className="px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm sm:ml-2"><LogOut className="w-4 h-4 mr-2" /> Logout</button>
