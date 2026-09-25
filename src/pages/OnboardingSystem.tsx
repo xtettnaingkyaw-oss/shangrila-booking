@@ -3,7 +3,7 @@ import { collection, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteD
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../firebase';
 import { encryptText } from '../security';
-import { UserPlus, FileText, CheckCircle, Clock, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning } from 'lucide-react';
+import { UserPlus, FileText, CheckCircle, Clock, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning, Download as DownloadIcon } from 'lucide-react';
 
 const JOB_POSITIONS = ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'];
 const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ', 'ရပ်ကွက်ရဲစခန်း ထောက်ခံစာ အပ်ပြီးပါပြီ'];
@@ -93,7 +93,6 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         }
     };
 
-    // 🌟 Validation: အချက်အလက်စုံ/မစုံ စစ်ဆေးခြင်း (Rules & Checklist များကို တင်းကျပ်မှု လျှော့ချထားသည်) 🌟
     const isFormValid = () => {
         return (
             formData.fullName.trim() !== '' &&
@@ -260,6 +259,80 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
     );
 }
 
+// 🌟 Photo Viewer Modal Component 🌟
+function PhotoViewerModal({ src, onClose }: { src: string, onClose: () => void }) {
+    return (
+        <div className="fixed inset-0 z-[1000] bg-black/90 flex flex-col items-center justify-center p-4 animate-fade-in">
+            <div className="absolute top-4 right-4 flex gap-4">
+                <a href={src} download="document.jpg" className="bg-white/20 p-3 rounded-full hover:bg-white/40 transition">
+                    <DownloadIcon className="w-6 h-6 text-white" />
+                </a>
+                <button onClick={onClose} className="bg-white/20 p-3 rounded-full hover:bg-white/40 transition">
+                    <X className="w-6 h-6 text-white" />
+                </button>
+            </div>
+            <img src={src} alt="Document" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" />
+        </div>
+    );
+}
+
+// 🌟 Reusable Profile Details Component (Used by both Admin & Staff App) 🌟
+function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data: any, staffId: string, therapistName?: string, onClose?: () => void }) {
+    const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
+
+    return (
+        <div className="flex flex-col h-full">
+            {viewingPhoto && <PhotoViewerModal src={viewingPhoto} onClose={() => setViewingPhoto(null)} />}
+            
+            <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Employee ID</span><span className="font-bold text-[#123524]">{staffId}</span></div>
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Actual Name (အမည်ရင်း)</span><span className="font-bold text-gray-800">{data.fullName}</span></div>
+                {therapistName && <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 col-span-2"><span className="text-[10px] text-gray-400 block uppercase">Therapist Name</span><span className="font-bold text-blue-700">{therapistName}</span></div>}
+                
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Position</span><span className="font-bold text-blue-600">{data.jobPosition}</span></div>
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Phone</span><span className="font-bold text-gray-800">{data.phone}</span></div>
+                
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">NRC</span><span className="font-bold text-gray-800">{data.nrcNumber}</span></div>
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                    <span className="text-[10px] text-gray-400 block uppercase">DOB & Join Date</span>
+                    <div className="font-bold text-gray-800 text-xs">DOB: {data.dob}</div>
+                    <div className="font-bold text-gray-800 text-xs">Join: {data.startDate}</div>
+                </div>
+                
+                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Address</span><span className="font-bold text-gray-800 leading-relaxed">{data.address}</span></div>
+                <div className="col-span-2 bg-red-50 p-3 rounded-xl shadow-sm border border-red-100"><span className="text-[10px] text-red-400 block uppercase font-bold tracking-wider mb-1">Emergency Contact</span><div className="text-xs font-bold text-red-700">{data.emergencyName} ({data.emergencyRelation})<br/><span className="font-mono mt-1 inline-block">{data.emergencyPhone}</span></div></div>
+            </div>
+            
+            <h4 className="font-bold text-xs text-gray-500 mb-2 uppercase tracking-wider">Document Photos</h4>
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>
+                    {data.nrcFrontUrl ? <img src={data.nrcFrontUrl} onClick={() => setViewingPhoto(data.nrcFrontUrl)} className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer hover:opacity-80 transition"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                </div>
+                <div>
+                    <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Back)</span>
+                    {data.nrcBackUrl ? <img src={data.nrcBackUrl} onClick={() => setViewingPhoto(data.nrcBackUrl)} className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer hover:opacity-80 transition"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                </div>
+                <div>
+                    <span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>
+                    {data.householdFrontUrl ? <img src={data.householdFrontUrl} onClick={() => setViewingPhoto(data.householdFrontUrl)} className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer hover:opacity-80 transition"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                </div>
+                <div>
+                    <span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>
+                    {data.householdBackUrl ? <img src={data.householdBackUrl} onClick={() => setViewingPhoto(data.householdBackUrl)} className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer hover:opacity-80 transition"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                </div>
+            </div>
+            
+            {onClose && (
+                <div className="flex gap-3 pt-6 pb-2">
+                    <button type="button" onClick={onClose} className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition shadow-sm">Close</button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
 // 🌟 2. Admin HR Management Component 🌟
 export function AdminHRManagement() {
     const [requests, setRequests] = useState<any[]>([]);
@@ -340,6 +413,7 @@ export function AdminHRManagement() {
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
             
+            {/* 🌟 1. Modal for Pending Application Approval 🌟 */}
             {selectedReq && (
                 <div className="fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up">
@@ -348,22 +422,9 @@ export function AdminHRManagement() {
                             <button onClick={() => setSelectedReq(null)} className="hover:text-red-400"><X className="w-5 h-5"/></button>
                         </div>
                         <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-gray-50">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Employee ID</span><span className="font-bold text-[#123524]">{selectedReq.staffId}</span></div>
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Actual Name (အမည်ရင်း)</span><span className="font-bold text-gray-800">{selectedReq.fullName}</span></div>
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Position</span><span className="font-bold text-blue-600">{selectedReq.jobPosition}</span></div>
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Phone</span><span className="font-bold text-gray-800">{selectedReq.phone}</span></div>
-                                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Address</span><span className="font-bold text-gray-800">{selectedReq.address}</span></div>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>{selectedReq.nrcFrontUrl ? <img src={selectedReq.nrcFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
-                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Back)</span>{selectedReq.nrcBackUrl ? <img src={selectedReq.nrcBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
-                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>{selectedReq.householdFrontUrl ? <img src={selectedReq.householdFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
-                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>{selectedReq.householdBackUrl ? <img src={selectedReq.householdBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
-                            </div>
+                            <ProfileDetailsViewer data={selectedReq} staffId={selectedReq.staffId} />
 
-                            <form onSubmit={handleApprove} className="bg-[#123524]/5 p-5 rounded-xl border border-[#123524]/20 space-y-4">
+                            <form onSubmit={handleApprove} className="bg-[#123524]/5 p-5 rounded-xl border border-[#123524]/20 space-y-4 mt-6">
                                 <h4 className="font-bold text-[#123524] text-sm mb-2 border-b border-[#123524]/10 pb-2">Assign Login Credentials & Roles</h4>
                                 <div><label className="block text-xs font-bold text-gray-600 mb-1">Display Therapist Name (Customer များမြင်ရမည့်အမည်)</label><input required type="text" placeholder="e.g. Therapist No-10" value={approvalForm.displayTherapistName} onChange={e=>setApprovalForm({...approvalForm, displayTherapistName: e.target.value})} className="w-full p-2 border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-bold text-blue-700" /></div>
                                 <div><label className="block text-xs font-bold text-gray-600 mb-1">Set Password (Login ID is {selectedReq.staffId})</label><input required type="text" placeholder="Min 6 chars" minLength={6} value={approvalForm.password} onChange={e=>setApprovalForm({...approvalForm, password: e.target.value})} className="w-full p-2 border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
@@ -377,6 +438,7 @@ export function AdminHRManagement() {
                 </div>
             )}
 
+            {/* 🌟 2. Modal for Viewing Active Staff Profile (Admin) 🌟 */}
             {viewingProfile && (
                 <div className="fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up">
@@ -385,31 +447,7 @@ export function AdminHRManagement() {
                             <button onClick={() => setViewingProfile(null)} className="hover:text-red-400"><X className="w-5 h-5"/></button>
                         </div>
                         <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-gray-50">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Employee ID</span><span className="font-bold text-[#123524]">{viewingProfile.staffId}</span></div>
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Actual Name (အမည်ရင်း)</span><span className="font-bold text-[#123524]">{viewingProfile.fullName}</span></div>
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Position</span><span className="font-bold text-blue-600">{viewingProfile.jobPosition}</span></div>
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Phone</span><span className="font-bold text-gray-800">{viewingProfile.phone}</span></div>
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">NRC</span><span className="font-bold text-gray-800">{viewingProfile.nrcNumber}</span></div>
-                                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Address</span><span className="font-bold text-gray-800">{viewingProfile.address}</span></div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>{viewingProfile.nrcFrontUrl ? <img src={viewingProfile.nrcFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
-                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Back)</span>{viewingProfile.nrcBackUrl ? <img src={viewingProfile.nrcBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
-                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>{viewingProfile.householdFrontUrl ? <img src={viewingProfile.householdFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
-                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>{viewingProfile.householdBackUrl ? <img src={viewingProfile.householdBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
-                            </div>
-                            <div className="flex gap-3 pt-4 border-t border-gray-200 pb-2">
-                                <button type="button" onClick={() => setViewingProfile(null)} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300">Close</button>
-                                <button type="button" onClick={() => { 
-                                    const editData = viewingProfile;
-                                    setViewingProfile(null); 
-                                    setTimeout(() => {
-                                        setAddingInfoForId(editData.staffId); 
-                                        setAddingInfoData(editData);
-                                    }, 100);
-                                }} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center justify-center"><Edit className="w-4 h-4 mr-2"/> Edit Profile Form</button>
-                            </div>
+                            <ProfileDetailsViewer data={viewingProfile} staffId={viewingProfile.staffId} onClose={() => setViewingProfile(null)} />
                         </div>
                     </div>
                 </div>
@@ -486,10 +524,11 @@ export function AdminHRManagement() {
 
 // 🌟 3. Staff Profile View Component (For Staff App) 🌟
 export function StaffProfileView({ staff }: { staff: any }) {
+    
+    // 🌟 Live Updates ယူရန် 🌟
+    const [liveStaffData, setLiveStaffData] = useState<any>(staff);
     const [isEditing, setIsEditing] = useState(false);
-    const [liveStaffData, setLiveStaffData] = useState<any>(staff); // 🌟 Real-time Update ယူရန် State အသစ် 🌟
 
-    // 🌟 ဤ Therapist ၏ Data ကို Firestore မှ Real-time ဖတ်မည် 🌟
     useEffect(() => {
         if (!staff || !staff.id) return;
         const unsub = onSnapshot(doc(db, 'therapists', staff.id), (docSnap) => {
@@ -501,15 +540,9 @@ export function StaffProfileView({ staff }: { staff: any }) {
     }, [staff?.id]);
 
     if (isEditing) {
-        return <NewEmployeeOnboardingForm 
-                  onBack={() => setIsEditing(false)} 
-                  existingStaffId={liveStaffData.id} 
-                  existingData={liveStaffData.onboardingData} 
-                  isStaffSelfEdit={true} 
-               />;
+        return <NewEmployeeOnboardingForm onBack={() => setIsEditing(false)} existingStaffId={liveStaffData.id} existingData={liveStaffData.onboardingData} isStaffSelfEdit={true} />;
     }
 
-    // 🌟 liveStaffData.onboardingData မရှိမှသာ ခလုတ်ပြမည် 🌟
     if (!liveStaffData?.onboardingData) {
         return (
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4 text-center">
@@ -535,15 +568,8 @@ export function StaffProfileView({ staff }: { staff: any }) {
                     <X className="w-3 h-3 mr-1"/> Request Edit
                 </button>
             </h3>
-            <div className="space-y-4">
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Therapist Name</span><span className="text-xs font-bold text-blue-700">{liveStaffData.name}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Actual Name (အမည်ရင်း)</span><span className="text-xs font-bold text-gray-800">{data.fullName}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Employee ID</span><span className="text-xs font-mono font-bold text-[#123524]">{liveStaffData.id}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Position</span><span className="text-xs font-bold text-blue-600">{data.jobPosition}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Phone</span><span className="text-xs font-bold text-gray-800">{data.phone}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg"><span className="text-xs text-gray-500 font-bold block mb-1">Address</span><span className="text-xs font-semibold text-gray-800 leading-relaxed">{data.address}</span></div>
-                <div className="bg-red-50 p-3 rounded-lg"><span className="text-[10px] text-red-400 font-bold uppercase tracking-wider block mb-1">Emergency Contact</span><div className="text-xs font-bold text-red-700">{data.emergencyName} ({data.emergencyRelation})<br/><span className="font-mono mt-1 inline-block">{data.emergencyPhone}</span></div></div>
-            </div>
+            
+            <ProfileDetailsViewer data={data} staffId={liveStaffData.id} therapistName={liveStaffData.name} />
         </div>
     );
 }
