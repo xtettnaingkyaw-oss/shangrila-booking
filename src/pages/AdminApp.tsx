@@ -101,7 +101,6 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
   const [resetRequestCount, setResetRequestCount] = useState(0);
   const [updateRequestCount, setUpdateRequestCount] = useState(0); // 🌟 အသစ်ထည့်ထားသော State 🌟
   const [adminRole, setAdminRole] = useState<'super_admin' | 'custom'>('super_admin');
-  const [adminRole, setAdminRole] = useState<'super_admin' | 'custom'>('super_admin');
   const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
   const [roleLoaded, setRoleLoaded] = useState(false);
   const isFirstLoad = useRef(true);
