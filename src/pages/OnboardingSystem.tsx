@@ -3,7 +3,7 @@ import { collection, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteD
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../firebase';
 import { encryptText } from '../security';
-import { UserPlus, FileText, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning, Download as DownloadIcon, Bell } from 'lucide-react';
+import { UserPlus, FileText, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning, Download as DownloadIcon, Bell, ChevronUp, ChevronDown } from 'lucide-react';
 
 const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ'];
 const RULES_LIST = [
