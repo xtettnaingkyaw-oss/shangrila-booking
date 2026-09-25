@@ -181,10 +181,11 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
             {/* 🌟 Fixed Bottom Submit Button 🌟 */}
             <div className="fixed bottom-0 left-0 right-0 px-4 pb-4 pt-3 bg-white border-t border-gray-200 shadow-[0_-8px_15px_-3px_rgba(0,0,0,0.08)] z-50">
                 <div className="max-w-xl mx-auto">
-                    <p className="text-[9px] text-gray-500 text-center font-bold mb-2.5 leading-relaxed">
+                    {/* 🌟 သတိပေးစာသား အနီရောင် Bold 🌟 */}
+                    <p className="text-[9px] text-red-600 text-center font-black mb-2.5 leading-relaxed tracking-wide">
                         ဖြည့်သွင်းထားသောအချက်လက်များအားလုံးအား ပြည့်စုံမှန်ကန်ခြင်း ရှိ/မရှိ<br/>သေချာစွာပြန်လည်စစ်ဆေးပြီးပါက အောက်မှ တင်သွင်းသည့်ခလုတ်ကိုနှိပ်ပါ။
                     </p>
-                    <button 
+                    <button
                         type="submit" 
                         form="onboardingForm" 
                         disabled={loading || !isFormValid()} 
