@@ -10,6 +10,7 @@ import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 import { CustomerBookingWizard } from './CustomerApp';
 import { useAppStore } from '../AppDataContext';
 import { StaffPenaltyView } from './PenaltySystem'; // 🌟 Add Penalty View Import 🌟
+import { NewEmployeeOnboardingForm, StaffProfileView } from './OnboardingSystem';
 
 const formatPrice = (price: any) => {
     const num = Number(price);
@@ -60,6 +61,20 @@ function StatusBadge({ status, cancelReason }: { status: string, cancelReason?: 
 
 export default function StaffApp() {
   const { appData: globalAppData } = useAppStore();
+
+  const [isRegistering, setIsRegistering] = useState(window.location.hash === '#register');
+
+  useEffect(() => {
+      const handleHashChange = () => setIsRegistering(window.location.hash === '#register');
+      window.addEventListener('hashchange', handleHashChange);
+      return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  if (!globalAppData) return <div className="text-center py-20 font-bold text-gray-500">Loading Staff Portal...</div>;
+
+  if (isRegistering) {
+      return <NewEmployeeOnboardingForm onBack={() => { window.location.hash = ''; setIsRegistering(false); }} />;
+  }
 
   const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
      const saved = localStorage.getItem('shangrila_staff_profile');
@@ -132,6 +147,11 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
         {error && <div className="text-xs font-bold text-red-500">{error}</div>}
         <button type="submit" disabled={loading} className="w-full py-3 bg-[#123524] text-white rounded-lg font-bold shadow-md hover:bg-green-900 transition flex items-center justify-center"><KeyRound className="w-4 h-4 mr-2"/> {loading ? 'Logging in...' : 'Verify and Login'}</button>
       </form>
+        <div className="mt-6 pt-4 border-t border-gray-100">
+         <p className="text-[10px] text-gray-400 mb-3 font-bold">Login ID မရှိသေးသော ဝန်ထမ်းသစ်များအတွက်</p>
+         <button onClick={() => window.location.hash = 'register'} className="w-full py-3 bg-white text-[#D4AF37] border-2 border-[#D4AF37] rounded-lg font-bold shadow-sm hover:bg-yellow-50 transition">New Employee Registration</button>
+      </div>
+    </div>
     </div>
   );
 }
@@ -251,6 +271,9 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                            <span className="flex items-center"><ClipboardList className={`w-4 h-4 mr-2 ${hasRosterNoti ? 'text-red-400 animate-bounce' : 'text-blue-400'}`} /> Duties</span>
                            {hasRosterNoti && <span className="bg-red-500 w-2 h-2 rounded-full shadow-md animate-ping mr-1"></span>}
                        </button>
+                       <button onClick={() => { setStaffTab('profile' as any); setShowMoreTabs(false); }} className={`px-4 py-3 text-xs font-bold text-left rounded-lg transition flex items-center ${staffTab === 'profile' as any ? 'bg-gray-50 text-[#123524]' : 'text-gray-600 hover:bg-gray-50'}`}>
+                           <User className="w-4 h-4 mr-2 text-gray-400" /> My Profile
+                       </button>
                    </div>
                )}
            </div>
@@ -259,6 +282,8 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            {staffTab === 'outpass' && <StaffOutPassTab appData={appData} loggedInStaff={loggedInStaff} />}
            {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={loggedInStaff} />}
            {staffTab === 'financials' && <StaffPenaltyView therapistName={loggedInStaff.name} />}
+           {staffTab === 'profile' as any && <StaffProfileView staff={loggedInStaff} />}
+           
            
            {/* 🌟 DUTY ROSTER VIEW (Dropdown ပါဝင်သည်) 🌟 */}
            {staffTab === 'roster' && (
