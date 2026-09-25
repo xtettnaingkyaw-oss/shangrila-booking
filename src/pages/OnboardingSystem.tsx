@@ -13,7 +13,7 @@ const RULES_LIST = [
     'ဆိုင်မှ ချမှတ်ထားသော စည်းမျဉ်းစည်းကမ်းများအားလုံးကိုလည်း သိရှိနားလည် သဘောတူလက်ခံပါသည်။'
 ];
 
-// 🌟 Canvas ကို အသုံးပြု၍ ပုံအရွယ်အစား အလွန်သေးငယ်အောင် (Firestore Limit မကျော်ရန်) ချုံ့ပေးမည့် Helper 🌟
+// 🌟 Canvas ကို အသုံးပြု၍ ပုံအရွယ်အစားနှင့် Quality ထိန်းညှိပေးမည့် Helper 🌟
 const compressImageToSmallBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -21,7 +21,8 @@ const compressImageToSmallBase64 = (file: File): Promise<string> => {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                const MAX_SIZE = 400; // အလွန်သေးငယ်သော အရွယ်အစားသို့ ချုံ့မည်
+                // 🌟 စာများ ဖတ်ရှုနိုင်ရန် Resolution ကို 1200 ထိ တိုးမြှင့်လိုက်သည် 🌟
+                const MAX_SIZE = 1200; 
                 let width = img.width;
                 let height = img.height;
 
@@ -47,8 +48,16 @@ const compressImageToSmallBase64 = (file: File): Promise<string> => {
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 }
 
-                // အရည်အသွေး (Quality) ကို 0.5 ဖြင့် အလွန်သေးငယ်အောင် ချုံ့မည် (Firestore Limit လုံးဝ မကျော်စေရန်)
-                const finalBase64 = canvas.toDataURL('image/jpeg', 0.5);
+                // 🌟 Quality ကို 0.85 ဖြင့် အရင်စသိမ်းမည် 🌟
+                let finalBase64 = canvas.toDataURL('image/jpeg', 0.85); 
+                
+                // Firestore 1MB Limit မကျော်စေရန် အဆင့်ဆင့် စစ်ဆေးချုံ့ချမည်
+                if (finalBase64.length > 800 * 1024) {
+                    finalBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                }
+                if (finalBase64.length > 800 * 1024) {
+                    finalBase64 = canvas.toDataURL('image/jpeg', 0.5);
+                }
                 resolve(finalBase64);
             };
             img.onerror = reject;
@@ -259,14 +268,24 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
     );
 }
 
-// 🌟 Photo Viewer Modal Component 🌟
+// 🌟 Photo Viewer Modal Component (Fixed Download Logic) 🌟
 function PhotoViewerModal({ src, onClose }: { src: string, onClose: () => void }) {
+    // 🌟 Base64 ပုံများကို Download ဆွဲနိုင်ရန် လုပ်ဆောင်မည့် Function 🌟
+    const handleDownload = () => {
+        const link = document.createElement('a');
+        link.href = src;
+        link.download = `Document_${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="fixed inset-0 z-[1000] bg-black/90 flex flex-col items-center justify-center p-4 animate-fade-in">
             <div className="absolute top-4 right-4 flex gap-4">
-                <a href={src} download="document.jpg" className="bg-white/20 p-3 rounded-full hover:bg-white/40 transition">
+                <button onClick={handleDownload} className="bg-white/20 p-3 rounded-full hover:bg-white/40 transition">
                     <DownloadIcon className="w-6 h-6 text-white" />
-                </a>
+                </button>
                 <button onClick={onClose} className="bg-white/20 p-3 rounded-full hover:bg-white/40 transition">
                     <X className="w-6 h-6 text-white" />
                 </button>
@@ -280,26 +299,64 @@ function PhotoViewerModal({ src, onClose }: { src: string, onClose: () => void }
 function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data: any, staffId: string, therapistName?: string, onClose?: () => void }) {
     const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
 
+    // 🌟 အသက် (Age) နှင့် လုပ်သက် (Duration) တွက်ချက်မည့် Helper Function များ 🌟
+    const calculateAge = (dobString: string) => {
+        if (!dobString) return '';
+        const today = new Date();
+        const birthDate = new Date(dobString);
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const m = today.getMonth() - birthDate.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+        return `${age} Yrs`;
+    };
+
+    const calculateDuration = (startDateString: string) => {
+        if (!startDateString) return '';
+        const today = new Date();
+        const startDate = new Date(startDateString);
+        const diffTime = Math.abs(today.getTime() - startDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays < 30) return `${diffDays} Days`;
+        if (diffDays < 365) return `${Math.floor(diffDays / 30)} Mos`;
+        return `${(diffDays / 365).toFixed(1)} Yrs`;
+    };
+
     return (
         <div className="flex flex-col h-full">
             {viewingPhoto && <PhotoViewerModal src={viewingPhoto} onClose={() => setViewingPhoto(null)} />}
             
             <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Employee ID</span><span className="font-bold text-[#123524]">{staffId}</span></div>
-                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Actual Name (အမည်ရင်း)</span><span className="font-bold text-gray-800">{data.fullName}</span></div>
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Employee ID</span><span className="font-bold text-[#123524] truncate block" title={staffId}>{staffId}</span></div>
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Actual Name (အမည်ရင်း)</span><span className="font-bold text-gray-800 truncate block">{data.fullName}</span></div>
                 {therapistName && <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 col-span-2"><span className="text-[10px] text-gray-400 block uppercase">Therapist Name</span><span className="font-bold text-blue-700">{therapistName}</span></div>}
                 
-                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Position</span><span className="font-bold text-blue-600">{data.jobPosition}</span></div>
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Position</span><span className="font-bold text-blue-600 truncate block">{data.jobPosition}</span></div>
                 <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Phone</span><span className="font-bold text-gray-800">{data.phone}</span></div>
                 
-                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">NRC</span><span className="font-bold text-gray-800">{data.nrcNumber}</span></div>
+                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">NRC</span><span className="font-bold text-gray-800">{data.nrcNumber}</span></div>
+                
+                {/* 🌟 Date of Birth နှင့် Age တွဲပြခြင်း 🌟 */}
                 <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
-                    <span className="text-[10px] text-gray-400 block uppercase">DOB & Join Date</span>
-                    <div className="font-bold text-gray-800 text-xs">DOB: {data.dob}</div>
-                    <div className="font-bold text-gray-800 text-xs">Join: {data.startDate}</div>
+                    <span className="text-[10px] text-gray-400 block uppercase mb-1">Date of Birth</span>
+                    <div className="flex items-center justify-between">
+                        <span className="font-bold text-gray-800 text-xs">{data.dob}</span>
+                        <span className="bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded text-[10px] font-bold">{calculateAge(data.dob)}</span>
+                    </div>
                 </div>
                 
-                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Address</span><span className="font-bold text-gray-800 leading-relaxed">{data.address}</span></div>
+                {/* 🌟 Join Date နှင့် လုပ်သက် တွဲပြခြင်း 🌟 */}
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                    <span className="text-[10px] text-gray-400 block uppercase mb-1">Join Date</span>
+                    <div className="flex items-center justify-between">
+                        <span className="font-bold text-gray-800 text-xs">{data.startDate}</span>
+                        <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-[10px] font-bold">{calculateDuration(data.startDate)}</span>
+                    </div>
+                </div>
+                
+                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Address</span><span className="font-bold text-gray-800 leading-relaxed block mt-1">{data.address}</span></div>
                 <div className="col-span-2 bg-red-50 p-3 rounded-xl shadow-sm border border-red-100"><span className="text-[10px] text-red-400 block uppercase font-bold tracking-wider mb-1">Emergency Contact</span><div className="text-xs font-bold text-red-700">{data.emergencyName} ({data.emergencyRelation})<br/><span className="font-mono mt-1 inline-block">{data.emergencyPhone}</span></div></div>
             </div>
             
