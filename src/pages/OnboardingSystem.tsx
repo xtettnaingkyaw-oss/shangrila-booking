@@ -4,7 +4,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../firebase';
 import { compressImage } from '../shared';
 import { encryptText } from '../security';
-import { UserPlus, FileText, CheckCircle, Clock, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit } from 'lucide-react';
+import { UserPlus, FileText, CheckCircle, Clock, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User } from 'lucide-react';
 
 const JOB_POSITIONS = ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'];
 const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ', 'ရပ်ကွက်ရဲစခန်း ထောက်ခံစာ အပ်ပြီးပါပြီ'];
@@ -15,8 +15,9 @@ const RULES_LIST = [
 ];
 
 // 🌟 1. Staff Application Form Component 🌟
-export function NewEmployeeOnboardingForm({ onBack }: { onBack: () => void }) {
+export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null }: { onBack: () => void, existingStaffId?: string | null }) {
     const [formData, setFormData] = useState({
+        staffId: existingStaffId || '', // Employee ID (No-1)
         fullName: '', nrcNumber: '', dob: '', phone: '', address: '',
         emergencyName: '', emergencyPhone: '', emergencyRelation: '',
         jobPosition: '', startDate: '',
@@ -39,26 +40,35 @@ export function NewEmployeeOnboardingForm({ onBack }: { onBack: () => void }) {
         if (formData.rules.length !== RULES_LIST.length) return alert("ကျေးဇူးပြု၍ စည်းမျဉ်းစည်းကမ်း အားလုံးကို သဘောတူကြောင်း အမှန်ခြစ်ပေးပါ။");
         setLoading(true);
         try {
-            await addDoc(collection(db, 'onboarding_requests'), { ...formData, status: 'pending', createdAt: Date.now() });
-            alert("✅ လျှောက်လွှာတင်ခြင်း အောင်မြင်ပါသည်။ Admin မှ အတည်ပြုပြီးပါက အကြောင်းကြားပေးပါမည်။");
+            if (existingStaffId) {
+                // ရှိပြီးသား Staff အတွက် Update တန်းလုပ်မည်
+                await updateDoc(doc(db, 'therapists', existingStaffId), { onboardingData: formData });
+                alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
+            } else {
+                // ဝန်ထမ်းသစ် လျှောက်လွှာအဖြစ် တင်မည်
+                await addDoc(collection(db, 'onboarding_requests'), { ...formData, status: 'pending', createdAt: Date.now() });
+                alert("✅ လျှောက်လွှာတင်ခြင်း အောင်မြင်ပါသည်။ Admin မှ အတည်ပြုပြီးပါက အကြောင်းကြားပေးပါမည်။");
+            }
             onBack();
         } catch (error) { alert("Error submitting form."); }
         setLoading(false);
     };
 
     return (
-        <div className="bg-gray-50 min-h-screen pb-10">
+        <div className="bg-gray-50 min-h-screen pb-10 w-full absolute top-0 left-0 z-50 overflow-y-auto">
             <div className="bg-[#D4AF37] p-4 flex items-center shadow-md sticky top-0 z-10">
                 <button onClick={onBack} className="text-white hover:bg-white/20 p-2 rounded-full transition"><ChevronLeft className="w-6 h-6"/></button>
-                <h2 className="text-[#123524] font-bold text-lg ml-2 uppercase tracking-wider">New Employee Onboarding</h2>
+                <h2 className="text-[#123524] font-bold text-lg ml-2 uppercase tracking-wider">{existingStaffId ? 'Add Profile Info' : 'New Employee Onboarding'}</h2>
             </div>
             
-            <form onSubmit={handleSubmit} className="max-w-xl mx-auto p-4 space-y-6 mt-4">
+            <form onSubmit={handleSubmit} className="max-w-xl mx-auto p-4 space-y-6 mt-4 animate-slide-up">
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-                    <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name (အမည်အပြည့်အစုံ) *</label><input required type="text" value={formData.fullName} onChange={e=>setFormData({...formData, fullName: e.target.value})} placeholder="Please enter" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block text-xs font-bold text-gray-500 mb-1">Employee ID (e.g. No-1) *</label><input required type="text" value={formData.staffId} onChange={e=>setFormData({...formData, staffId: e.target.value})} disabled={!!existingStaffId} placeholder="No-XX" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800 disabled:opacity-60" /></div>
+                        <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name (အမည်) *</label><input required type="text" value={formData.fullName} onChange={e=>setFormData({...formData, fullName: e.target.value})} placeholder="Enter name" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
+                    </div>
                     <div><label className="block text-xs font-bold text-gray-500 mb-1">မှတ်ပုံတင်နံပါတ် *</label><input required type="text" value={formData.nrcNumber} onChange={e=>setFormData({...formData, nrcNumber: e.target.value})} placeholder="Please enter" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                     
-                    {/* 🌟 NRC & Household Image Uploads (4 Fields) 🌟 */}
                     <div className="grid grid-cols-2 gap-4">
                         <label className="border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden">
                             {formData.nrcFrontUrl ? <img src={formData.nrcFrontUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC Front"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold text-center">မှတ်ပုံတင်<br/>(ရှေ့ဘက်)</span></>}
@@ -127,7 +137,7 @@ export function NewEmployeeOnboardingForm({ onBack }: { onBack: () => void }) {
                 </div>
 
                 <button type="submit" disabled={loading} className="w-full py-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-[#1a4a32] transition disabled:opacity-50">
-                    <UserPlus className="w-5 h-5 mr-2" /> {loading ? 'Submitting...' : 'Submit Application'}
+                    <Save className="w-5 h-5 mr-2" /> {loading ? 'Saving...' : (existingStaffId ? 'Save Profile Data' : 'Submit Application')}
                 </button>
             </form>
         </div>
@@ -139,8 +149,13 @@ export function AdminHRManagement() {
     const [requests, setRequests] = useState<any[]>([]);
     const [activeStaff, setActiveStaff] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedReq, setSelectedReq] = useState<any>(null);
-    const [approvalForm, setApprovalForm] = useState({ staffId: '', password: '' });
+    
+    // States for Viewer / Form
+    const [selectedReq, setSelectedReq] = useState<any>(null); // For Pending Request Approval
+    const [viewingProfile, setViewingProfile] = useState<any>(null); // For Viewing Active Staff Profile (Edit/Close)
+    const [addingInfoForId, setAddingInfoForId] = useState<string | null>(null); // For Adding Info to Existing Staff
+
+    const [approvalForm, setApprovalForm] = useState({ password: '' });
     const [processing, setProcessing] = useState(false);
     const [viewTab, setViewTab] = useState<'requests' | 'active'>('requests');
 
@@ -156,20 +171,20 @@ export function AdminHRManagement() {
 
     const handleApprove = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!approvalForm.staffId || !approvalForm.password) return;
+        if (!selectedReq.staffId || !approvalForm.password) return alert("Employee ID နှင့် Password ထည့်ပါ။");
         setProcessing(true);
         try {
-            try { await createUserWithEmailAndPassword(secondaryAuth, `${approvalForm.staffId.toLowerCase()}@shangrila.com`, approvalForm.password); } catch(e){}
-            await setDoc(doc(db, 'therapists', approvalForm.staffId), {
-                id: approvalForm.staffId,
+            try { await createUserWithEmailAndPassword(secondaryAuth, `${selectedReq.staffId.toLowerCase()}@shangrila.com`, approvalForm.password); } catch(e){}
+            await setDoc(doc(db, 'therapists', selectedReq.staffId), {
+                id: selectedReq.staffId,
                 name: selectedReq.fullName,
                 password: encryptText(approvalForm.password), 
                 order: activeStaff.length,
                 images: [],
                 onboardingData: selectedReq
             });
-            await updateDoc(doc(db, 'onboarding_requests', selectedReq.id), { status: 'approved', assignedId: approvalForm.staffId, approvedAt: Date.now() });
-            alert("✅ ဝန်ထမ်းသစ် အတည်ပြုပြီးပါပြီ။ Staff App မှ စတင် ဝင်ရောက်နိုင်ပါပြီ။");
+            await updateDoc(doc(db, 'onboarding_requests', selectedReq.id), { status: 'approved', assignedId: selectedReq.staffId, approvedAt: Date.now() });
+            alert("✅ ဝန်ထမ်းသစ် အတည်ပြုပြီးပါပြီ။");
             setSelectedReq(null);
         } catch (error) { alert("Error approving staff."); }
         setProcessing(false);
@@ -178,6 +193,7 @@ export function AdminHRManagement() {
     const handleReject = async (id: string) => {
         if (!window.confirm("ဤလျှောက်လွှာကို ပယ်ဖျက်မည် သေချာပါသလား?")) return;
         await updateDoc(doc(db, 'onboarding_requests', id), { status: 'rejected' });
+        setSelectedReq(null);
     };
 
     const handleRemoveStaff = async (id: string) => {
@@ -191,6 +207,8 @@ export function AdminHRManagement() {
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+            
+            {/* 🌟 1. Modal for Pending Application Approval 🌟 */}
             {selectedReq && (
                 <div className="fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up">
@@ -200,6 +218,7 @@ export function AdminHRManagement() {
                         </div>
                         <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-gray-50">
                             <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Employee ID</span><span className="font-bold text-[#123524]">{selectedReq.staffId}</span></div>
                                 <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Name</span><span className="font-bold text-[#123524]">{selectedReq.fullName}</span></div>
                                 <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Position</span><span className="font-bold text-blue-600">{selectedReq.jobPosition}</span></div>
                                 <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Phone</span><span className="font-bold text-gray-800">{selectedReq.phone}</span></div>
@@ -207,42 +226,62 @@ export function AdminHRManagement() {
                                 <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Address</span><span className="font-bold text-gray-800">{selectedReq.address}</span></div>
                             </div>
                             
-                            {/* 🌟 Admin Review NRC & Household (4 Images) 🌟 */}
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>
-                                    {selectedReq.nrcFrontUrl ? <img src={selectedReq.nrcFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
-                                </div>
-                                <div>
-                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Back)</span>
-                                    {selectedReq.nrcBackUrl ? <img src={selectedReq.nrcBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
-                                </div>
-                                <div>
-                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>
-                                    {selectedReq.householdFrontUrl ? <img src={selectedReq.householdFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
-                                </div>
-                                <div>
-                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>
-                                    {selectedReq.householdBackUrl ? <img src={selectedReq.householdBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
-                                </div>
+                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>{selectedReq.nrcFrontUrl ? <img src={selectedReq.nrcFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
+                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Back)</span>{selectedReq.nrcBackUrl ? <img src={selectedReq.nrcBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
+                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>{selectedReq.householdFrontUrl ? <img src={selectedReq.householdFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
+                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>{selectedReq.householdBackUrl ? <img src={selectedReq.householdBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
                             </div>
 
-                            {selectedReq.status === 'pending' && (
-                                <form onSubmit={handleApprove} className="bg-[#123524]/5 p-5 rounded-xl border border-[#123524]/20 space-y-4">
-                                    <h4 className="font-bold text-[#123524] text-sm mb-2 border-b border-[#123524]/10 pb-2">Assign Login Credentials</h4>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div><label className="block text-xs font-bold text-gray-600 mb-1">Assign Staff ID (Login ID)</label><input required type="text" placeholder="e.g. No-14" value={approvalForm.staffId} onChange={e=>setApprovalForm({...approvalForm, staffId: e.target.value})} className="w-full p-2 border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
-                                        <div><label className="block text-xs font-bold text-gray-600 mb-1">Set Password</label><input required type="text" placeholder="Min 6 chars" minLength={6} value={approvalForm.password} onChange={e=>setApprovalForm({...approvalForm, password: e.target.value})} className="w-full p-2 border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
-                                    </div>
-                                    <div className="flex gap-3 pt-2">
-                                        <button type="button" onClick={() => handleReject(selectedReq.id)} className="flex-1 py-3 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100">Reject Request</button>
-                                        <button type="submit" disabled={processing} className="flex-1 py-3 bg-[#123524] text-[#D4AF37] font-bold rounded-lg hover:bg-[#1a4a32] shadow-md">{processing ? 'Approving...' : 'Approve & Create Account'}</button>
-                                    </div>
-                                </form>
-                            )}
+                            <form onSubmit={handleApprove} className="bg-[#123524]/5 p-5 rounded-xl border border-[#123524]/20 space-y-4">
+                                <h4 className="font-bold text-[#123524] text-sm mb-2 border-b border-[#123524]/10 pb-2">Assign Login Credentials</h4>
+                                <div><label className="block text-xs font-bold text-gray-600 mb-1">Set Password (Login ID is {selectedReq.staffId})</label><input required type="text" placeholder="Min 6 chars" minLength={6} value={approvalForm.password} onChange={e=>setApprovalForm({...approvalForm, password: e.target.value})} className="w-full p-2 border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
+                                <div className="flex gap-3 pt-2">
+                                    <button type="button" onClick={() => handleReject(selectedReq.id)} className="flex-1 py-3 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100">Reject Request</button>
+                                    <button type="submit" disabled={processing} className="flex-1 py-3 bg-[#123524] text-[#D4AF37] font-bold rounded-lg hover:bg-[#1a4a32] shadow-md">{processing ? 'Approving...' : 'Approve & Create Account'}</button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* 🌟 2. Modal for Viewing Active Staff Profile (Edit/Close Only) 🌟 */}
+            {viewingProfile && (
+                <div className="fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up">
+                        <div className="p-4 border-b flex justify-between items-center bg-blue-900 text-white rounded-t-2xl">
+                            <h3 className="font-bold flex items-center"><User className="w-5 h-5 mr-2 text-blue-300"/> Staff Profile Viewer</h3>
+                            <button onClick={() => setViewingProfile(null)} className="hover:text-red-400"><X className="w-5 h-5"/></button>
+                        </div>
+                        <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-gray-50">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Employee ID</span><span className="font-bold text-[#123524]">{viewingProfile.staffId}</span></div>
+                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Name</span><span className="font-bold text-[#123524]">{viewingProfile.fullName}</span></div>
+                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Position</span><span className="font-bold text-blue-600">{viewingProfile.jobPosition}</span></div>
+                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Phone</span><span className="font-bold text-gray-800">{viewingProfile.phone}</span></div>
+                                <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">NRC</span><span className="font-bold text-gray-800">{viewingProfile.nrcNumber}</span></div>
+                                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Address</span><span className="font-bold text-gray-800">{viewingProfile.address}</span></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>{viewingProfile.nrcFrontUrl ? <img src={viewingProfile.nrcFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
+                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Back)</span>{viewingProfile.nrcBackUrl ? <img src={viewingProfile.nrcBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
+                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>{viewingProfile.householdFrontUrl ? <img src={viewingProfile.householdFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
+                                <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>{viewingProfile.householdBackUrl ? <img src={viewingProfile.householdBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
+                            </div>
+                            {/* Edit & Close Buttons */}
+                            <div className="flex gap-3 pt-4 border-t border-gray-200">
+                                <button onClick={() => setViewingProfile(null)} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300">Close</button>
+                                <button onClick={() => { setAddingInfoForId(viewingProfile.staffId); setViewingProfile(null); }} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center justify-center"><Edit className="w-4 h-4 mr-2"/> Edit Profile</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 🌟 3. Adding Info Form (Full Screen overlay) 🌟 */}
+            {addingInfoForId && (
+                <NewEmployeeOnboardingForm onBack={() => setAddingInfoForId(null)} existingStaffId={addingInfoForId} />
             )}
 
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
@@ -260,7 +299,7 @@ export function AdminHRManagement() {
                         pendingReqs.map(req => (
                             <div key={req.id} className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm flex justify-between items-center hover:border-[#D4AF37] transition cursor-pointer" onClick={() => setSelectedReq(req)}>
                                 <div>
-                                    <div className="font-bold text-[#123524] text-sm">{req.fullName}</div>
+                                    <div className="font-bold text-[#123524] text-sm">{req.fullName} <span className="ml-2 text-blue-500 text-[10px] font-mono">({req.staffId})</span></div>
                                     <div className="text-[10px] text-gray-500 mt-1 flex items-center gap-2"><span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold">{req.jobPosition}</span> <span>{new Date(req.createdAt).toLocaleString()}</span></div>
                                 </div>
                                 <button className="text-xs bg-[#123524] text-[#D4AF37] px-4 py-2 rounded-lg font-bold">Review</button>
@@ -278,15 +317,22 @@ export function AdminHRManagement() {
                                 <div><div className="font-bold text-[#123524]">{staff.name}</div><div className="text-[10px] font-mono text-gray-500 mt-0.5">ID: {staff.id}</div></div>
                                 <span className="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold uppercase tracking-wider">Active</span>
                             </div>
-                            {staff.onboardingData && (
+                            
+                            {staff.onboardingData ? (
                                 <div className="text-xs text-gray-600 space-y-1.5 mb-4 flex-1">
-                                    <div className="flex justify-between"><span className="text-gray-400">Position:</span> <span className="font-bold">{staff.onboardingData.jobPosition}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Position:</span> <span className="font-bold text-blue-600">{staff.onboardingData.jobPosition}</span></div>
                                     <div className="flex justify-between"><span className="text-gray-400">Phone:</span> <span>{staff.onboardingData.phone}</span></div>
                                     <div className="flex justify-between"><span className="text-gray-400">Start Date:</span> <span>{staff.onboardingData.startDate}</span></div>
                                 </div>
+                            ) : (
+                                <div className="mb-4 flex-1 flex flex-col justify-center items-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                                    <span className="text-[10px] text-gray-500 font-bold mb-2">No profile details yet</span>
+                                    <button onClick={() => setAddingInfoForId(staff.id)} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-md font-bold hover:bg-blue-100"><Edit className="w-3 h-3 inline mr-1"/> Add Profile Info</button>
+                                </div>
                             )}
+
                             <div className="flex gap-2 mt-auto">
-                                {staff.onboardingData && <button onClick={() => setSelectedReq(staff.onboardingData)} className="flex-1 py-2 bg-gray-100 text-gray-700 text-[10px] font-bold rounded-lg hover:bg-gray-200">View Profile</button>}
+                                {staff.onboardingData && <button onClick={() => setViewingProfile(staff.onboardingData)} className="flex-1 py-2 bg-gray-100 text-gray-700 text-[10px] font-bold rounded-lg hover:bg-gray-200">View Profile</button>}
                                 <button onClick={() => handleRemoveStaff(staff.id)} className="flex-1 py-2 bg-red-50 text-red-600 text-[10px] font-bold rounded-lg hover:bg-red-100 flex items-center justify-center"><Trash2 className="w-3 h-3 mr-1"/> Resign</button>
                             </div>
                         </div>
@@ -299,7 +345,7 @@ export function AdminHRManagement() {
 
 // 🌟 3. Staff Profile View Component (For Staff App) 🌟
 export function StaffProfileView({ staff }: { staff: any }) {
-    if (!staff.onboardingData) return <div className="text-center p-10 text-gray-400 text-xs bg-gray-50 rounded-xl border border-dashed">Profile data not fully set up. Please contact Admin.</div>;
+    if (!staff.onboardingData) return <div className="text-center p-10 text-gray-400 text-xs bg-gray-50 rounded-xl border border-dashed mt-4">Profile data not fully set up. Please contact Admin.</div>;
     const data = staff.onboardingData;
 
     return (
@@ -310,7 +356,7 @@ export function StaffProfileView({ staff }: { staff: any }) {
             </h3>
             <div className="space-y-4">
                 <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Full Name</span><span className="text-xs font-bold text-gray-800">{data.fullName}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Login ID</span><span className="text-xs font-mono font-bold text-[#123524]">{staff.id}</span></div>
+                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Employee ID</span><span className="text-xs font-mono font-bold text-[#123524]">{staff.id}</span></div>
                 <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Position</span><span className="text-xs font-bold text-blue-600">{data.jobPosition}</span></div>
                 <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Phone</span><span className="text-xs font-bold text-gray-800">{data.phone}</span></div>
                 <div className="bg-gray-50 p-3 rounded-lg"><span className="text-xs text-gray-500 font-bold block mb-1">Address</span><span className="text-xs font-semibold text-gray-800 leading-relaxed">{data.address}</span></div>
