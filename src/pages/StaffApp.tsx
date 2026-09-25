@@ -179,14 +179,17 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
 }
 
 function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: AppData, loggedInStaff: TherapistProfile, onLogout: () => void }) {
+   
+   // 🌟 Admin ဘက်က ပြင်လိုက်တာနဲ့ ချက်ချင်း Update ဖြစ်စေရန် Live Data ကို ယူပါမည် 🌟
    const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || loggedInStaff;
    const displayPosition = liveStaff.onboardingData?.jobPosition || 'Professional Therapist';
+
    const [activeSession, setActiveSession] = useState<Booking | null>(null);
    const [showClockInFlow, setShowClockInFlow] = useState(false);
    const [loading, setLoading] = useState(true);
-   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials' | 'roster'>('service');
-   const [showMoreTabs, setShowMoreTabs] = useState(false); // 🌟 Dropdown အတွက် State 🌟
-    
+   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials' | 'roster' | 'profile'>('service');
+   const [showMoreTabs, setShowMoreTabs] = useState(false); 
+   
    const [rosterData, setRosterData] = useState<any>(null);
    const [hasRosterNoti, setHasRosterNoti] = useState(false);
    const [unpaidPenaltyCount, setUnpaidPenaltyCount] = useState(0);
@@ -250,15 +253,15 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            <div className="flex justify-between items-center mb-6 pb-6 border-b border-gray-100">
                <div className="flex items-center">
                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden mr-3 sm:mr-4 border-2 border-[#123524] shadow-sm flex-shrink-0">
-                       {/* 🌟 ပုံပြောင်းလျှင်လည်း ချက်ချင်း Update ဖြစ်စေရန် liveStaff ကိုပြောင်းသုံးထားပါသည် 🌟 */}
                        {liveStaff.images && liveStaff.images[0] ? <img src={liveStaff.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 sm:p-3 text-gray-400 bg-gray-100"/>}
                    </div>
                    <div>
                        <h2 className="text-xl sm:text-2xl font-bold text-[#123524]">{liveStaff.name}</h2>
-                       {/* 🌟 ရာထူးပြောင်းလျှင် ချက်ချင်း Update ဖြစ်စေရန် 🌟 */}
                        <p className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">{displayPosition}</p>
                    </div>
                </div>
+               <button onClick={onLogout} className="text-[10px] sm:text-xs font-bold text-red-500 flex items-center bg-red-50 px-2 sm:px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100 whitespace-nowrap"><LogOut className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Log Out</span></button>
+           </div>
 
            {/* 🌟 TAB MENU START 🌟 */}
            <div className="relative mb-6">
@@ -267,8 +270,8 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                    <button onClick={() => { setStaffTab('outpass'); setShowMoreTabs(false); }} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'outpass' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Pass</button>
                    <button onClick={() => { setStaffTab('performance'); setShowMoreTabs(false); }} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'performance' ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] shadow text-[#D4AF37]' : 'text-gray-500 hover:bg-gray-100'}`}><Sparkles className="w-3 h-3 inline mb-0.5 mr-1"/>Matrix</button>
                    
-                   {/* 🌟 View More Button (Noti Indicator ပါဝင်သည်) 🌟 */}
-                   <button onClick={() => setShowMoreTabs(!showMoreTabs)} className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition flex items-center justify-center ${['history', 'financials', 'roster'].includes(staffTab) || showMoreTabs ? 'bg-gray-200 text-[#123524] shadow-inner' : 'text-gray-500 hover:bg-gray-100'}`}>
+                   {/* 🌟 View More Button 🌟 */}
+                   <button onClick={() => setShowMoreTabs(!showMoreTabs)} className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition flex items-center justify-center ${['history', 'financials', 'roster', 'profile'].includes(staffTab) || showMoreTabs ? 'bg-gray-200 text-[#123524] shadow-inner' : 'text-gray-500 hover:bg-gray-100'}`}>
                        More <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${showMoreTabs ? 'rotate-180' : ''}`} />
                        {(unpaidPenaltyCount > 0 || hasRosterNoti) && (
                            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-100 border border-red-200 rounded-full flex items-center justify-center shadow-sm">
@@ -295,19 +298,19 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                            <span className="flex items-center"><ClipboardList className={`w-4 h-4 mr-2 ${hasRosterNoti ? 'text-red-400 animate-bounce' : 'text-blue-400'}`} /> Duties</span>
                            {hasRosterNoti && <span className="bg-red-500 w-2 h-2 rounded-full shadow-md animate-ping mr-1"></span>}
                        </button>
-                       <button onClick={() => { setStaffTab('profile' as any); setShowMoreTabs(false); }} className={`px-4 py-3 text-xs font-bold text-left rounded-lg transition flex items-center ${staffTab === 'profile' as any ? 'bg-gray-50 text-[#123524]' : 'text-gray-600 hover:bg-gray-50'}`}>
+                       <button onClick={() => { setStaffTab('profile'); setShowMoreTabs(false); }} className={`px-4 py-3 text-xs font-bold text-left rounded-lg transition flex items-center ${staffTab === 'profile' ? 'bg-gray-50 text-[#123524]' : 'text-gray-600 hover:bg-gray-50'}`}>
                            <User className="w-4 h-4 mr-2 text-gray-400" /> My Profile
                        </button>
                    </div>
                )}
            </div>
            {/* 🌟 TAB MENU END 🌟 */}
-           {staffTab === 'history' && <StaffDailyHistoryTab loggedInStaff={loggedInStaff} />}
-           {staffTab === 'outpass' && <StaffOutPassTab appData={appData} loggedInStaff={loggedInStaff} />}
-           {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={loggedInStaff} />}
-           {staffTab === 'financials' && <StaffPenaltyView therapistName={loggedInStaff.name} />}
-           {staffTab === 'profile' as any && <StaffProfileView staff={loggedInStaff} />}
-           
+
+           {staffTab === 'history' && <StaffDailyHistoryTab loggedInStaff={liveStaff} />}
+           {staffTab === 'outpass' && <StaffOutPassTab appData={appData} loggedInStaff={liveStaff} />}
+           {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={liveStaff} />}
+           {staffTab === 'financials' && <StaffPenaltyView therapistName={liveStaff.name} />}
+           {staffTab === 'profile' && <StaffProfileView staff={liveStaff} />}
            
            {/* 🌟 DUTY ROSTER VIEW (Dropdown ပါဝင်သည်) 🌟 */}
            {staffTab === 'roster' && (
@@ -322,12 +325,11 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                        <div className="space-y-3">
                            {rosterData.tasks.map((task: any) => {
                                const assignedIds = rosterData.assignments[task.id] || [];
-                               const isMyDuty = assignedIds.includes(loggedInStaff.id);
+                               const isMyDuty = assignedIds.includes(liveStaff.id);
                                
                                return (
                                    <details key={task.id} className={`group rounded-xl border ${isMyDuty ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] border-[#D4AF37] shadow-lg transform scale-[1.02] transition-transform' : 'bg-gray-50 border-gray-200 shadow-sm'} overflow-hidden`}>
                                        
-                                       {/* ခေါင်းစဉ် (Summary) */}
                                        <summary className="p-4 flex items-center justify-between cursor-pointer outline-none list-none">
                                            <h3 className={`font-bold text-sm leading-relaxed pr-2 ${isMyDuty ? 'text-[#D4AF37]' : 'text-[#123524]'}`}>{task.title}</h3>
                                            <div className="flex items-center gap-2">
@@ -336,7 +338,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                                            </div>
                                        </summary>
 
-                                       {/* အသေးစိတ် (Details Content) */}
                                        <div className={`p-4 pt-0 border-t ${isMyDuty ? 'border-white/10' : 'border-gray-200'} bg-black/5`}>
                                             <div className="mt-3 py-3 px-3 rounded-lg bg-black/10">
                                                 <ul className="space-y-1.5">
@@ -351,7 +352,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                                             <div className="flex flex-wrap gap-2 mt-3">
                                                {assignedIds.length === 0 ? (<span className={`text-[10px] italic font-semibold ${isMyDuty ? 'text-gray-300' : 'text-gray-400'}`}>No staff assigned</span>) : (
                                                    assignedIds.map((id: string) => {
-                                                       const tProfile = appData.therapists.find(t => t.id === id); const isMe = id === loggedInStaff.id;
+                                                       const tProfile = appData.therapists.find(t => t.id === id); const isMe = id === liveStaff.id;
                                                        return (<span key={id} className={`text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center shadow-sm ${isMe ? 'bg-white text-[#123524]' : 'bg-white border border-gray-200 text-gray-700'}`}><User className={`w-3 h-3 mr-1.5 ${isMe ? 'text-[#D4AF37]' : 'text-gray-400'}`}/> {tProfile ? tProfile.name : id}</span>);
                                                    })
                                                )}
@@ -379,7 +380,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                            <h2 className="text-2xl font-bold text-[#123524] flex items-center justify-center"><CalendarPlus className="w-6 h-6 mr-2 text-[#D4AF37]"/> Staff Clock In</h2>
                            <p className="text-sm font-bold mt-2 text-[#D4AF37]">(ဆိုင်တွင်း / Outcall ဘိုကင်များ စာရင်းသွင်းရန်)</p>
                        </div>
-                       <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} staffClockIn={true} staffClockInSuccess={() => setShowClockInFlow(false)} preselectedStaff={loggedInStaff.name}/>
+                       <CustomerBookingWizard appData={appData} userPhone="" onBooked={() => {}} forceTherapistFirst={true} isStaffMode={true} staffClockIn={true} staffClockInSuccess={() => setShowClockInFlow(false)} preselectedStaff={liveStaff.name}/>
                    </div>
                ) : (
                    <div className="text-center py-16 sm:py-20 border-2 border-dashed border-gray-100 rounded-2xl bg-gray-50 mt-4">
