@@ -211,6 +211,20 @@ export function AdminHRManagement() {
         await deleteDoc(doc(db, 'therapists', id));
     };
 
+    // 🌟 အပြတ်ဖျက်မယ့် Delete Function အသစ် 🌟
+    const handlePermanentDelete = async (id: string, reqId?: string) => {
+        if (!window.confirm("သတိပြုရန်: ဤဝန်ထမ်း၏ အချက်အလက်များကို Database မှ အပြီးတိုင် ဖျက်ပစ်မည် သေချာပါသလား? (ပြန်ယူ၍မရနိုင်ပါ)")) return;
+        try {
+            await deleteDoc(doc(db, 'therapists', id));
+            if (reqId) {
+                try { await deleteDoc(doc(db, 'onboarding_requests', reqId)); } catch(e){}
+            }
+            alert("✅ ဝန်ထမ်းအချက်အလက်များ အပြီးတိုင် ဖျက်ပစ်ပြီးပါပြီ။");
+        } catch(e) {
+            alert("Error deleting staff data.");
+        }
+    };
+
     if (loading) return <div className="text-center py-20 text-gray-500 font-bold animate-pulse">Loading HR Data...</div>;
 
     const pendingReqs = requests.filter(r => r.status === 'pending');
@@ -279,12 +293,16 @@ export function AdminHRManagement() {
                                 <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>{viewingProfile.householdFrontUrl ? <img src={viewingProfile.householdFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
                                 <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>{viewingProfile.householdBackUrl ? <img src={viewingProfile.householdBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
                             </div>
-                            <div className="flex gap-3 pt-4 border-t border-gray-200">
-                                <button onClick={() => setViewingProfile(null)} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300">Close</button>
-                                <button onClick={() => { 
-                                    setAddingInfoForId(viewingProfile.staffId); 
-                                    setAddingInfoData(viewingProfile);
+                            {/* 🌟 Edit & Close Buttons (Fixed Z-index issue) 🌟 */}
+                            <div className="flex gap-3 pt-4 border-t border-gray-200 pb-2">
+                                <button type="button" onClick={() => setViewingProfile(null)} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300">Close</button>
+                                <button type="button" onClick={() => { 
+                                    const editData = viewingProfile;
                                     setViewingProfile(null); 
+                                    setTimeout(() => {
+                                        setAddingInfoForId(editData.staffId); 
+                                        setAddingInfoData(editData);
+                                    }, 100);
                                 }} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center justify-center"><Edit className="w-4 h-4 mr-2"/> Edit Profile Form</button>
                             </div>
                         </div>
@@ -345,9 +363,15 @@ export function AdminHRManagement() {
                                 </div>
                             )}
 
-                            <div className="flex gap-2 mt-auto">
-                                {staff.onboardingData && <button onClick={() => setViewingProfile(staff.onboardingData)} className="flex-1 py-2 bg-gray-100 text-gray-700 text-[10px] font-bold rounded-lg hover:bg-gray-200">View Form Details</button>}
-                                <button onClick={() => handleRemoveStaff(staff.id)} className="flex-1 py-2 bg-red-50 text-red-600 text-[10px] font-bold rounded-lg hover:bg-red-100 flex items-center justify-center"><Trash2 className="w-3 h-3 mr-1"/> Resign</button>
+                            {/* 🌟 Buttons Section 🌟 */}
+                            <div className="mt-auto">
+                                {staff.onboardingData && (
+                                    <button onClick={() => setViewingProfile(staff.onboardingData)} className="w-full mb-2 py-2 bg-gray-100 text-gray-700 text-[10px] font-bold rounded-lg hover:bg-gray-200 border border-gray-200">View Form Details</button>
+                                )}
+                                <div className="flex gap-2">
+                                    <button onClick={() => handleRemoveStaff(staff.id)} className="flex-1 py-2 bg-orange-50 text-orange-600 text-[10px] font-bold rounded-lg hover:bg-orange-100 flex items-center justify-center border border-orange-200"><X className="w-3 h-3 mr-1"/> Resign</button>
+                                    <button onClick={() => handlePermanentDelete(staff.id, staff.onboardingData?.id)} className="flex-1 py-2 bg-red-50 text-red-600 text-[10px] font-bold rounded-lg hover:bg-red-100 flex items-center justify-center border border-red-200"><Trash2 className="w-3 h-3 mr-1"/> Delete</button>
+                                </div>
                             </div>
                         </div>
                     ))}
