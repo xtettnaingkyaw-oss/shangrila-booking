@@ -1,13 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc, setDoc } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-// 🌟 Storage အတွက် Import အသစ်များ 🌟
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, secondaryAuth } from '../firebase';
 import { encryptText } from '../security';
 import { UserPlus, FileText, CheckCircle, Clock, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning } from 'lucide-react';
-
-const storage = getStorage();
 
 const JOB_POSITIONS = ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'];
 const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ', 'ရပ်ကွက်ရဲစခန်း ထောက်ခံစာ အပ်ပြီးပါပြီ'];
@@ -16,6 +12,52 @@ const RULES_LIST = [
     'သိရှိနားလည်ထားသည့်အတိုင်း မိမိဆန္ဒအလျောက် အလုပ်လုပ်ရန် သဘောတူလက်ခံပါသည်။',
     'ဆိုင်မှ ချမှတ်ထားသော စည်းမျဉ်းစည်းကမ်းများအားလုံးကိုလည်း သိရှိနားလည် သဘောတူလက်ခံပါသည်။'
 ];
+
+// 🌟 Canvas ကို အသုံးပြု၍ ပုံအရွယ်အစား အလွန်သေးငယ်အောင် (Firestore Limit မကျော်ရန်) ချုံ့ပေးမည့် Helper 🌟
+const compressImageToSmallBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_SIZE = 400; // အလွန်သေးငယ်သော အရွယ်အစားသို့ ချုံ့မည်
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_SIZE) {
+                        height *= MAX_SIZE / width;
+                        width = MAX_SIZE;
+                    }
+                } else {
+                    if (height > MAX_SIZE) {
+                        width *= MAX_SIZE / height;
+                        height = MAX_SIZE;
+                    }
+                }
+
+                canvas.width = Math.max(1, Math.round(width));
+                canvas.height = Math.max(1, Math.round(height));
+                const ctx = canvas.getContext('2d');
+
+                if (ctx) {
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                }
+
+                // အရည်အသွေး (Quality) ကို 0.5 ဖြင့် အလွန်သေးငယ်အောင် ချုံ့မည် (Firestore Limit လုံးဝ မကျော်စေရန်)
+                const finalBase64 = canvas.toDataURL('image/jpeg', 0.5);
+                resolve(finalBase64);
+            };
+            img.onerror = reject;
+            img.src = event.target?.result as string;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
 
 // 🌟 1. Staff Application Form Component 🌟
 export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, existingData = null, isStaffSelfEdit = false }: { onBack: () => void, existingStaffId?: string | null, existingData?: any, isStaffSelfEdit?: boolean }) {
@@ -35,70 +77,23 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
     const [loading, setLoading] = useState(false);
     const [uploadingInfo, setUploadingInfo] = useState('');
 
-   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl') => {
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl') => {
         const file = e.target.files?.[0]; 
         if (!file) return;
         setUploadingInfo('Uploading Image...');
 
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const MAX_SIZE = 800; // Admin App ကဲ့သို့ 800px limit ထားမည်
-                let width = img.width;
-                let height = img.height;
-
-                if (width > height) {
-                    if (width > MAX_SIZE) {
-                        height *= MAX_SIZE / width;
-                        width = MAX_SIZE;
-                    }
-                } else {
-                    if (height > MAX_SIZE) {
-                        width *= MAX_SIZE / height;
-                        height = MAX_SIZE;
-                    }
-                }
-                
-                canvas.width = Math.max(1, Math.round(width));
-                canvas.height = Math.max(1, Math.round(height));
-                const ctx = canvas.getContext('2d');
-                
-                if (ctx) {
-                    ctx.fillStyle = '#FFFFFF';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                }
-                
-                // Admin App ကဲ့သို့ quality ကို 0.72 ဖြင့် သိမ်းမည် (Firestore 1MB limit မကျော်ရန်)
-                let finalBase64 = canvas.toDataURL('image/jpeg', 0.72); 
-                
-                // ပုံအရမ်းကြီးနေသေးလျှင် Quality ထပ်ချမည် (700KB အောက်)
-                if (finalBase64.length > 700 * 1024) {
-                    finalBase64 = canvas.toDataURL('image/jpeg', 0.58);
-                }
-
-                setFormData(prev => ({ ...prev, [field]: finalBase64 }));
-                setUploadingInfo('');
-            };
-            
-            img.onerror = () => {
-                alert("Image upload failed. File ကို ဖတ်၍မရပါ။");
-                setUploadingInfo('');
-            };
-            
-            img.src = event.target?.result as string;
-        };
-
-        reader.onerror = () => {
-            alert("Image upload failed.");
+        try {
+            const smallBase64 = await compressImageToSmallBase64(file);
+            setFormData(prev => ({ ...prev, [field]: smallBase64 }));
+        } catch (err: any) { 
+            console.error("Image Upload Error:", err);
+            alert("Image upload failed. Error: " + err.message); 
+        } finally {
             setUploadingInfo('');
-        };
-
-        reader.readAsDataURL(file);
+        }
     };
 
+    // 🌟 Validation: အချက်အလက်စုံ/မစုံ စစ်ဆေးခြင်း (Rules & Checklist များကို တင်းကျပ်မှု လျှော့ချထားသည်) 🌟
     const isFormValid = () => {
         return (
             formData.fullName.trim() !== '' &&
@@ -107,15 +102,17 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
             formData.householdFrontUrl !== '' && formData.householdBackUrl !== '' &&
             formData.dob !== '' && formData.phone.trim() !== '' && formData.address.trim() !== '' &&
             formData.emergencyName.trim() !== '' && formData.emergencyPhone.trim() !== '' && formData.emergencyRelation.trim() !== '' &&
-            formData.jobPosition !== '' && formData.startDate !== '' &&
-            formData.documents.length === DOC_CHECKLIST.length &&
-            formData.rules.length === RULES_LIST.length
+            formData.jobPosition !== '' && formData.startDate !== ''
         );
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!isFormValid()) return alert("ကျေးဇူးပြု၍ လိုအပ်သော အချက်အလက်နှင့် ပုံအားလုံးကို ပြည့်စုံစွာ ထည့်သွင်းပေးပါ။");
+        
+        if (!isFormValid()) {
+            alert("ကျေးဇူးပြု၍ လိုအပ်သော အချက်အလက်နှင့် ပုံအားလုံးကို ပြည့်စုံစွာ ထည့်သွင်းပေးပါ။");
+            return;
+        }
         
         setLoading(true);
         try {
@@ -128,9 +125,10 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 alert("✅ လျှောက်လွှာတင်ခြင်း အောင်မြင်ပါသည်။ Admin မှ အတည်ပြုပြီးပါက အကြောင်းကြားပေးပါမည်။");
                 setTimeout(() => onBack(), 100);
             }
-        } catch (error) { 
-            console.error("Submit Error:", error);
-            alert("Error submitting form. ကျေးဇူးပြု၍ နောက်တစ်ကြိမ် ထပ်မံကြိုးစားကြည့်ပါ။"); 
+        } catch (error: any) { 
+            console.error("Submit Error:", error); 
+            alert(`Error submitting form.\n${error.message}`); 
+        } finally {
             setLoading(false);
         }
     };
@@ -241,6 +239,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 </form>
             </div>
 
+            {/* 🌟 Fixed Bottom Submit Button 🌟 */}
             <div className="fixed bottom-0 left-0 right-0 px-4 pb-4 pt-3 bg-white border-t border-gray-200 shadow-[0_-8px_15px_-3px_rgba(0,0,0,0.08)] z-50">
                 <div className="max-w-xl mx-auto">
                     <p className="text-[9px] text-red-600 text-center font-black mb-2.5 leading-relaxed tracking-wide">
@@ -487,36 +486,14 @@ export function AdminHRManagement() {
 
 // 🌟 3. Staff Profile View Component (For Staff App) 🌟
 export function StaffProfileView({ staff }: { staff: any }) {
-    const [isEditing, setIsEditing] = useState(false);
-
-    if (isEditing) {
-        return <NewEmployeeOnboardingForm onBack={() => setIsEditing(false)} existingStaffId={staff.id} existingData={staff.onboardingData} isStaffSelfEdit={true} />;
-    }
-
-    if (!staff.onboardingData) {
-        return (
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4 text-center">
-                <div className="w-16 h-16 bg-yellow-50 rounded-full mx-auto flex items-center justify-center mb-4 text-yellow-600 border border-yellow-100">
-                    <UserPlus className="w-8 h-8" />
-                </div>
-                <h3 className="font-bold text-gray-800 text-lg mb-2">Profile Incomplete</h3>
-                <p className="text-xs text-gray-500 mb-6 max-w-sm mx-auto leading-relaxed">သင်၏ အချက်အလက်မှတ်တမ်း (Profile Info) ဖြည့်သွင်းထားခြင်း မရှိသေးပါ။ ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်၍ ပြည့်စုံစွာ ဖြည့်သွင်းပေးပါ။</p>
-                <button onClick={() => setIsEditing(true)} className="px-6 py-3 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-md mx-auto hover:bg-[#1a4a32] transition flex items-center justify-center text-sm">
-                    <Edit className="w-4 h-4 mr-2" /> Add Profile Info
-                </button>
-            </div>
-        );
-    }
-
+    if (!staff.onboardingData) return <div className="text-center p-10 text-gray-400 text-xs bg-gray-50 rounded-xl border border-dashed mt-4">Profile data not fully set up. Please contact Admin.</div>;
     const data = staff.onboardingData;
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4">
             <h3 className="font-bold text-[#123524] text-lg mb-4 border-b border-gray-100 pb-3 flex items-center justify-between">
                 My Profile Details
-                <button onClick={() => alert("အချက်အလက်များကို သင်ကိုယ်တိုင် ပြင်ဆင်ခွင့်မရှိတော့ပါ။ ပြင်ဆင်လိုပါက Admin သို့ တိုက်ရိုက် ဆက်သွယ်အကြောင်းကြားပေးပါ။")} className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg shadow-sm font-bold flex items-center">
-                    <X className="w-3 h-3 mr-1"/> Request Edit
-                </button>
+                <button onClick={() => alert("အချက်အလက် ပြင်ဆင်လိုပါက Admin သို့ ဆက်သွယ်ပါ။")} className="text-[10px] bg-[#D4AF37] text-white px-3 py-1.5 rounded-lg shadow-sm">Request Edit</button>
             </h3>
             <div className="space-y-4">
                 <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Therapist Name</span><span className="text-xs font-bold text-blue-700">{staff.name}</span></div>
