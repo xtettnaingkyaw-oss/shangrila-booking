@@ -353,7 +353,8 @@ function PhotoViewerModal({ src, onClose }: { src: string, onClose: () => void }
 
     return (
         <div className="fixed inset-0 z-[1000] bg-black/90 flex flex-col items-center justify-center p-4 animate-fade-in">
-            <div className="absolute top-4 right-4 flex gap-4">
+            {/* 🌟 Browser Navigation Bar အောက်သို့ မရောက်စေရန် top-16 သို့ ရွှေ့ပေးလိုက်ပါပြီ 🌟 */}
+            <div className="absolute top-16 right-6 flex gap-4 z-50">
                 <button onClick={handleDownload} className="bg-white/20 p-3 rounded-full hover:bg-white/40 transition">
                     <DownloadIcon className="w-6 h-6 text-white" />
                 </button>
@@ -361,7 +362,7 @@ function PhotoViewerModal({ src, onClose }: { src: string, onClose: () => void }
                     <X className="w-6 h-6 text-white" />
                 </button>
             </div>
-            <img src={src} alt="Document" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" />
+            <img src={src} alt="Document" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl mt-8" />
         </div>
     );
 }
