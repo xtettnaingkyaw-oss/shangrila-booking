@@ -1170,27 +1170,19 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       return DEFAULT_MENU_CATEGORIES;
   });
 
-  useEffect(() => {
+ useEffect(() => {
       const fetchAndSyncCategories = async () => {
-          if (appData.categories && appData.categories.length === 4) return;
-          
           const snap = await getDocs(collection(db, 'categories'));
           const arr: any[] = [];
           snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
           
-          if (arr.length !== 4) {
+          // 🌟 ပြဿနာဖြစ်စေသည့် Auto-Reset ကို ဖြုတ်လိုက်ပါပြီ (Collection လွတ်နေမှသာ အသစ်ထည့်မည်) 🌟
+          if (arr.length === 0) { 
               const batch = writeBatch(db);
-              arr.forEach(cat => {
-                  if (cat.docId) batch.delete(doc(db, 'categories', cat.docId));
-              });
               DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
-                  const cDocRef = doc(db, 'categories', cat.id);
-                  batch.set(cDocRef, { ...cat, order: idx });
+                  batch.set(doc(db, 'categories', cat.id), { ...cat, order: idx });
               });
-              
-              // 🌟 FIX DELAY: Save directly into appData to prevent the 3 second delay for Customer App
               batch.update(doc(db, 'settings', 'appData'), { categories: DEFAULT_MENU_CATEGORIES });
-              
               await batch.commit();
               setLocalCategories(DEFAULT_MENU_CATEGORIES);
           } else {
@@ -1199,6 +1191,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
           }
       };
       fetchAndSyncCategories();
+  }, []);
   }, [appData.categories]);
 
   const handleForceFixCategories = async () => {
@@ -1457,32 +1450,26 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       setSavingCategory(cat.id);
 
       try {
-          // FREE / SPARK PLAN:
-          // Categories are already read directly from the Firestore `categories`
-          // collection by AppDataContext. Do NOT copy Base64 service images into
-          // settings/appData because that duplicates the image data and can push
-          // the settings document over Firestore's document-size limit.
-          //
-          // Save only this category document. The Service image is already stored
-          // locally in item.imageUrl by handleServiceImageUpload().
-          const categoryToSave: MenuCategory = JSON.parse(JSON.stringify({
-              ...cat,
-              order: cIdx
-          }));
+          const cleanItems = cat.items.map(item => {
+              const cleanedItem: any = { ...item };
+              Object.keys(cleanedItem).forEach(key => {
+                  if (cleanedItem[key] === undefined) delete cleanedItem[key];
+              });
+              // 🌟 သေချာအောင် images ကို Array အဖြစ် ထည့်ပေးမည် 🌟
+              if (!cleanedItem.images) {
+                  cleanedItem.images = cleanedItem.imageUrl ? [cleanedItem.imageUrl] : [];
+              }
+              delete cleanedItem.imageUrl; // imageUrl အဟောင်းကို ရှင်းမည်
+              return cleanedItem;
+          });
 
-          await setDoc(
-              doc(db, 'categories', categoryToSave.id),
-              categoryToSave,
-              { merge: true }
-          );
+          const categoryToSave: any = { ...cat, items: cleanItems, order: cIdx };
+          delete categoryToSave.docId;
 
-          // Keep the Admin UI immediately in sync without writing the whole
-          // categories array (and its Base64 images) into settings/appData.
-          const nextCategories = localCategories.map((c, idx) => ({
-              ...c,
-              order: idx
-          }));
+          await setDoc(doc(db, 'categories', cat.id), categoryToSave, { merge: true });
 
+          const nextCategories = [...localCategories];
+          nextCategories[cIdx] = { ...categoryToSave, docId: cat.id };
           setLocalCategories(nextCategories);
           onSettingsUpdated({ ...appData, categories: nextCategories });
 
@@ -1589,84 +1576,45 @@ const handleSaveTherapists = async () => {
   // Therapist upload. Firebase Storage is intentionally NOT used here.
   // The compressed image is placed directly into item.imageUrl, and handleSaveCategory()
   // persists it to Firestore. Existing imageUrl values are preserved when editing.
-  const handleServiceImageUpload = (cIdx: number, iIdx: number, files: FileList | null) => {
-      if (!files || files.length === 0) return;
-
-      const file = files[0];
-      setUploadingImage(`service_${cIdx}_${iIdx}`);
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-          const img = new Image();
-          img.onload = () => {
-              const MAX_SIZE = 800;
-              let width = img.width;
-              let height = img.height;
-
-              // Same resize rule as the working Therapist upload.
-              if (width > height) {
-                  if (width > MAX_SIZE) {
-                      height *= MAX_SIZE / width;
-                      width = MAX_SIZE;
-                  }
-              } else {
-                  if (height > MAX_SIZE) {
-                      width *= MAX_SIZE / height;
-                      height = MAX_SIZE;
-                  }
-              }
-
-              const canvas = document.createElement('canvas');
-              canvas.width = Math.max(1, Math.round(width));
-              canvas.height = Math.max(1, Math.round(height));
-
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                  // Match Therapist behavior: white background + JPEG compression.
-                  ctx.fillStyle = '#FFFFFF';
-                  ctx.fillRect(0, 0, canvas.width, canvas.height);
-                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-              }
-
-              const finalBase64 = canvas.toDataURL('image/jpeg', 0.72);
-
-              // Keep each service image comfortably below Firestore's document-size
-              // ceiling. If an image is still too large, progressively reduce quality.
-              let safeBase64 = finalBase64;
-              const MAX_BASE64_CHARS = 700 * 1024;
-
-              if (safeBase64.length > MAX_BASE64_CHARS) {
-                  safeBase64 = canvas.toDataURL('image/jpeg', 0.58);
-              }
-
-              if (safeBase64.length > MAX_BASE64_CHARS) {
-                  alert('ဒီပုံက Firestore Free Version အတွက် အရွယ်အစားကြီးနေပါတယ်။ ပိုသေးတဲ့ပုံတစ်ပုံကို ရွေးပေးပါ။');
-                  setUploadingImage(null);
-                  return;
-              }
-
-              updateItem(cIdx, iIdx, 'imageUrl', safeBase64);
-              setUploadingImage(null);
-
-              if (files.length > 1) {
-                  alert(`ဒီ Service အတွက် ပုံ ၁ ပုံပဲ သတ်မှတ်ထားပါတယ်။\nရွေးထားတဲ့ ${files.length} ပုံထဲက ပထမပုံကို အသုံးပြုထားပါတယ်။`);
-              }
-          };
-
-          img.onerror = () => {
-              console.error('Service Image Error: Could not decode image.');
-              alert('Upload error. Image file ကို ဖတ်လို့မရပါ။');
-              setUploadingImage(null);
-          };
-
-          img.src = event.target?.result as string;
-      };
-
-      reader.onerror = () => {
-          console.error('Service Image Error: Could not read image.');
-          alert('Upload error. Image file ကို ဖတ်လို့မရပါ။');
-          setUploadingImage(null);
-      };
+  // 🌟 Therapist ပုံစံအတိုင်း Array ဖြင့်သိမ်းမည့် Service Image Upload 🌟
+  const handleServiceImageUpload = async (cIdx: number, iIdx: number, files: FileList | null) => { 
+      if (!files || files.length === 0) return; 
+      
+      const category = localCategories[cIdx];
+      const item = category.items[iIdx];
+      
+      // Data အဟောင်း (imageUrl) ကိုပါ Array အဖြစ် အလိုအလျောက်ပြောင်းရန်
+      const currentImages = item.images || (item.imageUrl ? [item.imageUrl] : []);
+      
+      if (currentImages.length + files.length > 5) { 
+          alert('Max 5 photos allowed per service.'); 
+          return; 
+      } 
+      
+      setUploadingImage(`service_${cIdx}_${iIdx}`); 
+      const newUrls: string[] = []; 
+      
+      try { 
+          for (let i = 0; i < files.length; i++) { 
+              // Therapist အတိုင်း Quality ကောင်းကောင်းနဲ့သိမ်းရန် compressImage ကိုသုံးမည်
+              const base64 = await compressImage(files[i], 800, 1000); 
+              newUrls.push(base64); 
+          } 
+          
+          const updated = [...localCategories];
+          const updatedItem = { ...updated[cIdx].items[iIdx] };
+          updatedItem.images = [...currentImages, ...newUrls];
+          delete updatedItem.imageUrl; // Field အဟောင်းကို ဖျက်မည်
+          
+          updated[cIdx].items[iIdx] = updatedItem;
+          setLocalCategories(updated); 
+          
+      } catch (err) { 
+          console.error(err);
+          alert("Upload error."); 
+      } 
+      setUploadingImage(null); 
+  };
 
       reader.readAsDataURL(file);
   };
@@ -1678,7 +1626,11 @@ const handleSaveTherapists = async () => {
   const moveTherapistDown = (tIdx: number) => { if (tIdx === localTherapists.length - 1) return; const updated = [...localTherapists]; const temp = updated[tIdx + 1]; updated[tIdx + 1] = updated[tIdx]; updated[tIdx] = temp; setLocalTherapists(updated); };
   const removeImage = (tIdx: number, imgIdx: number) => { const updated = [...localTherapists]; updated[tIdx].images.splice(imgIdx, 1); setLocalTherapists(updated); };
   const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const updated = [...localCategories]; (updated[cIdx].items[iIdx] as any)[field] = val; setLocalCategories(updated); };
-  const addItem = (cIdx: number) => { const updated = [...localCategories]; updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false }); setLocalCategories(updated); };
+  const addItem = (cIdx: number) => { 
+      const updated = [...localCategories]; 
+      updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false, images: [] }); 
+      setLocalCategories(updated); 
+  };
   const deleteItem = (cIdx: number, iIdx: number) => { if (!window.confirm("Are you sure?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
   const updatePaymentMethod = (pIdx: number, field: string, val: string) => { const updated = [...localPaymentMethods]; (updated[pIdx] as any)[field] = val; setLocalPaymentMethods(updated); };
   const addPaymentMethod = () => { setLocalPaymentMethods([...localPaymentMethods, { id: `p_${Date.now()}`, name: 'New Payment', accountNumber: '', accountName: '', logoUrl: '' }]); };
@@ -2307,65 +2259,115 @@ const handleSaveTherapists = async () => {
                             </button>
                         </div>
 
-                        {/* Description & Image Upload */}
+                       {/* Description & Image Upload (Array Format) */}
                         <div className="lg:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-200">
                             <div>
                                 <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Description (အသေးစိတ်ဖော်ပြချက်)</label>
                                 <textarea 
                                     value={item.description || ''} 
                                     onChange={(e) => updateItem(cIdx, iIdx, 'description', e.target.value)} 
-                                    className="w-full p-2.5 border border-gray-300 rounded-lg text-xs h-20 resize-none outline-none focus:border-[#D4AF37] bg-white" 
+                                    className="w-full p-2.5 border border-gray-300 rounded-lg text-xs h-24 resize-none outline-none focus:border-[#D4AF37] bg-white" 
                                     placeholder="Service အကြောင်း အသေးစိတ်ရေးရန်..." 
                                 />
                             </div>
 
                             <div>
-                                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Service Image (ပုံ)</label>
-                                <div className="flex items-center gap-3">
-                                    {item.imageUrl ? (
-                                        <div className="relative w-20 h-20 rounded-xl border border-gray-200 shadow-sm overflow-hidden group">
-                                            <img src={item.imageUrl} alt="Service" className="w-full h-full object-cover" />
-                                            <button 
-                                                type="button"
-                                                onClick={() => updateItem(cIdx, iIdx, 'imageUrl', '')} 
-                                                className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                            >
-                                                <X className="w-5 h-5 text-white" />
-                                            </button>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Service Photos (Max 5)</label>
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                    {/* 🌟 အဟောင်း data (imageUrl) ရှိနေပါက array အဖြစ် အလိုအလျောက် ပြောင်းပေးမည် 🌟 */}
+                                    {(item.images || (item.imageUrl ? [item.imageUrl] : [])).map((imgUrl: string, imgIdx: number) => {
+                                        const currentImages = item.images || (item.imageUrl ? [item.imageUrl] : []);
+                                        return (
+                                        <div key={imgIdx} className="w-24 aspect-[4/3] relative rounded-xl overflow-hidden shadow-sm border border-gray-200 group">
+                                            <img src={imgUrl} alt="Service" className="w-full h-full object-cover" />
+                                            
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
+                                                <button 
+                                                    type="button" 
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        const newCategories = [...localCategories];
+                                                        const cItem = newCategories[cIdx].items[iIdx];
+                                                        const cImgs = cItem.images || (cItem.imageUrl ? [cItem.imageUrl] : []);
+                                                        cImgs.splice(imgIdx, 1);
+                                                        cItem.images = cImgs;
+                                                        delete cItem.imageUrl;
+                                                        setLocalCategories(newCategories);
+                                                    }}
+                                                    className="bg-red-500 text-white text-[9px] px-2 py-1 rounded hover:bg-red-600 shadow-sm font-bold"
+                                                >
+                                                    Delete
+                                                </button>
+                                                
+                                                <div className="flex gap-1.5">
+                                                    {imgIdx > 0 && (
+                                                        <button 
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                const newCategories = [...localCategories];
+                                                                const cItem = newCategories[cIdx].items[iIdx];
+                                                                const cImgs = cItem.images || (cItem.imageUrl ? [cItem.imageUrl] : []);
+                                                                [cImgs[imgIdx - 1], cImgs[imgIdx]] = [cImgs[imgIdx], cImgs[imgIdx - 1]];
+                                                                cItem.images = cImgs;
+                                                                delete cItem.imageUrl;
+                                                                setLocalCategories(newCategories);
+                                                            }}
+                                                            className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
+                                                        >
+                                                            &lt;
+                                                        </button>
+                                                    )}
+                                                    {imgIdx < currentImages.length - 1 && (
+                                                        <button 
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                const newCategories = [...localCategories];
+                                                                const cItem = newCategories[cIdx].items[iIdx];
+                                                                const cImgs = cItem.images || (cItem.imageUrl ? [cItem.imageUrl] : []);
+                                                                [cImgs[imgIdx + 1], cImgs[imgIdx]] = [cImgs[imgIdx], cImgs[imgIdx + 1]];
+                                                                cItem.images = cImgs;
+                                                                delete cItem.imageUrl;
+                                                                setLocalCategories(newCategories);
+                                                            }}
+                                                            className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
+                                                        >
+                                                            &gt;
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-white text-gray-400 shadow-inner">
-                                            <ImageIcon className="w-6 h-6 opacity-40" />
-                                        </div>
+                                    )})}
+
+                                    {/* Upload Button */}
+                                    {(!(item.images || (item.imageUrl ? [item.imageUrl] : [])) || (item.images || (item.imageUrl ? [item.imageUrl] : [])).length < 5) && (
+                                        <label className="w-24 aspect-[4/3] rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-inner relative overflow-hidden text-gray-400">
+                                            <input 
+                                                type="file" 
+                                                accept="image/*" 
+                                                multiple
+                                                className="hidden" 
+                                                onChange={(e) => {
+                                                    handleServiceImageUpload(cIdx, iIdx, e.target.files);
+                                                    e.target.value = '';
+                                                }} 
+                                                disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
+                                            />
+                                            {uploadingImage === `service_${cIdx}_${iIdx}` ? (
+                                                <span className="text-[10px] font-bold text-[#D4AF37] animate-pulse">Wait..</span>
+                                            ) : (
+                                                <div className="flex flex-col items-center">
+                                                    <ImageIcon className="w-6 h-6 opacity-40 mb-1" />
+                                                    <span className="text-[9px] font-bold text-gray-500">Upload</span>
+                                                </div>
+                                            )}
+                                        </label>
                                     )}
-                                    
-                             <label className="cursor-pointer bg-white hover:bg-gray-50 text-[#123524] px-4 py-2.5 rounded-xl text-[10px] font-bold border border-gray-300 shadow-sm transition-all uppercase tracking-wider flex items-center justify-center">
-    <input 
-        type="file" 
-        accept="image/*" 
-        className="hidden" 
-        onChange={(e) => {
-            handleServiceImageUpload(cIdx, iIdx, e.target.files);
-            e.target.value = '';
-        }} 
-        disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
-    />
-    {uploadingImage === `service_${cIdx}_${iIdx}` ? 'WAIT..' : 'UPLOAD PHOTO'}
-</label>
                                 </div>
                             </div>
                         </div>
-                        
-                    </div>
-                 ))}
-               </div>
-             </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
     const [matrixData, setMatrixData] = useState<any>(null);
