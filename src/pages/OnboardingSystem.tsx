@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc, setDoc } from 'firebase/firestore';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+// 🌟 Storage အတွက် Import အသစ်များ 🌟
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, secondaryAuth } from '../firebase';
-import { compressImage } from '../shared';
 import { encryptText } from '../security';
 import { UserPlus, FileText, CheckCircle, Clock, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning } from 'lucide-react';
+
+const storage = getStorage();
 
 const JOB_POSITIONS = ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'];
 const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ', 'ရပ်ကွက်ရဲစခန်း ထောက်ခံစာ အပ်ပြီးပါပြီ'];
@@ -32,11 +35,23 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
     const [loading, setLoading] = useState(false);
     const [uploadingInfo, setUploadingInfo] = useState('');
 
+    // 🌟 Firebase Storage သို့ တိုက်ရိုက် Upload လုပ်မည့် Function အသစ် 🌟
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl') => {
-        const file = e.target.files?.[0]; if (!file) return;
-        setUploadingInfo('Uploading Image...');
-        try { const base64 = await compressImage(file, 800, 1000); setFormData({ ...formData, [field]: base64 }); } 
-        catch (err) { alert("Image upload failed."); }
+        const file = e.target.files?.[0]; 
+        if (!file) return;
+        
+        setUploadingInfo('Uploading Image to Server...');
+        try {
+            // Firebase Storage တွင် Folder အသစ်ဆောက်၍ သိမ်းမည် (onboarding_docs/Timestamp_filename)
+            const storageRef = ref(storage, `onboarding_docs/${Date.now()}_${file.name}`);
+            await uploadBytes(storageRef, file);
+            const downloadUrl = await getDownloadURL(storageRef);
+            
+            setFormData(prev => ({ ...prev, [field]: downloadUrl }));
+        } catch (err) {
+            console.error("Storage Upload Error:", err);
+            alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။ Storage Rules ကို Firebase တွင် ခွင့်ပြုထားခြင်းရှိမရှိ စစ်ဆေးပါ။");
+        }
         setUploadingInfo('');
     };
 
@@ -61,16 +76,19 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         setLoading(true);
         try {
             if (existingStaffId) {
-                // Staff က ကိုယ်တိုင် Profile လာဖြည့်တာဆိုရင် therapists collection ထဲမှာ update လုပ်မယ်
                 await updateDoc(doc(db, 'therapists', existingStaffId), { onboardingData: formData });
                 alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
+                setTimeout(() => onBack(), 100); 
             } else {
                 await addDoc(collection(db, 'onboarding_requests'), { ...formData, status: 'pending', createdAt: Date.now() });
                 alert("✅ လျှောက်လွှာတင်ခြင်း အောင်မြင်ပါသည်။ Admin မှ အတည်ပြုပြီးပါက အကြောင်းကြားပေးပါမည်။");
+                setTimeout(() => onBack(), 100);
             }
-            onBack();
-        } catch (error) { alert("Error submitting form."); }
-        setLoading(false);
+        } catch (error) { 
+            console.error("Submit Error:", error);
+            alert("Error submitting form. ကျေးဇူးပြု၍ နောက်တစ်ကြိမ် ထပ်မံကြိုးစားကြည့်ပါ။"); 
+            setLoading(false);
+        }
     };
 
     if (isStaffSelfEdit && existingData) {
@@ -179,21 +197,19 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 </form>
             </div>
 
-            {/* 🌟 Fixed Bottom Submit Button 🌟 */}
             <div className="fixed bottom-0 left-0 right-0 px-4 pb-4 pt-3 bg-white border-t border-gray-200 shadow-[0_-8px_15px_-3px_rgba(0,0,0,0.08)] z-50">
                 <div className="max-w-xl mx-auto">
-                    {/* 🌟 သတိပေးစာသား အနီရောင် Bold 🌟 */}
                     <p className="text-[9px] text-red-600 text-center font-black mb-2.5 leading-relaxed tracking-wide">
                         ဖြည့်သွင်းထားသောအချက်လက်များအားလုံးအား ပြည့်စုံမှန်ကန်ခြင်း ရှိ/မရှိ<br/>သေချာစွာပြန်လည်စစ်ဆေးပြီးပါက အောက်မှ တင်သွင်းသည့်ခလုတ်ကိုနှိပ်ပါ။
                     </p>
-                    <button
+                    <button 
                         type="submit" 
                         form="onboardingForm" 
                         disabled={loading || !isFormValid()} 
                         className={`w-full py-4 rounded-xl font-bold shadow-md flex items-center justify-center transition ${isFormValid() ? 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] hover:shadow-lg' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     >
                         <Save className="w-5 h-5 mr-2" /> 
-                        {loading ? 'Saving Data...' : (!isFormValid() ? 'Please fill all required fields' : 'Submit All Informations Now')}
+                        {loading ? 'Saving Data...' : (!isFormValid() ? 'Please fill all required fields' : 'Submit All Information Now')}
                     </button>
                 </div>
             </div>
@@ -427,36 +443,14 @@ export function AdminHRManagement() {
 
 // 🌟 3. Staff Profile View Component (For Staff App) 🌟
 export function StaffProfileView({ staff }: { staff: any }) {
-    const [isEditing, setIsEditing] = useState(false);
-
-    if (isEditing) {
-        return <NewEmployeeOnboardingForm onBack={() => setIsEditing(false)} existingStaffId={staff.id} existingData={staff.onboardingData} isStaffSelfEdit={true} />;
-    }
-
-    if (!staff.onboardingData) {
-        return (
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4 text-center">
-                <div className="w-16 h-16 bg-yellow-50 rounded-full mx-auto flex items-center justify-center mb-4 text-yellow-600 border border-yellow-100">
-                    <UserPlus className="w-8 h-8" />
-                </div>
-                <h3 className="font-bold text-gray-800 text-lg mb-2">Profile Incomplete</h3>
-                <p className="text-xs text-gray-500 mb-6 max-w-sm mx-auto leading-relaxed">သင်၏ အချက်အလက်မှတ်တမ်း (Profile Info) ဖြည့်သွင်းထားခြင်း မရှိသေးပါ။ ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်၍ ပြည့်စုံစွာ ဖြည့်သွင်းပေးပါ။</p>
-                <button onClick={() => setIsEditing(true)} className="px-6 py-3 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-md mx-auto hover:bg-[#1a4a32] transition flex items-center justify-center text-sm">
-                    <Edit className="w-4 h-4 mr-2" /> Add Profile Info
-                </button>
-            </div>
-        );
-    }
-
+    if (!staff.onboardingData) return <div className="text-center p-10 text-gray-400 text-xs bg-gray-50 rounded-xl border border-dashed mt-4">Profile data not fully set up. Please contact Admin.</div>;
     const data = staff.onboardingData;
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4">
             <h3 className="font-bold text-[#123524] text-lg mb-4 border-b border-gray-100 pb-3 flex items-center justify-between">
                 My Profile Details
-                <button onClick={() => alert("အချက်အလက်များကို သင်ကိုယ်တိုင် ပြင်ဆင်ခွင့်မရှိတော့ပါ။ ပြင်ဆင်လိုပါက Admin သို့ တိုက်ရိုက် ဆက်သွယ်အကြောင်းကြားပေးပါ။")} className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg shadow-sm font-bold flex items-center">
-                    <X className="w-3 h-3 mr-1"/> Request Edit
-                </button>
+                <button onClick={() => alert("အချက်အလက် ပြင်ဆင်လိုပါက Admin သို့ ဆက်သွယ်ပါ။")} className="text-[10px] bg-[#D4AF37] text-white px-3 py-1.5 rounded-lg shadow-sm">Request Edit</button>
             </h3>
             <div className="space-y-4">
                 <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Therapist Name</span><span className="text-xs font-bold text-blue-700">{staff.name}</span></div>
