@@ -3,7 +3,7 @@ import { collection, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteD
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../firebase';
 import { encryptText } from '../security';
-import { UserPlus, FileText, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning, Download as DownloadIcon } from 'lucide-react';
+import { UserPlus, FileText, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning, Download as DownloadIcon, Bell } from 'lucide-react';
 
 const JOB_POSITIONS = ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'];
 const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ', 'ရပ်ကွက်ရဲစခန်း ထောက်ခံစာ အပ်ပြီးပါပြီ'];
@@ -13,7 +13,7 @@ const RULES_LIST = [
     'ဆိုင်မှ ချမှတ်ထားသော စည်းမျဉ်းစည်းကမ်းများအားလုံးကိုလည်း သိရှိနားလည် သဘောတူလက်ခံပါသည်။'
 ];
 
-// 🌟 Admin App မှ Therapist ပုံတင်သည့်နည်းလမ်းအတိုင်း ပြောင်းလဲထားသော Helper 🌟
+// 🌟 Canvas ကို အသုံးပြု၍ ပုံအရွယ်အစားနှင့် Quality ထိန်းညှိပေးမည့် Helper 🌟
 const compressImageToSmallBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -48,7 +48,7 @@ const compressImageToSmallBase64 = (file: File): Promise<string> => {
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 }
 
-                // 🌟 Admin App အတိုင်း Quality 0.8 သာသုံးပြီး ထပ်ဆင့်ချုံ့ခြင်းကို ဖယ်ရှားလိုက်ပါသည် 🌟
+                // 🌟 Quality 0.8 သာသုံးပြီး ထပ်ဆင့်ချုံ့ခြင်းကို ဖယ်ရှားလိုက်ပါသည် 🌟
                 const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
                 resolve(finalBase64);
             };
@@ -76,7 +76,6 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
     });
     
     const [loading, setLoading] = useState(false);
-    // 🌟 Uploading State ကို Field Name အလိုက် သိမ်းမည် (Admin App ပုံစံ) 🌟
     const [uploadingInfo, setUploadingInfo] = useState<string>('');
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl') => {
@@ -92,11 +91,10 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
             alert("Image upload failed. Error: " + err.message); 
         } finally {
             setUploadingInfo('');
-            e.target.value = ''; // Input ကို Reset လုပ်ရန်
+            e.target.value = ''; 
         }
     };
 
-    // 🌟 Admin App ရဲ့ Therapist UI အတိုင်း Document တင်သည့် Box ကို Helper ဖြင့်ရေးခြင်း 🌟
     const renderDocumentUpload = (field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl', label: string) => {
         const url = formData[field];
         const isUploading = uploadingInfo === field;
@@ -173,8 +171,17 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         setLoading(true);
         try {
             if (existingStaffId) {
-                await updateDoc(doc(db, 'therapists', existingStaffId), { onboardingData: formData });
-                alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
+                // 🌟 isStaffSelfEdit ဆိုရင် Update Request အနေနဲ့ သိမ်းမယ် 🌟
+                if (isStaffSelfEdit) {
+                    await updateDoc(doc(db, 'therapists', existingStaffId), { 
+                        pendingOnboardingData: formData, // Temporary data သိမ်းထားမယ်
+                        updateRequested: true // Admin ကို Noti ပြဖို့ Flag 
+                    });
+                    alert("✅ အချက်အလက်ပြင်ဆင်ခြင်းအား Admin ထံ ပေးပို့လိုက်ပါပြီ။ Admin မှ အတည်ပြုပြီးပါက ပြောင်းလဲသွားပါမည်။");
+                } else {
+                    await updateDoc(doc(db, 'therapists', existingStaffId), { onboardingData: formData });
+                    alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
+                }
                 setTimeout(() => onBack(), 100); 
             } else {
                 await addDoc(collection(db, 'onboarding_requests'), { ...formData, status: 'pending', createdAt: Date.now() });
@@ -189,34 +196,28 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         }
     };
 
-    if (isStaffSelfEdit && existingData) {
-        return (
-            <div className="bg-gray-50 min-h-[100dvh] w-full fixed inset-0 z-[100] flex items-center justify-center p-4">
-                <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-sm w-full animate-slide-up">
-                    <FileWarning className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-                    <h2 className="text-lg font-bold text-gray-800 mb-2">Access Denied</h2>
-                    <p className="text-xs text-gray-500 mb-6 leading-relaxed">သင်၏ အချက်အလက်များကို ဖြည့်သွင်းပြီးဖြစ်ပါသည်။ ထပ်မံပြင်ဆင်လိုပါက Admin သို့ Request လုပ်ပြီးမှသာ ပြင်ဆင်နိုင်ပါမည်။</p>
-                    <button onClick={onBack} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition">Go Back</button>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="bg-gray-50 min-h-[100dvh] w-full fixed inset-0 z-[100] flex flex-col">
             <div className="bg-[#D4AF37] p-4 flex items-center shadow-md flex-shrink-0">
                 <button type="button" onClick={onBack} className="text-white hover:bg-white/20 p-2 rounded-full transition"><ChevronLeft className="w-6 h-6"/></button>
-                <h2 className="text-[#123524] font-bold text-lg ml-2 uppercase tracking-wider">{existingStaffId ? 'Add Your Profile Info' : 'New Employee Onboarding'}</h2>
+                <h2 className="text-[#123524] font-bold text-lg ml-2 uppercase tracking-wider">{isStaffSelfEdit ? 'Update Your Profile Info' : (existingStaffId ? 'Add Your Profile Info' : 'New Employee Onboarding')}</h2>
             </div>
             
             <div className="flex-1 overflow-y-auto pb-36">
                 <form id="onboardingForm" onSubmit={handleSubmit} className="max-w-xl mx-auto p-4 space-y-6 animate-slide-up">
                     
-                    {existingStaffId && (
+                    {existingStaffId && !isStaffSelfEdit && (
                         <div className="bg-blue-50 text-blue-800 p-4 rounded-xl border border-blue-200 text-xs font-bold shadow-sm">
                             <span className="block mb-1 text-blue-600 uppercase tracking-widest text-[9px]">Important Notice</span>
                             ဤအချက်အလက်များကို တစ်ကြိမ်သာ ဖြည့်သွင်းခွင့်ရှိပါသည်။ ဖြည့်သွင်းပြီးပါက Admin ထံ ခွင့်ပြုချက်တောင်းပြီးမှသာ ပြန်လည်ပြင်ဆင်နိုင်မည်ဖြစ်သဖြင့် သေချာစွာစစ်ဆေးပြီးမှ Submit လုပ်ပါ။
                         </div>
+                    )}
+                    
+                    {isStaffSelfEdit && (
+                         <div className="bg-yellow-50 text-yellow-800 p-4 rounded-xl border border-yellow-200 text-xs font-bold shadow-sm">
+                             <span className="block mb-1 text-yellow-600 uppercase tracking-widest text-[9px]">Edit Mode</span>
+                             သင်ပြောင်းလဲလိုက်သော အချက်အလက်များကို Admin မှ အတည်ပြုပြီးမှသာ Profile တွင် Update ဖြစ်သွားပါမည်။
+                         </div>
                     )}
 
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
@@ -226,7 +227,6 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                         </div>
                         <div><label className="block text-xs font-bold text-gray-500 mb-1">မှတ်ပုံတင်နံပါတ် *</label><input required type="text" value={formData.nrcNumber} onChange={e=>setFormData({...formData, nrcNumber: e.target.value})} placeholder="Please enter" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                         
-                        {/* 🌟 Document Upload များကို Helper Function ဖြင့် အစားထိုးခြင်း 🌟 */}
                         <div className="grid grid-cols-2 gap-4">
                             {renderDocumentUpload('nrcFrontUrl', 'မှတ်ပုံတင် (ရှေ့ဘက်)')}
                             {renderDocumentUpload('nrcBackUrl', 'မှတ်ပုံတင် (နောက်ဘက်)')}
@@ -283,7 +283,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 </form>
             </div>
 
-            {/* 🌟 Fixed Bottom Submit Button 🌟 */}
+            {/* 🌟 Fixed Bottom Submit Button (Update All Information Now) 🌟 */}
             <div className="fixed bottom-0 left-0 right-0 px-4 pb-4 pt-3 bg-white border-t border-gray-200 shadow-[0_-8px_15px_-3px_rgba(0,0,0,0.08)] z-50">
                 <div className="max-w-xl mx-auto">
                     <p className="text-[9px] text-red-600 text-center font-black mb-2.5 leading-relaxed tracking-wide">
@@ -296,7 +296,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                         className={`w-full py-4 rounded-xl font-bold shadow-md flex items-center justify-center transition ${isFormValid() ? 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] hover:shadow-lg' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     >
                         <Save className="w-5 h-5 mr-2" /> 
-                        {loading ? 'Saving Data...' : (!isFormValid() ? 'Please fill all required fields' : 'Submit All Information Now')}
+                        {loading ? 'Saving Data...' : (!isFormValid() ? 'Please fill all required fields' : (isStaffSelfEdit ? 'Update All Information Now' : 'Submit All Information Now'))}
                     </button>
                 </div>
             </div>
@@ -307,12 +307,10 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
 // 🌟 Photo Viewer Modal Component (Fixed Download Logic) 🌟
 function PhotoViewerModal({ src, onClose }: { src: string, onClose: () => void }) {
     
-    // 🌟 Base64 ပုံများကို Download ဆွဲနိုင်ရန် Blob သုံးပြီး ပြင်ဆင်ထားသော Function 🌟
     const handleDownload = async () => {
         try {
             let blobUrl = src;
             
-            // Base64 format ဖြစ်နေပါက Blob အဖြစ်ပြောင်းလဲပေးခြင်း
             if (src.startsWith('data:image')) {
                 const response = await fetch(src);
                 const blob = await response.blob();
@@ -321,12 +319,11 @@ function PhotoViewerModal({ src, onClose }: { src: string, onClose: () => void }
 
             const link = document.createElement('a');
             link.href = blobUrl;
-            link.download = `Staff_Document_${Date.now()}.jpg`; // Download ချမည့် File အမည်
+            link.download = `Staff_Document_${Date.now()}.jpg`; 
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
 
-            // Memory ပြန်ရှင်းပေးခြင်း
             if (src.startsWith('data:image')) {
                 URL.revokeObjectURL(blobUrl);
             }
@@ -369,6 +366,7 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data:
         return `${age} Yrs`;
     };
 
+    // 🌟 Service Duration တွက်ချက်သည့်အပိုင်းကို အသေးစိတ်ပြင်ဆင်ထားသည် 🌟
     const calculateDuration = (startDateString: string) => {
         if (!startDateString) return '-';
         const startDate = new Date(startDateString);
@@ -376,11 +374,28 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data:
 
         const today = new Date();
         const diffTime = Math.abs(today.getTime() - startDate.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const diffDaysTotal = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-        if (diffDays < 30) return `${diffDays} Days`;
-        if (diffDays < 365) return `${Math.floor(diffDays / 30)} Mos`;
-        return `${(diffDays / 365).toFixed(1)} Yrs`;
+        if (diffDaysTotal < 30) {
+            return `${diffDaysTotal} Days`;
+        } else if (diffDaysTotal < 365) {
+            const months = Math.floor(diffDaysTotal / 30);
+            const remainingDays = diffDaysTotal % 30;
+            return remainingDays > 0 ? `${months} Mos & ${remainingDays} Days` : `${months} Mos`;
+        } else {
+            const years = Math.floor(diffDaysTotal / 365);
+            const remainingDaysAfterYear = diffDaysTotal % 365;
+            
+            if (remainingDaysAfterYear === 0) return `${years} Yr`;
+            
+            if (remainingDaysAfterYear < 30) {
+                 return `${years} Yr & ${remainingDaysAfterYear} Days`;
+            } else {
+                 const extraMonths = Math.floor(remainingDaysAfterYear / 30);
+                 const extraDays = remainingDaysAfterYear % 30;
+                 return extraDays > 0 ? `${years} Yr, ${extraMonths} Mo & ${extraDays} D` : `${years} Yr & ${extraMonths} Mo`;
+            }
+        }
     };
 
     return (
@@ -434,9 +449,10 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data:
                         <span className="text-[10px] text-gray-400 block uppercase mb-1">Join Date</span>
                         <span className="font-bold text-gray-800 text-sm">{data.startDate}</span>
                     </div>
-                    <div className="w-24 bg-gradient-to-br from-blue-50 to-blue-100 p-2 rounded-xl shadow-sm border border-blue-200 flex flex-col justify-center items-center">
-                        <span className="text-[9px] text-blue-400 uppercase font-bold mb-0.5">Duration</span>
-                        <span className="text-blue-700 font-black text-sm">{calculateDuration(data.startDate)}</span>
+                    {/* 🌟 SERVICE DURATION လို့ ပြောင်းထားပါတယ် 🌟 */}
+                    <div className="w-32 bg-gradient-to-br from-blue-50 to-blue-100 p-2 rounded-xl shadow-sm border border-blue-200 flex flex-col justify-center items-center">
+                        <span className="text-[9px] text-blue-500 uppercase font-bold mb-0.5 text-center leading-tight">Service Duration<br/>(လုပ်သက်)</span>
+                        <span className="text-blue-700 font-black text-[11px] mt-1 text-center leading-tight">{calculateDuration(data.startDate)}</span>
                     </div>
                 </div>
 
@@ -562,9 +578,28 @@ export function AdminHRManagement() {
         }
     };
 
+    // 🌟 Admin မှ Staff Update လုပ်ထားသည်ကို Approve လုပ်ပေးခြင်း 🌟
+    const handleApproveUpdate = async (staffId: string, pendingData: any) => {
+        if (!window.confirm("ဝန်ထမ်းပြင်ဆင်ထားသော အချက်အလက်များကို အတည်ပြုမည် သေချာပါသလား?")) return;
+        try {
+             await updateDoc(doc(db, 'therapists', staffId), { 
+                 onboardingData: pendingData,
+                 pendingOnboardingData: null, // clear temp data
+                 updateRequested: false // turn off noti
+             });
+             alert("✅ Update လုပ်ထားသော အချက်အလက်များကို အတည်ပြုပြီးပါပြီ။");
+             setViewingProfile(null);
+        } catch(e) {
+             alert("Error approving update.");
+        }
+    };
+
     if (loading) return <div className="text-center py-20 text-gray-500 font-bold animate-pulse">Loading HR Data...</div>;
 
     const pendingReqs = requests.filter(r => r.status === 'pending');
+    
+    // 🌟 Update Requested ဖြစ်နေတဲ့ Staff အရေအတွက်ကို ရှာမယ် 🌟
+    const updateRequestedCount = activeStaff.filter(s => s.updateRequested).length;
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
@@ -599,11 +634,35 @@ export function AdminHRManagement() {
                 <div className="fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up">
                         <div className="p-4 border-b flex justify-between items-center bg-blue-900 text-white rounded-t-2xl">
-                            <h3 className="font-bold flex items-center"><User className="w-5 h-5 mr-2 text-blue-300"/> Staff Profile Viewer</h3>
+                            <h3 className="font-bold flex items-center">
+                                <User className="w-5 h-5 mr-2 text-blue-300"/> 
+                                {viewingProfile.isPendingUpdate ? 'Review Staff Update Request' : 'Staff Profile Viewer'}
+                            </h3>
                             <button onClick={() => setViewingProfile(null)} className="hover:text-red-400"><X className="w-5 h-5"/></button>
                         </div>
                         <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-gray-50">
-                            <ProfileDetailsViewer data={viewingProfile} staffId={viewingProfile.staffId} onClose={() => setViewingProfile(null)} />
+                            {viewingProfile.isPendingUpdate && (
+                                <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg text-yellow-800 text-xs font-bold mb-4 flex items-center">
+                                    <Bell className="w-4 h-4 mr-2 animate-bounce"/> ဝန်ထမ်းမှ အချက်အလက်များ ပြင်ဆင်ရန် တောင်းဆိုထားပါသည်။ အောက်တွင် စစ်ဆေးပြီး အတည်ပြုပေးပါ။
+                                </div>
+                            )}
+                            
+                            <ProfileDetailsViewer 
+                                data={viewingProfile.data} 
+                                staffId={viewingProfile.staffId} 
+                                onClose={() => setViewingProfile(null)} 
+                            />
+                            
+                            {viewingProfile.isPendingUpdate && (
+                                <div className="flex gap-3 pt-4 border-t border-gray-200">
+                                    <button 
+                                        onClick={() => handleApproveUpdate(viewingProfile.staffId, viewingProfile.data)} 
+                                        className="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 shadow-md"
+                                    >
+                                        Approve Updates
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -619,7 +678,11 @@ export function AdminHRManagement() {
 
             <div className="flex space-x-2 mb-6 bg-gray-50 p-1.5 rounded-xl border border-gray-100 w-fit">
                 <button onClick={() => setViewTab('requests')} className={`px-4 py-2 text-xs font-bold rounded-lg transition relative ${viewTab === 'requests' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Pending Requests {pendingReqs.length > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>}</button>
-                <button onClick={() => setViewTab('active')} className={`px-4 py-2 text-xs font-bold rounded-lg transition ${viewTab === 'active' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Active Staff List</button>
+                <button onClick={() => setViewTab('active')} className={`px-4 py-2 text-xs font-bold rounded-lg transition relative ${viewTab === 'active' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>
+                    Active Staff List
+                    {/* 🌟 Tab ပေါ်မှာ Update Requested ရှိရင် Noti ပြမယ် 🌟 */}
+                    {updateRequestedCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse"></span>}
+                </button>
             </div>
 
             {viewTab === 'requests' && (
@@ -641,9 +704,17 @@ export function AdminHRManagement() {
             {viewTab === 'active' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {activeStaff.map(staff => (
-                        <div key={staff.id} className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col relative overflow-hidden">
+                        <div key={staff.id} className={`p-4 bg-white border rounded-xl shadow-sm flex flex-col relative overflow-hidden transition-all ${staff.updateRequested ? 'border-orange-300 bg-orange-50/30' : 'border-gray-200'}`}>
+                            
+                            {/* 🌟 Update Requested Noti on Card 🌟 */}
+                            {staff.updateRequested && (
+                                <div className="absolute top-0 left-0 bg-orange-500 text-white text-[9px] px-2 py-0.5 rounded-br-lg font-bold flex items-center shadow-sm z-10 animate-pulse">
+                                    <Bell className="w-3 h-3 mr-1"/> Update Requested
+                                </div>
+                            )}
+
                             <div className="absolute top-0 right-0 bg-gray-100 text-gray-500 text-[9px] px-2 py-0.5 rounded-bl-lg font-mono font-bold border-b border-l border-gray-200">{staff.id}</div>
-                            <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-2 pt-2">
+                            <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-2 pt-4">
                                 <div><div className="font-bold text-blue-700">{staff.name}</div><div className="text-[10px] text-gray-500 mt-0.5">Therapist Name</div></div>
                                 <span className="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold uppercase tracking-wider">Active</span>
                             </div>
@@ -663,7 +734,17 @@ export function AdminHRManagement() {
 
                             <div className="mt-auto">
                                 {staff.onboardingData && (
-                                    <button onClick={() => setViewingProfile(staff.onboardingData)} className="w-full mb-2 py-2 bg-gray-100 text-gray-700 text-[10px] font-bold rounded-lg hover:bg-gray-200 border border-gray-200">View Form Details</button>
+                                    <button 
+                                        // 🌟 Update Request ရှိရင် Pending Data ကို ပြမယ် 🌟
+                                        onClick={() => setViewingProfile({
+                                            data: staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData, 
+                                            staffId: staff.id,
+                                            isPendingUpdate: staff.updateRequested
+                                        })} 
+                                        className={`w-full mb-2 py-2 text-[10px] font-bold rounded-lg border transition ${staff.updateRequested ? 'bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200' : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'}`}
+                                    >
+                                        {staff.updateRequested ? 'Review Update Request' : 'View Form Details'}
+                                    </button>
                                 )}
                                 <div className="flex gap-2">
                                     <button onClick={() => handleRemoveStaff(staff.id)} className="flex-1 py-2 bg-orange-50 text-orange-600 text-[10px] font-bold rounded-lg hover:bg-orange-100 flex items-center justify-center border border-orange-200"><X className="w-3 h-3 mr-1"/> Resign</button>
@@ -696,6 +777,7 @@ export function StaffProfileView({ staff }: { staff: any }) {
     }, [staff?.id]);
 
     if (isEditing) {
+        // 🌟 isStaffSelfEdit ကို true အဖြစ်ပေးလိုက်ပြီး Update Form ကို ဖွင့်မယ် 🌟
         return <NewEmployeeOnboardingForm onBack={() => setIsEditing(false)} existingStaffId={liveStaffData.id} existingData={liveStaffData.onboardingData} isStaffSelfEdit={true} />;
     }
 
@@ -718,12 +800,31 @@ export function StaffProfileView({ staff }: { staff: any }) {
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4">
-            <h3 className="font-bold text-[#123524] text-lg mb-4 border-b border-gray-100 pb-3 flex items-center justify-between">
-                My Profile Details
-                <button onClick={() => alert("အချက်အလက်များကို သင်ကိုယ်တိုင် ပြင်ဆင်ခွင့်မရှိတော့ပါ။ ပြင်ဆင်လိုပါက Admin သို့ တိုက်ရိုက် ဆက်သွယ်အကြောင်းကြားပေးပါ။")} className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg shadow-sm font-bold flex items-center">
-                    <X className="w-3 h-3 mr-1"/> Request Edit
+            
+            {/* 🌟 Pending Update Message 🌟 */}
+            {liveStaffData.updateRequested && (
+                <div className="mb-4 bg-orange-50 border border-orange-200 p-3 rounded-xl flex items-start shadow-sm">
+                    <FileText className="w-5 h-5 text-orange-500 mr-2 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <h4 className="text-xs font-bold text-orange-800">Update Requested</h4>
+                        <p className="text-[10px] text-orange-600 mt-0.5">သင်ပြင်ဆင်ထားသော အချက်အလက်များကို Admin မှ စစ်ဆေးနေပါသည်။ အတည်ပြုပြီးမှသာ Profile တွင် ပြောင်းလဲသွားပါမည်။</p>
+                    </div>
+                </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 pb-4 mb-4 gap-4">
+                <h3 className="font-bold text-[#123524] text-lg">
+                    My Profile Details
+                </h3>
+                {/* 🌟 Update Informations Button (လှလှလေးပြောင်းထားသည်) 🌟 */}
+                <button 
+                    onClick={() => setIsEditing(true)} 
+                    disabled={liveStaffData.updateRequested}
+                    className={`text-xs px-4 py-2 rounded-xl shadow-sm font-bold flex items-center justify-center transition-all ${liveStaffData.updateRequested ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' : 'bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 border border-blue-200 hover:shadow-md hover:from-blue-100 hover:to-blue-200'}`}
+                >
+                    <Edit className="w-4 h-4 mr-1.5"/> Update Informations
                 </button>
-            </h3>
+            </div>
             
             <ProfileDetailsViewer data={data} staffId={liveStaffData.id} therapistName={liveStaffData.name} />
         </div>
