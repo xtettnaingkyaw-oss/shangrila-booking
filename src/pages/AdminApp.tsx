@@ -1474,28 +1474,41 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
       try {
           const cleanItems = cat.items.map((item: any) => {
               const cleanedItem: any = { ...item };
-              Object.keys(cleanedItem).forEach(key => {
-                  if (cleanedItem[key] === undefined) delete cleanedItem[key];
-              });
               
+              // ပုံအဟောင်း/အသစ် array ကို သေချာဖွဲ့စည်းမည်
               if (!cleanedItem.images) {
                   cleanedItem.images = cleanedItem.imageUrl ? [cleanedItem.imageUrl] : [];
               }
-              delete cleanedItem.imageUrl; // Field အဟောင်းဖျက်မည်
+              delete cleanedItem.imageUrl; 
+              
+              // 🌟 VVIP Price စသည့် အကွက်များ အလွတ်ထားခဲ့လျှင် undefined ဖြစ်သွားတတ်သဖြင့် null သို့ ပြောင်းမည် 🌟
+              Object.keys(cleanedItem).forEach(key => {
+                  if (cleanedItem[key] === undefined) {
+                      cleanedItem[key] = null; 
+                  }
+              });
+              
               return cleanedItem;
           });
 
           const categoryToSave: any = { ...cat, items: cleanItems, order: cIdx };
-          delete categoryToSave.docId; // Firebase ကို DocID ထည့်မသိမ်းပါ
+          delete categoryToSave.docId;
 
-          await setDoc(doc(db, 'categories', cat.id), categoryToSave, { merge: true });
+          // 🌟 ULTIMATE FIX: Object တစ်ခုလုံးမှာ Firebase က လက်မခံတဲ့ undefined တွေ ပါနေရင် အလိုအလျောက် ရှင်းထုတ်ပေးမယ့် နည်းလမ်း (Deep Clean) 🌟
+          const safeCategoryData = JSON.parse(JSON.stringify(categoryToSave));
+
+          await setDoc(doc(db, 'categories', cat.id), safeCategoryData, { merge: true });
 
           const nextCategories = [...localCategories];
-          nextCategories[cIdx] = { ...categoryToSave, docId: cat.id };
-          setLocalCategories(nextCategories);
-          onSettingsUpdated({ ...appData, categories: nextCategories });
+          nextCategories[cIdx] = { ...safeCategoryData, docId: cat.id };
+          
+          // ကျန်တဲ့ Category တွေမှာပါ undefined တွေ ခိုအောင်းနေရင် Error မတက်အောင် တစ်ခါတည်း ရှင်းထုတ်မည်
+          const safeNextCategories = JSON.parse(JSON.stringify(nextCategories));
 
-          alert('Saved Successfully. Category and Service Image are saved!');
+          setLocalCategories(safeNextCategories);
+          onSettingsUpdated({ ...appData, categories: safeNextCategories });
+
+          alert('✅ Saved Successfully. Category and Service Images are saved!');
       } catch (e: any) {
           console.error('Service Category Save Error:', e);
           alert(`Update error.\n\n${e?.code || e?.message || 'Unknown Firebase error'}`);
