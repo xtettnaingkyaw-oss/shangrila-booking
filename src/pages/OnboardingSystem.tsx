@@ -6,7 +6,7 @@ import { encryptText } from '../security';
 import { UserPlus, FileText, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning, Download as DownloadIcon, Bell } from 'lucide-react';
 
 const JOB_POSITIONS = ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'];
-const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ', 'ရပ်ကွက်ရဲစခန်း ထောက်ခံစာ အပ်ပြီးပါပြီ'];
+const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ'];
 const RULES_LIST = [
     'မိမိလုပ်ရမည့် အလုပ်တာဝန်များနှင့် လုပ်ငန်းသဘောသဘာဝများကို သေချာသိရှိနားလည်ပါသည်။',
     'သိရှိနားလည်ထားသည့်အတိုင်း မိမိဆန္ဒအလျောက် အလုပ်လုပ်ရန် သဘောတူလက်ခံပါသည်။',
