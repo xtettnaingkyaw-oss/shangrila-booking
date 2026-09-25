@@ -35,68 +35,24 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
     const [loading, setLoading] = useState(false);
     const [uploadingInfo, setUploadingInfo] = useState('');
 
+    // 🌟 Firebase Storage သို့ တိုက်ရိုက် Upload လုပ်မည့် Function အသစ် 🌟
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl') => {
         const file = e.target.files?.[0]; 
         if (!file) return;
-        setUploadingInfo('Uploading Image...');
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const MAX_SIZE = 800; // Admin App ကဲ့သို့ 800px limit ထားမည်
-                let width = img.width;
-                let height = img.height;
-
-                if (width > height) {
-                    if (width > MAX_SIZE) {
-                        height *= MAX_SIZE / width;
-                        width = MAX_SIZE;
-                    }
-                } else {
-                    if (height > MAX_SIZE) {
-                        width *= MAX_SIZE / height;
-                        height = MAX_SIZE;
-                    }
-                }
-                
-                canvas.width = Math.max(1, Math.round(width));
-                canvas.height = Math.max(1, Math.round(height));
-                const ctx = canvas.getContext('2d');
-                
-                if (ctx) {
-                    ctx.fillStyle = '#FFFFFF';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                }
-                
-                // Admin App ကဲ့သို့ quality ကို 0.72 ဖြင့် သိမ်းမည် (Firestore 1MB limit မကျော်ရန်)
-                let finalBase64 = canvas.toDataURL('image/jpeg', 0.72); 
-                
-                // ပုံအရမ်းကြီးနေသေးလျှင် Quality ထပ်ချမည် (700KB အောက်)
-                if (finalBase64.length > 700 * 1024) {
-                    finalBase64 = canvas.toDataURL('image/jpeg', 0.58);
-                }
-
-                setFormData(prev => ({ ...prev, [field]: finalBase64 }));
-                setUploadingInfo('');
-            };
+        
+        setUploadingInfo('Uploading Image to Server...');
+        try {
+            // Firebase Storage တွင် Folder အသစ်ဆောက်၍ သိမ်းမည် (onboarding_docs/Timestamp_filename)
+            const storageRef = ref(storage, `onboarding_docs/${Date.now()}_${file.name}`);
+            await uploadBytes(storageRef, file);
+            const downloadUrl = await getDownloadURL(storageRef);
             
-            img.onerror = () => {
-                alert("Image upload failed. File ကို ဖတ်၍မရပါ။");
-                setUploadingInfo('');
-            };
-            
-            img.src = event.target?.result as string;
-        };
-
-        reader.onerror = () => {
-            alert("Image upload failed.");
-            setUploadingInfo('');
-        };
-
-        reader.readAsDataURL(file);
+            setFormData(prev => ({ ...prev, [field]: downloadUrl }));
+        } catch (err) {
+            console.error("Storage Upload Error:", err);
+            alert("ပုံတင်ရာတွင် အခက်အခဲရှိနေပါသည်။ Storage Rules ကို Firebase တွင် ခွင့်ပြုထားခြင်းရှိမရှိ စစ်ဆေးပါ။");
+        }
+        setUploadingInfo('');
     };
 
     const isFormValid = () => {
