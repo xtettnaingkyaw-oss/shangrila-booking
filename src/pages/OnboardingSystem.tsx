@@ -20,6 +20,7 @@ const compressImageToSmallBase64 = (file: File): Promise<string> => {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
+                // Document တွေဖြစ်လို့ Resolution 800px ထားပါမည်
                 const MAX_SIZE = 800; 
                 let width = img.width;
                 let height = img.height;
@@ -46,10 +47,12 @@ const compressImageToSmallBase64 = (file: File): Promise<string> => {
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 }
 
-                // 🌟 Dynamic Compression 🌟
+                // 🌟 Update လုပ်ချိန်တွင် (မူလ ၄ ပုံ + အသစ် ၄ ပုံ = စုစုပေါင်း ၈ ပုံ) သိမ်းရမည်ဖြစ်၍
+                // Firestore 1MB Limit မကျော်စေရန် ပုံတစ်ပုံချင်းစီကို ~100KB အောက်ရောက်သည်အထိ အလိုအလျောက် ချုံ့ပေးမည့် Loop 🌟
                 let quality = 0.8;
                 let finalBase64 = canvas.toDataURL('image/jpeg', quality);
 
+                // Base64 Text length 120,000 (ခန့်မှန်း 90KB) ထက်ကြီးနေသရွေ့ Quality ကို 0.1 စီ အလိုအလျောက် လျှော့ချမည်
                 while (finalBase64.length > 120000 && quality > 0.3) {
                     quality -= 0.1;
                     finalBase64 = canvas.toDataURL('image/jpeg', quality);
