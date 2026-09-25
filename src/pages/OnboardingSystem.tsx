@@ -422,3 +422,49 @@ export function AdminHRManagement() {
         </div>
     );
 }
+
+// 🌟 3. Staff Profile View Component (For Staff App) 🌟
+export function StaffProfileView({ staff }: { staff: any }) {
+    const [isEditing, setIsEditing] = useState(false);
+
+    if (isEditing) {
+        return <NewEmployeeOnboardingForm onBack={() => setIsEditing(false)} existingStaffId={staff.id} existingData={staff.onboardingData} isStaffSelfEdit={true} />;
+    }
+
+    if (!staff.onboardingData) {
+        return (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4 text-center">
+                <div className="w-16 h-16 bg-yellow-50 rounded-full mx-auto flex items-center justify-center mb-4 text-yellow-600 border border-yellow-100">
+                    <UserPlus className="w-8 h-8" />
+                </div>
+                <h3 className="font-bold text-gray-800 text-lg mb-2">Profile Incomplete</h3>
+                <p className="text-xs text-gray-500 mb-6 max-w-sm mx-auto leading-relaxed">သင်၏ အချက်အလက်မှတ်တမ်း (Profile Info) ဖြည့်သွင်းထားခြင်း မရှိသေးပါ။ ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်၍ ပြည့်စုံစွာ ဖြည့်သွင်းပေးပါ။</p>
+                <button onClick={() => setIsEditing(true)} className="px-6 py-3 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-md mx-auto hover:bg-[#1a4a32] transition flex items-center justify-center text-sm">
+                    <Edit className="w-4 h-4 mr-2" /> Add Profile Info
+                </button>
+            </div>
+        );
+    }
+
+    const data = staff.onboardingData;
+
+    return (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4">
+            <h3 className="font-bold text-[#123524] text-lg mb-4 border-b border-gray-100 pb-3 flex items-center justify-between">
+                My Profile Details
+                <button onClick={() => alert("အချက်အလက်များကို သင်ကိုယ်တိုင် ပြင်ဆင်ခွင့်မရှိတော့ပါ။ ပြင်ဆင်လိုပါက Admin သို့ တိုက်ရိုက် ဆက်သွယ်အကြောင်းကြားပေးပါ။")} className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg shadow-sm font-bold flex items-center">
+                    <X className="w-3 h-3 mr-1"/> Request Edit
+                </button>
+            </h3>
+            <div className="space-y-4">
+                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Therapist Name</span><span className="text-xs font-bold text-blue-700">{staff.name}</span></div>
+                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Actual Name (အမည်ရင်း)</span><span className="text-xs font-bold text-gray-800">{data.fullName}</span></div>
+                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Employee ID</span><span className="text-xs font-mono font-bold text-[#123524]">{staff.id}</span></div>
+                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Position</span><span className="text-xs font-bold text-blue-600">{data.jobPosition}</span></div>
+                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Phone</span><span className="text-xs font-bold text-gray-800">{data.phone}</span></div>
+                <div className="bg-gray-50 p-3 rounded-lg"><span className="text-xs text-gray-500 font-bold block mb-1">Address</span><span className="text-xs font-semibold text-gray-800 leading-relaxed">{data.address}</span></div>
+                <div className="bg-red-50 p-3 rounded-lg"><span className="text-[10px] text-red-400 font-bold uppercase tracking-wider block mb-1">Emergency Contact</span><div className="text-xs font-bold text-red-700">{data.emergencyName} ({data.emergencyRelation})<br/><span className="font-mono mt-1 inline-block">{data.emergencyPhone}</span></div></div>
+            </div>
+        </div>
+    );
+}
