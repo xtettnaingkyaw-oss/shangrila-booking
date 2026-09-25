@@ -5,7 +5,6 @@ import { db, secondaryAuth } from '../firebase';
 import { encryptText } from '../security';
 import { UserPlus, FileText, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning, Download as DownloadIcon, Bell } from 'lucide-react';
 
-const JOB_POSITIONS = ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'];
 const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ'];
 const RULES_LIST = [
     'မိမိလုပ်ရမည့် အလုပ်တာဝန်များနှင့် လုပ်ငန်းသဘောသဘာဝများကို သေချာသိရှိနားလည်ပါသည်။',
@@ -69,6 +68,18 @@ const compressImageToSmallBase64 = (file: File): Promise<string> => {
 // 🌟 1. Staff Application Form Component 🌟
 export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, existingData = null, isStaffSelfEdit = false }: { onBack: () => void, existingStaffId?: string | null, existingData?: any, isStaffSelfEdit?: boolean }) {
     
+    // 🌟 ရာထူးများကို Database မှ ဆွဲယူရန် State 🌟
+    const [jobPositions, setJobPositions] = useState<string[]>(['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security']);
+
+    useEffect(() => {
+        const unsub = onSnapshot(doc(db, 'settings', 'hrSettings'), (docSnap) => {
+            if (docSnap.exists() && docSnap.data().positions) {
+                setJobPositions(docSnap.data().positions);
+            }
+        });
+        return () => unsub();
+    }, []);
+
     const [formData, setFormData] = useState(() => {
         if (existingData) return { ...existingData, staffId: existingStaffId || existingData.staffId || '' };
         return {
@@ -252,10 +263,10 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
                         <div>
                             <label className="block text-xs font-bold text-gray-500 mb-1">အလုပ်ဝင်သည့်ရာထူး *</label>
-                            <select required value={formData.jobPosition} onChange={e=>setFormData({...formData, jobPosition: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800">
-                                <option value="" disabled>Please choose</option>
-                                {JOB_POSITIONS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
-                            </select>
+                           <select required value={formData.jobPosition} onChange={e=>setFormData({...formData, jobPosition: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800">
+    <option value="" disabled>Please choose</option>
+    {jobPositions.map(pos => <option key={pos} value={pos}>{pos}</option>)}
+</select>
                         </div>
                         <div><label className="block text-xs font-bold text-gray-500 mb-1">အလုပ်စဝင်သည့်ရက် *</label><input required type="date" value={formData.startDate} onChange={e=>setFormData({...formData, startDate: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                         
@@ -529,7 +540,7 @@ export function AdminHRManagement() {
     const [requests, setRequests] = useState<any[]>([]);
     const [activeStaff, setActiveStaff] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    
+
     const [selectedReq, setSelectedReq] = useState<any>(null); 
     const [viewingProfile, setViewingProfile] = useState<any>(null); 
     
@@ -538,7 +549,13 @@ export function AdminHRManagement() {
 
     const [approvalForm, setApprovalForm] = useState({ password: '', displayTherapistName: '' });
     const [processing, setProcessing] = useState(false);
-    const [viewTab, setViewTab] = useState<'requests' | 'active'>('requests');
+    
+    // 🌟 ViewTab တွင် 'positions' ကိုပါ ထပ်တိုးပါ 🌟
+    const [viewTab, setViewTab] = useState<'requests' | 'active' | 'positions'>('requests');
+    
+    // 🌟 Admin အတွက် Job Positions State 🌟
+    const [jobPositions, setJobPositions] = useState<string[]>(['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security']);
+    const [newPosition, setNewPosition] = useState('');
 
     useEffect(() => {
         const unsubReq = onSnapshot(query(collection(db, 'onboarding_requests'), orderBy('createdAt', 'desc')), snap => {
@@ -547,8 +564,35 @@ export function AdminHRManagement() {
         const unsubStaff = onSnapshot(query(collection(db, 'therapists'), orderBy('order', 'asc')), snap => {
             const arr: any[] = []; snap.forEach(d => arr.push({ id: d.id, ...d.data() })); setActiveStaff(arr);
         });
-        return () => { unsubReq(); unsubStaff(); };
+        
+        // 🌟 Positions များကိုပါ Database မှ ဆွဲယူရန် 🌟
+        const unsubHR = onSnapshot(doc(db, 'settings', 'hrSettings'), (docSnap) => {
+            if (docSnap.exists() && docSnap.data().positions) {
+                setJobPositions(docSnap.data().positions);
+            } else {
+                setDoc(doc(db, 'settings', 'hrSettings'), { positions: ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'] }, { merge: true });
+            }
+        });
+
+        return () => { unsubReq(); unsubStaff(); unsubHR(); };
     }, []);
+
+    // 🌟 ရာထူး အသစ်ထည့်ရန်နှင့် ဖျက်ရန် Functions 🌟
+    const handleAddPosition = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if(!newPosition.trim()) return;
+        if(jobPositions.includes(newPosition.trim())) return alert("ဤရာထူးအမည် ရှိပြီးသားဖြစ်ပါသည်။");
+        
+        const updated = [...jobPositions, newPosition.trim()];
+        await setDoc(doc(db, 'settings', 'hrSettings'), { positions: updated }, { merge: true });
+        setNewPosition('');
+    };
+
+    const handleDeletePosition = async (posToDelete: string) => {
+        if(!window.confirm(`"${posToDelete}" ကို စာရင်းမှ ဖျက်မည် သေချာပါသလား?`)) return;
+        const updated = jobPositions.filter(p => p !== posToDelete);
+        await setDoc(doc(db, 'settings', 'hrSettings'), { positions: updated }, { merge: true });
+    };
 
     const handleApprove = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -620,6 +664,7 @@ export function AdminHRManagement() {
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
             
+            {/* ... Modal တွေ ... */}
             {selectedReq && (
                 <div className="fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up">
@@ -691,11 +736,15 @@ export function AdminHRManagement() {
                 <h2 className="text-xl font-bold flex items-center text-[#123524]"><ShieldCheck className="w-6 h-6 mr-2 text-[#D4AF37]" /> HR & Staff Management</h2>
             </div>
 
-            <div className="flex space-x-2 mb-6 bg-gray-50 p-1.5 rounded-xl border border-gray-100 w-fit">
+            <div className="flex flex-wrap gap-2 mb-6 bg-gray-50 p-1.5 rounded-xl border border-gray-100 w-fit">
                 <button onClick={() => setViewTab('requests')} className={`px-4 py-2 text-xs font-bold rounded-lg transition relative ${viewTab === 'requests' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Pending Requests {pendingReqs.length > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>}</button>
                 <button onClick={() => setViewTab('active')} className={`px-4 py-2 text-xs font-bold rounded-lg transition relative ${viewTab === 'active' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>
                     Active Staff List
                     {updateRequestedCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse"></span>}
+                </button>
+                {/* 🌟 ရာထူးများ ပြင်ရန် Tab ခလုတ်သစ် 🌟 */}
+                <button onClick={() => setViewTab('positions')} className={`px-4 py-2 text-xs font-bold rounded-lg transition relative ${viewTab === 'positions' ? 'bg-white shadow text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>
+                    Job Positions
                 </button>
             </div>
 
@@ -767,6 +816,41 @@ export function AdminHRManagement() {
                     ))}
                 </div>
             )}
+
+            {/* 🌟 Job Positions Manage လုပ်မည့် နေရာ 🌟 */}
+            {viewTab === 'positions' && (
+                <div className="max-w-2xl bg-white p-6 border border-gray-200 rounded-2xl shadow-sm animate-fade-in">
+                    <h3 className="font-bold text-[#123524] mb-2 text-lg">Manage Job Positions</h3>
+                    <p className="text-xs text-gray-500 mb-6">ဝန်ထမ်းများ Onboarding Form ဖြည့်ရာတွင် ရွေးချယ်နိုင်မည့် ရာထူးများကို အတိုး/အလျော့ ပြုလုပ်နိုင်ပါသည်။</p>
+                    
+                    <form onSubmit={handleAddPosition} className="flex gap-3 mb-8">
+                        <input 
+                            type="text" 
+                            value={newPosition} 
+                            onChange={e => setNewPosition(e.target.value)} 
+                            placeholder="ရာထူးအမည်သစ် ရိုက်ထည့်ပါ... (ဥပမာ - Assistant Manager)" 
+                            className="flex-1 p-3 bg-gray-50 border border-gray-300 rounded-xl outline-none focus:border-[#D4AF37] text-sm font-bold text-gray-800" 
+                            required 
+                        />
+                        <button type="submit" className="bg-[#123524] text-[#D4AF37] px-6 py-3 rounded-xl font-bold hover:bg-[#1a4a32] transition flex items-center shadow-md">
+                            Add New
+                        </button>
+                    </form>
+
+                    <div className="space-y-3">
+                        {jobPositions.length === 0 && <p className="text-xs text-gray-400 text-center py-4">ရာထူးများ မရှိသေးပါ။</p>}
+                        {jobPositions.map(pos => (
+                            <div key={pos} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200 hover:border-[#D4AF37] transition">
+                                <span className="font-bold text-gray-700">{pos}</span>
+                                <button onClick={() => handleDeletePosition(pos)} className="text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-lg transition" title="Delete">
+                                    <Trash2 className="w-4 h-4"/>
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 }
