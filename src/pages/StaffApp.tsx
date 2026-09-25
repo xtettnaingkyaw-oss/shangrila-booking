@@ -104,6 +104,7 @@ export default function StaffApp() {
 }
 
 function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfile[], onLoginSuccess: (p: TherapistProfile) => void }) {
+  // 🌟 State အမည်သည် therapistId ဟု ဖြစ်နေသော်လည်း ၎င်းသည် ရွေးချယ်ထားသော Therapist ၏ "ID စစ်စစ်" ကိုသာ သိမ်းပါမည် 🌟
   const [therapistId, setTherapistId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -112,13 +113,25 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(''); setLoading(true);
+    
+    // 🌟 ဤနေရာတွင် ရွေးချယ်လိုက်သော ID နှင့် ကိုက်ညီသည့် Staff ကို ရှာပါမည် 🌟
     const staff = therapists.find(t => t.id === therapistId);
     
+    if (!staff) {
+        setError('Invalid Therapist Selection.');
+        setLoading(false);
+        return;
+    }
+
     try {
-       await signInWithEmailAndPassword(auth, `${therapistId.toLowerCase()}@shangrila.com`, password);
-       const decPassword = staff ? (decryptText(staff.password) || staff.password) : '';
-       onLoginSuccess({ ...staff!, password: decPassword });
+       // 🌟 တွေ့ရှိသော Staff ၏ ID ကိုအသုံးပြု၍ Email ပုံစံပြောင်းကာ Login ဝင်ပါမည် 🌟
+       const safeEmail = `${staff.id.replace(/\s+/g, '').toLowerCase()}@shangrila.com`;
+       await signInWithEmailAndPassword(auth, safeEmail, password);
+       
+       const decPassword = staff.password ? (decryptText(staff.password) || staff.password) : '';
+       onLoginSuccess({ ...staff, password: decPassword });
     } catch(err) {
+       console.error("Login Error:", err);
        setError('Invalid Therapist Selection or Password.');
     }
     setLoading(false);
@@ -134,9 +147,14 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
         <div>
            <label className="block text-left text-xs font-bold text-gray-500 mb-1">Select Therapist</label>
            <div className="relative">
+               {/* 🌟 ဤနေရာတွင် onChange သည့်အခါ t.id ကို သိမ်းဆည်းရန် value={t.id} ဟု ပြင်ဆင်ထားပါသည် 🌟 */}
                <select required value={therapistId} onChange={e=>setTherapistId(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider appearance-none cursor-pointer text-gray-800">
                    <option value="" disabled>-- Select Your Profile --</option>
-                   {Array.from(new Map(therapists.map((t: any) => [t.name, t])).values()).map((t: any) => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                   {Array.from(new Map(therapists.map((t: any) => [t.name, t])).values()).map((t: any) => (
+                       <option key={t.id} value={t.id}>
+                           {t.name} {t.onboardingData ? `(${t.id})` : ''}
+                       </option>
+                   ))}
                </select>
                <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-400"><ChevronDown className="w-4 h-4" /></div>
            </div>
