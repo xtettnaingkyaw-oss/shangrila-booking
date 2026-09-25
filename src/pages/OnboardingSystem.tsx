@@ -4,7 +4,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../firebase';
 import { compressImage } from '../shared';
 import { encryptText } from '../security';
-import { UserPlus, FileText, CheckCircle, Clock, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User } from 'lucide-react';
+import { UserPlus, FileText, CheckCircle, Clock, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning } from 'lucide-react';
 
 const JOB_POSITIONS = ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'];
 const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ', 'ရပ်ကွက်ရဲစခန်း ထောက်ခံစာ အပ်ပြီးပါပြီ'];
@@ -15,7 +15,7 @@ const RULES_LIST = [
 ];
 
 // 🌟 1. Staff Application Form Component 🌟
-export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, existingData = null }: { onBack: () => void, existingStaffId?: string | null, existingData?: any }) {
+export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, existingData = null, isStaffSelfEdit = false }: { onBack: () => void, existingStaffId?: string | null, existingData?: any, isStaffSelfEdit?: boolean }) {
     
     const [formData, setFormData] = useState(() => {
         if (existingData) return { ...existingData, staffId: existingStaffId || existingData.staffId || '' };
@@ -40,14 +40,31 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         setUploadingInfo('');
     };
 
+    // 🌟 Validation: အချက်အလက်စုံ/မစုံ စစ်ဆေးခြင်း 🌟
+    const isFormValid = () => {
+        return (
+            formData.fullName.trim() !== '' &&
+            formData.nrcNumber.trim() !== '' &&
+            formData.nrcFrontUrl !== '' && formData.nrcBackUrl !== '' &&
+            formData.householdFrontUrl !== '' && formData.householdBackUrl !== '' &&
+            formData.dob !== '' && formData.phone.trim() !== '' && formData.address.trim() !== '' &&
+            formData.emergencyName.trim() !== '' && formData.emergencyPhone.trim() !== '' && formData.emergencyRelation.trim() !== '' &&
+            formData.jobPosition !== '' && formData.startDate !== '' &&
+            formData.documents.length === DOC_CHECKLIST.length &&
+            formData.rules.length === RULES_LIST.length
+        );
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (formData.rules.length !== RULES_LIST.length) return alert("ကျေးဇူးပြု၍ စည်းမျဉ်းစည်းကမ်း အားလုံးကို သဘောတူကြောင်း အမှန်ခြစ်ပေးပါ။");
+        if (!isFormValid()) return alert("ကျေးဇူးပြု၍ လိုအပ်သော အချက်အလက်နှင့် ပုံအားလုံးကို ပြည့်စုံစွာ ထည့်သွင်းပေးပါ။");
+        
         setLoading(true);
         try {
             if (existingStaffId) {
+                // Staff က ကိုယ်တိုင် Profile လာဖြည့်တာဆိုရင် therapists collection ထဲမှာ update လုပ်မယ်
                 await updateDoc(doc(db, 'therapists', existingStaffId), { onboardingData: formData });
-                alert("✅ ဝန်ထမ်းအချက်အလက် ပြင်ဆင်ခြင်း အောင်မြင်ပါသည်။");
+                alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
             } else {
                 await addDoc(collection(db, 'onboarding_requests'), { ...formData, status: 'pending', createdAt: Date.now() });
                 alert("✅ လျှောက်လွှာတင်ခြင်း အောင်မြင်ပါသည်။ Admin မှ အတည်ပြုပြီးပါက အကြောင်းကြားပေးပါမည်။");
@@ -57,15 +74,37 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         setLoading(false);
     };
 
+    // 🌟 ဖြည့်ပြီးသားကို Staff က ထပ်ပြင်ဖို့ကြိုးစားရင် တားမြစ်မည် 🌟
+    if (isStaffSelfEdit && existingData) {
+        return (
+            <div className="bg-gray-50 min-h-[100dvh] w-full fixed inset-0 z-[100] flex items-center justify-center p-4">
+                <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-sm w-full animate-slide-up">
+                    <FileWarning className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+                    <h2 className="text-lg font-bold text-gray-800 mb-2">Access Denied</h2>
+                    <p className="text-xs text-gray-500 mb-6 leading-relaxed">သင်၏ အချက်အလက်များကို ဖြည့်သွင်းပြီးဖြစ်ပါသည်။ ထပ်မံပြင်ဆင်လိုပါက Admin သို့ Request လုပ်ပြီးမှသာ ပြင်ဆင်နိုင်ပါမည်။</p>
+                    <button onClick={onBack} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition">Go Back</button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="bg-gray-50 min-h-[100dvh] w-full fixed inset-0 z-[100] flex flex-col">
             <div className="bg-[#D4AF37] p-4 flex items-center shadow-md flex-shrink-0">
                 <button type="button" onClick={onBack} className="text-white hover:bg-white/20 p-2 rounded-full transition"><ChevronLeft className="w-6 h-6"/></button>
-                <h2 className="text-[#123524] font-bold text-lg ml-2 uppercase tracking-wider">{existingData ? 'Edit Profile Info' : (existingStaffId ? 'Add Profile Info' : 'New Employee Onboarding')}</h2>
+                <h2 className="text-[#123524] font-bold text-lg ml-2 uppercase tracking-wider">{existingStaffId ? 'Add Your Profile Info' : 'New Employee Onboarding'}</h2>
             </div>
             
             <div className="flex-1 overflow-y-auto pb-24">
                 <form id="onboardingForm" onSubmit={handleSubmit} className="max-w-xl mx-auto p-4 space-y-6 animate-slide-up">
+                    
+                    {existingStaffId && (
+                        <div className="bg-blue-50 text-blue-800 p-4 rounded-xl border border-blue-200 text-xs font-bold shadow-sm">
+                            <span className="block mb-1 text-blue-600 uppercase tracking-widest text-[9px]">Important Notice</span>
+                            ဤအချက်အလက်များကို တစ်ကြိမ်သာ ဖြည့်သွင်းခွင့်ရှိပါသည်။ ဖြည့်သွင်းပြီးပါက Admin ထံ ခွင့်ပြုချက်တောင်းပြီးမှသာ ပြန်လည်ပြင်ဆင်နိုင်မည်ဖြစ်သဖြင့် သေချာစွာစစ်ဆေးပြီးမှ Submit လုပ်ပါ။
+                        </div>
+                    )}
+
                     <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div><label className="block text-xs font-bold text-gray-500 mb-1">Employee ID *</label><input required type="text" value={formData.staffId} disabled className="w-full p-3 bg-gray-100 border border-gray-200 rounded-lg outline-none font-bold text-gray-500 opacity-80 cursor-not-allowed" /></div>
@@ -74,20 +113,20 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                         <div><label className="block text-xs font-bold text-gray-500 mb-1">မှတ်ပုံတင်နံပါတ် *</label><input required type="text" value={formData.nrcNumber} onChange={e=>setFormData({...formData, nrcNumber: e.target.value})} placeholder="Please enter" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                         
                         <div className="grid grid-cols-2 gap-4">
-                            <label className="border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden">
-                                {formData.nrcFrontUrl ? <img src={formData.nrcFrontUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC Front"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold text-center">မှတ်ပုံတင်<br/>(ရှေ့ဘက်)</span></>}
+                            <label className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden ${!formData.nrcFrontUrl ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`}>
+                                {formData.nrcFrontUrl ? <img src={formData.nrcFrontUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC Front"/> : <><ImageIcon className="w-6 h-6 mb-2 text-red-400"/><span className="text-[10px] font-bold text-center text-red-500">မှတ်ပုံတင်<br/>(ရှေ့ဘက်) *</span></>}
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'nrcFrontUrl')} />
                             </label>
-                            <label className="border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden">
-                                {formData.nrcBackUrl ? <img src={formData.nrcBackUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC Back"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold text-center">မှတ်ပုံတင်<br/>(နောက်ဘက်)</span></>}
+                            <label className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden ${!formData.nrcBackUrl ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`}>
+                                {formData.nrcBackUrl ? <img src={formData.nrcBackUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC Back"/> : <><ImageIcon className="w-6 h-6 mb-2 text-red-400"/><span className="text-[10px] font-bold text-center text-red-500">မှတ်ပုံတင်<br/>(နောက်ဘက်) *</span></>}
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'nrcBackUrl')} />
                             </label>
-                            <label className="border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden">
-                                {formData.householdFrontUrl ? <img src={formData.householdFrontUrl} className="absolute inset-0 w-full h-full object-cover" alt="Household Front"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold text-center">အိမ်ထောင်စု<br/>(ရှေ့ဘက်)</span></>}
+                            <label className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden ${!formData.householdFrontUrl ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`}>
+                                {formData.householdFrontUrl ? <img src={formData.householdFrontUrl} className="absolute inset-0 w-full h-full object-cover" alt="Household Front"/> : <><ImageIcon className="w-6 h-6 mb-2 text-red-400"/><span className="text-[10px] font-bold text-center text-red-500">အိမ်ထောင်စု<br/>(ရှေ့ဘက်) *</span></>}
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'householdFrontUrl')} />
                             </label>
-                            <label className="border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden">
-                                {formData.householdBackUrl ? <img src={formData.householdBackUrl} className="absolute inset-0 w-full h-full object-cover" alt="Household Back"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold text-center">အိမ်ထောင်စု<br/>(နောက်ဘက်)</span></>}
+                            <label className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden ${!formData.householdBackUrl ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`}>
+                                {formData.householdBackUrl ? <img src={formData.householdBackUrl} className="absolute inset-0 w-full h-full object-cover" alt="Household Back"/> : <><ImageIcon className="w-6 h-6 mb-2 text-red-400"/><span className="text-[10px] font-bold text-center text-red-500">အိမ်ထောင်စု<br/>(နောက်ဘက်) *</span></>}
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'householdBackUrl')} />
                             </label>
                         </div>
@@ -114,7 +153,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                         <div><label className="block text-xs font-bold text-gray-500 mb-1">အလုပ်စဝင်သည့်ရက် *</label><input required type="date" value={formData.startDate} onChange={e=>setFormData({...formData, startDate: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                         
                         <div className="pt-2">
-                            <label className="block text-xs font-bold text-gray-500 mb-2">Document Check List</label>
+                            <label className="block text-xs font-bold text-gray-500 mb-2">Document Check List *</label>
                             {DOC_CHECKLIST.map((doc, idx) => (
                                 <label key={idx} className="flex items-start space-x-3 mb-2 cursor-pointer">
                                     <input type="checkbox" checked={formData.documents.includes(doc)} onChange={(e) => {
@@ -142,9 +181,15 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 </form>
             </div>
 
+            {/* 🌟 Fixed Bottom Submit Button (Disabled if not valid) 🌟 */}
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-50">
-                <button type="submit" form="onboardingForm" disabled={loading} className="w-full max-w-xl mx-auto py-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-[#1a4a32] transition disabled:opacity-50">
-                    <Save className="w-5 h-5 mr-2" /> {loading ? 'Saving...' : (existingStaffId ? 'Save Profile Data' : 'Submit Application')}
+                <button 
+                    type="submit" 
+                    form="onboardingForm" 
+                    disabled={loading || !isFormValid()} 
+                    className={`w-full max-w-xl mx-auto py-4 rounded-xl font-bold shadow-lg flex items-center justify-center transition ${isFormValid() ? 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32]' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                >
+                    <Save className="w-5 h-5 mr-2" /> {loading ? 'Saving...' : (!isFormValid() ? 'Fill all fields & photos' : (existingStaffId ? 'Save My Profile Data' : 'Submit Application'))}
                 </button>
             </div>
         </div>
@@ -182,8 +227,7 @@ export function AdminHRManagement() {
         if (!selectedReq.staffId || !approvalForm.password || !approvalForm.displayTherapistName) return alert("ကျေးဇူးပြု၍ အချက်အလက်များ ပြည့်စုံစွာ ထည့်ပါ။");
         setProcessing(true);
         try {
-            // 🌟 ID အဟောင်းများနည်းတူ Auth Email ကို သေချာဆောက်ပေးမည် 🌟
-            const safeEmail = `${selectedReq.staffId.toLowerCase()}@shangrila.com`;
+            const safeEmail = `${selectedReq.staffId.replace(/\s+/g, '').toLowerCase()}@shangrila.com`;
             try { await createUserWithEmailAndPassword(secondaryAuth, safeEmail, approvalForm.password); } catch(e){}
             
             await setDoc(doc(db, 'therapists', selectedReq.staffId), {
@@ -311,7 +355,7 @@ export function AdminHRManagement() {
 
             {/* 🌟 3. Adding Info Form (Full Screen overlay) 🌟 */}
             {addingInfoForId && (
-                <NewEmployeeOnboardingForm onBack={() => { setAddingInfoForId(null); setAddingInfoData(null); }} existingStaffId={addingInfoForId} existingData={addingInfoData} />
+                <NewEmployeeOnboardingForm onBack={() => { setAddingInfoForId(null); setAddingInfoData(null); }} existingStaffId={addingInfoForId} existingData={addingInfoData} isStaffSelfEdit={false} />
             )}
 
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
@@ -375,30 +419,6 @@ export function AdminHRManagement() {
                     ))}
                 </div>
             )}
-        </div>
-    );
-}
-
-// 🌟 3. Staff Profile View Component (For Staff App) 🌟
-export function StaffProfileView({ staff }: { staff: any }) {
-    if (!staff.onboardingData) return <div className="text-center p-10 text-gray-400 text-xs bg-gray-50 rounded-xl border border-dashed mt-4">Profile data not fully set up. Please contact Admin.</div>;
-    const data = staff.onboardingData;
-
-    return (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4">
-            <h3 className="font-bold text-[#123524] text-lg mb-4 border-b border-gray-100 pb-3 flex items-center justify-between">
-                My Profile Details
-                <button onClick={() => alert("အချက်အလက် ပြင်ဆင်လိုပါက Admin သို့ ဆက်သွယ်ပါ။")} className="text-[10px] bg-[#D4AF37] text-white px-3 py-1.5 rounded-lg shadow-sm">Request Edit</button>
-            </h3>
-            <div className="space-y-4">
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Therapist Name</span><span className="text-xs font-bold text-blue-700">{staff.name}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Actual Name (အမည်ရင်း)</span><span className="text-xs font-bold text-gray-800">{data.fullName}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Employee ID</span><span className="text-xs font-mono font-bold text-[#123524]">{staff.id}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Position</span><span className="text-xs font-bold text-blue-600">{data.jobPosition}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Phone</span><span className="text-xs font-bold text-gray-800">{data.phone}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg"><span className="text-xs text-gray-500 font-bold block mb-1">Address</span><span className="text-xs font-semibold text-gray-800 leading-relaxed">{data.address}</span></div>
-                <div className="bg-red-50 p-3 rounded-lg"><span className="text-[10px] text-red-400 font-bold uppercase tracking-wider block mb-1">Emergency Contact</span><div className="text-xs font-bold text-red-700">{data.emergencyName} ({data.emergencyRelation})<br/><span className="font-mono mt-1 inline-block">{data.emergencyPhone}</span></div></div>
-            </div>
         </div>
     );
 }
