@@ -1466,6 +1466,7 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const updateVipTier = (tIdx: number, field: string, val: any) => { const updated = [...localVipSettings.tiers]; (updated[tIdx] as any)[field] = val; setLocalVipSettings({...localVipSettings, tiers: updated}); };
   const updateVipRule = (rIdx: number, val: string) => { const updated = [...localVipSettings.rules]; updated[rIdx] = val; setLocalVipSettings({...localVipSettings, rules: updated}); };
 
+  // 🌟 FIX 2: invalid-argument Error မတက်စေရန် Data များကို အတိအကျ သန့်စင်ခြင်း (Strict Casting) 🌟
   const handleSaveCategory = async (cIdx: number) => {
       const cat = localCategories[cIdx];
       if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return;
@@ -1473,40 +1474,51 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
 
       try {
           const cleanItems = cat.items.map((item: any) => {
-              const cleanedItem: any = { ...item };
-              
-              // ပုံအဟောင်း/အသစ် array ကို သေချာဖွဲ့စည်းမည်
-              if (!cleanedItem.images) {
-                  cleanedItem.images = cleanedItem.imageUrl ? [cleanedItem.imageUrl] : [];
-              }
-              delete cleanedItem.imageUrl; 
-              
-              // 🌟 VVIP Price စသည့် အကွက်များ အလွတ်ထားခဲ့လျှင် undefined ဖြစ်သွားတတ်သဖြင့် null သို့ ပြောင်းမည် 🌟
-              Object.keys(cleanedItem).forEach(key => {
-                  if (cleanedItem[key] === undefined) {
-                      cleanedItem[key] = null; 
-                  }
-              });
-              
-              return cleanedItem;
+              // ပုံဟောင်းနှင့် ပုံသစ်များကို Array ထဲသို့ သေချာစုစည်းမည်
+              let imgs = Array.isArray(item.images) ? item.images : (item.imageUrl ? [item.imageUrl] : []);
+              imgs = imgs.filter(Boolean); // Error မဖြစ်စေရန် အလွတ်များကို ဖယ်ထုတ်မည်
+
+              // Database က လက်ခံမည့် Format အတိုင်း undefined များကို ဖယ်ရှားပြီး အတိအကျ ပြောင်းလဲမည်
+              return {
+                  id: String(item.id || Date.now()),
+                  name: String(item.name || ''),
+                  duration: String(item.duration || ''),
+                  price: Number(item.price) || 0,
+                  vvipPrice: Number(item.vvipPrice) || 0,
+                  vvipIncluded: Boolean(item.vvipIncluded),
+                  description: String(item.description || ''),
+                  images: imgs
+              };
           });
 
-          const categoryToSave: any = { ...cat, items: cleanItems, order: cIdx };
-          delete categoryToSave.docId;
+          const categoryToSave = { 
+              id: String(cat.id), 
+              title: String(cat.title), 
+              order: Number(cIdx), 
+              items: cleanItems 
+          };
 
-          // 🌟 ULTIMATE FIX: Object တစ်ခုလုံးမှာ Firebase က လက်မခံတဲ့ undefined တွေ ပါနေရင် အလိုအလျောက် ရှင်းထုတ်ပေးမယ့် နည်းလမ်း (Deep Clean) 🌟
-          const safeCategoryData = JSON.parse(JSON.stringify(categoryToSave));
+          // 1MB Limit ကျော်လွန်ခြင်း ရှိမရှိ စစ်ဆေးမည်
+          const payloadSizeKB = Math.round(JSON.stringify(categoryToSave).length / 1024);
+          if (payloadSizeKB > 900) {
+              alert(`⚠️ Error: ပုံများ များလွန်းသဖြင့် Document Size ကြီးနေပါသည်။ (${payloadSizeKB} KB). \n\nကျေးဇူးပြု၍ မလိုအပ်သောပုံအချို့ကို ဖျက်ပြီးမှ ပြန် Save ပါ။`);
+              setSavingCategory(null);
+              return;
+          }
 
-          await setDoc(doc(db, 'categories', cat.id), safeCategoryData, { merge: true });
+          // Database သို့ သိမ်းဆည်းခြင်း
+          await setDoc(doc(db, 'categories', cat.id), categoryToSave, { merge: true });
 
           const nextCategories = [...localCategories];
-          nextCategories[cIdx] = { ...safeCategoryData, docId: cat.id };
+          nextCategories[cIdx] = categoryToSave;
+          setLocalCategories(nextCategories);
           
-          // ကျန်တဲ့ Category တွေမှာပါ undefined တွေ ခိုအောင်းနေရင် Error မတက်အောင် တစ်ခါတည်း ရှင်းထုတ်မည်
-          const safeNextCategories = JSON.parse(JSON.stringify(nextCategories));
-
-          setLocalCategories(safeNextCategories);
-          onSettingsUpdated({ ...appData, categories: safeNextCategories });
+          // အခြားနေရာများတွင် ပေါ့ပါးစေရန် images အလွတ်ဖြင့်သာ Global State ကို Update လုပ်မည်
+          const leanCategoriesForGlobal = nextCategories.map(c => ({
+              ...c,
+              items: c.items.map(i => ({ ...i, images: [], imageUrl: '' }))
+          }));
+          onSettingsUpdated({ ...appData, categories: leanCategoriesForGlobal });
 
           alert('✅ Saved Successfully. Category and Service Images are saved!');
       } catch (e: any) {
@@ -1612,14 +1624,13 @@ const handleSaveTherapists = async () => {
   // The compressed image is placed directly into item.imageUrl, and handleSaveCategory()
   // persists it to Firestore. Existing imageUrl values are preserved when editing.
    
-  // 🌟 FIX: Service Images များကို Array အဖြစ် Upload လုပ်မည် (Therapist ပုံစံအတိုင်း) 🌟
+  // 🌟 FIX 1: 1MB Limit မကျော်စေရန် HD Quality ဖြင့် Service ပုံများကို Array အဖြစ် တင်မည့်စနစ် 🌟
   const handleServiceImageUpload = async (cIdx: number, iIdx: number, files: FileList | null) => { 
       if (!files || files.length === 0) return; 
       
       const category = localCategories[cIdx];
       const item = category.items[iIdx];
-      
-      const currentImages = item.images || (item.imageUrl ? [item.imageUrl] : []);
+      const currentImages = Array.isArray(item.images) ? item.images : (item.imageUrl ? [item.imageUrl] : []);
       
       if (currentImages.length + files.length > 5) { 
           alert('Max 5 photos allowed per service.'); 
@@ -1631,21 +1642,48 @@ const handleSaveTherapists = async () => {
       
       try { 
           for (let i = 0; i < files.length; i++) { 
-              const base64 = await compressImage(files[i], 800, 1000); 
+              const file = files[i];
+              // 1MB Limit အတွက် ပုံအရွယ်အစားနှင့် Quality ကို အတိအကျ ထိန်းညှိခြင်း
+              const base64 = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = (e) => {
+                      const img = new Image();
+                      img.onload = () => {
+                          const canvas = document.createElement('canvas');
+                          const MAX_DIM = 600; // 600px ဖြင့် HD Quality ရရှိစေရန်
+                          let w = img.width; let h = img.height;
+                          if (w > h) { if (w > MAX_DIM) { h *= MAX_DIM / w; w = MAX_DIM; } }
+                          else { if (h > MAX_DIM) { w *= MAX_DIM / h; h = MAX_DIM; } }
+                          
+                          canvas.width = Math.round(w); 
+                          canvas.height = Math.round(h);
+                          const ctx = canvas.getContext('2d');
+                          if (ctx) {
+                              ctx.fillStyle = '#FFF'; 
+                              ctx.fillRect(0, 0, canvas.width, canvas.height);
+                              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                              // 0.65 Quality သည် ကြည်လင်မှုကို မထိခိုက်စေဘဲ Size ကို သေးငယ်စေပါသည်
+                              resolve(canvas.toDataURL('image/jpeg', 0.65)); 
+                          } else {
+                              resolve(e.target?.result as string);
+                          }
+                      };
+                      img.onerror = reject;
+                      img.src = e.target?.result as string;
+                  };
+                  reader.onerror = reject;
+                  reader.readAsDataURL(file);
+              });
               newUrls.push(base64); 
           } 
           
           const updated = [...localCategories];
-          const updatedItem = { ...updated[cIdx].items[iIdx] };
-          updatedItem.images = [...currentImages, ...newUrls];
-          delete updatedItem.imageUrl; 
-          
-          updated[cIdx].items[iIdx] = updatedItem;
+          updated[cIdx].items[iIdx] = { ...item, images: [...currentImages, ...newUrls] };
+          delete updated[cIdx].items[iIdx].imageUrl; 
           setLocalCategories(updated); 
           
       } catch (err) { 
-          console.error(err);
-          alert("Upload error."); 
+          console.error(err); alert("Upload error."); 
       } 
       setUploadingImage(null); 
   };
