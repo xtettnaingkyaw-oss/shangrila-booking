@@ -487,12 +487,30 @@ export function AdminHRManagement() {
 // 🌟 3. Staff Profile View Component (For Staff App) 🌟
 export function StaffProfileView({ staff }: { staff: any }) {
     const [isEditing, setIsEditing] = useState(false);
+    const [liveStaffData, setLiveStaffData] = useState<any>(staff); // 🌟 Real-time Update ယူရန် State အသစ် 🌟
+
+    // 🌟 ဤ Therapist ၏ Data ကို Firestore မှ Real-time ဖတ်မည် 🌟
+    useEffect(() => {
+        if (!staff || !staff.id) return;
+        const unsub = onSnapshot(doc(db, 'therapists', staff.id), (docSnap) => {
+            if (docSnap.exists()) {
+                setLiveStaffData({ id: docSnap.id, ...docSnap.data() });
+            }
+        });
+        return () => unsub();
+    }, [staff?.id]);
 
     if (isEditing) {
-        return <NewEmployeeOnboardingForm onBack={() => setIsEditing(false)} existingStaffId={staff.id} existingData={staff.onboardingData} isStaffSelfEdit={true} />;
+        return <NewEmployeeOnboardingForm 
+                  onBack={() => setIsEditing(false)} 
+                  existingStaffId={liveStaffData.id} 
+                  existingData={liveStaffData.onboardingData} 
+                  isStaffSelfEdit={true} 
+               />;
     }
 
-    if (!staff.onboardingData) {
+    // 🌟 liveStaffData.onboardingData မရှိမှသာ ခလုတ်ပြမည် 🌟
+    if (!liveStaffData?.onboardingData) {
         return (
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4 text-center">
                 <div className="w-16 h-16 bg-yellow-50 rounded-full mx-auto flex items-center justify-center mb-4 text-yellow-600 border border-yellow-100">
@@ -507,7 +525,7 @@ export function StaffProfileView({ staff }: { staff: any }) {
         );
     }
 
-    const data = staff.onboardingData;
+    const data = liveStaffData.onboardingData;
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4">
@@ -518,9 +536,9 @@ export function StaffProfileView({ staff }: { staff: any }) {
                 </button>
             </h3>
             <div className="space-y-4">
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Therapist Name</span><span className="text-xs font-bold text-blue-700">{staff.name}</span></div>
+                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Therapist Name</span><span className="text-xs font-bold text-blue-700">{liveStaffData.name}</span></div>
                 <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Actual Name (အမည်ရင်း)</span><span className="text-xs font-bold text-gray-800">{data.fullName}</span></div>
-                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Employee ID</span><span className="text-xs font-mono font-bold text-[#123524]">{staff.id}</span></div>
+                <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Employee ID</span><span className="text-xs font-mono font-bold text-[#123524]">{liveStaffData.id}</span></div>
                 <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Position</span><span className="text-xs font-bold text-blue-600">{data.jobPosition}</span></div>
                 <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Phone</span><span className="text-xs font-bold text-gray-800">{data.phone}</span></div>
                 <div className="bg-gray-50 p-3 rounded-lg"><span className="text-xs text-gray-500 font-bold block mb-1">Address</span><span className="text-xs font-semibold text-gray-800 leading-relaxed">{data.address}</span></div>
