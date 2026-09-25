@@ -99,6 +99,8 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
+  const [updateRequestCount, setUpdateRequestCount] = useState(0); // 🌟 အသစ်ထည့်ထားသော State 🌟
+  const [adminRole, setAdminRole] = useState<'super_admin' | 'custom'>('super_admin');
   const [adminRole, setAdminRole] = useState<'super_admin' | 'custom'>('super_admin');
   const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
   const [roleLoaded, setRoleLoaded] = useState(false);
@@ -131,6 +133,15 @@ useEffect(() => {
         setResetRequestCount(snap.size); // Loop ပတ်စရာမလိုတော့ပါ၊ အရေအတွက်ကို တန်းယူလိုက်ရုံပါပဲ
     });
     return () => unsubUsers();
+  }, []);
+
+   // 🌟 အသစ်ထည့်ထားသော useEffect (Staff Profile Update တောင်းဆိုမှု အရေအတွက်ကို ယူရန်) 🌟
+ useEffect(() => {
+      const q = query(collection(db, 'therapists'), where('updateRequested', '==', true));
+      const unsubUpdates = onSnapshot(q, (snap) => {
+          setUpdateRequestCount(snap.size); 
+      });
+      return () => unsubUpdates();
   }, []);
 
   useEffect(() => {
@@ -176,7 +187,11 @@ useEffect(() => {
         {hasAccess('admins') && (<button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>)}
         {hasAccess('penalties') && (<button onClick={() => setTab('penalties')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'penalties' ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Banknote className="w-4 h-4 mr-2" /> Penalty & Loans</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('roster')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ClipboardList className="w-4 h-4 mr-2" /> Duty Roster</button>)}
-        {hasAccess('settings') && (<button onClick={() => setTab('hr')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'hr' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><UserPlus className="w-4 h-4 mr-2" /> HR Management</button>)}
+        {hasAccess('settings') && (<button onClick={() => setTab('hr')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'hr' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+    <UserPlus className="w-4 h-4 mr-2" /> HR Management 
+    {/* 🌟 Update Request ရှိရင် အနီစက်ပြမည့် အပိုင်း 🌟 */}
+    {updateRequestCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{updateRequestCount}</span>}
+</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('settings')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Settings className="w-4 h-4 mr-2" /> Settings</button>)}
         <button onClick={onLogout} className="px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm sm:ml-2"><LogOut className="w-4 h-4 mr-2" /> Logout</button>
       </div>
