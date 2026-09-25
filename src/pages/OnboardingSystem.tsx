@@ -40,7 +40,6 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         setUploadingInfo('');
     };
 
-    // 🌟 Validation: အချက်အလက်စုံ/မစုံ စစ်ဆေးခြင်း 🌟
     const isFormValid = () => {
         return (
             formData.fullName.trim() !== '' &&
@@ -62,7 +61,6 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         setLoading(true);
         try {
             if (existingStaffId) {
-                // Staff က ကိုယ်တိုင် Profile လာဖြည့်တာဆိုရင် therapists collection ထဲမှာ update လုပ်မယ်
                 await updateDoc(doc(db, 'therapists', existingStaffId), { onboardingData: formData });
                 alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
             } else {
@@ -74,7 +72,6 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         setLoading(false);
     };
 
-    // 🌟 ဖြည့်ပြီးသားကို Staff က ထပ်ပြင်ဖို့ကြိုးစားရင် တားမြစ်မည် 🌟
     if (isStaffSelfEdit && existingData) {
         return (
             <div className="bg-gray-50 min-h-[100dvh] w-full fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -95,7 +92,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 <h2 className="text-[#123524] font-bold text-lg ml-2 uppercase tracking-wider">{existingStaffId ? 'Add Your Profile Info' : 'New Employee Onboarding'}</h2>
             </div>
             
-            <div className="flex-1 overflow-y-auto pb-24">
+            <div className="flex-1 overflow-y-auto pb-36">
                 <form id="onboardingForm" onSubmit={handleSubmit} className="max-w-xl mx-auto p-4 space-y-6 animate-slide-up">
                     
                     {existingStaffId && (
@@ -181,10 +178,9 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 </form>
             </div>
 
-           {/* 🌟 Fixed Bottom Submit Button (Disabled if not valid) 🌟 */}
+            {/* 🌟 Fixed Bottom Submit Button 🌟 */}
             <div className="fixed bottom-0 left-0 right-0 px-4 pb-4 pt-3 bg-white border-t border-gray-200 shadow-[0_-8px_15px_-3px_rgba(0,0,0,0.08)] z-50">
                 <div className="max-w-xl mx-auto">
-                    {/* 🌟 သတိပေးစာသား အသစ် 🌟 */}
                     <p className="text-[9px] text-gray-500 text-center font-bold mb-2.5 leading-relaxed">
                         ဖြည့်သွင်းထားသောအချက်လက်များအားလုံးအား ပြည့်စုံမှန်ကန်ခြင်း ရှိ/မရှိ<br/>သေချာစွာပြန်လည်စစ်ဆေးပြီးပါက အောက်မှ တင်သွင်းသည့်ခလုတ်ကိုနှိပ်ပါ။
                     </p>
@@ -199,6 +195,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                     </button>
                 </div>
             </div>
+        </div>
     );
 }
 
@@ -282,7 +279,6 @@ export function AdminHRManagement() {
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
             
-            {/* 🌟 1. Modal for Pending Application Approval 🌟 */}
             {selectedReq && (
                 <div className="fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up">
@@ -320,7 +316,6 @@ export function AdminHRManagement() {
                 </div>
             )}
 
-            {/* 🌟 2. Modal for Viewing Active Staff Profile (Edit/Close Only) 🌟 */}
             {viewingProfile && (
                 <div className="fixed inset-0 z-[99] bg-black/60 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-slide-up">
@@ -359,7 +354,6 @@ export function AdminHRManagement() {
                 </div>
             )}
 
-            {/* 🌟 3. Adding Info Form (Full Screen overlay) 🌟 */}
             {addingInfoForId && (
                 <NewEmployeeOnboardingForm onBack={() => { setAddingInfoForId(null); setAddingInfoData(null); }} existingStaffId={addingInfoForId} existingData={addingInfoData} isStaffSelfEdit={false} />
             )}
@@ -431,36 +425,14 @@ export function AdminHRManagement() {
 
 // 🌟 3. Staff Profile View Component (For Staff App) 🌟
 export function StaffProfileView({ staff }: { staff: any }) {
-    const [isEditing, setIsEditing] = useState(false);
-
-    if (isEditing) {
-        return <NewEmployeeOnboardingForm onBack={() => setIsEditing(false)} existingStaffId={staff.id} existingData={staff.onboardingData} isStaffSelfEdit={true} />;
-    }
-
-    if (!staff.onboardingData) {
-        return (
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4 text-center">
-                <div className="w-16 h-16 bg-yellow-50 rounded-full mx-auto flex items-center justify-center mb-4 text-yellow-600 border border-yellow-100">
-                    <UserPlus className="w-8 h-8" />
-                </div>
-                <h3 className="font-bold text-gray-800 text-lg mb-2">Profile Incomplete</h3>
-                <p className="text-xs text-gray-500 mb-6 max-w-sm mx-auto leading-relaxed">သင်၏ အချက်အလက်မှတ်တမ်း (Profile Info) ဖြည့်သွင်းထားခြင်း မရှိသေးပါ။ ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်၍ ပြည့်စုံစွာ ဖြည့်သွင်းပေးပါ။</p>
-                <button onClick={() => setIsEditing(true)} className="px-6 py-3 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-md mx-auto hover:bg-[#1a4a32] transition flex items-center justify-center text-sm">
-                    <Edit className="w-4 h-4 mr-2" /> Add Profile Info
-                </button>
-            </div>
-        );
-    }
-
+    if (!staff.onboardingData) return <div className="text-center p-10 text-gray-400 text-xs bg-gray-50 rounded-xl border border-dashed mt-4">Profile data not fully set up. Please contact Admin.</div>;
     const data = staff.onboardingData;
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 animate-fade-in mt-4">
             <h3 className="font-bold text-[#123524] text-lg mb-4 border-b border-gray-100 pb-3 flex items-center justify-between">
                 My Profile Details
-                <button onClick={() => alert("အချက်အလက်များကို သင်ကိုယ်တိုင် ပြင်ဆင်ခွင့်မရှိတော့ပါ။ ပြင်ဆင်လိုပါက Admin သို့ တိုက်ရိုက် ဆက်သွယ်အကြောင်းကြားပေးပါ။")} className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg shadow-sm font-bold flex items-center">
-                    <X className="w-3 h-3 mr-1"/> Request Edit
-                </button>
+                <button onClick={() => alert("အချက်အလက် ပြင်ဆင်လိုပါက Admin သို့ ဆက်သွယ်ပါ။")} className="text-[10px] bg-[#D4AF37] text-white px-3 py-1.5 rounded-lg shadow-sm">Request Edit</button>
             </h3>
             <div className="space-y-4">
                 <div className="bg-gray-50 p-3 rounded-lg flex justify-between"><span className="text-xs text-gray-500 font-bold">Therapist Name</span><span className="text-xs font-bold text-blue-700">{staff.name}</span></div>
