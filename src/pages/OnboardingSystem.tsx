@@ -13,7 +13,7 @@ const RULES_LIST = [
     'ဆိုင်မှ ချမှတ်ထားသော စည်းမျဉ်းစည်းကမ်းများအားလုံးကိုလည်း သိရှိနားလည် သဘောတူလက်ခံပါသည်။'
 ];
 
-// 🌟 Canvas ကို အသုံးပြု၍ ပုံအရွယ်အစားနှင့် Quality ထိန်းညှိပေးမည့် Helper 🌟
+// 🌟 Admin App မှ Therapist ပုံတင်သည့်နည်းလမ်းအတိုင်း ပြောင်းလဲထားသော Helper 🌟
 const compressImageToSmallBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -21,8 +21,8 @@ const compressImageToSmallBase64 = (file: File): Promise<string> => {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                // 🌟 ပုံဝါးခြင်းကို အနည်းငယ်သက်သာစေရန် MAX_SIZE ကို 1600 ထိ တိုးပေးထားသည် 🌟
-                const MAX_SIZE = 1600; 
+                // 🌟 Admin App ရဲ့ Therapist Image Upload အတိုင်း MAX_SIZE 800 သို့ပြောင်းထားသည် 🌟
+                const MAX_SIZE = 800; 
                 let width = img.width;
                 let height = img.height;
 
@@ -48,16 +48,8 @@ const compressImageToSmallBase64 = (file: File): Promise<string> => {
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 }
 
-                // 🌟 Quality စတင်ချုံ့ခြင်း 🌟
-                let finalBase64 = canvas.toDataURL('image/jpeg', 0.85); 
-
-                // Firestore 1MB Limit မကျော်စေရန် ထပ်ချုံ့ခြင်း
-                if (finalBase64.length > 800 * 1024) {
-                    finalBase64 = canvas.toDataURL('image/jpeg', 0.7);
-                }
-                if (finalBase64.length > 800 * 1024) {
-                    finalBase64 = canvas.toDataURL('image/jpeg', 0.5);
-                }
+                // 🌟 Admin App အတိုင်း Quality 0.8 သာသုံးပြီး ထပ်ဆင့်ချုံ့ခြင်းကို ဖယ်ရှားလိုက်ပါသည် 🌟
+                const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
                 resolve(finalBase64);
             };
             img.onerror = reject;
@@ -84,12 +76,13 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
     });
     
     const [loading, setLoading] = useState(false);
-    const [uploadingInfo, setUploadingInfo] = useState('');
+    // 🌟 Uploading State ကို Field Name အလိုက် သိမ်းမည် (Admin App ပုံစံ) 🌟
+    const [uploadingInfo, setUploadingInfo] = useState<string>('');
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl') => {
         const file = e.target.files?.[0]; 
         if (!file) return;
-        setUploadingInfo('Uploading Image...');
+        setUploadingInfo(field);
 
         try {
             const smallBase64 = await compressImageToSmallBase64(file);
@@ -99,7 +92,62 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
             alert("Image upload failed. Error: " + err.message); 
         } finally {
             setUploadingInfo('');
+            e.target.value = ''; // Input ကို Reset လုပ်ရန်
         }
+    };
+
+    // 🌟 Admin App ရဲ့ Therapist UI အတိုင်း Document တင်သည့် Box ကို Helper ဖြင့်ရေးခြင်း 🌟
+    const renderDocumentUpload = (field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl', label: string) => {
+        const url = formData[field];
+        const isUploading = uploadingInfo === field;
+
+        if (url) {
+            return (
+                <div>
+                    <label className="block text-[10px] font-bold text-gray-500 mb-1">{label} <span className="text-red-500">*</span></label>
+                    <div className="aspect-[4/3] relative rounded-xl overflow-hidden shadow-sm border border-gray-200 group">
+                        <img src={url} alt={label} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    setFormData({ ...formData, [field]: '' });
+                                }}
+                                className="bg-red-500 text-white text-[10px] px-3 py-1.5 rounded hover:bg-red-600 shadow-sm font-bold"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div>
+                <label className="block text-[10px] font-bold text-gray-500 mb-1">{label} <span className="text-red-500">*</span></label>
+                <label className="aspect-[4/3] rounded-xl border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm relative overflow-hidden">
+                    <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(e, field)}
+                        disabled={isUploading}
+                    />
+                    <div className="text-center">
+                        {isUploading ? (
+                            <span className="text-[10px] font-bold text-[#D4AF37]">Wait..</span>
+                        ) : (
+                            <div className="flex flex-col items-center">
+                                <ImageIcon className="w-6 h-6 mb-1 text-gray-400"/>
+                                <span className="text-[10px] font-bold text-gray-500">Upload</span>
+                            </div>
+                        )}
+                    </div>
+                </label>
+            </div>
+        );
     };
 
     const isFormValid = () => {
@@ -178,25 +226,13 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                         </div>
                         <div><label className="block text-xs font-bold text-gray-500 mb-1">မှတ်ပုံတင်နံပါတ် *</label><input required type="text" value={formData.nrcNumber} onChange={e=>setFormData({...formData, nrcNumber: e.target.value})} placeholder="Please enter" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                         
+                        {/* 🌟 Document Upload များကို Helper Function ဖြင့် အစားထိုးခြင်း 🌟 */}
                         <div className="grid grid-cols-2 gap-4">
-                            <label className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden ${!formData.nrcFrontUrl ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`}>
-                                {formData.nrcFrontUrl ? <img src={formData.nrcFrontUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC Front"/> : <><ImageIcon className="w-6 h-6 mb-2 text-red-400"/><span className="text-[10px] font-bold text-center text-red-500">မှတ်ပုံတင်<br/>(ရှေ့ဘက်) *</span></>}
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'nrcFrontUrl')} />
-                            </label>
-                            <label className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden ${!formData.nrcBackUrl ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`}>
-                                {formData.nrcBackUrl ? <img src={formData.nrcBackUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC Back"/> : <><ImageIcon className="w-6 h-6 mb-2 text-red-400"/><span className="text-[10px] font-bold text-center text-red-500">မှတ်ပုံတင်<br/>(နောက်ဘက်) *</span></>}
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'nrcBackUrl')} />
-                            </label>
-                            <label className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden ${!formData.householdFrontUrl ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`}>
-                                {formData.householdFrontUrl ? <img src={formData.householdFrontUrl} className="absolute inset-0 w-full h-full object-cover" alt="Household Front"/> : <><ImageIcon className="w-6 h-6 mb-2 text-red-400"/><span className="text-[10px] font-bold text-center text-red-500">အိမ်ထောင်စု<br/>(ရှေ့ဘက်) *</span></>}
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'householdFrontUrl')} />
-                            </label>
-                            <label className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden ${!formData.householdBackUrl ? 'border-red-300 bg-red-50/30' : 'border-gray-300'}`}>
-                                {formData.householdBackUrl ? <img src={formData.householdBackUrl} className="absolute inset-0 w-full h-full object-cover" alt="Household Back"/> : <><ImageIcon className="w-6 h-6 mb-2 text-red-400"/><span className="text-[10px] font-bold text-center text-red-500">အိမ်ထောင်စု<br/>(နောက်ဘက်) *</span></>}
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'householdBackUrl')} />
-                            </label>
+                            {renderDocumentUpload('nrcFrontUrl', 'မှတ်ပုံတင် (ရှေ့ဘက်)')}
+                            {renderDocumentUpload('nrcBackUrl', 'မှတ်ပုံတင် (နောက်ဘက်)')}
+                            {renderDocumentUpload('householdFrontUrl', 'အိမ်ထောင်စု (ရှေ့ဘက်)')}
+                            {renderDocumentUpload('householdBackUrl', 'အိမ်ထောင်စု (နောက်ဘက်)')}
                         </div>
-                        {uploadingInfo && <div className="text-[10px] text-[#D4AF37] font-bold animate-pulse text-center">{uploadingInfo}</div>}
 
                         <div><label className="block text-xs font-bold text-gray-500 mb-1">မွေးသက္ကရာဇ် *</label><input required type="date" value={formData.dob} onChange={e=>setFormData({...formData, dob: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                         <div><label className="block text-xs font-bold text-gray-500 mb-1">ဆက်သွယ်ရန်ဖုန်း *</label><input required type="tel" value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})} placeholder="Please enter" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
@@ -352,7 +388,6 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data:
             {viewingPhoto && <PhotoViewerModal src={viewingPhoto} onClose={() => setViewingPhoto(null)} />}
 
             <div className="grid grid-cols-2 gap-4 mb-4">
-                {/* 🌟 ၁။ အချက်အလက်များကို တစ်ကြောင်းချင်းစီ (Full-width) ပြရန် col-span-2 အသုံးပြုထားသည် 🌟 */}
                 <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
                     <span className="text-[10px] text-gray-400 block uppercase">Employee ID</span>
                     <span className="font-bold text-[#123524] truncate block text-base" title={staffId}>{staffId}</span>
@@ -383,7 +418,6 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data:
                     <span className="font-bold text-gray-800 text-base">{data.nrcNumber}</span>
                 </div>
 
-                {/* 🌟 ၂။ DOB နှင့် Age ကို Box ခွဲထုတ်ပြီး Design ဆင်ခြင်း 🌟 */}
                 <div className="col-span-2 flex gap-3">
                     <div className="flex-1 bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
                         <span className="text-[10px] text-gray-400 block uppercase mb-1">Date of Birth</span>
@@ -395,7 +429,6 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data:
                     </div>
                 </div>
 
-                {/* 🌟 ၂။ Join Date နှင့် Duration ကို Box ခွဲထုတ်ပြီး Design ဆင်ခြင်း 🌟 */}
                 <div className="col-span-2 flex gap-3">
                     <div className="flex-1 bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
                         <span className="text-[10px] text-gray-400 block uppercase mb-1">Join Date</span>
@@ -412,7 +445,6 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data:
                     <span className="font-bold text-gray-800 leading-relaxed block mt-1">{data.address}</span>
                 </div>
 
-                {/* 🌟 ၃။ Emergency Contact ကို ဘေးတိုက် (Side-by-side) ခွဲပြခြင်း 🌟 */}
                 <div className="col-span-2 bg-red-50 p-4 rounded-xl shadow-sm border border-red-100">
                     <span className="text-[10px] text-red-500 block uppercase font-bold tracking-wider mb-2">Emergency Contact</span>
                     <div className="flex justify-between items-center gap-3">
@@ -430,7 +462,6 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose }: { data:
 
             <h4 className="font-bold text-xs text-gray-500 mb-2 uppercase tracking-wider">Document Photos</h4>
             <div className="grid grid-cols-2 gap-4">
-                {/* Document Photos အပိုင်းကတော့ မူလအတိုင်း ထားရှိပေးထားပါသည်။ */}
                 <div>
                     <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>
                     {data.nrcFrontUrl ? <img src={data.nrcFrontUrl} onClick={() => setViewingPhoto(data.nrcFrontUrl)} className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer hover:opacity-80 transition"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
