@@ -20,9 +20,13 @@ export function NewEmployeeOnboardingForm({ onBack }: { onBack: () => void }) {
         fullName: '', nrcNumber: '', dob: '', phone: '', address: '',
         emergencyName: '', emergencyPhone: '', emergencyRelation: '',
         jobPosition: '', startDate: '',
-        nrcPhotoUrl: '', householdPhotoUrl: '',
+        nrcFrontUrl: '', nrcBackUrl: '', householdFrontUrl: '', householdBackUrl: '',
         documents: [] as string[], rules: [] as string[]
     });
+    const [loading, setLoading] = useState(false);
+    const [uploadingInfo, setUploadingInfo] = useState('');
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl') => {
     const [loading, setLoading] = useState(false);
     const [uploadingInfo, setUploadingInfo] = useState('');
 
