@@ -27,10 +27,6 @@ export function NewEmployeeOnboardingForm({ onBack }: { onBack: () => void }) {
     const [uploadingInfo, setUploadingInfo] = useState('');
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'nrcFrontUrl' | 'nrcBackUrl' | 'householdFrontUrl' | 'householdBackUrl') => {
-    const [loading, setLoading] = useState(false);
-    const [uploadingInfo, setUploadingInfo] = useState('');
-
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'nrcPhotoUrl' | 'householdPhotoUrl') => {
         const file = e.target.files?.[0]; if (!file) return;
         setUploadingInfo('Uploading Image...');
         try { const base64 = await compressImage(file, 800, 1000); setFormData({ ...formData, [field]: base64 }); } 
@@ -62,14 +58,23 @@ export function NewEmployeeOnboardingForm({ onBack }: { onBack: () => void }) {
                     <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name (အမည်အပြည့်အစုံ) *</label><input required type="text" value={formData.fullName} onChange={e=>setFormData({...formData, fullName: e.target.value})} placeholder="Please enter" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                     <div><label className="block text-xs font-bold text-gray-500 mb-1">မှတ်ပုံတင်နံပါတ် *</label><input required type="text" value={formData.nrcNumber} onChange={e=>setFormData({...formData, nrcNumber: e.target.value})} placeholder="Please enter" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                     
+                    {/* 🌟 NRC & Household Image Uploads (4 Fields) 🌟 */}
                     <div className="grid grid-cols-2 gap-4">
                         <label className="border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden">
-                            {formData.nrcPhotoUrl ? <img src={formData.nrcPhotoUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold">မှတ်ပုံတင်ပုံတင်ရန်</span></>}
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'nrcPhotoUrl')} />
+                            {formData.nrcFrontUrl ? <img src={formData.nrcFrontUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC Front"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold text-center">မှတ်ပုံတင်<br/>(ရှေ့ဘက်)</span></>}
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'nrcFrontUrl')} />
                         </label>
                         <label className="border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden">
-                            {formData.householdPhotoUrl ? <img src={formData.householdPhotoUrl} className="absolute inset-0 w-full h-full object-cover" alt="Household"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold">အိမ်ထောင်စုစာရင်းပုံ</span></>}
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'householdPhotoUrl')} />
+                            {formData.nrcBackUrl ? <img src={formData.nrcBackUrl} className="absolute inset-0 w-full h-full object-cover" alt="NRC Back"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold text-center">မှတ်ပုံတင်<br/>(နောက်ဘက်)</span></>}
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'nrcBackUrl')} />
+                        </label>
+                        <label className="border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden">
+                            {formData.householdFrontUrl ? <img src={formData.householdFrontUrl} className="absolute inset-0 w-full h-full object-cover" alt="Household Front"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold text-center">အိမ်ထောင်စု<br/>(ရှေ့ဘက်)</span></>}
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'householdFrontUrl')} />
+                        </label>
+                        <label className="border-2 border-dashed border-gray-300 rounded-xl p-4 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 cursor-pointer h-32 relative overflow-hidden">
+                            {formData.householdBackUrl ? <img src={formData.householdBackUrl} className="absolute inset-0 w-full h-full object-cover" alt="Household Back"/> : <><ImageIcon className="w-6 h-6 mb-2"/><span className="text-[10px] font-bold text-center">အိမ်ထောင်စု<br/>(နောက်ဘက်)</span></>}
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'householdBackUrl')} />
                         </label>
                     </div>
                     {uploadingInfo && <div className="text-[10px] text-[#D4AF37] font-bold animate-pulse text-center">{uploadingInfo}</div>}
@@ -129,7 +134,6 @@ export function NewEmployeeOnboardingForm({ onBack }: { onBack: () => void }) {
     );
 }
 
-
 // 🌟 2. Admin HR Management Component 🌟
 export function AdminHRManagement() {
     const [requests, setRequests] = useState<any[]>([]);
@@ -155,18 +159,15 @@ export function AdminHRManagement() {
         if (!approvalForm.staffId || !approvalForm.password) return;
         setProcessing(true);
         try {
-            // 1. Create Auth User
             try { await createUserWithEmailAndPassword(secondaryAuth, `${approvalForm.staffId.toLowerCase()}@shangrila.com`, approvalForm.password); } catch(e){}
-            // 2. Add to Therapists Collection with Form Data attached
             await setDoc(doc(db, 'therapists', approvalForm.staffId), {
                 id: approvalForm.staffId,
                 name: selectedReq.fullName,
-                password: encryptText("SECURED_ACCOUNT"), // Do not store raw password
+                password: encryptText(approvalForm.password), 
                 order: activeStaff.length,
                 images: [],
-                onboardingData: selectedReq // Store all form data for profile viewing
+                onboardingData: selectedReq
             });
-            // 3. Update Request Status
             await updateDoc(doc(db, 'onboarding_requests', selectedReq.id), { status: 'approved', assignedId: approvalForm.staffId, approvedAt: Date.now() });
             alert("✅ ဝန်ထမ်းသစ် အတည်ပြုပြီးပါပြီ။ Staff App မှ စတင် ဝင်ရောက်နိုင်ပါပြီ။");
             setSelectedReq(null);
@@ -206,14 +207,23 @@ export function AdminHRManagement() {
                                 <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100"><span className="text-[10px] text-gray-400 block uppercase">Address</span><span className="font-bold text-gray-800">{selectedReq.address}</span></div>
                             </div>
                             
+                            {/* 🌟 Admin Review NRC & Household (4 Images) 🌟 */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC Photo</span>
-                                    {selectedReq.nrcPhotoUrl ? <img src={selectedReq.nrcPhotoUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-xs text-gray-400">No Image</div>}
+                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>
+                                    {selectedReq.nrcFrontUrl ? <img src={selectedReq.nrcFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
                                 </div>
                                 <div>
-                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">Household Photo</span>
-                                    {selectedReq.householdPhotoUrl ? <img src={selectedReq.householdPhotoUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-xs text-gray-400">No Image</div>}
+                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Back)</span>
+                                    {selectedReq.nrcBackUrl ? <img src={selectedReq.nrcBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                                </div>
+                                <div>
+                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>
+                                    {selectedReq.householdFrontUrl ? <img src={selectedReq.householdFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                                </div>
+                                <div>
+                                    <span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>
+                                    {selectedReq.householdBackUrl ? <img src={selectedReq.householdBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
                                 </div>
                             </div>
 
