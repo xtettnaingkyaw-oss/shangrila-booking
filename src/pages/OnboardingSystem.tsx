@@ -181,18 +181,24 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 </form>
             </div>
 
-            {/* 🌟 Fixed Bottom Submit Button (Disabled if not valid) 🌟 */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-50">
-                <button 
-                    type="submit" 
-                    form="onboardingForm" 
-                    disabled={loading || !isFormValid()} 
-                    className={`w-full max-w-xl mx-auto py-4 rounded-xl font-bold shadow-lg flex items-center justify-center transition ${isFormValid() ? 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32]' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
-                >
-                    <Save className="w-5 h-5 mr-2" /> {loading ? 'Saving...' : (!isFormValid() ? 'Fill all fields & photos' : (existingStaffId ? 'Save My Profile Data' : 'Submit Application'))}
-                </button>
+           {/* 🌟 Fixed Bottom Submit Button (Disabled if not valid) 🌟 */}
+            <div className="fixed bottom-0 left-0 right-0 px-4 pb-4 pt-3 bg-white border-t border-gray-200 shadow-[0_-8px_15px_-3px_rgba(0,0,0,0.08)] z-50">
+                <div className="max-w-xl mx-auto">
+                    {/* 🌟 သတိပေးစာသား အသစ် 🌟 */}
+                    <p className="text-[9px] text-gray-500 text-center font-bold mb-2.5 leading-relaxed">
+                        ဖြည့်သွင်းထားသောအချက်လက်များအားလုံးအား ပြည့်စုံမှန်ကန်ခြင်း ရှိ/မရှိ<br/>သေချာစွာပြန်လည်စစ်ဆေးပြီးပါက အောက်မှ တင်သွင်းသည့်ခလုတ်ကိုနှိပ်ပါ။
+                    </p>
+                    <button 
+                        type="submit" 
+                        form="onboardingForm" 
+                        disabled={loading || !isFormValid()} 
+                        className={`w-full py-4 rounded-xl font-bold shadow-md flex items-center justify-center transition ${isFormValid() ? 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] hover:shadow-lg' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                    >
+                        <Save className="w-5 h-5 mr-2" /> 
+                        {loading ? 'Saving Data...' : (!isFormValid() ? 'Please fill all required fields' : 'Submit All Informations Now')}
+                    </button>
+                </div>
             </div>
-        </div>
     );
 }
 
