@@ -17,11 +17,10 @@ const RULES_LIST = [
 // 🌟 1. Staff Application Form Component 🌟
 export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, existingData = null }: { onBack: () => void, existingStaffId?: string | null, existingData?: any }) {
     
-    // Auto Generate Employee ID if new
     const [formData, setFormData] = useState(() => {
         if (existingData) return { ...existingData, staffId: existingStaffId || existingData.staffId || '' };
         return {
-            staffId: existingStaffId || `No-${Math.floor(Math.random() * 900) + 100}`, // Auto Generate ID
+            staffId: existingStaffId || `No-${Math.floor(Math.random() * 900) + 100}`,
             fullName: '', nrcNumber: '', dob: '', phone: '', address: '',
             emergencyName: '', emergencyPhone: '', emergencyRelation: '',
             jobPosition: '', startDate: '',
@@ -143,7 +142,6 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 </form>
             </div>
 
-            {/* 🌟 Fixed Bottom Submit Button 🌟 */}
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-50">
                 <button type="submit" form="onboardingForm" disabled={loading} className="w-full max-w-xl mx-auto py-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-[#1a4a32] transition disabled:opacity-50">
                     <Save className="w-5 h-5 mr-2" /> {loading ? 'Saving...' : (existingStaffId ? 'Save Profile Data' : 'Submit Application')}
@@ -184,14 +182,17 @@ export function AdminHRManagement() {
         if (!selectedReq.staffId || !approvalForm.password || !approvalForm.displayTherapistName) return alert("ကျေးဇူးပြု၍ အချက်အလက်များ ပြည့်စုံစွာ ထည့်ပါ။");
         setProcessing(true);
         try {
-            try { await createUserWithEmailAndPassword(secondaryAuth, `${selectedReq.staffId.toLowerCase()}@shangrila.com`, approvalForm.password); } catch(e){}
+            // 🌟 ID အဟောင်းများနည်းတူ Auth Email ကို သေချာဆောက်ပေးမည် 🌟
+            const safeEmail = `${selectedReq.staffId.toLowerCase()}@shangrila.com`;
+            try { await createUserWithEmailAndPassword(secondaryAuth, safeEmail, approvalForm.password); } catch(e){}
+            
             await setDoc(doc(db, 'therapists', selectedReq.staffId), {
                 id: selectedReq.staffId,
-                name: approvalForm.displayTherapistName, // Admin သတ်မှတ်ပေးသော Therapist Name
+                name: approvalForm.displayTherapistName, 
                 password: encryptText(approvalForm.password), 
                 order: activeStaff.length,
                 images: [],
-                onboardingData: selectedReq // မူရင်းနာမည်မှန်နှင့် အခြား Form Data များ
+                onboardingData: selectedReq 
             });
             await updateDoc(doc(db, 'onboarding_requests', selectedReq.id), { status: 'approved', assignedId: selectedReq.staffId, approvedAt: Date.now() });
             alert("✅ ဝန်ထမ်းသစ် အတည်ပြုပြီးပါပြီ။");
@@ -211,7 +212,6 @@ export function AdminHRManagement() {
         await deleteDoc(doc(db, 'therapists', id));
     };
 
-    // 🌟 အပြတ်ဖျက်မယ့် Delete Function အသစ် 🌟
     const handlePermanentDelete = async (id: string, reqId?: string) => {
         if (!window.confirm("သတိပြုရန်: ဤဝန်ထမ်း၏ အချက်အလက်များကို Database မှ အပြီးတိုင် ဖျက်ပစ်မည် သေချာပါသလား? (ပြန်ယူ၍မရနိုင်ပါ)")) return;
         try {
@@ -293,7 +293,6 @@ export function AdminHRManagement() {
                                 <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>{viewingProfile.householdFrontUrl ? <img src={viewingProfile.householdFrontUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
                                 <div><span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>{viewingProfile.householdBackUrl ? <img src={viewingProfile.householdBackUrl} className="w-full h-32 object-cover rounded-xl border border-gray-200"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}</div>
                             </div>
-                            {/* 🌟 Edit & Close Buttons (Fixed Z-index issue) 🌟 */}
                             <div className="flex gap-3 pt-4 border-t border-gray-200 pb-2">
                                 <button type="button" onClick={() => setViewingProfile(null)} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300">Close</button>
                                 <button type="button" onClick={() => { 
@@ -363,7 +362,6 @@ export function AdminHRManagement() {
                                 </div>
                             )}
 
-                            {/* 🌟 Buttons Section 🌟 */}
                             <div className="mt-auto">
                                 {staff.onboardingData && (
                                     <button onClick={() => setViewingProfile(staff.onboardingData)} className="w-full mb-2 py-2 bg-gray-100 text-gray-700 text-[10px] font-bold rounded-lg hover:bg-gray-200 border border-gray-200">View Form Details</button>
