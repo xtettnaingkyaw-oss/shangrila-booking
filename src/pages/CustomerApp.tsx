@@ -2152,14 +2152,18 @@ const renderServiceSelection = (currentStep: number) => (
                                         )}
 
                                         <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2.5">
-                                            {group.imageUrl ? (
-                                                <img src={group.imageUrl} alt={group.baseName} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
-                                            ) : (
-                                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 rounded-[0.8rem]">
-                                                    <Sparkles className="w-5 h-5 mb-1 opacity-40 text-[#D4AF37]" />
-                                                    <span className="text-[7px] font-bold uppercase tracking-widest opacity-40">Shangri-La</span>
-                                                </div>
-                                            )}
+                                            {/* 🌟 FIX: Database ထဲမှ ပုံများကို Array မှန်ကန်စွာ ဖတ်နိုင်ရန် ပြင်ဆင်ထားသည် 🌟 */}
+                                            {(() => {
+                                                const displayImgUrl = (group.variants[0].images && group.variants[0].images.length > 0) ? group.variants[0].images[0] : group.imageUrl;
+                                                return displayImgUrl ? (
+                                                    <img src={displayImgUrl} alt={group.baseName} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
+                                                ) : (
+                                                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 rounded-[0.8rem]">
+                                                        <Sparkles className="w-5 h-5 mb-1 opacity-40 text-[#D4AF37]" />
+                                                        <span className="text-[7px] font-bold uppercase tracking-widest opacity-40">Shangri-La</span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
 
                                         <div className="p-2 sm:p-3 flex flex-col justify-between flex-1">
