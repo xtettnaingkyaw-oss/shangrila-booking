@@ -2115,21 +2115,26 @@ const renderServiceSelection = (currentStep: number) => (
                     <div className="p-2 sm:p-4 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-2 sm:gap-4">
                         {(() => {
                             const groupedItems = category.items.reduce((acc, item) => {
-                                const name = (item.name || '').trim();
-                                if (!acc[name]) {
-                                    acc[name] = {
-                                        baseName: name,
-                                        description: item.description,
-                                        imageUrl: item.imageUrl,
-                                        variants: []
-                                    };
-                                }
-                                if (!acc[name].imageUrl && item.imageUrl) acc[name].imageUrl = item.imageUrl;
-                                if (!acc[name].description && item.description) acc[name].description = item.description;
-                                acc[name].variants.push(item);
-                                return acc;
-                            }, {} as Record<string, { baseName: string, description: string, imageUrl: string, variants: MenuItem[] }>);
-
+    const name = (item.name || '').trim();
+    if (!acc[name]) {
+        acc[name] = {
+            baseName: name,
+            description: item.description || '',
+            imageUrl: item.imageUrl || '',
+            images: item.images || [], // 🌟 Array ပုံစံအတွက် အသစ်ထည့်သွင်းခြင်း 🌟
+            variants: []
+        };
+    }
+    if (!acc[name].imageUrl && item.imageUrl) acc[name].imageUrl = item.imageUrl;
+    // 🌟 ပုံအသစ် (Array) ပါလာပါက ယူသုံးရန် 🌟
+    if ((!acc[name].images || acc[name].images.length === 0) && item.images && item.images.length > 0) {
+        acc[name].images = item.images;
+    }
+    if (!acc[name].description && item.description) acc[name].description = item.description;
+    
+    acc[name].variants.push(item);
+    return acc;
+}, {} as Record<string, { baseName: string, description: string, imageUrl: string, images: string[], variants: MenuItem[] }>);
                             return Object.values(groupedItems).map((group, gIdx) => {
                                 const selectedVariant = group.variants.find(v => formData.selectedItem?.id === v.id);
                                 const isGroupSelected = !!selectedVariant;
@@ -2152,9 +2157,10 @@ const renderServiceSelection = (currentStep: number) => (
                                         )}
 
                                         <div className="w-full aspect-square bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2.5">
-                                            {/* 🌟 FIX: Database ထဲမှ ပုံများကို Array မှန်ကန်စွာ ဖတ်နိုင်ရန် ပြင်ဆင်ထားသည် 🌟 */}
+                                            {/* 🌟 FIX: Database ထဲမှ ပုံများကို အတိအကျ ဖတ်နိုင်ရန် group ထဲမှ တိုက်ရိုက်ဆွဲယူပါသည် 🌟 */}
                                             {(() => {
-                                                const displayImgUrl = (group.variants[0].images && group.variants[0].images.length > 0) ? group.variants[0].images[0] : group.imageUrl;
+                                                const displayImgUrl = (group.images && group.images.length > 0) ? group.images[0] : group.imageUrl;
+                                                
                                                 return displayImgUrl ? (
                                                     <img src={displayImgUrl} alt={group.baseName} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
                                                 ) : (
