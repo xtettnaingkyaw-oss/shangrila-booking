@@ -15,15 +15,21 @@ const RULES_LIST = [
 ];
 
 // 🌟 1. Staff Application Form Component 🌟
-export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null }: { onBack: () => void, existingStaffId?: string | null }) {
-    const [formData, setFormData] = useState({
-        staffId: existingStaffId || '', // Employee ID (No-1)
-        fullName: '', nrcNumber: '', dob: '', phone: '', address: '',
-        emergencyName: '', emergencyPhone: '', emergencyRelation: '',
-        jobPosition: '', startDate: '',
-        nrcFrontUrl: '', nrcBackUrl: '', householdFrontUrl: '', householdBackUrl: '',
-        documents: [] as string[], rules: [] as string[]
+export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, existingData = null }: { onBack: () => void, existingStaffId?: string | null, existingData?: any }) {
+    
+    // ရှိပြီးသား Data ရှိရင် အသင့်ပြန်ထည့်ပေးထားမည် (Pre-filled)
+    const [formData, setFormData] = useState(() => {
+        if (existingData) return { ...existingData, staffId: existingStaffId || existingData.staffId || '' };
+        return {
+            staffId: existingStaffId || '',
+            fullName: '', nrcNumber: '', dob: '', phone: '', address: '',
+            emergencyName: '', emergencyPhone: '', emergencyRelation: '',
+            jobPosition: '', startDate: '',
+            nrcFrontUrl: '', nrcBackUrl: '', householdFrontUrl: '', householdBackUrl: '',
+            documents: [] as string[], rules: [] as string[]
+        };
     });
+    
     const [loading, setLoading] = useState(false);
     const [uploadingInfo, setUploadingInfo] = useState('');
 
@@ -43,7 +49,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null }: { 
             if (existingStaffId) {
                 // ရှိပြီးသား Staff အတွက် Update တန်းလုပ်မည်
                 await updateDoc(doc(db, 'therapists', existingStaffId), { onboardingData: formData });
-                alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
+                alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်း/ပြင်ဆင်ခြင်း အောင်မြင်ပါသည်။");
             } else {
                 // ဝန်ထမ်းသစ် လျှောက်လွှာအဖြစ် တင်မည်
                 await addDoc(collection(db, 'onboarding_requests'), { ...formData, status: 'pending', createdAt: Date.now() });
@@ -55,16 +61,17 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null }: { 
     };
 
     return (
-        <div className="bg-gray-50 min-h-screen pb-10 w-full absolute top-0 left-0 z-50 overflow-y-auto">
+        // 🌟 absolute အစား fixed z-[100] သုံးထားသဖြင့် ပိတ်သွားခြင်း/ပျောက်သွားခြင်း လုံးဝ မရှိတော့ပါ 🌟
+        <div className="bg-gray-50 min-h-screen pb-10 w-full fixed inset-0 z-[100] overflow-y-auto">
             <div className="bg-[#D4AF37] p-4 flex items-center shadow-md sticky top-0 z-10">
-                <button onClick={onBack} className="text-white hover:bg-white/20 p-2 rounded-full transition"><ChevronLeft className="w-6 h-6"/></button>
-                <h2 className="text-[#123524] font-bold text-lg ml-2 uppercase tracking-wider">{existingStaffId ? 'Add Profile Info' : 'New Employee Onboarding'}</h2>
+                <button type="button" onClick={onBack} className="text-white hover:bg-white/20 p-2 rounded-full transition"><ChevronLeft className="w-6 h-6"/></button>
+                <h2 className="text-[#123524] font-bold text-lg ml-2 uppercase tracking-wider">{existingData ? 'Edit Profile Info' : (existingStaffId ? 'Add Profile Info' : 'New Employee Onboarding')}</h2>
             </div>
             
             <form onSubmit={handleSubmit} className="max-w-xl mx-auto p-4 space-y-6 mt-4 animate-slide-up">
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-xs font-bold text-gray-500 mb-1">Employee ID (e.g. No-1) *</label><input required type="text" value={formData.staffId} onChange={e=>setFormData({...formData, staffId: e.target.value})} disabled={!!existingStaffId} placeholder="No-XX" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800 disabled:opacity-60" /></div>
+                        <div><label className="block text-xs font-bold text-gray-500 mb-1">Employee ID (e.g. No-1) *</label><input required type="text" value={formData.staffId} onChange={e=>setFormData({...formData, staffId: e.target.value})} disabled={!!existingStaffId && !existingData} placeholder="No-XX" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800 disabled:opacity-60" /></div>
                         <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name (အမည်) *</label><input required type="text" value={formData.fullName} onChange={e=>setFormData({...formData, fullName: e.target.value})} placeholder="Enter name" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
                     </div>
                     <div><label className="block text-xs font-bold text-gray-500 mb-1">မှတ်ပုံတင်နံပါတ် *</label><input required type="text" value={formData.nrcNumber} onChange={e=>setFormData({...formData, nrcNumber: e.target.value})} placeholder="Please enter" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-semibold text-gray-800" /></div>
@@ -150,10 +157,12 @@ export function AdminHRManagement() {
     const [activeStaff, setActiveStaff] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     
-    // States for Viewer / Form
-    const [selectedReq, setSelectedReq] = useState<any>(null); // For Pending Request Approval
-    const [viewingProfile, setViewingProfile] = useState<any>(null); // For Viewing Active Staff Profile (Edit/Close)
-    const [addingInfoForId, setAddingInfoForId] = useState<string | null>(null); // For Adding Info to Existing Staff
+    const [selectedReq, setSelectedReq] = useState<any>(null); 
+    const [viewingProfile, setViewingProfile] = useState<any>(null); 
+    
+    // State ကို Data ပါ တစ်ပါတည်း ယူသွားနိုင်ရန် ပြင်ဆင်ထားသည်
+    const [addingInfoForId, setAddingInfoForId] = useState<string | null>(null); 
+    const [addingInfoData, setAddingInfoData] = useState<any>(null); 
 
     const [approvalForm, setApprovalForm] = useState({ password: '' });
     const [processing, setProcessing] = useState(false);
@@ -272,7 +281,11 @@ export function AdminHRManagement() {
                             {/* Edit & Close Buttons */}
                             <div className="flex gap-3 pt-4 border-t border-gray-200">
                                 <button onClick={() => setViewingProfile(null)} className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300">Close</button>
-                                <button onClick={() => { setAddingInfoForId(viewingProfile.staffId); setViewingProfile(null); }} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center justify-center"><Edit className="w-4 h-4 mr-2"/> Edit Profile</button>
+                                <button onClick={() => { 
+                                    setAddingInfoForId(viewingProfile.staffId); 
+                                    setAddingInfoData(viewingProfile);
+                                    setViewingProfile(null); 
+                                }} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center justify-center"><Edit className="w-4 h-4 mr-2"/> Edit Profile</button>
                             </div>
                         </div>
                     </div>
@@ -281,7 +294,7 @@ export function AdminHRManagement() {
 
             {/* 🌟 3. Adding Info Form (Full Screen overlay) 🌟 */}
             {addingInfoForId && (
-                <NewEmployeeOnboardingForm onBack={() => setAddingInfoForId(null)} existingStaffId={addingInfoForId} />
+                <NewEmployeeOnboardingForm onBack={() => { setAddingInfoForId(null); setAddingInfoData(null); }} existingStaffId={addingInfoForId} existingData={addingInfoData} />
             )}
 
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
@@ -327,7 +340,7 @@ export function AdminHRManagement() {
                             ) : (
                                 <div className="mb-4 flex-1 flex flex-col justify-center items-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-300">
                                     <span className="text-[10px] text-gray-500 font-bold mb-2">No profile details yet</span>
-                                    <button onClick={() => setAddingInfoForId(staff.id)} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-md font-bold hover:bg-blue-100"><Edit className="w-3 h-3 inline mr-1"/> Add Profile Info</button>
+                                    <button onClick={() => { setAddingInfoForId(staff.id); setAddingInfoData(null); }} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-md font-bold hover:bg-blue-100"><Edit className="w-3 h-3 inline mr-1"/> Add Profile Info</button>
                                 </div>
                             )}
 
