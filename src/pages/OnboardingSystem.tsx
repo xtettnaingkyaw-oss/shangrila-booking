@@ -61,6 +61,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         setLoading(true);
         try {
             if (existingStaffId) {
+                // Staff က ကိုယ်တိုင် Profile လာဖြည့်တာဆိုရင် therapists collection ထဲမှာ update လုပ်မယ်
                 await updateDoc(doc(db, 'therapists', existingStaffId), { onboardingData: formData });
                 alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
             } else {
