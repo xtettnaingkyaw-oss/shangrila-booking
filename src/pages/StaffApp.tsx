@@ -179,6 +179,8 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
 }
 
 function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: AppData, loggedInStaff: TherapistProfile, onLogout: () => void }) {
+   const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || loggedInStaff;
+   const displayPosition = liveStaff.onboardingData?.jobPosition || 'Professional Therapist';
    const [activeSession, setActiveSession] = useState<Booking | null>(null);
    const [showClockInFlow, setShowClockInFlow] = useState(false);
    const [loading, setLoading] = useState(true);
@@ -248,15 +250,15 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
            <div className="flex justify-between items-center mb-6 pb-6 border-b border-gray-100">
                <div className="flex items-center">
                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden mr-3 sm:mr-4 border-2 border-[#123524] shadow-sm flex-shrink-0">
-                       {loggedInStaff.images && loggedInStaff.images[0] ? <img src={loggedInStaff.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 sm:p-3 text-gray-400 bg-gray-100"/>}
+                       {/* 🌟 ပုံပြောင်းလျှင်လည်း ချက်ချင်း Update ဖြစ်စေရန် liveStaff ကိုပြောင်းသုံးထားပါသည် 🌟 */}
+                       {liveStaff.images && liveStaff.images[0] ? <img src={liveStaff.images[0]} className="w-full h-full object-cover" /> : <User className="w-full h-full p-2 sm:p-3 text-gray-400 bg-gray-100"/>}
                    </div>
                    <div>
-                       <h2 className="text-xl sm:text-2xl font-bold text-[#123524]">{loggedInStaff.name}</h2>
-                       <p className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">Professional Therapist</p>
+                       <h2 className="text-xl sm:text-2xl font-bold text-[#123524]">{liveStaff.name}</h2>
+                       {/* 🌟 ရာထူးပြောင်းလျှင် ချက်ချင်း Update ဖြစ်စေရန် 🌟 */}
+                       <p className="text-[10px] sm:text-xs font-bold text-gray-500 mt-0.5">{displayPosition}</p>
                    </div>
                </div>
-               <button onClick={onLogout} className="text-[10px] sm:text-xs font-bold text-red-500 flex items-center bg-red-50 px-2 sm:px-3 py-1.5 rounded-full hover:bg-red-100 transition border border-red-100 whitespace-nowrap"><LogOut className="w-3.5 h-3.5 sm:mr-1" /> <span className="hidden sm:inline">Log Out</span></button>
-           </div>
 
            {/* 🌟 TAB MENU START 🌟 */}
            <div className="relative mb-6">
