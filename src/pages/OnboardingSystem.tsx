@@ -495,7 +495,7 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffVi
                 </div>
             </div>
 
-            <h4 className="font-bold text-xs text-gray-500 mb-2 uppercase tracking-wider">Document Photos</h4>
+           <h4 className="font-bold text-xs text-gray-500 mb-2 uppercase tracking-wider">Document Photos</h4>
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>
@@ -515,9 +515,9 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffVi
                 </div>
             </div>
 
-          {onClose && (
+            {/* 🌟 ဤနေရာသည် အရေးကြီးသည်! Close ခလုတ်ဘေးတွင် Edit Form ကို ပြမည် 🌟 */}
+            {onClose && (
                 <div className="flex gap-3 pt-6 pb-2">
-                    {/* 👇 Admin အတွက် Edit Form ခလုတ်ကို ဒီနေရာမှာ ထည့်ပါ 👇 */}
                     {!isStaffView && onEditAdminRequest && (
                         <button type="button" onClick={onEditAdminRequest} className="w-full py-3 bg-blue-50 text-blue-600 font-bold rounded-lg hover:bg-blue-100 transition shadow-sm border border-blue-200">
                             Edit Form
@@ -527,7 +527,7 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffVi
                 </div>
             )}
 
-            {/* 🌟 Update Informations Button ကို အောက်ဆုံးသို့ ရွှေ့ထားသည် 🌟 */}
+            {/* 🌟 ဝန်ထမ်းဘက်အတွက် Update Informations Button 🌟 */}
             {isStaffView && onEditRequest && (
                 <div className="absolute bottom-0 left-0 right-0 pt-4 bg-white/80 backdrop-blur-sm border-t border-gray-100 flex justify-center">
                     <button 
@@ -740,11 +740,17 @@ export function AdminHRManagement() {
                                 </div>
                             )}
                             
-                            <ProfileDetailsViewer 
+                        <ProfileDetailsViewer 
                                 data={viewingProfile.data} 
                                 staffId={viewingProfile.staffId} 
                                 onClose={() => setViewingProfile(null)}
                                 isStaffView={false}
+                                // 🌟 Edit နှိပ်လျှင် Admin Edit Form ပွင့်စေမည့် လုပ်ဆောင်ချက် 🌟
+                                onEditAdminRequest={viewingProfile.isPendingUpdate ? undefined : () => {
+                                    setAddingInfoForId(viewingProfile.staffId);
+                                    setAddingInfoData(viewingProfile.data);
+                                    setViewingProfile(null); // Detail Box ကို ပိတ်မည်
+                                }}
                             />
                             
                             {viewingProfile.isPendingUpdate && (
