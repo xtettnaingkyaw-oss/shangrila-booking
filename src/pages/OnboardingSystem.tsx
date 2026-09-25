@@ -364,7 +364,8 @@ function PhotoViewerModal({ src, onClose }: { src: string, onClose: () => void }
 }
 
 // 🌟 Reusable Profile Details Component (Used by both Admin & Staff App) 🌟
-function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffView = false, onEditRequest }: { data: any, staffId: string, therapistName?: string, onClose?: () => void, isStaffView?: boolean, onEditRequest?: () => void }) {
+// 👇 onEditAdminRequest ကို parameter မှာ ထပ်တိုးပါ 👇
+function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffView = false, onEditRequest, onEditAdminRequest }: { data: any, staffId: string, therapistName?: string, onClose?: () => void, isStaffView?: boolean, onEditRequest?: () => void, onEditAdminRequest?: () => void }) {
     const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
 
     const calculateAge = (dobString: string) => {
@@ -514,8 +515,14 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffVi
                 </div>
             </div>
 
-            {onClose && (
+          {onClose && (
                 <div className="flex gap-3 pt-6 pb-2">
+                    {/* 👇 Admin အတွက် Edit Form ခလုတ်ကို ဒီနေရာမှာ ထည့်ပါ 👇 */}
+                    {!isStaffView && onEditAdminRequest && (
+                        <button type="button" onClick={onEditAdminRequest} className="w-full py-3 bg-blue-50 text-blue-600 font-bold rounded-lg hover:bg-blue-100 transition shadow-sm border border-blue-200">
+                            Edit Form
+                        </button>
+                    )}
                     <button type="button" onClick={onClose} className="w-full py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition shadow-sm">Close</button>
                 </div>
             )}
