@@ -192,13 +192,19 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         try {
             if (existingStaffId) {
                 if (isStaffSelfEdit) {
-                    await updateDoc(doc(db, 'therapists', existingStaffId), { 
+                    // 🌟 FIX: updateDoc အစား setDoc + merge: true ကို သုံးထားပါသည် 🌟
+                    await setDoc(doc(db, 'therapists', existingStaffId), { 
                         pendingOnboardingData: formData, 
                         updateRequested: true 
-                    });
+                    }, { merge: true });
+                    
                     alert("✅ အချက်အလက်ပြင်ဆင်ခြင်းအား Admin ထံ ပေးပို့လိုက်ပါပြီ။ Admin မှ အတည်ပြုပြီးပါက ပြောင်းလဲသွားပါမည်။");
                 } else {
-                    await updateDoc(doc(db, 'therapists', existingStaffId), { onboardingData: formData });
+                    // 🌟 Admin ဘက်က ဖြည့်သွင်းရာတွင်လည်း ထိုနည်းအတိုင်း အစားထိုးထားသည် 🌟
+                    await setDoc(doc(db, 'therapists', existingStaffId), { 
+                        onboardingData: formData 
+                    }, { merge: true });
+                    
                     alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
                 }
                 setTimeout(() => onBack(), 100); 
