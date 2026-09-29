@@ -824,11 +824,11 @@ export function AdminHRManagement() {
                                 <span className="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold uppercase tracking-wider">Active</span>
                             </div>
                             
-                            {staff.onboardingData ? (
+                           {staff.onboardingData || staff.pendingOnboardingData ? (
                                 <div className="text-xs text-gray-600 space-y-1.5 mb-4 flex-1 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                    <div className="flex justify-between"><span className="text-gray-400">Actual Name:</span> <span className="font-bold text-[#123524]">{staff.onboardingData.fullName}</span></div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Position:</span> <span className="font-bold">{staff.onboardingData.jobPosition}</span></div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Phone:</span> <span>{staff.onboardingData.phone}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Actual Name:</span> <span className="font-bold text-[#123524]">{(staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData).fullName}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Position:</span> <span className="font-bold">{(staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData).jobPosition}</span></div>
+                                    <div className="flex justify-between"><span className="text-gray-400">Phone:</span> <span>{(staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData).phone}</span></div>
                                 </div>
                             ) : (
                                 <div className="mb-4 flex-1 flex flex-col justify-center items-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-300">
@@ -838,14 +838,14 @@ export function AdminHRManagement() {
                             )}
 
                             <div className="mt-auto">
-                                {staff.onboardingData && (
+                                {(staff.onboardingData || staff.pendingOnboardingData) && (
                                     <button 
                                         onClick={() => setViewingProfile({
                                             data: staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData, 
                                             staffId: staff.id,
                                             isPendingUpdate: staff.updateRequested
                                         })} 
-                                        className={`w-full mb-2 py-2 text-[10px] font-bold rounded-lg border transition ${staff.updateRequested ? 'bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200' : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'}`}
+                                        className={`w-full mb-2 py-2 text-[10px] font-bold rounded-lg border transition ${staff.updateRequested ? 'bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200 animate-pulse' : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'}`}
                                     >
                                         {staff.updateRequested ? 'Review Update Request' : 'View Form Details'}
                                     </button>
