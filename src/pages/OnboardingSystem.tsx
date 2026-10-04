@@ -579,23 +579,37 @@ export function AdminHRManagement() {
 
     useEffect(() => {
         const unsubReq = onSnapshot(query(collection(db, 'onboarding_requests'), orderBy('createdAt', 'desc')), snap => {
-            const arr: any[] = []; snap.forEach(d => arr.push({ id: d.id, ...d.data() })); setRequests(arr); setLoading(false);
+            const arr: any[] = []; 
+            snap.forEach(d => {
+                const data = d.data();
+                // 🌟 FIX: Ghost Request များကို ဖျက်ပစ်မည် 🌟
+                if (data.name && data.name.trim() !== '') {
+                    arr.push({ id: d.id, ...data });
+                } else {
+                    deleteDoc(doc(db, 'onboarding_requests', d.id)).catch(()=>{});
+                }
+            }); 
+            setRequests(arr); setLoading(false);
         });
         const unsubStaff = onSnapshot(query(collection(db, 'therapists'), orderBy('order', 'asc')), snap => {
-            const arr: any[] = []; snap.forEach(d => arr.push({ id: d.id, ...d.data() })); setActiveStaff(arr);
+            const arr: any[] = []; 
+            snap.forEach(d => {
+                const data = d.data();
+                if (data.name && data.name.trim() !== '') {
+                    arr.push({ id: d.id, ...data });
+                }
+            }); 
+            setActiveStaff(arr);
         });
-        
-        const unsubHR = onSnapshot(doc(db, 'settings', 'hrSettings'), (docSnap) => {
-            if (docSnap.exists() && docSnap.data().positions) {
-                setJobPositions(docSnap.data().positions);
-            } else {
-                setDoc(doc(db, 'settings', 'hrSettings'), { positions: ['Professional Therapist', 'Receptionist', 'Manager', 'Cleaner', 'Security'] }, { merge: true });
-            }
+        const unsubResign = onSnapshot(collection(db, 'resign_requests'), snap => {
+            const arr: any[] = []; snap.forEach(d => arr.push({ id: d.id, ...d.data() })); setResignReqs(arr);
+        });
+        const unsubResignedList = onSnapshot(query(collection(db, 'therapists'), where('isResigned', '==', true)), snap => {
+            const arr: any[] = []; snap.forEach(d => arr.push({ id: d.id, ...d.data() })); setResignedStaffList(arr);
         });
 
-        return () => { unsubReq(); unsubStaff(); unsubHR(); };
+        return () => { unsubReq(); unsubStaff(); unsubResign(); unsubResignedList(); };
     }, []);
-
     // 🌟 ရာထူး အသစ်ထည့်ရန် Function 🌟
     const handleAddPosition = async (e: React.FormEvent) => {
         e.preventDefault();
