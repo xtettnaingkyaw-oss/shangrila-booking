@@ -126,13 +126,19 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
       fetchRole();
   }, [loggedInAdmin, tab]);
 
-// 🌟 Pending Onboarding Requests အရေအတွက်ကို ယူရန် State နှင့် useEffect 🌟
+// 🌟 FIX: Ghost Data များကို Noti တွင် မရေတွက်ရန် ပြင်ဆင်ထားသည် 🌟
 const [onboardingPendingCount, setOnboardingPendingCount] = useState(0);
 
 useEffect(() => {
     const q = query(collection(db, 'onboarding_requests'), where('status', '==', 'pending'));
     const unsubReq = onSnapshot(q, (snap) => {
-        setOnboardingPendingCount(snap.size);
+        let realCount = 0;
+        snap.forEach(doc => {
+            const data = doc.data();
+            // နာမည်အစစ်အမှန် ပါမှသာ Noti အရေအတွက်တိုးမည်
+            if (data.name && data.name.trim() !== '') realCount++;
+        });
+        setOnboardingPendingCount(realCount);
     });
     return () => unsubReq();
 }, []);
@@ -143,6 +149,19 @@ useEffect(() => {
         setResetRequestCount(snap.size); 
     });
     return () => unsubUsers();
+}, []);
+
+useEffect(() => {
+    const q = query(collection(db, 'therapists'), where('updateRequested', '==', true));
+    const unsubUpdates = onSnapshot(q, (snap) => {
+        let realCount = 0;
+        snap.forEach(doc => {
+            const data = doc.data();
+            if (data.name && data.name.trim() !== '') realCount++;
+        });
+        setUpdateRequestCount(realCount); 
+    });
+    return () => unsubUpdates();
 }, []);
 
    // 🌟 အသစ်ထည့်ထားသော useEffect (Staff Profile Update တောင်းဆိုမှု အရေအတွက်ကို ယူရန်) 🌟
@@ -1112,11 +1131,17 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
         const fetchTherapists = async () => {
             const snap = await getDocs(collection(db, 'therapists'));
             const arr: any[] = [];
-            snap.forEach(d => arr.push(d.data()));
+            snap.forEach(d => {
+                const data = d.data();
+                // 🌟 FIX: အကွက်လွတ် (Ghost) များကို Database ထဲမှ အလိုအလျောက် ဖျက်ထုတ်ပစ်မည် 🌟
+                if (!data.name || data.name.trim() === '') {
+                    deleteDoc(doc(db, 'therapists', d.id)).catch(() => {});
+                } else {
+                    arr.push({ id: d.id, ...data });
+                }
+            });
             arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-            if (arr.length > 0) {
-                setLocalTherapists(arr);
-            }
+            setLocalTherapists(arr);
         };
         fetchTherapists();
     }, []);
