@@ -1,8 +1,13 @@
 <!DOCTYPE html>
-<html lang="my">
+<!-- 🌟 FIX: Google Translate အလိုအလျောက် ဝင်ပြီး App Crash ဖြစ်ခြင်းကို တားဆီးရန် translate="no" ထည့်ထားပါသည် 🌟 -->
+<html lang="en" translate="no">
   <head>
     <meta charset="UTF-8" />
 
+    <!-- 🌟 FIX: Google အား ဘာသာမပြန်စေရန် ထပ်မံတားဆီးခြင်း 🌟 -->
+    <meta name="google" content="notranslate" />
+
+    <!-- Google Site Verification -->
     <meta name="google-site-verification" content="tdKsN1wAtPm-EBB8GKfgd800fB0wFS6WVhMAupWfDA4" />
     
     <!-- 🌟 Tab တွင်ပေါ်မည့် လိုဂို (Favicon) 🌟 -->
@@ -35,17 +40,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Shangri-La Spa" />
     <link rel="apple-touch-icon" href="https://i.ibb.co/37jM3yY/323382766-3392476561021481-1279930960017122176-n.jpg" />
-  </head>
-  <body class="bg-gray-50 text-gray-900 antialiased selection:bg-[#D4AF37] selection:text-[#123524]">
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    
-    <div id="root"></div>
 
     <!-- 🌟 မူလရှိပြီးသား Tailwind CSS (ဒီဇိုင်းအတွက် အသက်သွေးကြော) 🌟 -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- 🌟 မူလရှိပြီးသား PWA Manifest 🌟 -->
     <link rel="manifest" href="/manifest.json" />
+  </head>
+
+  <body class="bg-gray-50 text-gray-900 antialiased selection:bg-[#D4AF37] selection:text-[#123524]">
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    
+    <div id="root"></div>
 
     <!-- 🌟 App ရဲ့ Main Code သို့ ညွှန်းခြင်း 🌟 -->
     <script type="module" src="/src/main.tsx"></script>
