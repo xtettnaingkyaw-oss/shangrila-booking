@@ -578,38 +578,6 @@ export function AdminHRManagement() {
     const [editPosText, setEditPosText] = useState('');
 
     useEffect(() => {
-        const unsubReq = onSnapshot(query(collection(db, 'onboarding_requests'), orderBy('createdAt', 'desc')), snap => {
-            const arr: any[] = []; 
-            snap.forEach(d => {
-                const data = d.data();
-                // 🌟 FIX: Onboarding Form တွင် နာမည်ကို fullName ဖြင့်သိမ်းသဖြင့် ထည့်သွင်းစစ်ဆေးပါသည် 🌟
-                if ((data.fullName && data.fullName.trim() !== '') || (data.name && data.name.trim() !== '')) {
-                    arr.push({ id: d.id, ...data });
-                } else {
-                    deleteDoc(doc(db, 'onboarding_requests', d.id)).catch(()=>{});
-                }
-            }); 
-            setRequests(arr); setLoading(false);
-        });
-        });
-        const unsubStaff = onSnapshot(query(collection(db, 'therapists'), orderBy('order', 'asc')), snap => {
-            const arr: any[] = []; 
-            snap.forEach(d => {
-                const data = d.data();
-                if (data.name && data.name.trim() !== '') {
-                    arr.push({ id: d.id, ...data });
-                }
-            }); 
-            setActiveStaff(arr);
-        });
-        const unsubResign = onSnapshot(collection(db, 'resign_requests'), snap => {
-            const arr: any[] = []; snap.forEach(d => arr.push({ id: d.id, ...d.data() })); setResignReqs(arr);
-        });
-        const unsubResignedList = onSnapshot(query(collection(db, 'therapists'), where('isResigned', '==', true)), snap => {
-            const arr: any[] = []; snap.forEach(d => arr.push({ id: d.id, ...d.data() })); setResignedStaffList(arr);
-        });
-
-        useEffect(() => {
         // ၁။ Pending Requests (Onboarding)
         const unsubReq = onSnapshot(query(collection(db, 'onboarding_requests'), orderBy('createdAt', 'desc')), snap => {
             const arr: any[] = []; 
