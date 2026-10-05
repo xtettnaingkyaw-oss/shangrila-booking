@@ -667,23 +667,54 @@ export function AdminHRManagement() {
     const handleApprove = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedReq.staffId || !approvalForm.password || !approvalForm.displayTherapistName) return alert("ကျေးဇူးပြု၍ အချက်အလက်များ ပြည့်စုံစွာ ထည့်ပါ။");
+        
         setProcessing(true);
         try {
+            // ၁။ Firebase Auth တွင် အကောင့်အရင်ဆောက်မည် (Error တက်ပါက ချက်ချင်းသိစေရန်)
             const safeEmail = `${selectedReq.staffId.replace(/\s+/g, '').toLowerCase()}@shangrila.com`;
-            try { await createUserWithEmailAndPassword(secondaryAuth, safeEmail, approvalForm.password); } catch(e){}
             
-            await setDoc(doc(db, 'therapists', selectedReq.staffId), {
+            try {
+                await createUserWithEmailAndPassword(secondaryAuth, safeEmail, approvalForm.password);
+            } catch (authErr: any) {
+                console.error("Auth Error:", authErr);
+                // Email ရှိပြီးသားဖြစ်နေတာကလွဲရင် ကျန်တဲ့ Error ဆိုရင် ဆက်မလုပ်ဘဲ ရပ်တန့်မည်
+                if (authErr.code !== 'auth/email-already-in-use') {
+                    alert(`Firebase Auth တွင် Login အကောင့်ဆောက်၍ မရပါ။\nError: ${authErr.message}`);
+                    setProcessing(false);
+                    return; 
+                }
+            }
+            
+            const newTherapist = {
                 id: selectedReq.staffId,
-                name: approvalForm.displayTherapistName, 
+                name: approvalForm.displayTherapistName,
                 password: encryptText(approvalForm.password), 
                 order: activeStaff.length,
                 images: [],
-                onboardingData: selectedReq 
-            });
+                onboardingData: selectedReq
+            };
+
+            // ၂။ Therapists Collection နှင့် Onboarding Requests ကို Update လုပ်မည်
+            await setDoc(doc(db, 'therapists', selectedReq.staffId), newTherapist);
             await updateDoc(doc(db, 'onboarding_requests', selectedReq.id), { status: 'approved', assignedId: selectedReq.staffId, approvedAt: Date.now() });
-            alert("✅ ဝန်ထမ်းသစ် အတည်ပြုပြီးပါပြီ။");
+
+            // ၃။ 🌟 အရေးကြီးဆုံး: Staff App တွင် ချက်ချင်း Login ဝင်နိုင်ရန် Global AppData ကိုပါ တစ်ခါတည်း အလိုအလျောက် Sync လုပ်မည် 🌟
+            const settingsSnap = await getDocs(collection(db, 'settings'));
+            settingsSnap.forEach(d => {
+                if (d.id === 'appData') {
+                    const currentTherapists = d.data().therapists || [];
+                    // ရှိပြီးသား Data အဟောင်းများကို ဖယ်ရှားပြီး အသစ်ဖြင့် အစားထိုးမည်
+                    const filtered = currentTherapists.filter((t: any) => t.id !== newTherapist.id);
+                    updateDoc(d.ref, { therapists: [...filtered, newTherapist] }).catch(()=>{});
+                }
+            });
+
+            alert("✅ ဝန်ထမ်းသစ် အတည်ပြုပြီးပါပြီ။ Staff App တွင် ချက်ချင်း Login ဝင်နိုင်ပါပြီ။");
             setSelectedReq(null);
-        } catch (error) { alert("Error approving staff."); }
+        } catch (error: any) { 
+            console.error("Approve Error:", error); 
+            alert("Error approving staff: " + error.message); 
+        }
         setProcessing(false);
     };
 
