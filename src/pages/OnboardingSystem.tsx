@@ -582,14 +582,15 @@ export function AdminHRManagement() {
             const arr: any[] = []; 
             snap.forEach(d => {
                 const data = d.data();
-                // 🌟 FIX: Ghost Request များကို ဖျက်ပစ်မည် 🌟
-                if (data.name && data.name.trim() !== '') {
+                // 🌟 FIX: Onboarding Form တွင် နာမည်ကို fullName ဖြင့်သိမ်းသဖြင့် ထည့်သွင်းစစ်ဆေးပါသည် 🌟
+                if ((data.fullName && data.fullName.trim() !== '') || (data.name && data.name.trim() !== '')) {
                     arr.push({ id: d.id, ...data });
                 } else {
                     deleteDoc(doc(db, 'onboarding_requests', d.id)).catch(()=>{});
                 }
             }); 
             setRequests(arr); setLoading(false);
+        });
         });
         const unsubStaff = onSnapshot(query(collection(db, 'therapists'), orderBy('order', 'asc')), snap => {
             const arr: any[] = []; 
