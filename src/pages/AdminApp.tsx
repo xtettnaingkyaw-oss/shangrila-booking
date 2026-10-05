@@ -126,22 +126,24 @@ const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogo
       fetchRole();
   }, [loggedInAdmin, tab]);
 
-// 🌟 FIX: Ghost Data များကို Noti တွင် မရေတွက်ရန် ပြင်ဆင်ထားသည် 🌟
-const [onboardingPendingCount, setOnboardingPendingCount] = useState(0);
+// 🌟 HR Tab တွင် Noti ပြရန်အတွက် fullName ကိုပါ ထည့်သွင်းရေတွက်မည် 🌟
+    const [onboardingPendingCount, setOnboardingPendingCount] = useState(0);
 
-useEffect(() => {
-    const q = query(collection(db, 'onboarding_requests'), where('status', '==', 'pending'));
-    const unsubReq = onSnapshot(q, (snap) => {
-        let realCount = 0;
-        snap.forEach(doc => {
-            const data = doc.data();
-            // နာမည်အစစ်အမှန် ပါမှသာ Noti အရေအတွက်တိုးမည်
-            if (data.name && data.name.trim() !== '') realCount++;
+    useEffect(() => {
+        const q = query(collection(db, 'onboarding_requests'), where('status', '==', 'pending'));
+        const unsubReq = onSnapshot(q, (snap) => {
+            let realCount = 0;
+            snap.forEach(doc => {
+                const data = doc.data();
+                // FIX: data.name အပြင် data.fullName ပါ ထည့်စစ်ပါမည်
+                if ((data.fullName && data.fullName.trim() !== '') || (data.name && data.name.trim() !== '')) {
+                    realCount++;
+                }
+            });
+            setOnboardingPendingCount(realCount);
         });
-        setOnboardingPendingCount(realCount);
-    });
-    return () => unsubReq();
-}, []);
+        return () => unsubReq();
+    }, []);
 
 useEffect(() => {
     const q = query(collection(db, 'users'), where('resetRequested', '==', true));
