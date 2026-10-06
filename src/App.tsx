@@ -67,6 +67,8 @@ function MainApp() {
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
   const [appData, setAppData] = useState<AppData | null>(null);
   const [dbError, setDbError] = useState(false);
+
+  const [isLoaderFinished, setIsLoaderFinished] = useState(false);
   
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -161,9 +163,9 @@ function MainApp() {
       );
   }
 
-  // 🌟 FIX: Data ဆွဲယူနေချိန်တွင် Premium Loading Screen အသစ်ကို ခေါ်သုံးထားပါသည် 🌟
-  if (!appData) { 
-      return <PremiumLoadingScreen />; 
+ // 🌟 FIX: Data ရ/မရ ကိုပါ တွက်ချက်ပြီး၊ Progress Bar အပြည့်ဖြစ်မှသာ App ပွင့်စေမည် 🌟
+  if (!isLoaderFinished) { 
+      return <PremiumLoadingScreen isDataReady={!!appData} onFinish={() => setIsLoaderFinished(true)} />; 
   }
 
   const stepsToShow = appData.installSteps && appData.installSteps.length > 0 ? appData.installSteps : DEFAULT_INSTALL_STEPS;
