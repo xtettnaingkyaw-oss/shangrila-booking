@@ -1,16 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Crown } from 'lucide-react'; 
+// 🌟 FIX: Admin မှ Logo ကိုမသုံးတော့ဘဲ src အောက်ရှိ Local ဖိုင်ကို တိုက်ရိုက် Import ခေါ်သုံးထားပါသည် 🌟
+import loadingLogo from '../THE SHANGRI LA - LOGO.png'; 
 
-// 🌟 App.tsx မှ Data ရ/မရ (isDataReady) ကို လှမ်းတောင်းမည်၊ ပြီးလျှင် ပိတ်ရန် (onFinish) ကို ပြန်ပို့မည် 🌟
 export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: { isDataReady?: boolean, onFinish?: () => void }) {
-    const [cachedLogo, setCachedLogo] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
     const [fadeAnim, setFadeAnim] = useState(false); // App ပွင့်ခါနီး ပျောက်သွားမည့် Effect
-
-    useEffect(() => {
-        const logo = localStorage.getItem('shangrila_logo_cache');
-        if (logo) setCachedLogo(logo);
-    }, []);
 
     // 🌟 Real-time Progress Bar Logic 🌟
     useEffect(() => {
@@ -50,20 +44,15 @@ export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: 
             <div className="relative flex flex-col items-center z-10 w-full px-8">
                 
                 <div className="relative w-40 h-40 sm:w-48 sm:h-48 mb-10 flex items-center justify-center rounded-full">
-                    {cachedLogo ? (
-                        <img 
-                            src={cachedLogo} 
-                            alt="The Shangri-La Logo" 
-                            // 🌟 FIX 1: အဝိုင်းကွက်ကြီးလုံးဝမပေါ်စေရန် CSS Mask နှင့် Blend Mode ကို အပြီးတိုင်ဖြုတ်လိုက်ပါပြီ 🌟
-                            className="w-full h-full object-contain relative z-10 drop-shadow-[0_0_15px_rgba(212,175,55,0.3)] scale-110"
-                        />
-                    ) : (
-                        <div className="relative z-10 flex items-center justify-center">
-                            <Crown className="w-16 h-16 sm:w-20 sm:h-20 text-[#D4AF37] drop-shadow-[0_0_15px_rgba(212,175,55,0.4)]" />
-                        </div>
-                    )}
                     
-                    {/* 🌟 FIX 2: လေးထောင့်ကွက်ပုံစံမဖြစ်စေရန် Blur နှင့် Skew ထည့်သွင်းထားသော Shimmer အလင်းတန်းသစ် 🌟 */}
+                    {/* 🌟 Local မှ Import ခေါ်ထားသော Transparent Logo သီးသန့်ကိုသာ အသုံးပြုမည် 🌟 */}
+                    <img 
+                        src={loadingLogo} 
+                        alt="The Shangri-La Logo" 
+                        className="w-full h-full object-contain relative z-10 drop-shadow-[0_0_15px_rgba(212,175,55,0.3)] scale-110"
+                    />
+                    
+                    {/* 🌟 လေးထောင့်ကွက်ပုံစံမဖြစ်စေရန် Blur နှင့် Skew ထည့်သွင်းထားသော Shimmer အလင်းတန်း 🌟 */}
                     <div className="absolute top-0 -inset-x-full h-full w-[50%] bg-gradient-to-r from-transparent via-[#D4AF37]/40 to-transparent blur-xl z-20 animate-shimmer pointer-events-none" style={{ transform: 'skewX(-25deg)' }}></div>
                 </div>
 
@@ -72,7 +61,6 @@ export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: 
                     {progress >= 100 ? 'Welcome' : 'Preparing Your Retreat'}
                 </h2>
 
-                {/* 🌟 FIX 3: ရွှေမှုန်လေးများ ထွက်လာရန် overflow-visible 🌟 */}
                 <div className="w-56 h-[3px] bg-[#1a4a32] rounded-full shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)] relative overflow-visible">
                     <div 
                         className="h-full bg-gradient-to-r from-[#b38b22] to-[#D4AF37] rounded-full shadow-[0_0_10px_rgba(212,175,55,0.8)] transition-all ease-out flex justify-end items-center"
