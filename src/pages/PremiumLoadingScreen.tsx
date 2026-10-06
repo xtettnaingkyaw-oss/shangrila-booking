@@ -54,12 +54,8 @@ export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: 
                         <img 
                             src={cachedLogo} 
                             alt="The Shangri-La Logo" 
-                            // 🌟 FIX 1: အကွက်ကြီးကိုဖျောက်ရန် mix-blend-lighten နှင့် object-cover ကို ပြောင်းလဲသုံးစွဲထားသည် 🌟
-                            className="w-full h-full object-cover scale-125 relative z-10 mix-blend-lighten opacity-95"
-                            style={{ 
-                                WebkitMaskImage: 'radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 65%)', 
-                                maskImage: 'radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 65%)' 
-                            }}
+                            // 🌟 FIX 1: အဝိုင်းကွက်ကြီးလုံးဝမပေါ်စေရန် CSS Mask နှင့် Blend Mode ကို အပြီးတိုင်ဖြုတ်လိုက်ပါပြီ 🌟
+                            className="w-full h-full object-contain relative z-10 drop-shadow-[0_0_15px_rgba(212,175,55,0.3)] scale-110"
                         />
                     ) : (
                         <div className="relative z-10 flex items-center justify-center">
@@ -76,7 +72,7 @@ export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: 
                     {progress >= 100 ? 'Welcome' : 'Preparing Your Retreat'}
                 </h2>
 
-                {/* 🌟 FIX 3: ရွှေမှုန်လေးများ ထွက်လာရန် overflow-hidden အား overflow-visible သို့ ပြောင်းထားပါသည် 🌟 */}
+                {/* 🌟 FIX 3: ရွှေမှုန်လေးများ ထွက်လာရန် overflow-visible 🌟 */}
                 <div className="w-56 h-[3px] bg-[#1a4a32] rounded-full shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)] relative overflow-visible">
                     <div 
                         className="h-full bg-gradient-to-r from-[#b38b22] to-[#D4AF37] rounded-full shadow-[0_0_10px_rgba(212,175,55,0.8)] transition-all ease-out flex justify-end items-center"
