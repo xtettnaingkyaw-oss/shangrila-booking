@@ -669,21 +669,29 @@ export function AdminHRManagement() {
             setActiveStaff(arr);
         });
 
+        // 🌟 FIX: Database မှ ရာထူးများကို အလိုအလျောက် အမြဲချိတ်ဆက်ဆွဲယူရန် 🌟
+        const unsubPositions = onSnapshot(doc(db, 'settings', 'hrSettings'), (docSnap) => {
+            if (docSnap.exists() && docSnap.data().positions) {
+                setJobPositions(docSnap.data().positions);
+            }
+        });
+
         // ၃။ Resign Requests
         const unsubResign = onSnapshot(collection(db, 'resign_requests'), snap => {
             const arr: any[] = []; 
             snap.forEach(d => arr.push({ id: d.id, ...d.data() })); 
-            setResignReqs(arr);
+            if (typeof setResignReqs !== 'undefined') setResignReqs(arr);
         });
 
         // ၄။ Resigned Staff List
         const unsubResignedList = onSnapshot(query(collection(db, 'therapists'), where('isResigned', '==', true)), snap => {
             const arr: any[] = []; 
             snap.forEach(d => arr.push({ id: d.id, ...d.data() })); 
-            setResignedStaffList(arr);
+            if (typeof setResignedStaffList !== 'undefined') setResignedStaffList(arr);
         });
 
-        return () => { unsubReq(); unsubStaff(); unsubResign(); unsubResignedList(); };
+        // 🌟 ပြင်ဆင်ချက်: unsubPositions ကိုပါ ဖြုတ်သိမ်းသည့်စာရင်းတွင် ထည့်သွင်းထားသည် 🌟
+        return () => { unsubReq(); unsubStaff(); unsubPositions(); unsubResign(); unsubResignedList(); };
     }, []);
     
     // 🌟 ရာထူး အသစ်ထည့်ရန် Function 🌟
