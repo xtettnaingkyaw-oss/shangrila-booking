@@ -3,7 +3,7 @@ import { collection, doc, updateDoc, deleteDoc, setDoc, onSnapshot, getDocs, add
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { db, secondaryAuth } from '../firebase';
 import { encryptText } from '../security';
-import { UserPlus, FileText, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning, Download as DownloadIcon, Bell, ChevronUp, ChevronDown, Award } from 'lucide-react';
+import { UserPlus, FileText, X, Save, Image as ImageIcon, ChevronLeft, ShieldCheck, Trash2, Edit, User, FileWarning, Download as DownloadIcon, Bell, ChevronUp, ChevronDown, Award, GripVertical } from 'lucide-react';
 
 const DOC_CHECKLIST = ['နိုင်ငံသားမှတ်ပုံတင်(မူရင်း) အပ်ပြီးပါပြီ', 'အိမ်ထောင်စုဇယား(မိတ္တူ) အပ်ပြီးပါပြီ'];
 const RULES_LIST = [
@@ -605,6 +605,32 @@ export function AdminHRManagement() {
     const [editingPosIndex, setEditingPosIndex] = useState<number | null>(null);
     const [editPosText, setEditPosText] = useState('');
 
+    // 🌟 Drag and Drop အတွက် States နှင့် Functions 🌟
+    const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+    const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+    const handleDragStart = (e: React.DragEvent, idx: number) => {
+        setDraggedIdx(idx);
+        e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleDragEnter = (idx: number) => {
+        setDragOverIdx(idx);
+    };
+
+    const handleDragEnd = async () => {
+        if (draggedIdx !== null && dragOverIdx !== null && draggedIdx !== dragOverIdx) {
+            const newPositions = [...jobPositions];
+            const item = newPositions.splice(draggedIdx, 1)[0];
+            newPositions.splice(dragOverIdx, 0, item);
+            
+            setJobPositions(newPositions); // UI ချက်ချင်းပြောင်းလဲရန်
+            await setDoc(doc(db, 'settings', 'hrSettings'), { positions: newPositions }, { merge: true }); // Database သို့သိမ်းရန်
+        }
+        setDraggedIdx(null);
+        setDragOverIdx(null);
+    };
+
     const calculateDuration = (startDateString: string) => {
         if (!startDateString) return '-';
         const startDate = new Date(startDateString);
@@ -1013,62 +1039,71 @@ export function AdminHRManagement() {
                     <div className="space-y-3">
                         {jobPositions.length === 0 && <p className="text-xs text-gray-400 text-center py-4">ရာထူးများ မရှိသေးပါ။</p>}
                         {jobPositions.map((pos, idx) => (
-                            <div key={idx} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-200 hover:border-[#D4AF37] transition shadow-sm group">
-                                
-                                {/* 🌟 အထက်/အောက် ရွှေ့ရန် ခလုတ်များ 🌟 */}
-                                <div className="flex flex-col gap-1 mr-4">
-                                    <button type="button" onClick={() => movePositionUp(idx)} disabled={idx === 0} className="p-0.5 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-30 transition">
-                                        <ChevronUp className="w-3 h-3 text-gray-600" />
-                                    </button>
-                                    <button type="button" onClick={() => movePositionDown(idx)} disabled={idx === jobPositions.length - 1} className="p-0.5 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-30 transition">
-                                        <ChevronDown className="w-3 h-3 text-gray-600" />
-                                    </button>
-                                </div>
+                        <div className="space-y-3">
+                        {jobPositions.length === 0 && <p className="text-xs text-gray-400 text-center py-4">ရာထူးများ မရှိသေးပါ။</p>}
+                        {jobPositions.map((pos, idx) => {
+                            const isDragging = draggedIdx === idx;
+                            const isDragOver = dragOverIdx === idx;
 
-                                {/* 🌟 ရာထူးအမည် သို့မဟုတ် ပြင်ဆင်ရန် Input 🌟 */}
-                                <div className="flex-1">
-                                    {editingPosIndex === idx ? (
-                                        <input 
-                                            type="text" 
-                                            value={editPosText} 
-                                            onChange={(e) => setEditPosText(e.target.value)} 
-                                            className="w-full p-2 text-sm border-2 border-[#D4AF37] rounded-lg outline-none font-bold text-gray-800"
-                                            autoFocus
-                                        />
-                                    ) : (
-                                        <span className="font-bold text-gray-700">{pos}</span>
-                                    )}
-                                </div>
+                            return (
+                                <div 
+                                    key={idx} 
+                                    draggable={editingPosIndex !== idx} // Edit လုပ်နေချိန်တွင် Drag ဆွဲခွင့်ပိတ်မည်
+                                    onDragStart={(e) => handleDragStart(e, idx)}
+                                    onDragEnter={() => handleDragEnter(idx)}
+                                    onDragEnd={handleDragEnd}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    className={`flex justify-between items-center p-3 rounded-xl border transition-all duration-300 group ${editingPosIndex !== idx ? 'cursor-grab active:cursor-grabbing' : ''}
+                                        ${isDragging ? 'opacity-40 scale-95 border-gray-300 bg-gray-100 shadow-none' : 'bg-gray-50 shadow-sm'}
+                                        ${isDragOver && !isDragging ? 'border-2 border-dashed border-[#D4AF37] scale-[1.02] bg-yellow-50/50 shadow-md' : 'border-gray-200 hover:border-[#D4AF37]'}
+                                    `}
+                                >
+                                    {/* 🌟 Drag လုပ်နိုင်ကြောင်းပြသည့် Icon (မြှားများအစား) 🌟 */}
+                                    <div className="mr-3 text-gray-400 group-hover:text-[#D4AF37] transition-colors">
+                                        <GripVertical className="w-5 h-5" />
+                                    </div>
 
-                                {/* 🌟 Edit / Save / Delete Actions 🌟 */}
-                                <div className="flex items-center gap-2 ml-4">
-                                    {editingPosIndex === idx ? (
-                                        <>
-                                            <button onClick={() => setEditingPosIndex(null)} className="text-gray-500 bg-gray-200 hover:bg-gray-300 p-2.5 rounded-lg transition" title="Cancel">
-                                                <X className="w-4 h-4"/>
-                                            </button>
-                                            <button onClick={() => handleSaveEditPosition(idx)} className="text-white bg-green-600 hover:bg-green-700 p-2.5 rounded-lg transition shadow-sm" title="Save">
-                                                <CheckCircle className="w-4 h-4"/>
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button onClick={() => { setEditingPosIndex(idx); setEditPosText(pos); }} className="text-blue-600 bg-blue-50 hover:bg-blue-100 p-2.5 rounded-lg transition opacity-0 group-hover:opacity-100 focus:opacity-100" title="Edit Name">
-                                                <Edit className="w-4 h-4"/>
-                                            </button>
-                                            <button onClick={() => handleDeletePosition(pos)} className="text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-lg transition" title="Delete Position">
-                                                <Trash2 className="w-4 h-4"/>
-                                            </button>
-                                        </>
-                                    )}
+                                    {/* 🌟 ရာထူးအမည် သို့မဟုတ် ပြင်ဆင်ရန် Input 🌟 */}
+                                    <div className="flex-1">
+                                        {editingPosIndex === idx ? (
+                                            <input 
+                                                type="text" 
+                                                value={editPosText} 
+                                                onChange={(e) => setEditPosText(e.target.value)} 
+                                                className="w-full p-2 text-sm border-2 border-[#D4AF37] rounded-lg outline-none font-bold text-gray-800"
+                                                autoFocus
+                                            />
+                                        ) : (
+                                            <span className="font-bold text-gray-700 select-none">{pos}</span>
+                                        )}
+                                    </div>
+
+                                    {/* 🌟 Edit / Save / Delete Actions 🌟 */}
+                                    <div className="flex items-center gap-2 ml-4">
+                                        {editingPosIndex === idx ? (
+                                            <>
+                                                <button onClick={() => setEditingPosIndex(null)} className="text-gray-500 bg-gray-200 hover:bg-gray-300 p-2.5 rounded-lg transition" title="Cancel">
+                                                    <X className="w-4 h-4"/>
+                                                </button>
+                                                <button onClick={() => handleSaveEditPosition(idx)} className="text-white bg-green-600 hover:bg-green-700 p-2.5 rounded-lg transition shadow-sm" title="Save">
+                                                    <CheckCircle className="w-4 h-4"/>
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button onClick={() => { setEditingPosIndex(idx); setEditPosText(pos); }} className="text-blue-600 bg-blue-50 hover:bg-blue-100 p-2.5 rounded-lg transition opacity-0 group-hover:opacity-100 focus:opacity-100" title="Edit Name">
+                                                    <Edit className="w-4 h-4"/>
+                                                </button>
+                                                <button onClick={() => handleDeletePosition(pos)} className="text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-lg transition" title="Delete Position">
+                                                    <Trash2 className="w-4 h-4"/>
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
-                </div>
-            )}
-        </div>
-    );
 }
 
 // 🌟 3. Staff Profile View Component (For Staff App) 🌟
