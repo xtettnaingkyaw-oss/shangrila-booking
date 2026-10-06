@@ -605,6 +605,18 @@ export function AdminHRManagement() {
     const [editingPosIndex, setEditingPosIndex] = useState<number | null>(null);
     const [editPosText, setEditPosText] = useState('');
 
+    const calculateDuration = (startDateString: string) => {
+        if (!startDateString) return '-';
+        const startDate = new Date(startDateString);
+        if (isNaN(startDate.getTime())) return '-';
+        const diffDaysTotal = Math.ceil(Math.abs(new Date().getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDaysTotal < 30) return `${diffDaysTotal} Days`;
+        else if (diffDaysTotal < 365) return `${Math.floor(diffDaysTotal / 30)} Mos & ${diffDaysTotal % 30} Days`;
+        else return `${Math.floor(diffDaysTotal / 365)} Yr & ${Math.floor((diffDaysTotal % 365) / 30)} Mo`;
+    };
+
+    useEffect(() => {
+
     useEffect(() => {
         // ၁။ Pending Requests (Onboarding)
         const unsubReq = onSnapshot(query(collection(db, 'onboarding_requests'), orderBy('createdAt', 'desc')), snap => {
@@ -904,57 +916,78 @@ export function AdminHRManagement() {
 
             {viewTab === 'active' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {activeStaff.map(staff => (
-                        <div key={staff.id} className={`p-4 bg-white border rounded-xl shadow-sm flex flex-col relative overflow-hidden transition-all ${staff.updateRequested ? 'border-orange-300 bg-orange-50/30' : 'border-gray-200'}`}>
-                            
-                            {staff.updateRequested && (
-                                <div className="absolute top-0 left-0 bg-orange-500 text-white text-[9px] px-2 py-0.5 rounded-br-lg font-bold flex items-center shadow-sm z-10 animate-pulse">
-                                    <Bell className="w-3 h-3 mr-1"/> Update Requested
-                                </div>
-                            )}
+                    {activeStaff.map(staff => {
+                        // 🌟 FIX: လုပ်သက် တွက်ချက်ခြင်း 🌟
+                        const staffData = staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData;
+                        const durationStr = staffData?.startDate ? calculateDuration(staffData.startDate) : '-';
 
-                            <div className="absolute top-0 right-0 bg-gray-100 text-gray-500 text-[9px] px-2 py-0.5 rounded-bl-lg font-mono font-bold border-b border-l border-gray-200">{staff.id}</div>
-                            <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-2 pt-4">
-                                <div><div className="font-bold text-blue-700">{staff.name}</div><div className="text-[10px] text-gray-500 mt-0.5">Therapist Name</div></div>
-                                <span className="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold uppercase tracking-wider">Active</span>
-                            </div>
-                            
-                           {staff.onboardingData || staff.pendingOnboardingData ? (
-                                <div className="text-xs text-gray-600 space-y-1.5 mb-4 flex-1 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                    <div className="flex justify-between"><span className="text-gray-400">Actual Name:</span> <span className="font-bold text-[#123524]">{(staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData).fullName}</span></div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Position:</span> <span className="font-bold">{(staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData).jobPosition}</span></div>
-                                    <div className="flex justify-between"><span className="text-gray-400">Phone:</span> <span>{(staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData).phone}</span></div>
-                                </div>
-                            ) : (
-                                <div className="mb-4 flex-1 flex flex-col justify-center items-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                                    <span className="text-[10px] text-gray-500 font-bold mb-2">No profile details yet</span>
-                                    <button onClick={() => { setAddingInfoForId(staff.id); setAddingInfoData(null); }} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-md font-bold hover:bg-blue-100"><Edit className="w-3 h-3 inline mr-1"/> Add Profile Info</button>
-                                </div>
-                            )}
-
-                            <div className="mt-auto">
-                                {(staff.onboardingData || staff.pendingOnboardingData) && (
-                                    <button 
-        onClick={() => setViewingProfile({
-            data: staff.updateRequested ? { ...staff.onboardingData, ...staff.pendingOnboardingData } : staff.onboardingData, 
-            baseData: staff.onboardingData,
-            pendingData: staff.pendingOnboardingData,
-            updatedKeys: staff.updatedKeys || [],
-            staffId: staff.id,
-            isPendingUpdate: staff.updateRequested
-        })} 
-        className={`w-full mb-2 py-2 text-[10px] font-bold rounded-lg border transition ${staff.updateRequested ? 'bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200 animate-pulse' : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'}`}
-    >
-                                        {staff.updateRequested ? 'Review Update Request' : 'View Form Details'}
-                                    </button>
+                        return (
+                            <div key={staff.id} className={`p-4 bg-white border rounded-xl shadow-sm flex flex-col relative overflow-hidden transition-all ${staff.updateRequested ? 'border-orange-300 bg-orange-50/30' : 'border-gray-200'}`}>
+                                
+                                {staff.updateRequested && (
+                                    <div className="absolute top-0 left-0 bg-orange-500 text-white text-[9px] px-2 py-0.5 rounded-br-lg font-bold flex items-center shadow-sm z-10 animate-pulse">
+                                        <Bell className="w-3 h-3 mr-1"/> Update Requested
+                                    </div>
                                 )}
-                                <div className="flex gap-2">
-                                    <button onClick={() => handleRemoveStaff(staff.id)} className="flex-1 py-2 bg-orange-50 text-orange-600 text-[10px] font-bold rounded-lg hover:bg-orange-100 flex items-center justify-center border border-orange-200"><X className="w-3 h-3 mr-1"/> Resign</button>
-                                    <button onClick={() => handlePermanentDelete(staff.id, staff.onboardingData?.id)} className="flex-1 py-2 bg-red-50 text-red-600 text-[10px] font-bold rounded-lg hover:bg-red-100 flex items-center justify-center border border-red-200"><Trash2 className="w-3 h-3 mr-1"/> Delete</button>
+
+                                <div className="absolute top-0 right-0 bg-gray-100 text-gray-500 text-[9px] px-2 py-0.5 rounded-bl-lg font-mono font-bold border-b border-l border-gray-200">{staff.id}</div>
+                                <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-2 pt-4">
+                                    <div><div className="font-bold text-blue-700">{staff.name}</div><div className="text-[10px] text-gray-500 mt-0.5">Therapist Name</div></div>
+                                    <span className="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold uppercase tracking-wider">Active</span>
+                                </div>
+                                
+                                {staffData ? (
+                                    <div className="text-xs text-gray-600 mb-4 flex-1 bg-gray-50 p-3 rounded-lg border border-gray-100 relative overflow-hidden group">
+                                        {/* 🌟 Decorative Background for UI Effect 🌟 */}
+                                        <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-gradient-to-br from-yellow-200 to-yellow-400 rounded-full opacity-10 group-hover:scale-[2] transition-transform duration-500"></div>
+
+                                        <div className="space-y-1.5 relative z-10">
+                                            <div className="flex justify-between"><span className="text-gray-400">Actual Name:</span> <span className="font-bold text-[#123524]">{staffData.fullName}</span></div>
+                                            <div className="flex justify-between"><span className="text-gray-400">Position:</span> <span className="font-bold">{staffData.jobPosition}</span></div>
+                                            <div className="flex justify-between"><span className="text-gray-400">Phone:</span> <span>{staffData.phone}</span></div>
+                                        </div>
+
+                                        {/* 🌟 Service Duration UI 🌟 */}
+                                        <div className="mt-3 pt-3 border-t border-gray-200 flex justify-between items-center relative z-10">
+                                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center">
+                                                <Award className="w-3 h-3 mr-1 text-[#D4AF37]"/> လုပ်သက်
+                                            </span>
+                                            <span className="text-[10px] font-black text-[#123524] bg-gradient-to-r from-yellow-100 to-yellow-300 px-2.5 py-1 rounded-md shadow-sm border border-yellow-400/50">
+                                                {durationStr}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="mb-4 flex-1 flex flex-col justify-center items-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                                        <span className="text-[10px] text-gray-500 font-bold mb-2">No profile details yet</span>
+                                        <button onClick={() => { setAddingInfoForId(staff.id); setAddingInfoData(null); }} className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-md font-bold hover:bg-blue-100"><Edit className="w-3 h-3 inline mr-1"/> Add Profile Info</button>
+                                    </div>
+                                )}
+
+                                <div className="mt-auto">
+                                    {(staff.onboardingData || staff.pendingOnboardingData) && (
+                                        <button 
+                                            onClick={() => setViewingProfile({
+                                                data: staff.updateRequested ? { ...staff.onboardingData, ...staff.pendingOnboardingData } : staff.onboardingData, 
+                                                baseData: staff.onboardingData,
+                                                pendingData: staff.pendingOnboardingData,
+                                                updatedKeys: staff.updatedKeys || [],
+                                                staffId: staff.id,
+                                                isPendingUpdate: staff.updateRequested
+                                            })} 
+                                            className={`w-full mb-2 py-2 text-[10px] font-bold rounded-lg border transition ${staff.updateRequested ? 'bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200 animate-pulse' : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'}`}
+                                        >
+                                            {staff.updateRequested ? 'Review Update Request' : 'View Form Details'}
+                                        </button>
+                                    )}
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleRemoveStaff(staff.id)} className="flex-1 py-2 bg-orange-50 text-orange-600 text-[10px] font-bold rounded-lg hover:bg-orange-100 flex items-center justify-center border border-orange-200"><X className="w-3 h-3 mr-1"/> Resign</button>
+                                        <button onClick={() => handlePermanentDelete(staff.id, staff.onboardingData?.id)} className="flex-1 py-2 bg-red-50 text-red-600 text-[10px] font-bold rounded-lg hover:bg-red-100 flex items-center justify-center border border-red-200"><Trash2 className="w-3 h-3 mr-1"/> Delete</button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
