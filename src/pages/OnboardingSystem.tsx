@@ -615,8 +615,7 @@ export function AdminHRManagement() {
         else return `${Math.floor(diffDaysTotal / 365)} Yr & ${Math.floor((diffDaysTotal % 365) / 30)} Mo`;
     };
 
-    useEffect(() => {
-
+  
     useEffect(() => {
         // ၁။ Pending Requests (Onboarding)
         const unsubReq = onSnapshot(query(collection(db, 'onboarding_requests'), orderBy('createdAt', 'desc')), snap => {
