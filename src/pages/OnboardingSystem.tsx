@@ -1053,18 +1053,41 @@ export function AdminHRManagement() {
                             return (
                                 <div 
                                     key={idx} 
+                                    data-index={idx} // 🌟 ဖုန်းဖြင့်ဆွဲရာတွင် နေရာမှတ်မိရန်
                                     draggable={editingPosIndex !== idx}
                                     onDragStart={(e) => handleDragStart(e, idx)}
                                     onDragEnter={() => handleDragEnter(idx)}
                                     onDragEnd={handleDragEnd}
                                     onDragOver={(e) => e.preventDefault()}
-                                    className={`flex justify-between items-center p-3 rounded-xl border transition-all duration-300 group ${editingPosIndex !== idx ? 'cursor-grab active:cursor-grabbing' : ''}
+                                    className={`job-position-item flex justify-between items-center p-3 rounded-xl border transition-all duration-300 group ${editingPosIndex !== idx ? 'cursor-grab active:cursor-grabbing' : ''}
                                         ${isDragging ? 'opacity-40 scale-95 border-gray-300 bg-gray-100 shadow-none' : 'bg-gray-50 shadow-sm'}
                                         ${isDragOver && !isDragging ? 'border-2 border-dashed border-[#D4AF37] scale-[1.02] bg-yellow-50/50 shadow-md' : 'border-gray-200 hover:border-[#D4AF37]'}
                                     `}
                                 >
-                                    {/* 🌟 Drag လုပ်နိုင်ကြောင်းပြသည့် Icon 🌟 */}
-                                    <div className="mr-3 text-gray-400 group-hover:text-[#D4AF37] transition-colors">
+                                    {/* 🌟 Drag လုပ်နိုင်ကြောင်းပြသည့် Icon (Mobile Touch စနစ်ပါ ပေါင်းထည့်ထားသည်) 🌟 */}
+                                    <div 
+                                        className="mr-3 text-gray-400 group-hover:text-[#D4AF37] transition-colors touch-none py-2 pr-2"
+                                        onTouchStart={() => {
+                                            if (editingPosIndex !== idx) {
+                                                setDraggedIdx(idx);
+                                                // ဖုန်းဖြင့်ဖိဆွဲရာတွင် အနည်းငယ်တုန်ခါစေရန် (Haptic Feedback)
+                                                if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(50);
+                                            }
+                                        }}
+                                        onTouchMove={(e) => {
+                                            if (editingPosIndex === idx || draggedIdx === null) return;
+                                            const touch = e.touches[0];
+                                            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                                            const dropTarget = target?.closest('.job-position-item');
+                                            if (dropTarget) {
+                                                const hoverIdx = Number(dropTarget.getAttribute('data-index'));
+                                                if (!isNaN(hoverIdx) && hoverIdx !== dragOverIdx) {
+                                                    setDragOverIdx(hoverIdx);
+                                                }
+                                            }
+                                        }}
+                                        onTouchEnd={handleDragEnd}
+                                    >
                                         <GripVertical className="w-5 h-5" />
                                     </div>
 
