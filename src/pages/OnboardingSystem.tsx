@@ -835,6 +835,8 @@ export function AdminHRManagement() {
                                 staffId={viewingProfile.staffId} 
                                 onClose={() => setViewingProfile(null)}
                                 isStaffView={false}
+                                // 🌟 FIX: Admin ဘက်တွင် Highlight ပေါ်စေရန် ဤစာကြောင်း ထည့်ပေးရပါမည် 🌟
+                                highlightKeys={viewingProfile.updatedKeys || []}
                                 // 🌟 Edit နှိပ်လျှင် Admin Edit Form ပွင့်စေမည့် လုပ်ဆောင်ချက် 🌟
                                 onEditAdminRequest={viewingProfile.isPendingUpdate ? undefined : () => {
                                     setAddingInfoForId(viewingProfile.staffId);
