@@ -1044,7 +1044,7 @@ export function AdminHRManagement() {
                         </button>
                     </form>
 
-                    <div className="space-y-3">
+                    <div className="space-y-3 relative">
                         {jobPositions.length === 0 && <p className="text-xs text-gray-400 text-center py-4">ရာထူးများ မရှိသေးပါ။</p>}
                         {jobPositions.map((pos, idx) => {
                             const isDragging = draggedIdx === idx;
@@ -1053,27 +1053,26 @@ export function AdminHRManagement() {
                             return (
                                 <div 
                                     key={idx} 
-                                    data-index={idx} // 🌟 ဖုန်းဖြင့်ဆွဲရာတွင် နေရာမှတ်မိရန်
-                                    draggable={editingPosIndex !== idx}
-                                    onDragStart={(e) => handleDragStart(e, idx)}
+                                    data-index={idx}
+                                    // 🌟 FIX: iPhone တွင် UI Freeze မဖြစ်စေရန် အပြင်ဘက်အလွှာမှ draggable ကို ဖြုတ်လိုက်ပါပြီ 🌟
                                     onDragEnter={() => handleDragEnter(idx)}
-                                    onDragEnd={handleDragEnd}
                                     onDragOver={(e) => e.preventDefault()}
-                                    className={`job-position-item flex justify-between items-center p-3 rounded-xl border transition-all duration-300 group ${editingPosIndex !== idx ? 'cursor-grab active:cursor-grabbing' : ''}
-                                        ${isDragging ? 'opacity-40 scale-95 border-gray-300 bg-gray-100 shadow-none z-50 relative' : 'bg-gray-50 shadow-sm'}
-                                        ${isDragOver && !isDragging ? 'border-2 border-dashed border-[#D4AF37] scale-[1.02] bg-yellow-50/50 shadow-md' : 'border-gray-200 hover:border-[#D4AF37]'}
+                                    className={`job-position-item flex justify-between items-center p-3 rounded-xl border transition-all duration-200 group
+                                        ${isDragging ? 'opacity-50 scale-[0.97] border-[#D4AF37] bg-yellow-50/30 shadow-inner z-50' : 'bg-gray-50 shadow-sm'}
+                                        ${isDragOver && !isDragging ? 'border-2 border-dashed border-[#D4AF37] scale-[1.02] bg-yellow-100/50 shadow-md' : 'border-gray-200'}
                                     `}
-                                    // 🌟 FIX: iPhone တွင် Text Selection ဝင်မလာစေရန်နှင့် Scroll မဖြစ်စေရန် 🌟
                                     style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none' }} 
                                 >
-                                    {/* 🌟 Drag လုပ်နိုင်ကြောင်းပြသည့် Icon 🌟 */}
+                                    {/* 🌟 Drag Icon (ဒီအစက်လေးကို ဖိဆွဲမှသာ အလုပ်လုပ်မည်) 🌟 */}
                                     <div 
-                                        className="mr-3 text-gray-400 group-hover:text-[#D4AF37] transition-colors py-2 pr-2"
+                                        draggable={editingPosIndex !== idx} // 🌟 Icon ကိုသာ Draggable ပြောင်းထားသည် 🌟
+                                        onDragStart={(e) => handleDragStart(e, idx)}
+                                        onDragEnd={handleDragEnd}
+                                        className={`mr-3 py-2 pr-2 transition-colors ${editingPosIndex !== idx ? 'cursor-grab active:cursor-grabbing text-gray-400 hover:text-[#D4AF37]' : 'text-gray-200'}`}
                                         style={{ touchAction: 'none' }}
                                         onTouchStart={(e) => {
                                             if (editingPosIndex !== idx) {
                                                 setDraggedIdx(idx);
-                                                // Android အတွက် Vibrate (iPhone တွင် အလုပ်မလုပ်ပါ)
                                                 if (window.navigator && window.navigator.vibrate) {
                                                     try { window.navigator.vibrate(50); } catch(err){}
                                                 }
@@ -1088,16 +1087,15 @@ export function AdminHRManagement() {
                                             
                                             if (dropTarget) {
                                                 const hoverIdx = Number(dropTarget.getAttribute('data-index'));
-                                                // 🌟 ရွှေ့မည့်နေရာသည် မိမိကိုယ်တိုင် မဟုတ်မှသာ လက်ခံမည် 🌟
                                                 if (!isNaN(hoverIdx) && hoverIdx !== dragOverIdx && hoverIdx !== draggedIdx) {
                                                     setDragOverIdx(hoverIdx);
                                                 }
                                             }
                                         }}
                                         onTouchEnd={handleDragEnd}
-                                        onTouchCancel={handleDragEnd} // 🌟 iPhone တွင် Touch အနှောင့်အယှက်ဝင်ပါက အလုပ်လုပ်စေရန် 🌟
+                                        onTouchCancel={handleDragEnd}
                                     >
-                                        <GripVertical className="w-5 h-5" />
+                                        <GripVertical className="w-5 h-5 pointer-events-none" />
                                     </div>
 
                                     {/* 🌟 ရာထူးအမည် သို့မဟုတ် ပြင်ဆင်ရန် Input 🌟 */}
