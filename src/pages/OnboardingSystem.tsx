@@ -763,12 +763,15 @@ export function AdminHRManagement() {
         }
     };
 
-    const handleApproveUpdate = async (staffId: string, pendingData: any) => {
+    const handleApproveUpdate = async (staffId: string, pendingData: any, baseData: any) => {
         if (!window.confirm("ဝန်ထမ်းပြင်ဆင်ထားသော အချက်အလက်များကို အတည်ပြုမည် သေချာပါသလား?")) return;
         try {
+             // 🌟 ပြောင်းလဲထားသော အချက်အလက်များကို မူလအချက်အလက်ထဲသို့ အပြီးတိုင်ပေါင်းထည့်မည် 🌟
+             const mergedData = { ...baseData, ...pendingData };
              await updateDoc(doc(db, 'therapists', staffId), { 
-                 onboardingData: pendingData,
+                 onboardingData: mergedData,
                  pendingOnboardingData: null,
+                 updatedKeys: null,
                  updateRequested: false
              });
              alert("✅ Update လုပ်ထားသော အချက်အလက်များကို အတည်ပြုပြီးပါပြီ။");
@@ -843,11 +846,11 @@ export function AdminHRManagement() {
                             {viewingProfile.isPendingUpdate && (
                                 <div className="flex gap-3 pt-4 border-t border-gray-200">
                                     <button 
-                                        onClick={() => handleApproveUpdate(viewingProfile.staffId, viewingProfile.data)} 
-                                        className="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 shadow-md"
-                                    >
-                                        Approve Updates
-                                    </button>
+        onClick={() => handleApproveUpdate(viewingProfile.staffId, viewingProfile.pendingData, viewingProfile.baseData)} 
+        className="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 shadow-md"
+    >
+        Approve Updates
+    </button>
                                 </div>
                             )}
                         </div>
@@ -923,13 +926,16 @@ export function AdminHRManagement() {
                             <div className="mt-auto">
                                 {(staff.onboardingData || staff.pendingOnboardingData) && (
                                     <button 
-                                        onClick={() => setViewingProfile({
-                                            data: staff.updateRequested ? staff.pendingOnboardingData : staff.onboardingData, 
-                                            staffId: staff.id,
-                                            isPendingUpdate: staff.updateRequested
-                                        })} 
-                                        className={`w-full mb-2 py-2 text-[10px] font-bold rounded-lg border transition ${staff.updateRequested ? 'bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200 animate-pulse' : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'}`}
-                                    >
+        onClick={() => setViewingProfile({
+            data: staff.updateRequested ? { ...staff.onboardingData, ...staff.pendingOnboardingData } : staff.onboardingData, 
+            baseData: staff.onboardingData,
+            pendingData: staff.pendingOnboardingData,
+            updatedKeys: staff.updatedKeys || [],
+            staffId: staff.id,
+            isPendingUpdate: staff.updateRequested
+        })} 
+        className={`w-full mb-2 py-2 text-[10px] font-bold rounded-lg border transition ${staff.updateRequested ? 'bg-orange-100 text-orange-800 border-orange-300 hover:bg-orange-200 animate-pulse' : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'}`}
+    >
                                         {staff.updateRequested ? 'Review Update Request' : 'View Form Details'}
                                     </button>
                                 )}
@@ -1081,12 +1087,13 @@ export function StaffProfileView({ staff }: { staff: any }) {
             </div>
             
             <ProfileDetailsViewer 
-                data={data} 
-                staffId={liveStaffData.id} 
-                therapistName={liveStaffData.name} 
-                isStaffView={true} 
-                onEditRequest={!liveStaffData.updateRequested ? () => setIsEditing(true) : undefined}
-            />
+        data={liveStaffData.updateRequested ? { ...liveStaffData.onboardingData, ...liveStaffData.pendingOnboardingData } : data} 
+        staffId={liveStaffData.id} 
+        therapistName={liveStaffData.name} 
+        isStaffView={true} 
+        highlightKeys={liveStaffData.updatedKeys || []}
+        onEditRequest={!liveStaffData.updateRequested ? () => setIsEditing(true) : undefined}
+    />
         </div>
     );
 }
