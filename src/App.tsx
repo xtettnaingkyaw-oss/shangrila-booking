@@ -102,7 +102,11 @@ function MainApp() {
       const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
       const appleIcon = document.createElement('link'); appleIcon.rel = 'apple-touch-icon'; appleIcon.href = url; document.head.appendChild(appleIcon);
     };
-    if (appData?.branding?.logoUrl) { updateFavicon(appData.branding.logoUrl); }
+    if (appData?.branding?.logoUrl) { 
+        updateFavicon(appData.branding.logoUrl); 
+        // 🌟 FIX: Logo အစစ်ကို Loading Screen တွင်သုံးရန် Local Storage သို့ သိမ်းပါမည် 🌟
+        localStorage.setItem('shangrila_logo_cache', appData.branding.logoUrl);
+    }
   }, [appData?.branding?.logoUrl, appData?.branding?.name]);
 
   useEffect(() => {
