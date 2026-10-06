@@ -1060,40 +1060,42 @@ export function AdminHRManagement() {
                                     onDragEnd={handleDragEnd}
                                     onDragOver={(e) => e.preventDefault()}
                                     className={`job-position-item flex justify-between items-center p-3 rounded-xl border transition-all duration-300 group ${editingPosIndex !== idx ? 'cursor-grab active:cursor-grabbing' : ''}
-                                        ${isDragging ? 'opacity-40 scale-95 border-gray-300 bg-gray-100 shadow-none' : 'bg-gray-50 shadow-sm'}
+                                        ${isDragging ? 'opacity-40 scale-95 border-gray-300 bg-gray-100 shadow-none z-50 relative' : 'bg-gray-50 shadow-sm'}
                                         ${isDragOver && !isDragging ? 'border-2 border-dashed border-[#D4AF37] scale-[1.02] bg-yellow-50/50 shadow-md' : 'border-gray-200 hover:border-[#D4AF37]'}
                                     `}
-                                    // 🌟 FIX: ဖုန်းတွင် ပိုမိုကောင်းမွန်စွာ Drag လုပ်နိုင်ရန် 🌟
-                                    style={{ touchAction: 'none' }} 
+                                    // 🌟 FIX: iPhone တွင် Text Selection ဝင်မလာစေရန်နှင့် Scroll မဖြစ်စေရန် 🌟
+                                    style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none' }} 
                                 >
-                                    {/* 🌟 Drag လုပ်နိုင်ကြောင်းပြသည့် Icon (Mobile Touch စနစ်ပါ ပေါင်းထည့်ထားသည်) 🌟 */}
+                                    {/* 🌟 Drag လုပ်နိုင်ကြောင်းပြသည့် Icon 🌟 */}
                                     <div 
-                                        className="mr-3 text-gray-400 group-hover:text-[#D4AF37] transition-colors py-2 pr-2 touch-none"
+                                        className="mr-3 text-gray-400 group-hover:text-[#D4AF37] transition-colors py-2 pr-2"
+                                        style={{ touchAction: 'none' }}
                                         onTouchStart={(e) => {
                                             if (editingPosIndex !== idx) {
                                                 setDraggedIdx(idx);
-                                                if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(50);
-                                                // Prevent default scroll behavior
-                                                e.stopPropagation(); 
+                                                // Android အတွက် Vibrate (iPhone တွင် အလုပ်မလုပ်ပါ)
+                                                if (window.navigator && window.navigator.vibrate) {
+                                                    try { window.navigator.vibrate(50); } catch(err){}
+                                                }
                                             }
                                         }}
                                         onTouchMove={(e) => {
                                             if (editingPosIndex === idx || draggedIdx === null) return;
                                             
-                                            // Prevent scrolling while dragging
-                                            e.preventDefault(); 
-                                            
                                             const touch = e.touches[0];
                                             const target = document.elementFromPoint(touch.clientX, touch.clientY);
                                             const dropTarget = target?.closest('.job-position-item');
+                                            
                                             if (dropTarget) {
                                                 const hoverIdx = Number(dropTarget.getAttribute('data-index'));
-                                                if (!isNaN(hoverIdx) && hoverIdx !== dragOverIdx) {
+                                                // 🌟 ရွှေ့မည့်နေရာသည် မိမိကိုယ်တိုင် မဟုတ်မှသာ လက်ခံမည် 🌟
+                                                if (!isNaN(hoverIdx) && hoverIdx !== dragOverIdx && hoverIdx !== draggedIdx) {
                                                     setDragOverIdx(hoverIdx);
                                                 }
                                             }
                                         }}
                                         onTouchEnd={handleDragEnd}
+                                        onTouchCancel={handleDragEnd} // 🌟 iPhone တွင် Touch အနှောင့်အယှက်ဝင်ပါက အလုပ်လုပ်စေရန် 🌟
                                     >
                                         <GripVertical className="w-5 h-5" />
                                     </div>
