@@ -1038,9 +1038,6 @@ export function AdminHRManagement() {
 
                     <div className="space-y-3">
                         {jobPositions.length === 0 && <p className="text-xs text-gray-400 text-center py-4">ရာထူးများ မရှိသေးပါ။</p>}
-                        {jobPositions.map((pos, idx) => (
-                        <div className="space-y-3">
-                        {jobPositions.length === 0 && <p className="text-xs text-gray-400 text-center py-4">ရာထူးများ မရှိသေးပါ။</p>}
                         {jobPositions.map((pos, idx) => {
                             const isDragging = draggedIdx === idx;
                             const isDragOver = dragOverIdx === idx;
@@ -1048,7 +1045,7 @@ export function AdminHRManagement() {
                             return (
                                 <div 
                                     key={idx} 
-                                    draggable={editingPosIndex !== idx} // Edit လုပ်နေချိန်တွင် Drag ဆွဲခွင့်ပိတ်မည်
+                                    draggable={editingPosIndex !== idx}
                                     onDragStart={(e) => handleDragStart(e, idx)}
                                     onDragEnter={() => handleDragEnter(idx)}
                                     onDragEnd={handleDragEnd}
@@ -1058,7 +1055,7 @@ export function AdminHRManagement() {
                                         ${isDragOver && !isDragging ? 'border-2 border-dashed border-[#D4AF37] scale-[1.02] bg-yellow-50/50 shadow-md' : 'border-gray-200 hover:border-[#D4AF37]'}
                                     `}
                                 >
-                                    {/* 🌟 Drag လုပ်နိုင်ကြောင်းပြသည့် Icon (မြှားများအစား) 🌟 */}
+                                    {/* 🌟 Drag လုပ်နိုင်ကြောင်းပြသည့် Icon 🌟 */}
                                     <div className="mr-3 text-gray-400 group-hover:text-[#D4AF37] transition-colors">
                                         <GripVertical className="w-5 h-5" />
                                     </div>
