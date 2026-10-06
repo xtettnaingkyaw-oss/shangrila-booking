@@ -1052,7 +1052,6 @@ export function AdminHRManagement() {
 
                             return (
                                 <div 
-                                    // 🌟 အရေးကြီးဆုံး FIX: idx အစား pos ကို key အဖြစ်သုံးမှသာ React က Effect များကို မှန်ကန်စွာ နေရာရွှေ့ပေးမည်ဖြစ်သည် 🌟
                                     key={pos} 
                                     data-index={idx}
                                     draggable={editingPosIndex === null}
@@ -1061,19 +1060,19 @@ export function AdminHRManagement() {
                                     onDragEnd={handleDragEnd}
                                     onDragOver={(e) => e.preventDefault()}
                                     className={`job-position-item flex justify-between items-center p-3 rounded-xl border transition-all duration-300 group
-                                        ${isDragging ? 'bg-yellow-50 border-[#D4AF37] scale-105 shadow-2xl z-50 relative opacity-95 ring-2 ring-[#D4AF37]/40' : 'bg-gray-50 shadow-sm border-gray-200 hover:border-[#D4AF37]'}
-                                        ${isDragOver && !isDragging ? 'border-2 border-dashed border-[#D4AF37] bg-yellow-50/50 scale-[1.02]' : ''}
+                                        ${isDragging ? 'bg-yellow-50 border-[#D4AF37] scale-[0.98] shadow-inner z-50 opacity-80 ring-1 ring-[#D4AF37]/50' : 'bg-gray-50 shadow-sm border-gray-200'}
+                                        ${isDragOver && !isDragging ? 'border-2 border-dashed border-[#D4AF37] bg-yellow-100/60 scale-[1.02] shadow-md' : 'hover:border-[#D4AF37]'}
                                     `}
-                                    style={{ touchAction: 'none' }}
+                                    style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
                                 >
                                     {/* 🌟 Drag Icon 🌟 */}
                                     <div 
                                         className={`mr-3 py-2 pr-2 transition-colors touch-none ${editingPosIndex !== idx ? 'cursor-grab active:cursor-grabbing text-gray-400 hover:text-[#D4AF37]' : 'text-gray-200'}`}
+                                        style={{ touchAction: 'none' }}
                                         onTouchStart={(e) => {
                                             if (editingPosIndex !== null) return;
                                             setDraggedIdx(idx);
-                                            // 🌟 iPhone တွင် Drag ဆွဲနေစဉ် Screen လိုက်မဆင်းသွားစေရန် Scroll ကို ဖြတ်တောက်မည် 🌟
-                                            document.body.style.overflow = 'hidden'; 
+                                            document.body.style.overflow = 'hidden'; // ဖုန်းဖြင့်ဆွဲချိန်တွင် Screen အောက်ရောက်မသွားရန်
                                         }}
                                         onTouchMove={(e) => {
                                             if (editingPosIndex !== null || draggedIdx === null) return;
@@ -1084,28 +1083,31 @@ export function AdminHRManagement() {
                                             
                                             if (dropTarget) {
                                                 const hoverIdx = Number(dropTarget.getAttribute('data-index'));
-                                                // 🌟 Real-time Swap: ဖုန်းဖြင့်ဆွဲသည့်နေရာသို့ ကတ်လေး ချက်ချင်းလိုက်ရွှေ့မည့်စနစ် 🌟
-                                                if (!isNaN(hoverIdx) && hoverIdx !== draggedIdx) {
-                                                    const newPositions = [...jobPositions];
-                                                    const item = newPositions.splice(draggedIdx, 1)[0];
-                                                    newPositions.splice(hoverIdx, 0, item);
-                                                    
-                                                    setJobPositions(newPositions);
-                                                    setDraggedIdx(hoverIdx); // ဆွဲနေသည့်လက်ချောင်းနောက်သို့ မှတ်သားမှုပါ လိုက်သွားမည်
+                                                // 🌟 FIX: Drag ဆွဲနေစဉ် List များကို ချက်ချင်းမရွှေ့ဘဲ နေရာလွတ် (Drag Over Effect) သာ ပြပေးမည် 🌟
+                                                // ယခင်လို ချက်ချင်းရွှေ့ပါက iOS တွင် Touch Event ပြတ်တောက်သွားတတ်သည်။
+                                                if (!isNaN(hoverIdx) && hoverIdx !== draggedIdx && hoverIdx !== dragOverIdx) {
+                                                    setDragOverIdx(hoverIdx);
                                                 }
                                             }
                                         }}
                                         onTouchEnd={async () => {
                                             document.body.style.overflow = ''; // Scroll ပြန်ဖွင့်မည်
-                                            if (draggedIdx !== null) {
-                                                // လွတ်လိုက်မှသာ Database ထဲသို့ Update လုပ်မည်
-                                                await setDoc(doc(db, 'settings', 'hrSettings'), { positions: jobPositions }, { merge: true });
-                                                setDraggedIdx(null);
+                                            // 🌟 လက်လွှတ်လိုက်သည့် အချိန်ရောက်မှသာ နေရာ အမှန်တကယ် ပြောင်းပေးမည် 🌟
+                                            if (draggedIdx !== null && dragOverIdx !== null && draggedIdx !== dragOverIdx) {
+                                                const newPositions = [...jobPositions];
+                                                const item = newPositions.splice(draggedIdx, 1)[0];
+                                                newPositions.splice(dragOverIdx, 0, item);
+                                                
+                                                setJobPositions(newPositions);
+                                                await setDoc(doc(db, 'settings', 'hrSettings'), { positions: newPositions }, { merge: true });
                                             }
+                                            setDraggedIdx(null);
+                                            setDragOverIdx(null);
                                         }}
                                         onTouchCancel={() => {
                                             document.body.style.overflow = '';
                                             setDraggedIdx(null);
+                                            setDragOverIdx(null);
                                         }}
                                     >
                                         <GripVertical className="w-5 h-5 pointer-events-none" />
