@@ -192,20 +192,43 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         try {
             if (existingStaffId) {
                 if (isStaffSelfEdit) {
-                    // 🌟 FIX: updateDoc အစား setDoc + merge: true ကို သုံးထားပါသည် 🌟
+                    // 🌟 FIX: Document Size 1MB Limit မကျော်စေရန် တကယ်ပြောင်းလဲသွားသော အချက်အလက်များကိုသာ ရွေးထုတ်မည် 🌟
+                    const changedData: any = {};
+                    const changedKeys: string[] = [];
+                    
+                    if (existingData) {
+                        Object.keys(formData).forEach((key) => {
+                            const oldVal = existingData[key as keyof typeof existingData];
+                            const newVal = formData[key as keyof typeof formData];
+                            if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+                                changedData[key] = newVal;
+                                changedKeys.push(key);
+                            }
+                        });
+                    }
+
+                    if (changedKeys.length === 0) {
+                        alert("ပြင်ဆင်ထားသော အချက်အလက် အသစ်မရှိပါ။");
+                        setLoading(false);
+                        return;
+                    }
+
+                    // ပြောင်းလဲသွားသော အရာများကိုသာ သိမ်းမည်
                     await setDoc(doc(db, 'therapists', existingStaffId), { 
-                        pendingOnboardingData: formData, 
+                        pendingOnboardingData: changedData, 
+                        updatedKeys: changedKeys, // 🌟 Admin ဘက်တွင် Highlight ပြရန်
                         updateRequested: true 
                     }, { merge: true });
                     
                     alert("✅ အချက်အလက်ပြင်ဆင်ခြင်းအား Admin ထံ ပေးပို့လိုက်ပါပြီ။ Admin မှ အတည်ပြုပြီးပါက ပြောင်းလဲသွားပါမည်။");
                 } else {
-                    // 🌟 Admin ဘက်က ဖြည့်သွင်းရာတွင်လည်း ထိုနည်းအတိုင်း အစားထိုးထားသည် 🌟
+                    // Admin ကိုယ်တိုင်ပြင်လျှင် (အဟောင်းနှင့် အသစ်ပေါင်းထည့်မည်)
+                    const mergedData = { ...existingData, ...formData };
                     await setDoc(doc(db, 'therapists', existingStaffId), { 
-                        onboardingData: formData 
+                        onboardingData: mergedData 
                     }, { merge: true });
                     
-                    alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်းခြင်း အောင်မြင်ပါသည်။");
+                    alert("✅ ဝန်ထမ်းအချက်အလက် ဖြည့်သွင်း/ပြင်ဆင်ခြင်း အောင်မြင်ပါသည်။");
                 }
                 setTimeout(() => onBack(), 100); 
             } else {
@@ -373,22 +396,28 @@ function PhotoViewerModal({ src, onClose }: { src: string, onClose: () => void }
     );
 }
 
-// 🌟 Reusable Profile Details Component (Used by both Admin & Staff App) 🌟
-// 👇 onEditAdminRequest ကို parameter မှာ ထပ်တိုးပါ 👇
-function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffView = false, onEditRequest, onEditAdminRequest }: { data: any, staffId: string, therapistName?: string, onClose?: () => void, isStaffView?: boolean, onEditRequest?: () => void, onEditAdminRequest?: () => void }) {
+// 🌟 Reusable Profile Details Component 🌟
+function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffView = false, onEditRequest, onEditAdminRequest, highlightKeys = [] }: { data: any, staffId: string, therapistName?: string, onClose?: () => void, isStaffView?: boolean, onEditRequest?: () => void, onEditAdminRequest?: () => void, highlightKeys?: string[] }) {
     const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
+
+    const getBoxClass = (key: string, baseClass = "col-span-2") => {
+        return highlightKeys.includes(key) 
+            ? `${baseClass} bg-yellow-50 p-3 rounded-xl shadow-sm border-2 border-yellow-400 relative overflow-hidden ring-2 ring-yellow-400/20 transition-all` 
+            : `${baseClass} bg-white p-3 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden`;
+    };
+
+    const getBadge = (key: string) => {
+        return highlightKeys.includes(key) ? <span className="absolute top-0 right-0 bg-yellow-400 text-yellow-900 text-[8px] font-black px-2 py-0.5 rounded-bl-lg uppercase tracking-wider animate-pulse shadow-sm z-10">Updated</span> : null;
+    };
 
     const calculateAge = (dobString: string) => {
         if (!dobString) return '-';
         const birthDate = new Date(dobString);
         if (isNaN(birthDate.getTime())) return '-';
-
         const today = new Date();
         let age = today.getFullYear() - birthDate.getFullYear();
         const m = today.getMonth() - birthDate.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-        }
+        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
         return `${age} Yrs`;
     };
 
@@ -396,47 +425,33 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffVi
         if (!startDateString) return '-';
         const startDate = new Date(startDateString);
         if (isNaN(startDate.getTime())) return '-';
-
-        const today = new Date();
-        const diffTime = Math.abs(today.getTime() - startDate.getTime());
-        const diffDaysTotal = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-        if (diffDaysTotal < 30) {
-            return `${diffDaysTotal} Days`;
-        } else if (diffDaysTotal < 365) {
-            const months = Math.floor(diffDaysTotal / 30);
-            const remainingDays = diffDaysTotal % 30;
-            return remainingDays > 0 ? `${months} Mos & ${remainingDays} Days` : `${months} Mos`;
-        } else {
-            const years = Math.floor(diffDaysTotal / 365);
-            const remainingDaysAfterYear = diffDaysTotal % 365;
-            
-            if (remainingDaysAfterYear === 0) return `${years} Yr`;
-            
-            if (remainingDaysAfterYear < 30) {
-                 return `${years} Yr & ${remainingDaysAfterYear} Days`;
-            } else {
-                 const extraMonths = Math.floor(remainingDaysAfterYear / 30);
-                 const extraDays = remainingDaysAfterYear % 30;
-                 return extraDays > 0 ? `${years} Yr, ${extraMonths} Mo & ${extraDays} D` : `${years} Yr & ${extraMonths} Mo`;
-            }
-        }
+        const diffDaysTotal = Math.ceil(Math.abs(new Date().getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDaysTotal < 30) return `${diffDaysTotal} Days`;
+        else if (diffDaysTotal < 365) return `${Math.floor(diffDaysTotal / 30)} Mos & ${diffDaysTotal % 30} Days`;
+        else return `${Math.floor(diffDaysTotal / 365)} Yr & ${Math.floor((diffDaysTotal % 365) / 30)} Mo`;
     };
 
     return (
         <div className="flex flex-col h-full relative pb-20">
             {viewingPhoto && <PhotoViewerModal src={viewingPhoto} onClose={() => setViewingPhoto(null)} />}
 
+            {highlightKeys.length > 0 && !isStaffView && (
+                <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 p-3 rounded-xl mb-4 text-xs font-bold flex items-center shadow-sm">
+                    ⚠️ အဝါရောင်ဖြင့် ပြသထားသော အကွက်များသည် ဝန်ထမ်းမှ အသစ်ပြင်ဆင်ထားသော အချက်အလက်များ ဖြစ်ပါသည်။
+                </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4 mb-4">
-                {/* 🌟 Admin View မှာသာ Employee ID ကို ပြမည် 🌟 */}
                 {!isStaffView && (
-                    <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                    <div className={getBoxClass('staffId')}>
+                        {getBadge('staffId')}
                         <span className="text-[10px] text-gray-400 block uppercase">Employee ID</span>
                         <span className="font-bold text-[#123524] truncate block text-base" title={staffId}>{staffId}</span>
                     </div>
                 )}
                 
-                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                <div className={getBoxClass('fullName')}>
+                    {getBadge('fullName')}
                     <span className="text-[10px] text-gray-400 block uppercase">Actual Name (အမည်ရင်း)</span>
                     <span className="font-bold text-gray-800 truncate block text-base">{data.fullName}</span>
                 </div>
@@ -448,56 +463,63 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffVi
                     </div>
                 )}
 
-                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                <div className={getBoxClass('jobPosition')}>
+                    {getBadge('jobPosition')}
                     <span className="text-[10px] text-gray-400 block uppercase">Position</span>
                     <span className="font-bold text-blue-600 truncate block text-base">{data.jobPosition}</span>
                 </div>
-                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+
+                <div className={getBoxClass('phone')}>
+                    {getBadge('phone')}
                     <span className="text-[10px] text-gray-400 block uppercase">Phone</span>
                     <span className="font-bold text-gray-800 text-base">{data.phone}</span>
                 </div>
 
-                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                <div className={getBoxClass('nrcNumber')}>
+                    {getBadge('nrcNumber')}
                     <span className="text-[10px] text-gray-400 block uppercase">NRC</span>
                     <span className="font-bold text-gray-800 text-base">{data.nrcNumber}</span>
                 </div>
 
                 <div className="col-span-2 flex gap-3">
-                    <div className="flex-1 bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <div className={getBoxClass('dob', 'flex-1 flex flex-col justify-center')}>
+                        {getBadge('dob')}
                         <span className="text-[10px] text-gray-400 block uppercase mb-1">Date of Birth</span>
                         <span className="font-bold text-gray-800 text-sm">{data.dob}</span>
                     </div>
-                    <div className="w-24 bg-gradient-to-br from-[#123524] to-[#1a4a32] p-2 rounded-xl shadow-md border border-[#123524]/20 flex flex-col justify-center items-center">
+                    <div className="w-24 bg-gradient-to-br from-[#123524] to-[#1a4a32] p-2 rounded-xl shadow-md flex flex-col justify-center items-center">
                         <span className="text-[9px] text-[#D4AF37]/80 uppercase font-bold mb-0.5">Age</span>
                         <span className="text-[#D4AF37] font-black text-sm">{calculateAge(data.dob)}</span>
                     </div>
                 </div>
 
                 <div className="col-span-2 flex gap-3">
-                    <div className="flex-1 bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
+                    <div className={getBoxClass('startDate', 'flex-1 flex flex-col justify-center')}>
+                        {getBadge('startDate')}
                         <span className="text-[10px] text-gray-400 block uppercase mb-1">Join Date</span>
                         <span className="font-bold text-gray-800 text-sm">{data.startDate}</span>
                     </div>
-                    {/* 🌟 SERVICE DURATION (လုပ်သက်) လှလှလေး ပြောင်းထားသည် 🌟 */}
                     <div className="w-[140px] bg-gradient-to-br from-yellow-50 to-yellow-100 p-2 rounded-xl shadow-sm border border-yellow-200 flex flex-col justify-center items-center">
-                        <span className="text-[9px] text-yellow-600 uppercase font-bold mb-0.5 text-center leading-tight">SERVICE DURATION (လုပ်သက်)</span>
+                        <span className="text-[9px] text-yellow-600 uppercase font-bold text-center leading-tight">SERVICE DURATION</span>
                         <span className="text-[#123524] font-black text-xs mt-0.5 text-center">{calculateDuration(data.startDate)}</span>
                     </div>
                 </div>
 
-                <div className="col-span-2 bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                <div className={getBoxClass('address')}>
+                    {getBadge('address')}
                     <span className="text-[10px] text-gray-400 block uppercase">Address</span>
                     <span className="font-bold text-gray-800 leading-relaxed block mt-1">{data.address}</span>
                 </div>
 
-                <div className="col-span-2 bg-red-50 p-4 rounded-xl shadow-sm border border-red-100">
+                <div className="col-span-2 bg-red-50 p-4 rounded-xl shadow-sm border border-red-100 relative">
+                    {(highlightKeys.includes('emergencyName') || highlightKeys.includes('emergencyPhone') || highlightKeys.includes('emergencyRelation')) && <span className="absolute top-0 right-0 bg-yellow-400 text-yellow-900 text-[8px] font-black px-2 py-0.5 rounded-bl-xl uppercase tracking-wider animate-pulse">Updated</span>}
                     <span className="text-[10px] text-red-500 block uppercase font-bold tracking-wider mb-2">Emergency Contact</span>
                     <div className="flex justify-between items-center gap-3">
-                        <div className="flex-1 bg-white/70 p-3 rounded-lg border border-red-100/50">
+                        <div className={`flex-1 bg-white/70 p-3 rounded-lg border ${highlightKeys.includes('emergencyName') || highlightKeys.includes('emergencyRelation') ? 'border-yellow-400 bg-yellow-50' : 'border-red-100/50'}`}>
                             <span className="text-[9px] text-gray-500 block mb-0.5">Name & Relation</span>
                             <span className="text-sm font-bold text-red-700 leading-tight block">{data.emergencyName} <br/><span className="text-xs text-red-500/80">({data.emergencyRelation})</span></span>
                         </div>
-                        <div className="flex-1 bg-white/70 p-3 rounded-lg border border-red-100/50">
+                        <div className={`flex-1 bg-white/70 p-3 rounded-lg border ${highlightKeys.includes('emergencyPhone') ? 'border-yellow-400 bg-yellow-50' : 'border-red-100/50'}`}>
                             <span className="text-[9px] text-gray-500 block mb-0.5">Phone Number</span>
                             <span className="text-sm font-bold text-red-700 font-mono block mt-1">{data.emergencyPhone}</span>
                         </div>
@@ -507,25 +529,28 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffVi
 
            <h4 className="font-bold text-xs text-gray-500 mb-2 uppercase tracking-wider">Document Photos</h4>
             <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className={`relative rounded-xl border-2 p-1 ${highlightKeys.includes('nrcFrontUrl') ? 'border-yellow-400 bg-yellow-50' : 'border-transparent'}`}>
+                    {getBadge('nrcFrontUrl')}
                     <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Front)</span>
-                    {data.nrcFrontUrl ? <img src={data.nrcFrontUrl} onClick={() => setViewingPhoto(data.nrcFrontUrl)} className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer hover:opacity-80 transition"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                    {data.nrcFrontUrl ? <img src={data.nrcFrontUrl} onClick={() => setViewingPhoto(data.nrcFrontUrl)} className="w-full h-32 object-cover rounded-lg border border-gray-200 cursor-pointer"/> : <div className="h-32 bg-gray-200 rounded-lg flex items-center justify-center text-[10px]">No Image</div>}
                 </div>
-                <div>
+                <div className={`relative rounded-xl border-2 p-1 ${highlightKeys.includes('nrcBackUrl') ? 'border-yellow-400 bg-yellow-50' : 'border-transparent'}`}>
+                    {getBadge('nrcBackUrl')}
                     <span className="text-[10px] text-gray-400 block uppercase mb-1">NRC (Back)</span>
-                    {data.nrcBackUrl ? <img src={data.nrcBackUrl} onClick={() => setViewingPhoto(data.nrcBackUrl)} className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer hover:opacity-80 transition"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                    {data.nrcBackUrl ? <img src={data.nrcBackUrl} onClick={() => setViewingPhoto(data.nrcBackUrl)} className="w-full h-32 object-cover rounded-lg border border-gray-200 cursor-pointer"/> : <div className="h-32 bg-gray-200 rounded-lg flex items-center justify-center text-[10px]">No Image</div>}
                 </div>
-                <div>
+                <div className={`relative rounded-xl border-2 p-1 ${highlightKeys.includes('householdFrontUrl') ? 'border-yellow-400 bg-yellow-50' : 'border-transparent'}`}>
+                    {getBadge('householdFrontUrl')}
                     <span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Front)</span>
-                    {data.householdFrontUrl ? <img src={data.householdFrontUrl} onClick={() => setViewingPhoto(data.householdFrontUrl)} className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer hover:opacity-80 transition"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                    {data.householdFrontUrl ? <img src={data.householdFrontUrl} onClick={() => setViewingPhoto(data.householdFrontUrl)} className="w-full h-32 object-cover rounded-lg border border-gray-200 cursor-pointer"/> : <div className="h-32 bg-gray-200 rounded-lg flex items-center justify-center text-[10px]">No Image</div>}
                 </div>
-                <div>
+                <div className={`relative rounded-xl border-2 p-1 ${highlightKeys.includes('householdBackUrl') ? 'border-yellow-400 bg-yellow-50' : 'border-transparent'}`}>
+                    {getBadge('householdBackUrl')}
                     <span className="text-[10px] text-gray-400 block uppercase mb-1">Household (Back)</span>
-                    {data.householdBackUrl ? <img src={data.householdBackUrl} onClick={() => setViewingPhoto(data.householdBackUrl)} className="w-full h-32 object-cover rounded-xl border border-gray-200 cursor-pointer hover:opacity-80 transition"/> : <div className="h-32 bg-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-400">No Image</div>}
+                    {data.householdBackUrl ? <img src={data.householdBackUrl} onClick={() => setViewingPhoto(data.householdBackUrl)} className="w-full h-32 object-cover rounded-lg border border-gray-200 cursor-pointer"/> : <div className="h-32 bg-gray-200 rounded-lg flex items-center justify-center text-[10px]">No Image</div>}
                 </div>
             </div>
 
-            {/* 🌟 ဤနေရာသည် အရေးကြီးသည်! Close ခလုတ်ဘေးတွင် Edit Form ကို ပြမည် 🌟 */}
             {onClose && (
                 <div className="flex gap-3 pt-6 pb-2">
                     {!isStaffView && onEditAdminRequest && (
@@ -537,13 +562,9 @@ function ProfileDetailsViewer({ data, staffId, therapistName, onClose, isStaffVi
                 </div>
             )}
 
-            {/* 🌟 ဝန်ထမ်းဘက်အတွက် Update Informations Button 🌟 */}
             {isStaffView && onEditRequest && (
                 <div className="absolute bottom-0 left-0 right-0 pt-4 bg-white/80 backdrop-blur-sm border-t border-gray-100 flex justify-center">
-                    <button 
-                        onClick={onEditRequest} 
-                        className="w-full text-sm py-3 rounded-xl shadow-md font-bold flex items-center justify-center transition-all bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 border border-blue-200 hover:shadow-lg hover:from-blue-100 hover:to-blue-200"
-                    >
+                    <button onClick={onEditRequest} className="w-full text-sm py-3 rounded-xl shadow-md font-bold flex items-center justify-center transition-all bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 border border-blue-200 hover:shadow-lg">
                         <Edit className="w-4 h-4 mr-2"/> Update Informations
                     </button>
                 </div>
