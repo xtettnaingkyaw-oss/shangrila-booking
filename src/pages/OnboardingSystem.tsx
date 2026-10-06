@@ -831,19 +831,19 @@ export function AdminHRManagement() {
                             )}
                             
                         <ProfileDetailsViewer 
-                                data={viewingProfile.data} 
-                                staffId={viewingProfile.staffId} 
-                                onClose={() => setViewingProfile(null)}
-                                isStaffView={false}
-                                // 🌟 FIX: Admin ဘက်တွင် Highlight ပေါ်စေရန် ဤစာကြောင်း ထည့်ပေးရပါမည် 🌟
-                                highlightKeys={viewingProfile.updatedKeys || []}
-                                // 🌟 Edit နှိပ်လျှင် Admin Edit Form ပွင့်စေမည့် လုပ်ဆောင်ချက် 🌟
-                                onEditAdminRequest={viewingProfile.isPendingUpdate ? undefined : () => {
-                                    setAddingInfoForId(viewingProfile.staffId);
-                                    setAddingInfoData(viewingProfile.data);
-                                    setViewingProfile(null); // Detail Box ကို ပိတ်မည်
-                                }}
-                            />
+        data={viewingProfile.data} 
+        staffId={viewingProfile.staffId} 
+        onClose={() => setViewingProfile(null)}
+        isStaffView={false}
+        // 🌟 FIX: ဤနေရာတွင် Highlight ပြမည့် Keys များ လှမ်းပို့ပေးရပါမည် 🌟
+        highlightKeys={viewingProfile.updatedKeys || []} 
+        // 🌟 Edit နှိပ်လျှင် Admin Edit Form ပွင့်စေမည့် လုပ်ဆောင်ချက် 🌟
+        onEditAdminRequest={viewingProfile.isPendingUpdate ? undefined : () => {
+            setAddingInfoForId(viewingProfile.staffId);
+            setAddingInfoData(viewingProfile.data);
+            setViewingProfile(null); 
+        }}
+    />
                             
                             {viewingProfile.isPendingUpdate && (
                                 <div className="flex gap-3 pt-4 border-t border-gray-200">
