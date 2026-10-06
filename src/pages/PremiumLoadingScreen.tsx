@@ -45,20 +45,20 @@ export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: 
     return (
         <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gradient-to-br from-[#0a1f15] via-[#123524] to-[#0a1f15] overflow-hidden transition-all duration-700 ease-in-out ${fadeAnim ? 'opacity-0 scale-110 pointer-events-none' : 'opacity-100 scale-100'}`}>
             
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[35rem] h-[35rem] bg-[#D4AF37] rounded-full blur-[140px] opacity-10 animate-pulse"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[35rem] h-[35rem] bg-[#D4AF37] rounded-full blur-[140px] opacity-10 animate-pulse pointer-events-none"></div>
 
             <div className="relative flex flex-col items-center z-10 w-full px-8">
                 
-                <div className="relative w-40 h-40 sm:w-48 sm:h-48 mb-10 flex items-center justify-center overflow-hidden">
+                <div className="relative w-40 h-40 sm:w-48 sm:h-48 mb-10 flex items-center justify-center rounded-full">
                     {cachedLogo ? (
                         <img 
                             src={cachedLogo} 
                             alt="The Shangri-La Logo" 
-                            // 🌟 FIX: Logo အကွက်ကြီးပျောက်သွားစေရန် CSS Mask ဖြင့် ဘေးဘောင်များကို ဝါးပစ်လိုက်ပါသည် 🌟
-                            className="w-full h-full object-contain relative z-10 mix-blend-screen"
+                            // 🌟 FIX 1: အကွက်ကြီးကိုဖျောက်ရန် mix-blend-lighten နှင့် object-cover ကို ပြောင်းလဲသုံးစွဲထားသည် 🌟
+                            className="w-full h-full object-cover scale-125 relative z-10 mix-blend-lighten opacity-95"
                             style={{ 
-                                WebkitMaskImage: 'radial-gradient(circle at center, black 50%, transparent 75%)', 
-                                maskImage: 'radial-gradient(circle at center, black 50%, transparent 75%)' 
+                                WebkitMaskImage: 'radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 65%)', 
+                                maskImage: 'radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 65%)' 
                             }}
                         />
                     ) : (
@@ -67,7 +67,8 @@ export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: 
                         </div>
                     )}
                     
-                    <div className="absolute top-0 left-0 h-full w-[150%] z-20 bg-gradient-to-r from-transparent via-[#D4AF37]/30 to-transparent animate-shimmer pointer-events-none"></div>
+                    {/* 🌟 FIX 2: လေးထောင့်ကွက်ပုံစံမဖြစ်စေရန် Blur နှင့် Skew ထည့်သွင်းထားသော Shimmer အလင်းတန်းသစ် 🌟 */}
+                    <div className="absolute top-0 -inset-x-full h-full w-[50%] bg-gradient-to-r from-transparent via-[#D4AF37]/40 to-transparent blur-xl z-20 animate-shimmer pointer-events-none" style={{ transform: 'skewX(-25deg)' }}></div>
                 </div>
 
                 {/* 🌟 100% ပြည့်ချိန်တွင် WELCOME သို့ ပြောင်းသွားမည့် စာသား 🌟 */}
@@ -75,22 +76,54 @@ export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: 
                     {progress >= 100 ? 'Welcome' : 'Preparing Your Retreat'}
                 </h2>
 
-                <div className="w-56 h-[3px] bg-[#1a4a32] rounded-full overflow-hidden shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)] relative">
+                {/* 🌟 FIX 3: ရွှေမှုန်လေးများ ထွက်လာရန် overflow-hidden အား overflow-visible သို့ ပြောင်းထားပါသည် 🌟 */}
+                <div className="w-56 h-[3px] bg-[#1a4a32] rounded-full shadow-[inset_0_1px_3px_rgba(0,0,0,0.4)] relative overflow-visible">
                     <div 
-                        className="h-full bg-gradient-to-r from-[#b38b22] to-[#D4AF37] rounded-full shadow-[0_0_10px_rgba(212,175,55,0.8)] transition-all ease-out"
+                        className="h-full bg-gradient-to-r from-[#b38b22] to-[#D4AF37] rounded-full shadow-[0_0_10px_rgba(212,175,55,0.8)] transition-all ease-out flex justify-end items-center"
                         style={{ width: `${progress}%`, transitionDuration: progress >= 100 ? '0.5s' : '0.3s' }}
-                    ></div>
+                    >
+                        {/* 🌟 ရွှေမှုန် (Sparkles) Animation DOM 🌟 */}
+                        {progress > 0 && progress < 100 && (
+                            <div className="relative w-0 h-0 flex items-center justify-center z-30">
+                                <div className="absolute w-2.5 h-2.5 bg-white rounded-full shadow-[0_0_10px_3px_#D4AF37] animate-pulse"></div>
+                                <div className="sparkle-particle sp-1"></div>
+                                <div className="sparkle-particle sp-2"></div>
+                                <div className="sparkle-particle sp-3"></div>
+                                <div className="sparkle-particle sp-4"></div>
+                                <div className="sparkle-particle sp-5"></div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
+            {/* 🌟 Shimmer နှင့် Sparkle Animation အတွက် CSS 🌟 */}
             <style dangerouslySetInnerHTML={{__html: `
                 @keyframes shimmer {
-                    0% { transform: translateX(-150%) skewX(-15deg); }
-                    50%, 100% { transform: translateX(150%) skewX(-15deg); }
+                    0% { left: -100%; }
+                    100% { left: 200%; }
                 }
                 .animate-shimmer {
-                    animation: shimmer 2.5s infinite;
+                    animation: shimmer 3s infinite ease-in-out;
                 }
+
+                @keyframes fly-spark {
+                    0% { transform: translate(0, 0) scale(1); opacity: 1; }
+                    100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+                }
+                .sparkle-particle {
+                    position: absolute;
+                    width: 3px; height: 3px;
+                    background-color: #FFF;
+                    border-radius: 50%;
+                    box-shadow: 0 0 6px 2px #D4AF37;
+                    opacity: 0;
+                }
+                .sp-1 { animation: fly-spark 0.8s cubic-bezier(0.25, 1, 0.5, 1) infinite; --tx: -15px; --ty: -25px; }
+                .sp-2 { animation: fly-spark 0.6s cubic-bezier(0.25, 1, 0.5, 1) infinite 0.2s; --tx: -25px; --ty: 15px; }
+                .sp-3 { animation: fly-spark 0.7s cubic-bezier(0.25, 1, 0.5, 1) infinite 0.4s; --tx: -10px; --ty: -20px; }
+                .sp-4 { animation: fly-spark 0.9s cubic-bezier(0.25, 1, 0.5, 1) infinite 0.1s; --tx: -30px; --ty: -5px; }
+                .sp-5 { animation: fly-spark 0.5s cubic-bezier(0.25, 1, 0.5, 1) infinite 0.3s; --tx: -20px; --ty: 25px; }
             `}} />
         </div>
     );
