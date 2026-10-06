@@ -1097,13 +1097,16 @@ export function AdminHRManagement() {
                                                 <button onClick={() => handleDeletePosition(pos)} className="text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-lg transition" title="Delete Position">
                                                     <Trash2 className="w-4 h-4"/>
                                                 </button>
-                                            </>
-                                        )}
+                                          )}
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
+                </div>
+            )}
+        </div>
+    );
 }
 
 // 🌟 3. Staff Profile View Component (For Staff App) 🌟
