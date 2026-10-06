@@ -1063,19 +1063,26 @@ export function AdminHRManagement() {
                                         ${isDragging ? 'opacity-40 scale-95 border-gray-300 bg-gray-100 shadow-none' : 'bg-gray-50 shadow-sm'}
                                         ${isDragOver && !isDragging ? 'border-2 border-dashed border-[#D4AF37] scale-[1.02] bg-yellow-50/50 shadow-md' : 'border-gray-200 hover:border-[#D4AF37]'}
                                     `}
+                                    // 🌟 FIX: ဖုန်းတွင် ပိုမိုကောင်းမွန်စွာ Drag လုပ်နိုင်ရန် 🌟
+                                    style={{ touchAction: 'none' }} 
                                 >
                                     {/* 🌟 Drag လုပ်နိုင်ကြောင်းပြသည့် Icon (Mobile Touch စနစ်ပါ ပေါင်းထည့်ထားသည်) 🌟 */}
                                     <div 
-                                        className="mr-3 text-gray-400 group-hover:text-[#D4AF37] transition-colors touch-none py-2 pr-2"
-                                        onTouchStart={() => {
+                                        className="mr-3 text-gray-400 group-hover:text-[#D4AF37] transition-colors py-2 pr-2 touch-none"
+                                        onTouchStart={(e) => {
                                             if (editingPosIndex !== idx) {
                                                 setDraggedIdx(idx);
-                                                // ဖုန်းဖြင့်ဖိဆွဲရာတွင် အနည်းငယ်တုန်ခါစေရန် (Haptic Feedback)
                                                 if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(50);
+                                                // Prevent default scroll behavior
+                                                e.stopPropagation(); 
                                             }
                                         }}
                                         onTouchMove={(e) => {
                                             if (editingPosIndex === idx || draggedIdx === null) return;
+                                            
+                                            // Prevent scrolling while dragging
+                                            e.preventDefault(); 
+                                            
                                             const touch = e.touches[0];
                                             const target = document.elementFromPoint(touch.clientX, touch.clientY);
                                             const dropTarget = target?.closest('.job-position-item');
