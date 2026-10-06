@@ -202,7 +202,8 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
 function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: AppData, loggedInStaff: TherapistProfile, onLogout: () => void }) {
    
    // 🌟 Admin ဘက်က ပြင်လိုက်တာနဲ့ ချက်ချင်း Update ဖြစ်စေရန် Live Data ကို ယူပါမည် 🌟
-   const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || loggedInStaff;
+   // 🌟 FIX: ဖုန်းထဲတွင် ID ဟောင်းကပ်နေပါက Name ဖြင့်ပါ နောက်ကွယ်မှ အလိုအလျောက် ရှာဖွေချိတ်ဆက်ပေးမည် 🌟
+const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || appData.therapists.find(t => t.name === loggedInStaff.name) || loggedInStaff;
    const displayPosition = liveStaff.onboardingData?.jobPosition || 'Professional Therapist';
 
    const [activeSession, setActiveSession] = useState<Booking | null>(null);
