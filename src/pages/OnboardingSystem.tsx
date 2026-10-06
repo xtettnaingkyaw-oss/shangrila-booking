@@ -192,11 +192,11 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
         try {
             if (existingStaffId) {
                 if (isStaffSelfEdit) {
-                    // 🌟 FIX: Document Size 1MB Limit မကျော်စေရန် တကယ်ပြောင်းလဲသွားသော အချက်အလက်များကိုသာ ရွေးထုတ်မည် 🌟
                     const changedData: any = {};
                     const changedKeys: string[] = [];
                     
                     if (existingData) {
+                        // 🌟 Data အဟောင်းရှိသူများအတွက် တကယ်ပြောင်းလဲသွားသော အရာများကိုသာ ရွေးထုတ်မည် 🌟
                         Object.keys(formData).forEach((key) => {
                             const oldVal = existingData[key as keyof typeof existingData];
                             const newVal = formData[key as keyof typeof formData];
@@ -204,6 +204,12 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                                 changedData[key] = newVal;
                                 changedKeys.push(key);
                             }
+                        });
+                    } else {
+                        // 🌟 FIX: Data အဟောင်းမရှိသေးသူများ (ပထမဆုံးအကြိမ် ဖြည့်သွင်းသူများ) အတွက် ဖြည့်သမျှအားလုံးကို အသစ်အဖြစ် မှတ်ယူမည် 🌟
+                        Object.keys(formData).forEach((key) => {
+                            changedData[key] = formData[key as keyof typeof formData];
+                            changedKeys.push(key);
                         });
                     }
 
@@ -213,16 +219,16 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                         return;
                     }
 
-                    // ပြောင်းလဲသွားသော အရာများကိုသာ သိမ်းမည်
+                    // ပြောင်းလဲသွားသော အရာများကိုသာ Admin ထံ လှမ်းပို့မည်
                     await setDoc(doc(db, 'therapists', existingStaffId), { 
                         pendingOnboardingData: changedData, 
-                        updatedKeys: changedKeys, // 🌟 Admin ဘက်တွင် Highlight ပြရန်
+                        updatedKeys: changedKeys, 
                         updateRequested: true 
                     }, { merge: true });
                     
-                    alert("✅ အချက်အလက်ပြင်ဆင်ခြင်းအား Admin ထံ ပေးပို့လိုက်ပါပြီ။ Admin မှ အတည်ပြုပြီးပါက ပြောင်းလဲသွားပါမည်။");
+                    alert("✅ အချက်အလက်များအား Admin ထံ ပေးပို့လိုက်ပါပြီ။ Admin မှ အတည်ပြုပြီးပါက Profile တွင် ပေါ်လာပါမည်။");
                 } else {
-                    // Admin ကိုယ်တိုင်ပြင်လျှင် (အဟောင်းနှင့် အသစ်ပေါင်းထည့်မည်)
+                    // Admin ကိုယ်တိုင်ဖြည့်သွင်း/ပြင်ဆင်လျှင်
                     const mergedData = { ...existingData, ...formData };
                     await setDoc(doc(db, 'therapists', existingStaffId), { 
                         onboardingData: mergedData 
@@ -232,6 +238,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                 }
                 setTimeout(() => onBack(), 100); 
             } else {
+                // အကောင့်မရှိသေးသော လျှောက်လွှာအသစ်များအတွက်
                 await addDoc(collection(db, 'onboarding_requests'), { ...formData, status: 'pending', createdAt: Date.now() });
                 alert("✅ လျှောက်လွှာတင်ခြင်း အောင်မြင်ပါသည်။ Admin မှ အတည်ပြုပြီးပါက အကြောင်းကြားပေးပါမည်။");
                 setTimeout(() => onBack(), 100);
