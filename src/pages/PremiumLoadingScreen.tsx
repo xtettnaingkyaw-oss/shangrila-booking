@@ -11,19 +11,17 @@ export default function PremiumLoadingScreen() {
 
     return (
         <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gradient-to-br from-[#0a1f15] via-[#123524] to-[#0a1f15] overflow-hidden">
-            {/* 🌟 Background Glow ကို ပိုကြီးပြီး မှိန်မှိန်လေး ဖြစ်အောင် ပြင်ထားသည် */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[30rem] h-[30rem] bg-[#D4AF37] rounded-full blur-[120px] opacity-10 animate-pulse"></div>
 
             <div className="relative flex flex-col items-center z-10 w-full px-8">
                 
-                {/* 🌟 Logo ကို ပိုကြီးအောင် (w-40 sm:w-48) ပြင်ထားပြီး အဖြူရောင်ဘောင်ကို ဖယ်ရှားထားသည် 🌟 */}
                 <div className="relative w-40 h-40 sm:w-48 sm:h-48 mb-10 flex items-center justify-center overflow-hidden">
                     {cachedLogo ? (
                         <img 
                             src={cachedLogo} 
                             alt="The Shangri-La Logo" 
-                            // အဖြူရောင်စက်ဝိုင်းမပါတော့ဘဲ သီးသန့်ရှင်းရှင်းလေးပေါ်နေစေရန် object-contain ဖြင့် ပြထားသည်
-                            className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(212,175,55,0.3)] relative z-10"
+                            // 🌟 FIX: Logo နောက်ခံကို ဖျောက်ရန် mix-blend-screen ကို အသုံးပြုထားသည် (သို့မဟုတ်) bg-transparent 🌟
+                            className="w-full h-full object-contain mix-blend-screen drop-shadow-[0_0_20px_rgba(212,175,55,0.3)] relative z-10"
                         />
                     ) : (
                         <div className="relative z-10 flex items-center justify-center">
@@ -31,7 +29,6 @@ export default function PremiumLoadingScreen() {
                         </div>
                     )}
                     
-                    {/* 🌟 ရွှေရောင် အလင်းတန်း (Shimmer Effect) ပြေးသွားမည့် အလွှာ 🌟 */}
                     <div className="absolute top-0 left-0 h-full w-[150%] z-20 bg-gradient-to-r from-transparent via-[#D4AF37]/30 to-transparent animate-shimmer pointer-events-none"></div>
                 </div>
 
@@ -39,14 +36,12 @@ export default function PremiumLoadingScreen() {
                     Preparing Retreat
                 </h2>
 
-                {/* 🌟 အမြဲလည်မနေတော့ဘဲ ဖြည်းဖြည်းချင်း အပြည့် (0% မှ 100% သို့) တက်လာမည့် Progress Bar 🌟 */}
                 <div className="w-56 h-[3px] bg-[#1a4a32] rounded-full overflow-hidden shadow-inner relative">
                     <div className="h-full bg-gradient-to-r from-[#b38b22] to-[#D4AF37] rounded-full shadow-[0_0_10px_rgba(212,175,55,0.5)] animate-fill-bar"></div>
                 </div>
             </div>
 
             <style dangerouslySetInnerHTML={{__html: `
-                /* Shimmer Effect အတွက် Animation */
                 @keyframes shimmer {
                     0% { transform: translateX(-150%) skewX(-15deg); }
                     50%, 100% { transform: translateX(150%) skewX(-15deg); }
@@ -55,7 +50,6 @@ export default function PremiumLoadingScreen() {
                     animation: shimmer 2.5s infinite;
                 }
                 
-                /* Progress Bar ပြည့်လာရန် Animation */
                 @keyframes fill-bar {
                     0% { width: 0%; }
                     20% { width: 30%; }
@@ -64,7 +58,6 @@ export default function PremiumLoadingScreen() {
                     100% { width: 100%; }
                 }
                 .animate-fill-bar {
-                    /* ၂ စက္ကန့်အတွင်း အပြည့်တက်သွားမည် */
                     animation: fill-bar 2s ease-out forwards;
                 }
             `}} />
