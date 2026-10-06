@@ -5,6 +5,9 @@ import { db, auth } from './firebase';
 import { Download, X, MapPin, Phone, LogOut, DatabaseBackup } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
 
+// 🌟 Premium Loading Screen ကို Import ခေါ်ယူခြင်း 🌟
+import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
+
 import CustomerApp from './pages/CustomerApp'; 
 const AdminApp = lazy(() => import('./pages/AdminApp'));
 const StaffApp = lazy(() => import('./pages/StaffApp'));
@@ -154,10 +157,9 @@ function MainApp() {
       );
   }
 
+  // 🌟 FIX: Data ဆွဲယူနေချိန်တွင် Premium Loading Screen အသစ်ကို ခေါ်သုံးထားပါသည် 🌟
   if (!appData) { 
-      return (
-          <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center text-[#123524] font-bold"><div className="w-12 h-12 border-4 border-[#123524] border-t-[#D4AF37] rounded-full animate-spin mb-4"></div>Loading The Shangri-La...</div>
-      ); 
+      return <PremiumLoadingScreen />; 
   }
 
   const stepsToShow = appData.installSteps && appData.installSteps.length > 0 ? appData.installSteps : DEFAULT_INSTALL_STEPS;
