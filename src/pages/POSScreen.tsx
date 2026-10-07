@@ -96,6 +96,35 @@ export default function POSScreen({ appData }: POSScreenProps) {
   const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const activeCategory = appData.categories.find(c => c.id === activeCategoryId);
 
+  // Web Intent for RawBT (Direct Bluetooth Printing on Android)
+  const printViaRawBT = (saleData: any) => {
+    if (!saleData) return;
+    
+    // ESC/POS Commands Formatting for RawBT
+    let text = "[C]<b>THE SHANGRI-LA</b>\n";
+    text += "[C]Men's Retreat\n";
+    text += "--------------------------------\n";
+    text += `Date: ${new Date().toLocaleString()}\n`;
+    text += `Staff: ${saleData.therapistName || 'Admin'}\n`;
+    text += `Method: ${saleData.paymentMethod || 'CASH'}\n`;
+    text += "--------------------------------\n";
+    
+    saleData.items.forEach((it: any) => {
+      text += `[L]${it.name} x${it.quantity}\n`;
+      text += `[R]${(it.price * it.quantity).toLocaleString()} Ks\n`;
+    });
+    
+    text += "--------------------------------\n";
+    text += `[L]<b>TOTAL:</b>[R]<b>${saleData.total.toLocaleString()} Ks</b>\n`;
+    text += "--------------------------------\n";
+    text += "[C]Thank you! Please come again.\n";
+    text += "\n\n"; // Empty lines to feed paper
+
+    // Send to RawBT App
+    const encoded = encodeURIComponent(text);
+    window.location.href = `intent:${encoded}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
+  };
+
   // Complete Sale
   const handleCompleteSale = async () => {
     if (!selectedTherapist || cart.length === 0) return;
@@ -129,7 +158,11 @@ export default function POSScreen({ appData }: POSScreenProps) {
 
       // Auto Print Logic
       if (printerConfig.printReceipts && printerConfig.autoPrint) {
-        setTimeout(() => handlePrintReceipt(), 500);
+        if (printerConfig.interfaceType === 'Bluetooth') {
+          printViaRawBT(saleData);
+        } else {
+          setTimeout(() => handlePrintReceipt(), 500);
+        }
       }
     } catch (error) {
       console.error("Sale complete error:", error);
@@ -179,6 +212,10 @@ export default function POSScreen({ appData }: POSScreenProps) {
       {/* Dynamic Print CSS based on Paper Width */}
       <style>{`
         @media print {
+          @page {
+            margin: 0;
+            size: ${printerConfig.paperWidth} auto;
+          }
           body * { visibility: hidden; }
           #printable-invoice, #printable-invoice * { visibility: visible; }
           #printable-invoice {
@@ -188,17 +225,18 @@ export default function POSScreen({ appData }: POSScreenProps) {
             width: ${printerConfig.paperWidth} !important;
             max-width: ${printerConfig.paperWidth} !important;
             padding: 2mm;
+            margin: 0;
             font-family: monospace;
             color: #000 !important;
             background: #fff !important;
-            font-size: ${printerConfig.paperWidth === '80mm' ? '14px' : '11px'};
+            font-size: ${printerConfig.paperWidth === '80mm' ? '14px' : '12px'};
             line-height: 1.2;
           }
           .no-print { display: none !important; }
         }
       `}</style>
 
-      {/* Main Header (Hidden in Settings Views) */}
+      {/* Main Header */}
       {!['settings', 'printers', 'edit_printer'].includes(currentView) && (
         <div className="bg-[#123524] px-4 py-3 border-b border-gray-800 flex items-center justify-between no-print">
           <div className="flex items-center space-x-3">
@@ -251,9 +289,8 @@ export default function POSScreen({ appData }: POSScreenProps) {
         </div>
       )}
 
-      {/* ---------------- SETTINGS VIEWS (Loyverse Style) ---------------- */}
+      {/* ---------------- SETTINGS VIEWS ---------------- */}
       
-      {/* 1. Main Settings List */}
       {currentView === 'settings' && (
         <div className="flex-1 flex flex-col bg-[#212124] no-print">
           <div className="flex items-center px-4 py-4 bg-[#212124] border-b border-gray-700">
@@ -277,7 +314,6 @@ export default function POSScreen({ appData }: POSScreenProps) {
         </div>
       )}
 
-      {/* 2. Printers List */}
       {currentView === 'printers' && (
         <div className="flex-1 flex flex-col bg-[#212124] no-print relative">
           <div className="flex items-center px-4 py-4 bg-[#212124] border-b border-gray-700 shadow-sm">
@@ -298,14 +334,12 @@ export default function POSScreen({ appData }: POSScreenProps) {
               <span className="text-sm text-gray-400">Receipts and bills</span>
             </button>
           </div>
-          {/* FAB Add Button */}
           <button onClick={() => setCurrentView('edit_printer')} className="absolute bottom-6 right-6 w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg hover:bg-emerald-600 transition">
             <Plus className="w-8 h-8 text-white" />
           </button>
         </div>
       )}
 
-      {/* 3. Edit Printer */}
       {currentView === 'edit_printer' && (
         <div className="flex-1 flex flex-col bg-[#212124] no-print overflow-y-auto">
           <div className="flex items-center justify-between px-4 py-4 bg-[#212124] border-b border-gray-700 shadow-sm sticky top-0 z-10">
@@ -317,7 +351,6 @@ export default function POSScreen({ appData }: POSScreenProps) {
           </div>
           
           <div className="p-6 space-y-6 max-w-2xl mx-auto w-full">
-            {/* Name */}
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Name</label>
               <input 
@@ -328,7 +361,6 @@ export default function POSScreen({ appData }: POSScreenProps) {
               />
             </div>
 
-            {/* Model */}
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Printer model</label>
               <select className="w-full bg-transparent border-b border-gray-600 text-lg text-white py-2 focus:outline-none focus:border-emerald-500 appearance-none">
@@ -338,17 +370,19 @@ export default function POSScreen({ appData }: POSScreenProps) {
               </select>
             </div>
 
-            {/* Interface */}
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Interface</label>
-              <select className="w-full bg-transparent border-b border-gray-600 text-lg text-white py-2 focus:outline-none focus:border-emerald-500 appearance-none">
-                <option className="bg-gray-800">Bluetooth</option>
-                <option className="bg-gray-800">Wi-Fi</option>
-                <option className="bg-gray-800">USB</option>
+              <select 
+                value={printerConfig.interfaceType}
+                onChange={e => setPrinterConfig({...printerConfig, interfaceType: e.target.value})}
+                className="w-full bg-transparent border-b border-gray-600 text-lg text-white py-2 focus:outline-none focus:border-emerald-500 appearance-none"
+              >
+                <option value="Bluetooth" className="bg-gray-800">Bluetooth (Direct RawBT)</option>
+                <option value="Wi-Fi" className="bg-gray-800">Wi-Fi / Standard Print</option>
+                <option value="USB" className="bg-gray-800">USB</option>
               </select>
             </div>
 
-            {/* Bluetooth Search */}
             <div className="flex items-end space-x-4">
               <div className="flex-1">
                 <label className="text-xs text-gray-400 mb-1 block">Bluetooth printer</label>
@@ -364,7 +398,6 @@ export default function POSScreen({ appData }: POSScreenProps) {
               </button>
             </div>
 
-            {/* Paper Width */}
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Paper width</label>
               <select 
@@ -380,7 +413,6 @@ export default function POSScreen({ appData }: POSScreenProps) {
             <div className="pt-4 border-t border-gray-700">
               <h3 className="text-gray-400 mb-4">Advanced settings</h3>
               
-              {/* Toggles */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <span className="text-lg text-white">Print receipts and bills</span>
@@ -400,17 +432,21 @@ export default function POSScreen({ appData }: POSScreenProps) {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="pt-6 space-y-4">
               <button onClick={() => {
                 const testSale = { 
                   id: 'TEST', therapistName: 'Admin', total: 15000, paymentMethod: 'CASH', createdAt: new Date(),
                   items: [{ id: '1', name: 'Test Service', price: 15000, quantity: 1 }]
                 };
-                setCompletedSale(testSale);
-                setTimeout(() => handlePrintReceipt(), 300);
-              }} className="w-full flex items-center justify-center py-4 bg-transparent hover:bg-gray-800 transition rounded text-white font-bold text-sm tracking-widest">
-                <PrinterIcon className="w-5 h-5 mr-3" /> PRINT TEST
+                if (printerConfig.interfaceType === 'Bluetooth') {
+                  printViaRawBT(testSale);
+                } else {
+                  setCompletedSale(testSale);
+                  setTimeout(() => handlePrintReceipt(), 300);
+                }
+              }} className="w-full flex items-center justify-center py-4 bg-transparent hover:bg-gray-800 transition rounded text-white font-bold text-sm tracking-widest border border-gray-600">
+                <PrinterIcon className="w-5 h-5 mr-3" /> 
+                {printerConfig.interfaceType === 'Bluetooth' ? 'PRINT DIRECT (RawBT TEST)' : 'PRINT TEST'}
               </button>
               
               <button className="w-full flex items-center justify-center py-4 bg-transparent hover:bg-red-900/30 transition rounded text-red-500 font-bold text-sm tracking-widest">
@@ -445,7 +481,6 @@ export default function POSScreen({ appData }: POSScreenProps) {
                   </div>
                 </div>
               </div>
-              {/* Cart Area */}
               <div className="w-full md:w-96 flex flex-col bg-[#212124] border-l border-gray-800 h-[45vh] md:h-full">
                 <div className="p-4 bg-[#123524] text-[#D4AF37] font-bold flex justify-between items-center">
                   <span>Ticket</span>
@@ -530,7 +565,7 @@ export default function POSScreen({ appData }: POSScreenProps) {
             </div>
             <h3 className="text-lg font-bold text-white mb-4 no-print">Sale Completed!</h3>
 
-            {/* Print Area - Only this will be visible on paper */}
+            {/* Print Area - Used if standard printing is selected */}
             <div id="printable-invoice" className="bg-white text-black p-4 rounded text-left mb-6 font-mono mx-auto">
               <div className="text-center font-bold text-lg mb-1">THE SHANGRI-LA</div>
               <div className="text-center text-xs mb-3 border-b border-black pb-2">Men's Retreat</div>
@@ -559,11 +594,19 @@ export default function POSScreen({ appData }: POSScreenProps) {
 
             <div className="space-y-3 no-print">
               {printerConfig.printReceipts && (
-                <button onClick={handlePrintReceipt} className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg text-sm flex items-center justify-center">
-                  <PrinterIcon className="w-5 h-5 mr-2" /> PRINT RECEIPT ({printerConfig.paperWidth})
-                </button>
+                <>
+                  {printerConfig.interfaceType === 'Bluetooth' ? (
+                    <button onClick={() => printViaRawBT(completedSale)} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 transition text-white font-bold rounded-lg text-sm flex items-center justify-center">
+                      <PrinterIcon className="w-5 h-5 mr-2" /> PRINT DIRECT (RawBT)
+                    </button>
+                  ) : (
+                    <button onClick={handlePrintReceipt} className="w-full py-3 bg-blue-600 hover:bg-blue-500 transition text-white font-bold rounded-lg text-sm flex items-center justify-center">
+                      <PrinterIcon className="w-5 h-5 mr-2" /> PRINT RECEIPT ({printerConfig.paperWidth})
+                    </button>
+                  )}
+                </>
               )}
-              <button onClick={resetPOS} className="w-full py-3 bg-gray-700 text-white font-bold rounded-lg text-sm">
+              <button onClick={resetPOS} className="w-full py-3 bg-gray-700 hover:bg-gray-600 transition text-white font-bold rounded-lg text-sm">
                 NEW SALE
               </button>
             </div>
