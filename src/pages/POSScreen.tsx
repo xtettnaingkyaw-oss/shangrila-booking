@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { AppData, MenuCategory } from '../shared';
-import { ShoppingCart, Plus, Minus, Trash2, CreditCard } from 'lucide-react';
+import { AppData, TherapistProfile } from '../shared';
+import { ShoppingCart, Plus, Minus, Trash2, CreditCard, User, ArrowLeft, CheckCircle, ShieldCheck } from 'lucide-react';
 
 interface POSScreenProps {
   appData: AppData;
 }
 
-// Cart ထဲရောက်သွားမည့် Item ပုံစံ
 interface CartItem {
   id: string;
   name: string;
@@ -15,25 +14,28 @@ interface CartItem {
 }
 
 export default function POSScreen({ appData }: POSScreenProps) {
+  // Steps: 'therapist' -> 'services' -> 'checkout'
+  const [step, setStep] = useState<'therapist' | 'services' | 'checkout'>('therapist');
+  
+  const [selectedTherapist, setSelectedTherapist] = useState<TherapistProfile | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<string>(
     appData.categories?.[0]?.id || ''
   );
+  const [paymentMethod, setPaymentMethod] = useState<string>('KBZ PAY');
+  const [isSuccessModal, setIsSuccessModal] = useState(false);
 
-  // Cart ထဲသို့ ပစ္စည်းထည့်ခြင်း
+  // Cart ထဲ ပစ္စည်းထည့်ခြင်း
   const handleAddToCart = (item: any) => {
     setCart((prev) => {
-      const existingItem = prev.find((c) => c.id === item.id);
-      if (existingItem) {
-        return prev.map((c) =>
-          c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c
-        );
+      const existing = prev.find((c) => c.id === item.id);
+      if (existing) {
+        return prev.map((c) => c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c);
       }
       return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }];
     });
   };
 
-  // Cart မှ ပစ္စည်း အတိုး/အလျှော့ လုပ်ခြင်း
   const updateQuantity = (id: string, delta: number) => {
     setCart((prev) =>
       prev.map((c) => {
@@ -46,110 +48,255 @@ export default function POSScreen({ appData }: POSScreenProps) {
     );
   };
 
-  // Cart မှ ပစ္စည်း ဖျက်ခြင်း
   const removeFromCart = (id: string) => {
     setCart((prev) => prev.filter((c) => c.id !== id));
   };
 
-  // စုစုပေါင်း ကျသင့်ငွေ တွက်ချက်ခြင်း
   const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
-  // ရွေးချယ်ထားသော Category အလိုက် Menu များကို စစ်ထုတ်ခြင်း
   const activeCategory = appData.categories.find(c => c.id === activeCategoryId);
 
+  // အရောင်းအောင်မြင်ကြောင်း အတည်ပြုခြင်း
+  const handleCompleteSale = () => {
+    setIsSuccessModal(true);
+  };
+
+  const resetPOS = () => {
+    setCart([]);
+    setSelectedTherapist(null);
+    setStep('therapist');
+    setIsSuccessModal(false);
+  };
+
   return (
-    <div className="flex flex-col md:flex-row h-[85vh] bg-gray-50 rounded-xl overflow-hidden shadow-sm border border-gray-200">
+    <div className="min-h-[85vh] bg-gray-900 text-white rounded-xl overflow-hidden shadow-2xl flex flex-col border border-gray-800">
       
-      {/* 🌟 ဘယ်ဘက်ခြမ်း: Category နှင့် Menu Item များ ရွေးရန်နေရာ 🌟 */}
-      <div className="flex-1 flex flex-col w-full md:w-2/3 border-b md:border-b-0 md:border-r border-gray-200 bg-white">
-        
-        {/* Categories Tab */}
-        <div className="flex overflow-x-auto bg-gray-100 p-2 space-x-2 border-b border-gray-200 hide-scrollbar">
-          {appData.categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategoryId(cat.id)}
-              className={`px-4 py-3 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${
-                activeCategoryId === cat.id
-                  ? 'bg-[#123524] text-[#D4AF37] shadow-md'
-                  : 'bg-white text-gray-600 hover:bg-gray-200'
-              }`}
+      {/* 🌟 Top Header Bar (Loyverse Style) 🌟 */}
+      <div className="bg-[#1a2e26] px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          {step !== 'therapist' && (
+            <button 
+              onClick={() => setStep(step === 'checkout' ? 'services' : 'therapist')}
+              className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition"
             >
-              {cat.title}
+              <ArrowLeft className="w-5 h-5 text-[#D4AF37]" />
             </button>
-          ))}
-        </div>
-
-        {/* Menu Items Grid */}
-        <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {activeCategory?.items.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => handleAddToCart(item)}
-                className="bg-white border border-gray-200 p-4 rounded-xl cursor-pointer hover:border-[#D4AF37] hover:shadow-md transition-all flex flex-col justify-between min-h-[120px]"
-              >
-                <div className="font-semibold text-gray-800 text-sm mb-2 leading-snug">{item.name}</div>
-                <div className="font-bold text-[#123524]">{item.price.toLocaleString()} Ks</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 🌟 ညာဘက်ခြမ်း: ငွေရှင်းမည့် Cart (Current Order) 🌟 */}
-      <div className="w-full md:w-1/3 flex flex-col bg-white h-[50vh] md:h-full">
-        <div className="p-4 bg-[#123524] text-white flex items-center justify-between shadow-sm">
-          <h2 className="font-bold text-lg flex items-center">
-            <ShoppingCart className="w-5 h-5 mr-2 text-[#D4AF37]" /> Current Order
-          </h2>
-          <span className="bg-white/20 text-xs px-2 py-1 rounded-full">{cart.length} Items</span>
-        </div>
-
-        {/* Cart Items List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50">
-          {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-gray-400">
-              <ShoppingCart className="w-12 h-12 mb-3 opacity-20" />
-              <p className="text-sm">ခြင်းတောင်းထဲတွင် ဘာမှမရှိသေးပါ</p>
-            </div>
-          ) : (
-            cart.map((item) => (
-              <div key={item.id} className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center">
-                <div className="flex-1">
-                  <div className="font-semibold text-sm text-gray-800">{item.name}</div>
-                  <div className="text-[#123524] font-bold text-sm mt-1">{(item.price * item.quantity).toLocaleString()} Ks</div>
-                </div>
-                <div className="flex items-center space-x-3 ml-2">
-                  <div className="flex items-center bg-gray-100 rounded-lg">
-                    <button onClick={() => updateQuantity(item.id, -1)} className="p-1.5 text-gray-600 hover:text-black"><Minus className="w-4 h-4" /></button>
-                    <span className="w-6 text-center font-bold text-sm">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.id, 1)} className="p-1.5 text-gray-600 hover:text-black"><Plus className="w-4 h-4" /></button>
-                  </div>
-                  <button onClick={() => removeFromCart(item.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                </div>
-              </div>
-            ))
           )}
+          <div>
+            <h1 className="font-bold text-base text-[#D4AF37]">The Shangri-La POS</h1>
+            <p className="text-xs text-gray-400">
+              {step === 'therapist' && 'အဆင့် ၁ - Therapist ရွေးချယ်ပါ'}
+              {step === 'services' && `အဆင့် ၂ - Service ရွေးချယ်ပါ (${selectedTherapist?.name})`}
+              {step === 'checkout' && 'အဆင့် ၃ - ငွေရှင်းမည် (Check Out)'}
+            </p>
+          </div>
         </div>
 
-        {/* Total & Checkout Button */}
-        <div className="p-4 bg-white border-t border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-gray-500 font-bold">Total Amount</span>
-            <span className="text-2xl font-bold text-[#123524]">{totalAmount.toLocaleString()} Ks</span>
+        {selectedTherapist && (
+          <div className="hidden sm:flex items-center bg-black/30 px-3 py-1.5 rounded-lg border border-[#D4AF37]/30 text-xs">
+            <User className="w-4 h-4 mr-1.5 text-[#D4AF37]" />
+            <span className="text-gray-300 font-semibold">{selectedTherapist.name}</span>
           </div>
-          <button 
-            disabled={cart.length === 0}
-            className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center transition-all ${
-              cart.length > 0 ? 'bg-[#123524] text-[#D4AF37] hover:bg-opacity-90 shadow-lg' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
-          >
-            <CreditCard className="w-5 h-5 mr-2" />
-            Charge (ငွေရှင်းမည်)
-          </button>
-        </div>
+        )}
       </div>
+
+      {/* ========================================================= */}
+      {/* 🌟 STEP 1: SELECT THERAPIST 🌟 */}
+      {/* ========================================================= */}
+      {step === 'therapist' && (
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
+          <div className="max-w-3xl mx-auto">
+            <h2 className="text-lg font-bold mb-4 text-center text-[#D4AF37]">ဝန်ထမ်း (Therapist) ရွေးချယ်ပါ</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {appData.therapists.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    setSelectedTherapist(t);
+                    setStep('services');
+                  }}
+                  className="bg-gray-800 border border-gray-700 hover:border-[#D4AF37] p-4 rounded-xl flex flex-col items-center justify-center text-center transition-all hover:bg-gray-750 group shadow-md"
+                >
+                  <div className="w-12 h-12 bg-[#123524] text-[#D4AF37] rounded-full flex items-center justify-center font-bold text-lg mb-2 group-hover:scale-105 transition shadow">
+                    {t.name.replace(/[^0-9]/g, '') || 'T'}
+                  </div>
+                  <span className="font-semibold text-sm text-gray-200 group-hover:text-[#D4AF37]">{t.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 🌟 STEP 2: SELECT SERVICES & CART (Loyverse Grid Layout) 🌟 */}
+      {/* ========================================================= */}
+      {step === 'services' && (
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          
+          {/* ဘယ်ဘက်ခြမ်း: Categories & Items */}
+          <div className="flex-1 flex flex-col border-r border-gray-800 bg-gray-900 overflow-hidden">
+            {/* Category Tabs */}
+            <div className="flex overflow-x-auto bg-gray-950 p-2 space-x-2 border-b border-gray-800">
+              {appData.categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategoryId(cat.id)}
+                  className={`px-4 py-2.5 rounded-lg font-bold text-xs whitespace-nowrap transition-all ${
+                    activeCategoryId === cat.id
+                      ? 'bg-[#123524] text-[#D4AF37] border border-[#D4AF37]/40 shadow'
+                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  {cat.title}
+                </button>
+              ))}
+            </div>
+
+            {/* Items Grid */}
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-gray-900">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {activeCategory?.items.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => handleAddToCart(item)}
+                    className="bg-gray-800 border border-gray-700/60 p-3 rounded-xl cursor-pointer hover:border-[#D4AF37] hover:bg-gray-750 transition-all flex flex-col justify-between min-h-[90px] shadow"
+                  >
+                    <div className="font-semibold text-gray-100 text-xs sm:text-sm line-clamp-2">{item.name}</div>
+                    <div className="font-bold text-[#D4AF37] text-xs sm:text-sm mt-2">{item.price.toLocaleString()} Ks</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ညာဘက်ခြမ်း: Current Cart (Order Summary) */}
+          <div className="w-full md:w-80 lg:w-96 flex flex-col bg-gray-950 border-t md:border-t-0 border-gray-800 h-[45vh] md:h-full">
+            <div className="p-3 bg-[#123524] text-[#D4AF37] font-bold flex justify-between items-center text-sm border-b border-gray-800">
+              <span className="flex items-center"><ShoppingCart className="w-4 h-4 mr-1.5" /> လက်ရှိမှာယူမှု (Cart)</span>
+              <span className="bg-black/30 px-2 py-0.5 rounded text-xs">{cart.length} Items</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {cart.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-gray-500 text-xs">
+                  <ShoppingCart className="w-10 h-10 mb-2 opacity-20" />
+                  <span>ဝန်ဆောင်မှုများ ရွေးချယ်ပါ</span>
+                </div>
+              ) : (
+                cart.map((item) => (
+                  <div key={item.id} className="bg-gray-900 p-2.5 rounded-lg border border-gray-800 flex justify-between items-center">
+                    <div className="flex-1 pr-2">
+                      <div className="text-xs font-semibold text-gray-200">{item.name}</div>
+                      <div className="text-xs text-[#D4AF37] font-bold mt-0.5">{(item.price * item.quantity).toLocaleString()} Ks</div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="flex items-center bg-gray-800 rounded border border-gray-700">
+                        <button onClick={() => updateQuantity(item.id, -1)} className="p-1 text-gray-400 hover:text-white"><Minus className="w-3 h-3" /></button>
+                        <span className="w-5 text-center text-xs font-bold">{item.quantity}</span>
+                        <button onClick={() => updateQuantity(item.id, 1)} className="p-1 text-gray-400 hover:text-white"><Plus className="w-3 h-3" /></button>
+                      </div>
+                      <button onClick={() => removeFromCart(item.id)} className="p-1 text-red-400 hover:bg-red-950/50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Bottom Total & Proceed to Checkout */}
+            <div className="p-3 bg-gray-900 border-t border-gray-800">
+              <div className="flex justify-between items-center mb-2 text-sm">
+                <span className="text-gray-400">ကျသင့်ငွေ စုစုပေါင်း</span>
+                <span className="text-lg font-bold text-[#D4AF37]">{totalAmount.toLocaleString()} Ks</span>
+              </div>
+              <button
+                disabled={cart.length === 0}
+                onClick={() => setStep('checkout')}
+                className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center transition ${
+                  cart.length > 0 ? 'bg-[#D4AF37] text-black hover:bg-yellow-500 shadow-lg' : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                }`}
+              >
+                <CreditCard className="w-4 h-4 mr-2" />
+                ငွေရှင်းရန် (Checkout)
+              </button>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 🌟 STEP 3: CHECKOUT & PAYMENT 🌟 */}
+      {/* ========================================================= */}
+      {step === 'checkout' && (
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
+          <div className="max-w-md mx-auto bg-gray-800 border border-gray-700 rounded-2xl p-5 shadow-xl">
+            <h2 className="text-lg font-bold text-center text-[#D4AF37] mb-4">ငွေပေးချေမှု အတည်ပြုခြင်း</h2>
+
+            <div className="bg-gray-900 p-3 rounded-xl mb-4 text-xs space-y-2 border border-gray-800">
+              <div className="flex justify-between text-gray-400">
+                <span>Therapist:</span>
+                <span className="font-bold text-white">{selectedTherapist?.name}</span>
+              </div>
+              <div className="flex justify-between text-gray-400">
+                <span>Item အရေအတွက်:</span>
+                <span className="font-bold text-white">{cart.reduce((a, b) => a + b.quantity, 0)} ခု</span>
+              </div>
+              <div className="border-t border-gray-800 pt-2 flex justify-between text-sm font-bold text-[#D4AF37]">
+                <span>စုစုပေါင်း ကျသင့်ငွေ:</span>
+                <span>{totalAmount.toLocaleString()} Ks</span>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-400 mb-2">ငွေပေးချေမည့် နည်းလမ်း (Payment Method)</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['KBZ PAY', 'CASH', 'CB PAY', 'WAVEPAY'].map((method) => (
+                  <button
+                    key={method}
+                    onClick={() => setPaymentMethod(method)}
+                    className={`py-2.5 px-3 rounded-lg font-bold text-xs border transition ${
+                      paymentMethod === method
+                        ? 'bg-[#123524] text-[#D4AF37] border-[#D4AF37]'
+                        : 'bg-gray-900 text-gray-400 border-gray-700 hover:bg-gray-750'
+                    }`}
+                  >
+                    {method}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={handleCompleteSale}
+              className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-green-700 text-white font-bold rounded-xl text-sm shadow-lg hover:opacity-90 transition flex items-center justify-center"
+            >
+              <ShieldCheck className="w-5 h-5 mr-2" />
+              အရောင်းအတည်ပြုမည် (Complete Sale)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 🌟 SUCCESS MODAL 🌟 */}
+      {/* ========================================================= */}
+      {isSuccessModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl animate-fade-in">
+            <div className="w-16 h-16 bg-emerald-900/50 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/30">
+              <CheckCircle className="w-10 h-10" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-1">ငွေရှင်းခြင်း အောင်မြင်သည်!</h3>
+            <p className="text-xs text-gray-400 mb-6">အရောင်းစာရင်းကို Database တွင် သိမ်းဆည်းပြီးပါပြီ။</p>
+            <button
+              onClick={resetPOS}
+              className="w-full py-3 bg-[#123524] text-[#D4AF37] font-bold rounded-xl text-sm border border-[#D4AF37]/30 hover:bg-opacity-90 transition shadow"
+            >
+              အရောင်းအသစ် စတင်ရန် (New Sale)
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );
