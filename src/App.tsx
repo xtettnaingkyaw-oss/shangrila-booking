@@ -8,8 +8,7 @@ import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, Pr
 
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
 import CustomerApp from './pages/CustomerApp'; 
-import POSScreen from './pages/POSScreen';
-
+import POSScreen from './pages/POSScreen'; // 🌟 POS Screen ကို Import ခေါ်ခြင်း 🌟
 const AdminApp = lazy(() => import('./pages/AdminApp'));
 const StaffApp = lazy(() => import('./pages/StaffApp'));
 
@@ -56,7 +55,6 @@ function MainApp() {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
 
-  // 🌟 FIX: Notification ကြောင့် App မကျစေရန် Try-Catch ဖြင့် သေချာစွာစစ်ဆေးထားပါသည် 🌟
   useEffect(() => {
     const setupNotifications = async () => {
       try {
@@ -69,24 +67,10 @@ function MainApp() {
           }
         }
       } catch (err) {
-        console.warn("Notification Error (Handled):", err);
+        console.warn("Notification Error:", err);
       }
     };
-
     setupNotifications();
-
-    try {
-      if (messaging && typeof onMessage === 'function') {
-        const unsubscribe = onMessage(messaging, (payload) => {
-          if (payload?.notification) {
-            alert(`${payload.notification.title}\n${payload.notification.body}`);
-          }
-        });
-        return () => unsubscribe();
-      }
-    } catch (err) {
-      console.warn("FCM Listener Error:", err);
-    }
   }, []);
 
   useEffect(() => {
@@ -96,33 +80,12 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
-    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) { setIsStandalone(true); }
-    const handleBeforeInstallPrompt = (e: any) => { e.preventDefault(); setDeferredPrompt(e); };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-  }, []);
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get('mode') === 'admin') setAppMode('admin');
+    else if (searchParams.get('mode') === 'staff') setAppMode('staff');
+    else if (searchParams.get('mode') === 'pos') setAppMode('pos'); // 🌟 POS Mode စစ်ဆေးခြင်း 🌟
 
-  const handleDownloadApp = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') { setDeferredPrompt(null); setIsStandalone(true); }
-    } else { setShowInstallModal(true); }
-  };
-
-  useEffect(() => {
-    document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
-    if (appData?.branding?.logoUrl) { 
-        localStorage.setItem('shangrila_logo_cache', appData.branding.logoUrl);
-    }
-  }, [appData?.branding?.logoUrl, appData?.branding?.name]);
-
-  useEffect(() => {
-  const searchParams = new URLSearchParams(window.location.search);
-  if (searchParams.get('mode') === 'admin') setAppMode('admin');
-  else if (searchParams.get('mode') === 'staff') setAppMode('staff');
-  else if (searchParams.get('mode') === 'pos') setAppMode('pos'); // 🌟 POS Link အတွက် စစ်ဆေးခြင်း 🌟
-
-  signInAnonymously(auth).catch((error) => { console.error("Firebase Auth Error:", error); });
+    signInAnonymously(auth).catch((error) => { console.error("Firebase Auth Error:", error); });
 
     const initData = async () => {
       try {
@@ -181,17 +144,22 @@ function MainApp() {
       </header>
 
       <main className="flex-1 w-full max-w-6xl mx-auto p-4 py-6">
-  <Suspense fallback={<div className="text-center py-20 font-bold text-[#123524] flex flex-col items-center"><div className="w-10 h-10 border-4 border-[#123524] border-t-[#D4AF37] rounded-full animate-spin mb-4"></div>Loading App Module...</div>}>
-      {appMode === 'admin' ? (
-        <AdminApp appData={appData} onSettingsUpdated={setAppData} />
-      ) : appMode === 'staff' ? (
-        <StaffApp appData={appData} />
-      ) : appMode === 'pos' ? (
-        <POSScreen appData={appData} />
-      ) : (
-        <CustomerApp appData={appData} />
-      )}
-  </Suspense>
-</main>
+        <Suspense fallback={<div className="text-center py-20 font-bold">Loading...</div>}>
+            {appMode === 'admin' ? (
+              <AdminApp appData={appData} onSettingsUpdated={setAppData} />
+            ) : appMode === 'staff' ? (
+              <StaffApp appData={appData} />
+            ) : appMode === 'pos' ? (
+              <POSScreen appData={appData} />
+            ) : (
+              <CustomerApp appData={appData} />
+            )}
+        </Suspense>
+      </main>
+    </div>
+  );
+}
 
-export default function App() { return <ErrorBoundary><MainApp /></ErrorBoundary>; }
+export default function App() { 
+  return <ErrorBoundary><MainApp /></ErrorBoundary>; 
+}
