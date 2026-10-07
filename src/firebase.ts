@@ -43,7 +43,7 @@ export const requestNotificationPermission = async () => {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
 
 import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 
