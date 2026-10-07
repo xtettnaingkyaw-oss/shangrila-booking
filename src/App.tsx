@@ -8,6 +8,8 @@ import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, Pr
 
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
 import CustomerApp from './pages/CustomerApp'; 
+import POSScreen from './pages/POSScreen';
+
 const AdminApp = lazy(() => import('./pages/AdminApp'));
 const StaffApp = lazy(() => import('./pages/StaffApp'));
 
@@ -185,7 +187,7 @@ function MainApp() {
       ) : appMode === 'staff' ? (
         <StaffApp appData={appData} />
       ) : appMode === 'pos' ? (
-        <POSScreen appData={appData} />   {/* 🌟 POS Link (?mode=pos) ဖြင့် ဝင်လာပါက ဤမျက်နှာပြင် ပွင့်မည် 🌟 */}
+        <POSScreen appData={appData} />
       ) : (
         <CustomerApp appData={appData} />
       )}
