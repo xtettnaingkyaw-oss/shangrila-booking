@@ -44,6 +44,27 @@ export const requestNotificationPermission = async () => {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+
+// ... (အစ်ကို့ရဲ့ လက်ရှိ Firebase app config များ) ...
+
+export const db = getFirestore(app);
+
+// 🌟 FIX: Offline တွင်ပါ အလုပ်လုပ်နိုင်ရန် Persistence ကို ဖွင့်ခြင်း 🌟
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db)
+    .catch((err) => {
+      if (err.code === 'failed-precondition') {
+        // Browser Tab အများကြီးဖွင့်ထားလျှင် ပေါ်တတ်သော Warning
+        console.warn('Multiple tabs open, offline mode can only be enabled in one tab at a time.');
+      } else if (err.code === 'unimplemented') {
+        // Browser က Offline Mode ကို Support မလုပ်လျှင်
+        console.warn('The current browser does not support offline database.');
+      }
+    });
+}
+
 export const auth = getAuth(app);
 export const secondaryAuth = getAuth(app); // သင့် မူလ Code အရ ပါဝင်သည်ဟု ယူဆပါသည်
 export const storage = getStorage(app); // 👈 အသစ်ထည့်ထားသည်
