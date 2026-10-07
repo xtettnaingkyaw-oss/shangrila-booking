@@ -77,6 +77,33 @@ function MainApp() {
   const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
+  const setupNotifications = async () => {
+    const token = await requestNotificationPermission();
+    if (token) {
+      // 🌟 ရရှိလာသော Device Token ကို Firestore 'fcm_tokens' collection ထဲတွင် သိမ်းပါမည် 🌟
+      await setDoc(doc(db, 'fcm_tokens', token), {
+        token: token,
+        updatedAt: new Date(),
+        device: navigator.userAgent
+      }, { merge: true });
+    }
+  };
+
+  setupNotifications();
+
+  // 🌟 App ဖွင့်ထားချိန်တွင် Foreground Notification ဝင်လာပါက အလုပ်လုပ်မည် 🌟
+  if (messaging) {
+    const unsubscribe = onMessage(messaging, (payload) => {
+      if (payload.notification) {
+        // In-app Notification အနေဖြင့် လောလောဆယ် Alert ပြထားပါသည်
+        alert(`${payload.notification.title}\n${payload.notification.body}`);
+      }
+    });
+    return () => unsubscribe();
+  }
+}, []);
+
+  useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
