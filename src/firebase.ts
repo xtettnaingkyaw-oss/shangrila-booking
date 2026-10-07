@@ -12,30 +12,29 @@ const firebaseConfig = {
   appId: "1:696764910771:web:04fb68544c4db32ff9b4c6"
 };
 
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
-// (အပေါ်မှာ အစ်ကို့ရဲ့ ရှိပြီးသား Firebase Config နဲ့ app တွေ ရှိရပါမည်)
+import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 
-// Messaging Service အား Initialize လုပ်ခြင်း
-export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+// 🌟 FIX: Browser က Support လုပ်မှသာ Initialize လုပ်ပါမည် (App White Screen မဖြစ်စေရန်) 🌟
+export let messaging: any = null;
 
-// User ထံမှ Notification ခွင့်ပြုချက်တောင်းပြီး FCM Token ယူမည့် Function
+if (typeof window !== 'undefined') {
+  isSupported().then((supported) => {
+    if (supported) {
+      messaging = getMessaging(app);
+    }
+  }).catch(console.error);
+}
+
 export const requestNotificationPermission = async () => {
   try {
-    if (!('Notification' in window)) {
-      console.warn('This browser does not support desktop notification');
-      return null;
-    }
+    if (!('Notification' in window) || !messaging) return null;
 
     const permission = await Notification.requestPermission();
-    if (permission === 'granted' && messaging) {
+    if (permission === 'granted') {
       const token = await getToken(messaging, {
-        // 🌟 အစ်ကိုပေးထားသော VAPID Key ကို ဤနေရာတွင် ထည့်သွင်းထားပါသည် 🌟
-        vapidKey: 'BNYy7H0Fu754PLYQJmo_3Zx9qEmn44r_7xX4zosbpDIDIFe6rI1lgrayPntQfA9PhKEZy7NaWgIUvIFKTS3J54U' 
+        vapidKey: 'BNYy7H0Fu754PLYQJmo_3Zx9qEmn44r_7xX4zosbpDIDIFe6rI1lgrayPntQfA9PhKEZy7NaWgIUvIFKTS3J54U'
       });
-      console.log('FCM Token Generated:', token);
       return token;
-    } else {
-      console.log('Notification permission denied by user.');
     }
   } catch (error) {
     console.error('Error getting notification token:', error);
