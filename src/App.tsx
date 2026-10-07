@@ -1,11 +1,14 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
+// 🌟 FIX: setDoc ကို firebase/firestore မှ ထည့်သွင်းထားပါသည် 🌟
+import { doc, getDoc, collection, getDocs, query, orderBy, setDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth'; 
-import { db, auth } from './firebase'; 
+// 🌟 FIX: requestNotificationPermission နှင့် messaging ကို firebase ဖိုင်မှ လှမ်းခေါ်ထားပါသည် 🌟
+import { db, auth, requestNotificationPermission, messaging } from './firebase'; 
+// 🌟 FIX: onMessage ကို firebase/messaging မှ လှမ်းခေါ်ထားပါသည် 🌟
+import { onMessage } from 'firebase/messaging';
 import { Download, X, MapPin, Phone, LogOut, DatabaseBackup } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
 
-// 🌟 Premium Loading Screen ကို Import ခေါ်ယူခြင်း 🌟
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
 
 import CustomerApp from './pages/CustomerApp'; 
@@ -77,31 +80,30 @@ function MainApp() {
   const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
-  const setupNotifications = async () => {
-    const token = await requestNotificationPermission();
-    if (token) {
-      // 🌟 ရရှိလာသော Device Token ကို Firestore 'fcm_tokens' collection ထဲတွင် သိမ်းပါမည် 🌟
-      await setDoc(doc(db, 'fcm_tokens', token), {
-        token: token,
-        updatedAt: new Date(),
-        device: navigator.userAgent
-      }, { merge: true });
-    }
-  };
-
-  setupNotifications();
-
-  // 🌟 App ဖွင့်ထားချိန်တွင် Foreground Notification ဝင်လာပါက အလုပ်လုပ်မည် 🌟
-  if (messaging) {
-    const unsubscribe = onMessage(messaging, (payload) => {
-      if (payload.notification) {
-        // In-app Notification အနေဖြင့် လောလောဆယ် Alert ပြထားပါသည်
-        alert(`${payload.notification.title}\n${payload.notification.body}`);
+    const setupNotifications = async () => {
+      // requestNotificationPermission ကို အသုံးပြုနိုင်ပါပြီ
+      const token = await requestNotificationPermission();
+      if (token) {
+        // setDoc ကို အသုံးပြုနိုင်ပါပြီ
+        await setDoc(doc(db, 'fcm_tokens', token), {
+          token: token,
+          updatedAt: new Date(),
+          device: navigator.userAgent
+        }, { merge: true });
       }
-    });
-    return () => unsubscribe();
-  }
-}, []);
+    };
+
+    setupNotifications();
+
+    if (messaging) {
+      const unsubscribe = onMessage(messaging, (payload) => {
+        if (payload.notification) {
+          alert(`${payload.notification.title}\n${payload.notification.body}`);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -133,7 +135,6 @@ function MainApp() {
     };
     if (appData?.branding?.logoUrl) { 
         updateFavicon(appData.branding.logoUrl); 
-        // 🌟 FIX: Logo အစစ်ကို Loading Screen တွင်သုံးရန် Local Storage သို့ သိမ်းပါမည် 🌟
         localStorage.setItem('shangrila_logo_cache', appData.branding.logoUrl);
     }
   }, [appData?.branding?.logoUrl, appData?.branding?.name]);
@@ -190,7 +191,6 @@ function MainApp() {
       );
   }
 
- // 🌟 FIX: Data ရ/မရ ကိုပါ တွက်ချက်ပြီး၊ Progress Bar အပြည့်ဖြစ်မှသာ App ပွင့်စေမည် 🌟
   if (!isLoaderFinished) { 
       return <PremiumLoadingScreen isDataReady={!!appData} onFinish={() => setIsLoaderFinished(true)} />; 
   }
@@ -231,7 +231,6 @@ function MainApp() {
           <h1 className={`font-bold font-serif tracking-wide transition-all duration-300 ${isScrolled ? 'text-lg sm:text-xl' : 'text-2xl'}`} style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'}</h1>
         </div>
         
-        {/* စာလုံးကို ပိုကြီးအောင် text-[10px] sm:text-[11px] သို့ ပြင်ဆင်ထားပါသည် */}
         <p className={`font-bold uppercase tracking-[0.2em] transition-all duration-300 overflow-hidden ${isScrolled ? 'h-0 opacity-0 m-0' : 'h-auto opacity-100 text-[10px] sm:text-[11px] mt-1.5'}`} style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
         
         {!isStandalone && appMode === 'customer' && (
