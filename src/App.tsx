@@ -8,7 +8,7 @@ import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, Pr
 
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
 import CustomerApp from './pages/CustomerApp'; 
-import POSScreen from './pages/POSScreen'; // 🌟 POS Screen ကို Import ခေါ်ခြင်း 🌟
+import POSScreen from './pages/POSScreen'; 
 const AdminApp = lazy(() => import('./pages/AdminApp'));
 const StaffApp = lazy(() => import('./pages/StaffApp'));
 
@@ -83,7 +83,7 @@ function MainApp() {
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('mode') === 'admin') setAppMode('admin');
     else if (searchParams.get('mode') === 'staff') setAppMode('staff');
-    else if (searchParams.get('mode') === 'pos') setAppMode('pos'); // 🌟 POS Mode စစ်ဆေးခြင်း 🌟
+    else if (searchParams.get('mode') === 'pos') setAppMode('pos');
 
     signInAnonymously(auth).catch((error) => { console.error("Firebase Auth Error:", error); });
 
@@ -110,6 +110,39 @@ function MainApp() {
     };
     initData();
   }, []);
+
+  // 🌟 FIX: Dynamic Favicon & Tab Title (Logo ကို Browser Tab တွင် ပေါ်စေရန်) 🌟
+  useEffect(() => {
+    if (appData?.branding) {
+      // 1. Update Document Title
+      document.title = appData.branding.name 
+        ? `${appData.branding.name} | Men's Retreat` 
+        : "The Shangri-La | Men's Retreat";
+
+      // 2. Update Favicon (Browser Tab Logo) & Apple Touch Icon (Home Screen Logo)
+      if (appData.branding.logoUrl) { 
+        localStorage.setItem('shangrila_logo_cache', appData.branding.logoUrl);
+        
+        // Update standard favicon
+        let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+        if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+        }
+        link.href = appData.branding.logoUrl;
+        
+        // Update iOS Apple Touch Icon (For Add to Home Screen)
+        let appleLink: HTMLLinkElement | null = document.querySelector("link[rel='apple-touch-icon']");
+        if (!appleLink) {
+            appleLink = document.createElement('link');
+            appleLink.rel = 'apple-touch-icon';
+            document.head.appendChild(appleLink);
+        }
+        appleLink.href = appData.branding.logoUrl;
+      }
+    }
+  }, [appData?.branding?.logoUrl, appData?.branding?.name]);
 
   if (dbError) {
       return (
