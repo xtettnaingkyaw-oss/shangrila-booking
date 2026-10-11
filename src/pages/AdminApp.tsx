@@ -3044,6 +3044,25 @@ function AdminCampaignsView() {
 
     const filtered = records.filter(r => r.phone?.includes(search));
 
+    // 🌟 User ဆီသို့ Telegram မှ စာလှမ်းပို့မည့် Function 🌟
+    const handleContactUser = (phone: string, discount: number) => {
+        if (!phone) return;
+        
+        // ဖုန်းနံပါတ်ကို Telegram လက်ခံသော Format ပြောင်းခြင်း (09 သို့မဟုတ် 959 မှ +959 သို့)
+        let formattedPhone = phone.replace(/[^0-9+]/g, '');
+        if (formattedPhone.startsWith('09')) {
+            formattedPhone = '+959' + formattedPhone.substring(2);
+        } else if (!formattedPhone.startsWith('+')) {
+            formattedPhone = '+' + formattedPhone;
+        }
+        
+        // ပို့မည့်စာသား (Pre-filled message)
+        const msg = encodeURIComponent(`မင်္ဂလာပါရှင်။ Shangri-La Men's Retreat မှ ဆက်သွယ်တာပါ။ \nလူကြီးမင်း ရရှိထားသော Discount (${discount}% OFF) အား လာရောက်အသုံးပြုနိုင်ပါပြီရှင်။`);
+        
+        // Telegram သို့ လင့်ခ်ဖွင့်ခြင်း
+        window.open(`https://t.me/${formattedPhone}?text=${msg}`, '_blank');
+    };
+
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
@@ -3058,6 +3077,7 @@ function AdminCampaignsView() {
                         onChange={(e) => setSearch(e.target.value)} 
                         className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-orange-500 text-sm font-semibold" 
                     />
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
                 </div>
             </div>
             
@@ -3079,9 +3099,14 @@ function AdminCampaignsView() {
                                 <td className="p-3 font-mono font-bold text-[#123524] tracking-wider">{r.phone}</td>
                                 <td className="p-3">
                                     {r.telegramClicked ? (
-                                        <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-2 py-1 rounded font-bold flex items-center w-fit">
-                                            <MessageCircle className="w-3 h-3 mr-1" /> Telegram User
-                                        </span>
+                                        // 🌟 ခလုတ်အဖြစ် ပြောင်းလဲလိုက်ပြီး နှိပ်ပါက Telegram ပွင့်လာပါမည် 🌟
+                                        <button 
+                                            onClick={() => handleContactUser(r.phone, r.discountPercent)}
+                                            className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg font-bold flex items-center w-fit cursor-pointer hover:bg-blue-100 hover:shadow-sm active:scale-95 transition-all"
+                                            title="Click to Message via Telegram"
+                                        >
+                                            <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> Telegram သို့ ပို့မည်
+                                        </button>
                                     ) : (
                                         <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded font-bold">App Only</span>
                                     )}
