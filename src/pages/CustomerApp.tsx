@@ -7,6 +7,7 @@ import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, Ch
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 import { useAppStore } from '../AppDataContext';
+import ThadingyutCampaign from './ThadingyutCampaign';
 
 // ==========================================
 // CONSTANTS & HELPERS
@@ -2691,11 +2692,17 @@ const renderServiceSelection = (currentStep: number) => (
   );
 }
 
-// 🌟 THE COMPONENT THAT RENDERS THE TABS AND MAIN VIEW (Moved to bottom) 🌟
+// 🌟 THE COMPONENT THAT RENDERS THE TABS AND MAIN VIEW 🌟
 // ==========================================
 // CUSTOMER APP WIDGET (TABS & NAVIGATION)
 // ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
+  // 🌟 FIX: URL တွင် campaign=true ပါလာပါက Campaign Popup ကို ချက်ချင်း ပြန်ပြပေးမည် 🌟
+  const [showCampaign, setShowCampaign] = useState(() => {
+       const searchParams = new URLSearchParams(window.location.search);
+       return searchParams.get('campaign') === 'true';
+  });
+
   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
        const searchParams = new URLSearchParams(window.location.search);
        const view = searchParams.get('view');
@@ -2831,15 +2838,31 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
           </div>
        </div>
        
-       {/* 🌟 Main Content Area */}
+      {/* 🌟 Main Content Area */}
        <div className="max-w-2xl mx-auto px-4 sm:px-0">
-           {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
-           {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
-           {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
-           {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
-           {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
-           {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
+           {/* 🌟 FIX: showCampaign True ဖြစ်နေပါက ThadingyutCampaign ကိုသာ ပြသမည် 🌟 */}
+           {showCampaign ? (
+               <div className="fixed inset-0 z-[100] bg-black">
+                   <ThadingyutCampaign appData={mergedAppData} />
+                   <button 
+                       onClick={() => {
+                           setShowCampaign(false);
+                           // URL ကို ပြန်ရှင်းမည်
+                           window.history.pushState({}, '', '/');
+                       }}
+                       className="absolute top-4 right-4 z-[200] text-white bg-black/50 p-2 rounded-full hover:bg-black/80"
+                   >
+                       <X className="w-6 h-6"/>
+                   </button>
+               </div>
+           ) : (
+               <>
+                   {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
+                   {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
+                   {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
+                   {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
+                   {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
+                   {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
+               </>
+           )}
        </div>
-     </div>
-   );
-}
