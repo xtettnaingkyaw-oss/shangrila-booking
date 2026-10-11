@@ -54,8 +54,15 @@ export interface AppBranding {
 }
 
 export interface PromotionSettings {
-  isActive: boolean;
-  title: string;
+  // Box အတွက် Settings
+  isBoxActive: boolean;          // 🌟 Customer App ထဲက Box အဟောင်းအတွက်
+  boxTitle?: string;             // Box ခေါင်းစဉ် (ဥပမာ: "Special Discount")
+  
+  // Popup/Campaign အတွက် Settings
+  isPopupActive: boolean;        // 🌟 App အဖွင့်မှာတက်လာမယ့် Popup အတွက်
+  campaignTitle?: string;        // Popup/Game ခေါင်းစဉ် (ဥပမာ: "သီတင်းကျွတ် အထူးပရိုမိုးရှင်း")
+  
+  // အခြား Settings
   hotelDiscountPercent: number;
   otherDiscountPercent: number;
   startDate: string;
