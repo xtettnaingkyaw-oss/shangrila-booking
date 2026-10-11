@@ -3027,39 +3027,22 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 function AdminCampaignsView() {
     const [records, setRecords] = useState<any[]>([]);
     const [search, setSearch] = useState('');
-    const [loading, setLoading] = useState(true); // Loading state ထည့်ပါ
 
     useEffect(() => {
         const fetchRecords = async () => {
-            setLoading(true);
             try {
-                // 🌟 FIX: orderBy မပါဘဲ အရင်ဆွဲယူကြည့်ပါမည် (Index ပြဿနာ မရှိစေရန်)
                 const q = query(collection(db, 'campaign_records')); 
                 const snap = await getDocs(q);
                 const data: any[] = [];
-                snap.forEach(d => {
-                    data.push({ id: d.id, ...d.data() });
-                });
-                
-                // Client ဖက်ရောက်မှ Date အတိုင်း အစဉ်လိုက် ပြန်စီပါမည်
+                snap.forEach(d => { data.push({ id: d.id, ...d.data() }); });
                 data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                
                 setRecords(data);
-                console.log("Fetched Campaign Records:", data); // Browser Console တွင် စစ်ဆေးရန်
-            } catch (error) {
-                console.error("Error fetching records:", error);
-                alert("မှတ်တမ်းများ ဆွဲယူရာတွင် အခက်အခဲရှိနေပါသည်။ Firebase Rules ကို စစ်ဆေးပါ။");
-            }
-            setLoading(false);
+            } catch (error) {}
         };
         fetchRecords();
     }, []);
 
     const filtered = records.filter(r => r.phone?.includes(search));
-
-    if (loading) {
-        return <div className="p-10 text-center text-gray-500 font-bold">Loading Records...</div>;
-    }
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
@@ -3075,18 +3058,16 @@ function AdminCampaignsView() {
                         onChange={(e) => setSearch(e.target.value)} 
                         className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-orange-500 text-sm font-semibold" 
                     />
-                    {/* Search icon ကို ခေါ်မသုံးထားရင် ဖျက်နိုင်ပါတယ် သို့မဟုတ် ပြန်ထည့်ပါ */}
-                    <span className="text-gray-400 absolute left-3 top-2.5">🔍</span> 
                 </div>
             </div>
             
             <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[600px]">
+                <table className="w-full text-left border-collapse min-w-[700px]">
                     <thead>
                         <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
                             <th className="p-3 pb-4">Date & Time</th>
                             <th className="p-3 pb-4">Phone Number</th>
-                            <th className="p-3 pb-4">Campaign Title</th>
+                            <th className="p-3 pb-4">Contact Source</th>
                             <th className="p-3 pb-4 text-right">Discount Won</th>
                         </tr>
                     </thead>
@@ -3096,7 +3077,15 @@ function AdminCampaignsView() {
                             <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
                                 <td className="p-3 text-gray-600 font-semibold">{r.date}</td>
                                 <td className="p-3 font-mono font-bold text-[#123524] tracking-wider">{r.phone}</td>
-                                <td className="p-3 text-xs text-gray-500">{r.title || 'Unknown Campaign'}</td>
+                                <td className="p-3">
+                                    {r.telegramClicked ? (
+                                        <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-2 py-1 rounded font-bold flex items-center w-fit">
+                                            <MessageCircle className="w-3 h-3 mr-1" /> Telegram User
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded font-bold">App Only</span>
+                                    )}
+                                </td>
                                 <td className="p-3 text-right">
                                     <span className="font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 shadow-sm">
                                         {r.discountPercent}% OFF
