@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { PartyPopper, ArrowLeft, Sparkles, Timer, User } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { PartyPopper, ArrowLeft, Sparkles, Timer, UserCircle, LogIn } from 'lucide-react';
 import { AppData } from '../shared';
 import { db } from '../firebase';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
@@ -16,23 +16,26 @@ interface Lantern {
 }
 
 export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps) {
-  // States
   const [gameState, setGameState] = useState<'start' | 'playing' | 'opening' | 'result'>('start');
   const [timeLeft, setTimeLeft] = useState(15);
   const [lanterns, setLanterns] = useState<Lantern[]>([]);
   const [prize, setPrize] = useState<number>(0);
   
-  // User Authentication
+  // 🌟 Local Storage မှ Login ဝင်ထားသော ဖုန်းနံပါတ်ကို Auto ယူမည် 🌟
   const [userPhone, setUserPhone] = useState<string>('');
-  const [hasPlayedToday, setHasPlayedToday] = useState(false);
   const [checkingUser, setCheckingUser] = useState(false);
-
-  // Animation States
   const [caughtLantern, setCaughtLantern] = useState<{ id: number, left: number, top: number } | null>(null);
 
-  const campaignTitle = appData?.promotion?.campaignTitle || "သီတင်းကျွတ် အထူးပရိုမိုးရှင်း";
+  const campaignTitle = appData?.promotion?.campaignTitle || "အထူး ပရိုမိုးရှင်း အစီအစဉ်";
 
-  // Weighted Randomizer (၁၅% အများဆုံး၊ ၅၀% အနည်းဆုံး)
+  useEffect(() => {
+      // Component စပွင့်သည်နှင့် LocalStorage တွင် ဖုန်းနံပါတ် ရှိမရှိ စစ်ဆေးမည်
+      const savedPhone = localStorage.getItem('shangrila_user_phone');
+      if (savedPhone) {
+          setUserPhone(savedPhone);
+      }
+  }, []);
+
   const calculatePrize = () => {
     const rand = Math.random() * 100;
     if (rand < 40) return 15;
@@ -42,41 +45,33 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     return 50;
   };
 
-  // Get Today's Date String (YYYY-MM-DD)
   const getTodayStr = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  // Check if User already played today
-  const checkUserStatus = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (userPhone.trim().length < 9) {
-      alert("ဖုန်းနံပါတ် အမှန် ရိုက်ထည့်ပါ");
-      return;
-    }
+  const startGame = async () => {
+    if (!userPhone) return;
 
     setCheckingUser(true);
     try {
-      // 🌟 ပြင်ဆင်ချက်: Multiple where clauses သုံးပါက Firebase တွင် Index လိုအပ်တတ်ပါသည်။
-      // ယာယီအားဖြင့် Date တစ်ခုတည်းကိုသာ Query လုပ်ပြီး ဖုန်းနံပါတ်ကို Client-side တွင် စစ်ဆေးပါမည်။
-      // သို့မှသာ Index လိုအပ်သည့် Error မှ ကင်းဝေးပါမည်။
-      const q = query(
-        collection(db, 'campaign_records'), 
-        where('date', '==', getTodayStr())
-      );
+      // 🌟 Security Rule Error ကို ကာကွယ်ရန် တိုက်ရိုက် Query မလုပ်ဘဲ 
+      // User ဖုန်းနံပါတ်ဖြင့်သာ Filter ခံ၍ စစ်ဆေးပါမည်
+      const q = query(collection(db, 'campaign_records'));
       const querySnapshot = await getDocs(q);
 
       let alreadyPlayed = false;
+      const today = getTodayStr();
+
       querySnapshot.forEach((doc) => {
-        if (doc.data().phone === userPhone.trim()) {
+        const data = doc.data();
+        if (data.phone === userPhone && data.date === today) {
           alreadyPlayed = true;
         }
       });
 
       if (alreadyPlayed) {
-        setHasPlayedToday(true);
-        alert("သင်သည် ယနေ့အတွက် ကံစမ်းပြီးဖြစ်ပါသည်။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။");
+        alert("လူကြီးမင်းသည် ယနေ့အတွက် ကံစမ်းပြီးဖြစ်ပါသည်။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။");
       } else {
         setGameState('playing');
         setTimeLeft(15);
@@ -84,13 +79,16 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       }
     } catch (error: any) {
       console.error("Error checking user:", error);
-      // 🌟 ပြင်ဆင်ချက်: အမှန်တကယ်ဖြစ်နေသော Error Message ကို ပြသပေးမည်
-      alert(`ချိတ်ဆက်မှု အခက်အခဲဖြစ်နေပါသည်။ Error: ${error.message}`);
+      // Firebase Rules ကြောင့် Error တက်ပါက ရှင်းလင်းစွာ ပြသမည်
+      if (error.message?.includes("Missing or insufficient permissions")) {
+          alert("Database ချိတ်ဆက်မှု အခက်အခဲဖြစ်နေပါသည်။ (Firebase Security Rules အား 'campaign_records' အတွက် ဖွင့်ပေးရန် လိုအပ်ပါသည်)");
+      } else {
+          alert("အင်တာနက်ချိတ်ဆက်မှု အခက်အခဲဖြစ်နေပါသည်။ ပြန်လည်ကြိုးစားကြည့်ပါ။");
+      }
     }
     setCheckingUser(false);
   };
 
-  // Playing State Interval
   useEffect(() => {
     let lanternInterval: any;
     let timerInterval: any;
@@ -119,12 +117,10 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     return () => { clearInterval(lanternInterval); clearInterval(timerInterval); };
   }, [gameState]);
 
-  // Catch the Lantern
   const catchLantern = (e: React.MouseEvent | React.TouchEvent, id: number) => {
     e.stopPropagation();
     if (gameState !== 'playing') return;
 
-    // Get Click Coordinates for Animation
     let clientX = 0, clientY = 0;
     if ('touches' in e) {
       clientX = e.touches[0].clientX;
@@ -138,12 +134,11 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     setPrize(calculatePrize());
     setGameState('opening');
 
-    // Save to Database
     saveRecordToDB();
   };
 
   const saveRecordToDB = async () => {
-    const finalPrize = calculatePrize(); // re-calculate to ensure sync
+    const finalPrize = calculatePrize(); 
     setPrize(finalPrize);
 
     try {
@@ -159,9 +154,13 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     }
   };
 
-  // Open the caught lantern after animation
   const openCaughtLantern = () => {
     setGameState('result');
+  };
+
+  // Login စာမျက်နှာသို့ သွားရန် Function
+  const goToLogin = () => {
+      window.location.href = '/?view=profile';
   };
 
   return (
@@ -222,33 +221,41 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
       <div className="flex-1 relative flex items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-950 via-black to-black">
         
-        {/* START SCREEN (PHONE INPUT) */}
+        {/* START SCREEN */}
         {gameState === 'start' && (
           <div className="text-center z-10 p-6 bg-black/60 border border-yellow-600/50 rounded-2xl backdrop-blur-md max-w-sm w-full mx-4 shadow-[0_0_30px_rgba(255,215,0,0.1)]">
             <div className="flex justify-center mb-4"><span className="text-6xl animate-bounce">🏮</span></div>
             <h2 className="text-2xl font-bold text-yellow-400 mb-2">{campaignTitle}</h2>
-            <p className="text-gray-300 text-xs mb-6 leading-relaxed">မီးပုံးလေးတွေကို ဖမ်းပြီး ၅၀% အထိ Discount ရယူရန် သင့်ဖုန်းနံပါတ် ထည့်သွင်းပါ။ (တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</p>
+            <p className="text-gray-300 text-xs mb-6 leading-relaxed">မီးပုံးလေးတွေကို ဖမ်းပြီး ၅၀% အထိ Discount ရယူပါ။ (တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</p>
             
-            <form onSubmit={checkUserStatus} className="space-y-4">
-              <div className="relative">
-                <User className="absolute left-3 top-3.5 w-5 h-5 text-gray-500" />
-                <input 
-                  type="tel" 
-                  value={userPhone}
-                  onChange={(e) => setUserPhone(e.target.value)}
-                  placeholder="09..." 
-                  className="w-full pl-10 pr-4 py-3 bg-black/50 border border-yellow-600/50 rounded-xl outline-none focus:border-yellow-400 text-yellow-500 font-bold tracking-widest text-center"
-                  required
-                />
-              </div>
-              <button 
-                type="submit" 
-                disabled={checkingUser}
-                className="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-500 rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,165,0,0.5)] hover:scale-105 transition-transform text-white flex items-center justify-center disabled:opacity-50"
-              >
-                {checkingUser ? 'စစ်ဆေးနေပါသည်...' : <><Sparkles className="w-5 h-5 mr-2" /> ကစားမည် (Play Now)</>}
-              </button>
-            </form>
+            {/* 🌟 Login ဝင်ထားခြင်း ရှိမရှိ စစ်ဆေးပြီး ပုံစံပြောင်းပြမည် 🌟 */}
+            {userPhone ? (
+               <div className="space-y-4">
+                  <div className="bg-black/40 border border-yellow-600/30 rounded-xl p-3 flex items-center justify-center">
+                     <UserCircle className="w-5 h-5 text-yellow-500 mr-2" />
+                     <span className="text-sm font-bold text-yellow-500 tracking-widest">{userPhone}</span>
+                  </div>
+                  <button 
+                    onClick={startGame}
+                    disabled={checkingUser}
+                    className="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-500 rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,165,0,0.5)] hover:scale-105 transition-transform text-white flex items-center justify-center disabled:opacity-50"
+                  >
+                    {checkingUser ? 'စစ်ဆေးနေပါသည်...' : <><Sparkles className="w-5 h-5 mr-2" /> ကစားမည် (Play Now)</>}
+                  </button>
+               </div>
+            ) : (
+               <div className="space-y-4">
+                  <div className="bg-red-950/50 border border-red-900/50 rounded-xl p-4 text-xs text-red-200">
+                     ကံစမ်းမဲ ကစားရန်အတွက် အရင်ဆုံး အကောင့် ဝင်ရန် (Login) လိုအပ်ပါသည်။
+                  </div>
+                  <button 
+                    onClick={goToLogin}
+                    className="w-full py-4 bg-white text-black rounded-xl font-bold text-sm shadow-md hover:bg-gray-200 transition flex items-center justify-center"
+                  >
+                    <LogIn className="w-4 h-4 mr-2" /> Login အရင်ဝင်မည်
+                  </button>
+               </div>
+            )}
           </div>
         )}
 
@@ -275,7 +282,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         {/* OPENING CAUGHT LANTERN SCREEN */}
         {gameState === 'opening' && caughtLantern && (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
-            {/* The Caught Lantern animated to center */}
             <div 
               className="lantern-caught cursor-pointer"
               style={{ 
@@ -299,7 +305,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         {gameState === 'result' && (
           <div className="text-center z-50 p-6 bg-gradient-to-b from-yellow-900 to-black border-2 border-yellow-500 rounded-3xl max-w-sm w-full mx-4 shadow-[0_0_50px_rgba(255,215,0,0.4)] animate-in zoom-in duration-300 relative">
             
-            {/* Sparkle Burst Animation */}
             <div className="sparkle-burst"></div>
 
             <PartyPopper className="w-16 h-16 mx-auto text-yellow-400 mb-4 animate-bounce relative z-10" />
