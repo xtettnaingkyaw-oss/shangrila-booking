@@ -58,14 +58,23 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
     setCheckingUser(true);
     try {
+      // 🌟 ပြင်ဆင်ချက်: Multiple where clauses သုံးပါက Firebase တွင် Index လိုအပ်တတ်ပါသည်။
+      // ယာယီအားဖြင့် Date တစ်ခုတည်းကိုသာ Query လုပ်ပြီး ဖုန်းနံပါတ်ကို Client-side တွင် စစ်ဆေးပါမည်။
+      // သို့မှသာ Index လိုအပ်သည့် Error မှ ကင်းဝေးပါမည်။
       const q = query(
         collection(db, 'campaign_records'), 
-        where('phone', '==', userPhone),
         where('date', '==', getTodayStr())
       );
       const querySnapshot = await getDocs(q);
 
-      if (!querySnapshot.empty) {
+      let alreadyPlayed = false;
+      querySnapshot.forEach((doc) => {
+        if (doc.data().phone === userPhone.trim()) {
+          alreadyPlayed = true;
+        }
+      });
+
+      if (alreadyPlayed) {
         setHasPlayedToday(true);
         alert("သင်သည် ယနေ့အတွက် ကံစမ်းပြီးဖြစ်ပါသည်။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။");
       } else {
@@ -73,9 +82,10 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         setTimeLeft(15);
         setLanterns([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error checking user:", error);
-      alert("အင်တာနက်ချိတ်ဆက်မှု ပြဿနာရှိနေပါသည်။ ပြန်လည်ကြိုးစားကြည့်ပါ။");
+      // 🌟 ပြင်ဆင်ချက်: အမှန်တကယ်ဖြစ်နေသော Error Message ကို ပြသပေးမည်
+      alert(`ချိတ်ဆက်မှု အခက်အခဲဖြစ်နေပါသည်။ Error: ${error.message}`);
     }
     setCheckingUser(false);
   };
