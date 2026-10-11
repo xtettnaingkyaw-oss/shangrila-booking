@@ -1268,7 +1268,19 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
    
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', telegram: '', viber: '', copyright: '', name: '', shopLat: 0, shopLng: 0 })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
-  const [localPromotion, setLocalPromotion] = useState<PromotionSettings>(JSON.parse(JSON.stringify(appData.promotion || { isActive: false, title: 'SPECIAL PROMO', hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' })));
+  const [localPromotion, setLocalPromotion] = useState<any>(() => {
+  const defaultPromo = { 
+        isBoxActive: false, 
+        boxTitle: 'SPECIAL DISCOUNT', 
+        isPopupActive: false, 
+        campaignTitle: 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း', 
+        hotelDiscountPercent: 10, 
+        otherDiscountPercent: 20, 
+        startDate: '', 
+        endDate: '' 
+    };
+    return JSON.parse(JSON.stringify(appData.promotion || defaultPromo));
+});
   const [localSignUpBonus, setLocalSignUpBonus] = useState<any>(JSON.parse(JSON.stringify(appData.signUpBonus || { isActive: false, points: 5, startDate: '', endDate: '' })));
   const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
   const [localVipSettings, setLocalVipSettings] = useState<any>(defaultVipConfig);
@@ -1955,6 +1967,7 @@ const handleSaveTherapists = async () => {
           )}
       </div>
 
+      {/* 🌟 PROMOTION & DISCOUNTS SECTION 🌟 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-green-600">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -1970,30 +1983,84 @@ const handleSaveTherapists = async () => {
               <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
                   <div className="flex justify-end mb-6">
                       <button disabled={savingCategory === 'promotion'} onClick={handleSavePromotion} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
-                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'promotion' ? 'Saving...' : 'Save'}
+                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'promotion' ? 'Saving...' : 'Save Settings'}
                       </button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="flex items-center space-x-3 mb-2 md:col-span-2 bg-gray-50 p-3 rounded-lg border border-gray-200 w-full sm:w-auto">
-                          <label className="text-sm font-bold text-gray-700 cursor-pointer flex-1 flex items-center justify-between">
-                              <span>Enable Promotion (Promotion ဖွင့်ရန်)</span>
-                              <input type="checkbox" checked={localPromotion.isActive} onChange={(e) => setLocalPromotion({...localPromotion, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524]" />
-                          </label>
+                  
+                  <div className="space-y-6">
+                      {/* 🌟 1. Customer App Box Promotion 🌟 */}
+                      <div className="border border-emerald-100 bg-emerald-50/30 rounded-xl p-5">
+                          <div className="flex items-center justify-between mb-4">
+                              <label className="font-bold text-gray-800 flex items-center cursor-pointer">
+                                  <span>1. Customer App Promotion Box (Booking အပေါ်တွင်ပေါ်မည်)</span>
+                              </label>
+                              <input 
+                                  type="checkbox" 
+                                  checked={localPromotion.isBoxActive || false}
+                                  onChange={(e) => setLocalPromotion({...localPromotion, isBoxActive: e.target.checked})}
+                                  className="w-5 h-5 accent-emerald-600 cursor-pointer"
+                              />
+                          </div>
+                          <div className="mb-2">
+                              <label className="text-xs font-bold text-gray-500 mb-1 block">Box Title (e.g. SPECIAL DISCOUNT)</label>
+                              <input 
+                                  type="text" 
+                                  value={localPromotion.boxTitle || ''}
+                                  onChange={(e) => setLocalPromotion({...localPromotion, boxTitle: e.target.value})}
+                                  placeholder="SPECIAL PROMO" 
+                                  className="w-full p-2 text-sm border border-gray-300 rounded focus:border-emerald-500 outline-none font-bold" 
+                              />
+                          </div>
                       </div>
-                      <div className="md:col-span-2">
-                          <label className="block text-xs font-bold text-gray-500 mb-1">Promotion Title (e.g. THADINGYUT PROMO)</label>
-                          <input type="text" value={localPromotion.title || ''} onChange={(e) => setLocalPromotion({...localPromotion, title: e.target.value})} placeholder="SPECIAL PROMO" className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-bold" />
+
+                      {/* 🌟 2. Mini Game Campaign Popup 🌟 */}
+                      <div className="border border-orange-100 bg-orange-50/30 rounded-xl p-5">
+                          <div className="flex items-center justify-between mb-4">
+                              <label className="font-bold text-gray-800 flex items-center cursor-pointer">
+                                  <Sparkles className="w-5 h-5 mr-2 text-orange-500" />
+                                  2. Mini Game Popup Campaign (App အဖွင့်တွင်ပေါ်မည်)
+                              </label>
+                              <input 
+                                  type="checkbox" 
+                                  checked={localPromotion.isPopupActive || false}
+                                  onChange={(e) => setLocalPromotion({...localPromotion, isPopupActive: e.target.checked})}
+                                  className="w-5 h-5 accent-orange-500 cursor-pointer"
+                              />
+                          </div>
+                          <div className="mb-2">
+                              <label className="text-xs font-bold text-gray-500 mb-1 block">Campaign Title (e.g. သီတင်းကျွတ် အထူးပရိုမိုးရှင်း)</label>
+                              <input 
+                                  type="text" 
+                                  value={localPromotion.campaignTitle || ''}
+                                  onChange={(e) => setLocalPromotion({...localPromotion, campaignTitle: e.target.value})}
+                                  placeholder="သီတင်းကျွတ် အထူးအစီအစဉ်" 
+                                  className="w-full p-2 text-sm border border-gray-300 rounded focus:border-orange-500 outline-none font-bold" 
+                              />
+                          </div>
                       </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 mb-1">Hotel & Home Services Discount (%)</label>
-                          <input type="number" value={localPromotion.hotelDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, hotelDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+
+                      {/* Discount Data Inputs */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-5 rounded-xl border border-gray-200">
+                          <div className="md:col-span-2">
+                             <h4 className="font-bold text-sm text-gray-700 mb-3 border-b border-gray-200 pb-2">Discount Configurations</h4>
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">Hotel & Home Services Discount (%)</label>
+                              <input type="number" value={localPromotion.hotelDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, hotelDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">Other Services Discount (%)</label>
+                              <input type="number" value={localPromotion.otherDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, otherDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label>
+                              <input type="date" value={localPromotion.startDate} onChange={(e) => setLocalPromotion({...localPromotion, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 mb-1">End Date</label>
+                              <input type="date" value={localPromotion.endDate} onChange={(e) => setLocalPromotion({...localPromotion, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
+                          </div>
                       </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 mb-1">Other Services Discount (%)</label>
-                          <input type="number" value={localPromotion.otherDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, otherDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-                      </div>
-                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label><input type="date" value={localPromotion.startDate} onChange={(e) => setLocalPromotion({...localPromotion, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                      <div><label className="block text-xs font-bold text-gray-500 mb-1">End Date</label><input type="date" value={localPromotion.endDate} onChange={(e) => setLocalPromotion({...localPromotion, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
                   </div>
               </div>
           )}
