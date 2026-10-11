@@ -95,7 +95,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
 const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
- const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr'>('bookings');
+ const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -218,7 +218,12 @@ useEffect(() => {
         {hasAccess('admins') && (<button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>)}
         {hasAccess('penalties') && (<button onClick={() => setTab('penalties')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'penalties' ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Banknote className="w-4 h-4 mr-2" /> Penalty & Loans</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('roster')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ClipboardList className="w-4 h-4 mr-2" /> Duty Roster</button>)}
-        {hasAccess('settings') && (<button onClick={() => setTab('hr')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'hr' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+        {hasAccess('settings') && (
+  <button onClick={() => setTab('campaigns')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'campaigns' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+    <Gift className="w-4 h-4 mr-2" /> Campaigns
+  </button>
+)}
+         {hasAccess('settings') && (<button onClick={() => setTab('hr')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'hr' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
     <UserPlus className="w-4 h-4 mr-2" /> HR Management 
     {/* 🌟 Pending Request သို့မဟုတ် Update Request တစ်ခုခုရှိလျှင် အနီစက်ပြမည် 🌟 */}
     {(updateRequestCount > 0 || onboardingPendingCount > 0) && (
@@ -240,6 +245,7 @@ useEffect(() => {
       {tab === 'roster' && hasAccess('settings') && <DutyRosterSystem therapists={appData.therapists} />}
       {tab === 'hr' && hasAccess('settings') && <AdminHRManagement />}
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
+       {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView />}
     </div>
   );
 });
@@ -3018,7 +3024,7 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
     );
 }
 
-function CampaignRecordsTable() {
+function AdminCampaignsView() {
     const [records, setRecords] = useState<any[]>([]);
     const [search, setSearch] = useState('');
 
@@ -3036,33 +3042,45 @@ function CampaignRecordsTable() {
     const filtered = records.filter(r => r.phone?.includes(search));
 
     return (
-        <div className="flex flex-col">
-            <div className="p-3 border-b border-gray-100 bg-gray-50 flex items-center">
-                <Search className="w-4 h-4 text-gray-400 mr-2"/>
-                <input 
-                    type="text" 
-                    placeholder="Search by Phone Number..." 
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="bg-transparent border-none outline-none text-sm font-semibold w-full"
-                />
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+                <h2 className="text-xl font-bold flex items-center text-orange-600">
+                    <PartyPopper className="mr-2 text-orange-500" /> Campaign Winners Record
+                </h2>
+                <div className="relative w-full sm:w-64">
+                    <input 
+                        type="text" 
+                        placeholder="Search phone number..." 
+                        value={search} 
+                        onChange={(e) => setSearch(e.target.value)} 
+                        className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-orange-500 text-sm font-semibold" 
+                    />
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                </div>
             </div>
-            <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
-                <table className="w-full text-left text-sm">
-                    <thead className="bg-white sticky top-0 border-b border-gray-200 shadow-sm z-10">
-                        <tr>
-                            <th className="p-3 text-gray-500 font-bold text-xs uppercase">Date</th>
-                            <th className="p-3 text-gray-500 font-bold text-xs uppercase">Phone</th>
-                            <th className="p-3 text-gray-500 font-bold text-xs uppercase text-right">Discount Won</th>
+            
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[600px]">
+                    <thead>
+                        <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+                            <th className="p-3 pb-4">Date & Time</th>
+                            <th className="p-3 pb-4">Phone Number</th>
+                            <th className="p-3 pb-4">Campaign Title</th>
+                            <th className="p-3 pb-4 text-right">Discount Won</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {filtered.length === 0 && <tr><td colSpan={3} className="p-6 text-center text-gray-400">No records found.</td></tr>}
+                        {filtered.length === 0 && <tr><td colSpan={4} className="p-10 text-center text-gray-400">No records found.</td></tr>}
                         {filtered.map(r => (
-                            <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
-                                <td className="p-3 text-gray-600">{r.date}</td>
-                                <td className="p-3 font-mono font-bold">{r.phone}</td>
-                                <td className="p-3 text-right font-black text-orange-600">{r.discountPercent}% OFF</td>
+                            <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
+                                <td className="p-3 text-gray-600 font-semibold">{r.date}</td>
+                                <td className="p-3 font-mono font-bold text-[#123524] tracking-wider">{r.phone}</td>
+                                <td className="p-3 text-xs text-gray-500">{r.title || 'Unknown Campaign'}</td>
+                                <td className="p-3 text-right">
+                                    <span className="font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 shadow-sm">
+                                        {r.discountPercent}% OFF
+                                    </span>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
