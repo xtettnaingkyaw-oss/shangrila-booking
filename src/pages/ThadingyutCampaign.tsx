@@ -146,7 +146,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       localStorage.setItem('shangrila_campaign_label', campaignTitle);
   };
 
-  // 🌟 FIX: Telegram Click အလုပ်လုပ်စေရန် Link ကို ပြင်ဆင်ခြင်း 🌟
   const getTelegramLink = () => {
       const tgLink = appData.branding?.telegram || 'https://t.me/admin';
       const msg = encodeURIComponent(`မင်္ဂလာပါ။ ${campaignTitle} ကနေ ${prize}% Discount ပေါက်ထားပါတယ်။\nဖုန်းနံပါတ်: ${userPhone}\nPromo Code: PROMO-${prize}`);
@@ -156,7 +155,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       return `${finalLink}?text=${msg}`;
   };
 
-  // Admin Panel တွင် Update လုပ်ရန် (Anchor Tag Click သည့်အခါ)
   const markTelegramClicked = async () => {
       if (recordId) {
           try { await updateDoc(doc(db, 'campaign_records', recordId), { telegramClicked: true }); } catch(e) {}
@@ -165,12 +163,23 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
   return (
     <div className="min-h-screen bg-[#1a0f14] text-white flex flex-col relative overflow-hidden font-sans">
+      {/* 🌟 FIX: flyToCenter ကို အတိအကျ အလယ်တည့်တည့်ရောက်အောင် ပြင်ဆင်ထားပါသည် 🌟 */}
       <style>{`
         @keyframes fall { 0% { transform: translateY(-10vh) rotate(-10deg); opacity: 0; } 10% { opacity: 1; } 100% { transform: translateY(110vh) rotate(20deg); opacity: 0; } }
         .lantern-anim { position: absolute; animation-name: fall; animation-timing-function: linear; cursor: pointer; filter: drop-shadow(0 0 12px rgba(255, 165, 0, 0.8)); transition: transform 0.1s; }
         .lantern-anim:active { transform: scale(1.5); }
-        @keyframes flyToCenter { 0% { transform: scale(1) translate(0, 0); opacity: 1; } 100% { transform: scale(2.5) translate(calc(50vw - var(--start-x)), calc(50vh - var(--start-y))); opacity: 1; } }
-        .lantern-caught { position: fixed; z-index: 100; animation: flyToCenter 1.5s ease-out forwards; }
+        
+        @keyframes flyToCenter { 
+          0% { left: var(--start-x); top: var(--start-y); transform: translate(-50%, -50%) scale(1); } 
+          100% { left: 50%; top: 50%; transform: translate(-50%, -50%) scale(3.5); } 
+        }
+        .lantern-caught { 
+          position: fixed; 
+          z-index: 100; 
+          animation: flyToCenter 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; 
+          filter: drop-shadow(0 0 30px rgba(255, 165, 0, 0.8));
+        }
+        
         @keyframes explodeSparkles { 0% { transform: scale(0); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.8; } 100% { transform: scale(2); opacity: 0; } }
         .sparkle-burst { position: absolute; top: 50%; left: 50%; width: 200px; height: 200px; margin-top: -100px; margin-left: -100px; background: radial-gradient(circle, rgba(255,215,0,0.8) 0%, rgba(255,140,0,0) 70%); animation: explodeSparkles 1s ease-out forwards; pointer-events: none; }
       `}</style>
@@ -195,7 +204,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                   
                   {alreadyPlayedToday ? (
                      <div className="animate-fade-in space-y-3">
-                         {/* 🌟 အသစ်: ကံစမ်းခွင့်ကုန်ကြောင်း စာသား 🌟 */}
                          <div className="bg-yellow-900/40 border border-yellow-700/50 rounded-xl p-3 text-center shadow-sm">
                              <p className="text-[10px] sm:text-xs text-yellow-400 font-semibold leading-relaxed">
                                 လူကြီးမင်းသည် ယနေ့အတွက် ကံစမ်းခွင့် ပြည့်သွားပါပြီ။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။
@@ -234,7 +242,14 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         {/* OPENING CAUGHT LANTERN SCREEN */}
         {gameState === 'opening' && caughtLantern && (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
-            <div className="lantern-caught cursor-pointer" style={{ '--start-x': `${caughtLantern.left}px`, '--start-y': `${caughtLantern.top}px`, left: caughtLantern.left, top: caughtLantern.top, fontSize: '3rem' } as React.CSSProperties} onClick={openCaughtLantern}>🏮</div>
+            {/* 🌟 FIX: style ထဲတွင် left, top များကို ဖယ်ရှားပြီး CSS Variables အားဖြင့်သာ ထိန်းချုပ်ပါသည် 🌟 */}
+            <div 
+               className="lantern-caught cursor-pointer" 
+               style={{ '--start-x': `${caughtLantern.left}px`, '--start-y': `${caughtLantern.top}px`, fontSize: '3rem' } as React.CSSProperties} 
+               onClick={openCaughtLantern}
+            >
+               🏮
+            </div>
             <div className="absolute bottom-20 text-yellow-400 font-bold animate-pulse text-lg">ဖွင့်ရန် မီးပုံးကို နှိပ်ပါ (Tap to Open)</div>
           </div>
         )}
@@ -262,9 +277,8 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
                 <div className="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4 mb-4 relative z-10">
                   <p className="text-[11px] leading-relaxed text-blue-200 mb-3 font-semibold">
-                    ယခု​ Discount​ ခံစားခွင့်​အား​ ဆိုင်တွင် Walk-in လာရောက်သည့်အခါတွင် အသုံးပြုနိုင်ရန် အောက်ကခလုတ်ကိုနှိပ်၍ Telegram မှတဆင့်​ Admin ထံသို့​ အကြောင်းကြားပေးပါ။ 
+                    ယခု Discount ခံစားခွင့်အား ဆိုင်တွင် Walk-in လာရောက်သည့်အခါတွင် အသုံးပြုနိုင်ရန် အောက်ကခလုတ်ကိုနှိပ်၍ Telegram မှတဆင့် Admin ထံသို့ အကြောင်းကြားပေးပါ။ 
                   </p>
-                  {/* 🌟 FIX: Telegram ကို သေချာပေါက် ပွင့်စေမည့် Anchor Tag 🌟 */}
                   <a 
                      href={getTelegramLink()} 
                      target="_blank" 
