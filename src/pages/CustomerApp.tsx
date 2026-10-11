@@ -1640,9 +1640,19 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const promoActive = checkPromoActive();
   const isBirthday = () => { if (!userProfile?.dob || !formData.date) return false; const dobParts = userProfile.dob.split('-'); const bookParts = formData.date.split('-'); return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; };
 
-  // 🌟 VIP Discount မှန်ကန်စေရန် အပိုင်းသစ် 🌟
+ // 🌟 VIP Discount မှန်ကန်စေရန် နှင့် Campaign Discount Auto ဖြတ်ရန် 🌟
   let finalDiscountPercent = 0; let discountLabel = '';
-  if (promoActive) {
+
+  // 1. Campaign ကနေ ရထားတဲ့ Discount ရှိမရှိ စစ်ဆေးမည်
+  const campaignDiscountStr = localStorage.getItem('shangrila_campaign_discount');
+  const campaignLabelStr = localStorage.getItem('shangrila_campaign_label');
+  const campaignPrize = campaignDiscountStr ? parseInt(campaignDiscountStr, 10) : 0;
+
+  if (campaignPrize > 0) {
+      // ကံစမ်းမဲက ရတဲ့ Discount ကို ဦးစားပေးသုံးမည်
+      finalDiscountPercent = campaignPrize;
+      discountLabel = `${campaignLabelStr} Winner (${campaignPrize}%)`;
+  } else if (promoActive) {
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
       discountLabel = `${promoTitle} (${finalDiscountPercent}%)`;
   } else if (vipSettings.isActive && userProfile) {
@@ -1675,14 +1685,11 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
       }
 
       if (bdayPercent > Math.max(oneTimePercent, tierPercent)) { 
-          finalDiscountPercent = bdayPercent; 
-          discountLabel = bdayLabel; 
+          finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; 
       } else if (tierPercent >= oneTimePercent && tierPercent > 0) { 
-          finalDiscountPercent = tierPercent; 
-          discountLabel = tierLabel; 
+          finalDiscountPercent = tierPercent; discountLabel = tierLabel; 
       } else if (oneTimePercent > 0) { 
-          finalDiscountPercent = oneTimePercent; 
-          discountLabel = oneTimeLabel; 
+          finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; 
       }
   }
 
@@ -1989,6 +1996,9 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 
           Object.keys(dataToSave).forEach(key => dataToSave[key] === undefined ? delete dataToSave[key] : {});
           await addDoc(collection(db, 'bookings'), dataToSave);
+        // 🌟 Booking တင်ပြီးသွားပါက Campaign Discount ကို ဖျက်ပစ်မည် 🌟
+          localStorage.removeItem('shangrila_campaign_discount');
+          localStorage.removeItem('shangrila_campaign_label');
           setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
       } catch (error: any) { console.error(error); setAlertMessage("Error: " + (error.message || "Booking တင်ရာတွင် အခက်အခဲရှိနေပါသည်။")); }
       setLoading(false);
