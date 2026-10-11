@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PartyPopper, ArrowLeft, Sparkles, Timer, UserCircle, LogIn, MessageCircle, AlertCircle } from 'lucide-react';
+import { PartyPopper, ArrowLeft, Sparkles, Timer, UserCircle, LogIn, MessageCircle, AlertCircle, Info } from 'lucide-react';
 import { AppData } from '../shared';
 import { db } from '../firebase';
 import { collection, addDoc, getDocs, query, updateDoc, doc } from 'firebase/firestore';
@@ -21,8 +21,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   const [caughtLantern, setCaughtLantern] = useState<{ id: number, left: number, top: number } | null>(null);
   
   const [recordId, setRecordId] = useState<string | null>(null);
-  
-  // 🌟 အသစ်: ကံစမ်းပြီးသားသူများ ပြန်ကြည့်နိုင်ရန် State 🌟
   const [alreadyPlayedToday, setAlreadyPlayedToday] = useState(false);
 
   const campaignTitle = appData?.promotion?.campaignTitle || "အထူး ပရိုမိုးရှင်း အစီအစဉ်";
@@ -31,7 +29,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       const savedPhone = localStorage.getItem('shangrila_user_phone');
       if (savedPhone) {
           setUserPhone(savedPhone);
-          checkInitialStatus(savedPhone); // Component စတက်ကတည်းက စစ်ဆေးထားမည်
+          checkInitialStatus(savedPhone); 
       }
   }, []);
 
@@ -39,7 +37,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  // 🌟 အသစ်: ဝင်လာကတည်းက ကံစမ်းပြီးသားလား စစ်ဆေးမည် 🌟
   const checkInitialStatus = async (phone: string) => {
       try {
           const q = query(collection(db, 'campaign_records'));
@@ -50,7 +47,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
               const data = doc.data();
               if (data.phone === phone && data.date === today) {
                   setAlreadyPlayedToday(true);
-                  setPrize(data.discountPercent || 0); // ရခဲ့ဖူးတဲ့ Discount ကို မှတ်ထားမည်
+                  setPrize(data.discountPercent || 0);
                   setRecordId(doc.id);
               }
           });
@@ -70,7 +67,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     if (!userPhone) return;
     setCheckingUser(true);
     
-    // Check Again for Safety
     try {
       const q = query(collection(db, 'campaign_records'));
       const querySnapshot = await getDocs(q);
@@ -144,24 +140,27 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   const openCaughtLantern = () => setGameState('result');
   const goToLogin = () => window.location.href = '/?view=profile&return=campaign';
 
-  // 🌟 အသစ်: ကံစမ်းပြီးသားကို ကြည့်မည် ကို နှိပ်ပါက Result Screen သို့ တန်းသွားမည် 🌟
   const viewPreviousResult = () => {
       setGameState('result');
-      // LocalStorage ကို Update ပြန်လုပ်ပေးမည် (Booking ဆက်တင်ပါက ရစေရန်)
       localStorage.setItem('shangrila_campaign_discount', prize.toString());
       localStorage.setItem('shangrila_campaign_label', campaignTitle);
   };
 
-  const handleTelegramClick = async () => {
-      if (recordId) {
-          try { await updateDoc(doc(db, 'campaign_records', recordId), { telegramClicked: true }); } catch(e) {}
-      }
+  // 🌟 FIX: Telegram Click အလုပ်လုပ်စေရန် Link ကို ပြင်ဆင်ခြင်း 🌟
+  const getTelegramLink = () => {
       const tgLink = appData.branding?.telegram || 'https://t.me/admin';
       const msg = encodeURIComponent(`မင်္ဂလာပါ။ ${campaignTitle} ကနေ ${prize}% Discount ပေါက်ထားပါတယ်။\nဖုန်းနံပါတ်: ${userPhone}\nPromo Code: PROMO-${prize}`);
       
       let finalLink = tgLink;
       if (!finalLink.startsWith('http')) finalLink = `https://t.me/${finalLink.replace('@', '')}`;
-      window.open(`${finalLink}?text=${msg}`, '_blank');
+      return `${finalLink}?text=${msg}`;
+  };
+
+  // Admin Panel တွင် Update လုပ်ရန် (Anchor Tag Click သည့်အခါ)
+  const markTelegramClicked = async () => {
+      if (recordId) {
+          try { await updateDoc(doc(db, 'campaign_records', recordId), { telegramClicked: true }); } catch(e) {}
+      }
   };
 
   return (
@@ -186,7 +185,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       <div className="flex-1 relative flex items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-950 via-black to-black">
         {/* START SCREEN */}
         {gameState === 'start' && (
-          <div className="text-center z-10 p-6 bg-black/60 border border-yellow-600/50 rounded-2xl backdrop-blur-md max-w-sm w-full mx-4 shadow-[0_0_30px_rgba(255,215,0,0.1)]">
+          <div className="text-center z-10 p-6 bg-black/60 border border-yellow-600/50 rounded-2xl backdrop-blur-md max-w-sm w-full mx-4 shadow-[0_0_30px_rgba(255,215,0,0.1)] relative">
             <div className="flex justify-center mb-4"><span className="text-6xl animate-bounce">🏮</span></div>
             <h2 className="text-2xl font-bold text-yellow-400 mb-2">{campaignTitle}</h2>
             <p className="text-gray-300 text-xs mb-6 leading-relaxed">မီးပုံးလေးတွေကို ဖမ်းပြီး ၅၀% အထိ Discount ရယူပါ။ (တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</p>
@@ -194,11 +193,19 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                <div className="space-y-4">
                   <div className="bg-black/40 border border-yellow-600/30 rounded-xl p-3 flex items-center justify-center"><UserCircle className="w-5 h-5 text-yellow-500 mr-2" /><span className="text-sm font-bold text-yellow-500 tracking-widest">{userPhone}</span></div>
                   
-                  {/* 🌟 အသစ်: ကံစမ်းပြီးသားဆိုလျှင် ကြည့်ရန် ခလုတ်ပြမည် 🌟 */}
                   {alreadyPlayedToday ? (
-                     <button onClick={viewPreviousResult} className="w-full py-4 bg-yellow-500/20 border border-yellow-500 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:bg-yellow-500/40 transition-colors text-yellow-500 flex items-center justify-center">
-                        <AlertCircle className="w-4 h-4 mr-2" /> ရရှိထားသော Discount အား ကြည့်မည်
-                     </button>
+                     <div className="animate-fade-in space-y-3">
+                         {/* 🌟 အသစ်: ကံစမ်းခွင့်ကုန်ကြောင်း စာသား 🌟 */}
+                         <div className="bg-yellow-900/40 border border-yellow-700/50 rounded-xl p-3 text-center shadow-sm">
+                             <p className="text-[10px] sm:text-xs text-yellow-400 font-semibold leading-relaxed">
+                                လူကြီးမင်းသည် ယနေ့အတွက် ကံစမ်းခွင့် ပြည့်သွားပါပြီ။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။
+                             </p>
+                         </div>
+                         <button onClick={viewPreviousResult} className="w-full py-4 bg-yellow-500/20 border border-yellow-500 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:bg-yellow-500/40 transition-colors text-yellow-500 flex items-center justify-center relative overflow-hidden group">
+                            <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></span>
+                            <AlertCircle className="w-4 h-4 mr-2 relative z-10" /> <span className="relative z-10">ရရှိထားသော Discount အား ကြည့်မည်</span>
+                         </button>
+                     </div>
                   ) : (
                      <button onClick={startGame} disabled={checkingUser} className="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-500 rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,165,0,0.5)] hover:scale-105 transition-transform text-white flex items-center justify-center disabled:opacity-50">
                         {checkingUser ? 'စစ်ဆေးနေပါသည်...' : <><Sparkles className="w-5 h-5 mr-2" /> ကစားမည် (Play Now)</>}
@@ -234,7 +241,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
         {/* RESULT SCREEN */}
         {gameState === 'result' && (
-          <div className="w-full max-w-sm mx-4 max-h-[85vh] overflow-y-auto scrollbar-hide z-50">
+          <div className="w-full max-w-sm mx-4 max-h-[85vh] overflow-y-auto scrollbar-hide z-50 rounded-3xl">
               <div className="text-center p-6 bg-gradient-to-b from-yellow-900 to-black border-2 border-yellow-500 rounded-3xl shadow-[0_0_50px_rgba(255,215,0,0.4)] animate-in zoom-in duration-300 relative">
                 <div className="sparkle-burst"></div>
                 <PartyPopper className="w-16 h-16 mx-auto text-yellow-400 mb-4 animate-bounce relative z-10" />
@@ -257,25 +264,32 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                   <p className="text-[11px] leading-relaxed text-blue-200 mb-3 font-semibold">
                     ဆိုင်တွင် Walk-in လာရောက်ကစားလိုပါက ဤစာမျက်နှာကို Screenshot ရိုက်၍ Telegram Admin ထံသို့ ပေးပို့နိုင်ပါသည်။
                   </p>
-                  <button onClick={handleTelegramClick} className="w-full py-3 bg-[#0088cc] text-white rounded-lg font-bold text-xs shadow-md hover:bg-[#0077b5] transition flex items-center justify-center">
+                  {/* 🌟 FIX: Telegram ကို သေချာပေါက် ပွင့်စေမည့် Anchor Tag 🌟 */}
+                  <a 
+                     href={getTelegramLink()} 
+                     target="_blank" 
+                     rel="noopener noreferrer"
+                     onClick={markTelegramClicked}
+                     className="w-full py-3 bg-[#0088cc] text-white rounded-lg font-bold text-xs shadow-md hover:bg-[#0077b5] transition flex items-center justify-center relative z-20 cursor-pointer"
+                  >
                      <MessageCircle className="w-4 h-4 mr-2" /> Telegram Admin သို့ ပို့မည်
-                  </button>
+                  </a>
                 </div>
 
                 <button onClick={() => window.location.href = '/'} className="w-full py-4 bg-yellow-500 text-black rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,215,0,0.5)] hover:bg-yellow-400 transition relative z-10">App မှ Booking ပြန်တင်မည်</button>
                 
-                {/* 🌟 အသစ်: Terms & Conditions အပိုင်း 🌟 */}
-                <div className="mt-8 text-left border-t border-yellow-900/50 pt-6">
-                    <h4 className="text-xs font-bold text-yellow-600 uppercase tracking-widest mb-3 flex items-center"><AlertCircle className="w-3.5 h-3.5 mr-1.5" /> Terms & Conditions</h4>
-                    <ul className="space-y-2">
-                        <li className="text-[10px] text-gray-400 font-semibold leading-relaxed flex items-start">
-                            <span className="text-yellow-600 mr-2 font-bold">•</span> တစ်ရက်လျှင် တစ်ကြိမ်သာ ကံစမ်းခွင့်ရှိပါသည်။
+                {/* 🌟 Terms & Conditions 🌟 */}
+                <div className="mt-8 text-left border-t border-yellow-900/50 pt-6 relative z-10">
+                    <h4 className="text-[11px] font-bold text-yellow-600 uppercase tracking-widest mb-3 flex items-center"><Info className="w-3.5 h-3.5 mr-1.5" /> Terms & Conditions</h4>
+                    <ul className="space-y-2.5">
+                        <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
+                            <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>တစ်ရက်လျှင် တစ်ကြိမ်သာ ကံစမ်းခွင့်ရှိပါသည်။</span>
                         </li>
-                        <li className="text-[10px] text-gray-400 font-semibold leading-relaxed flex items-start">
-                            <span className="text-yellow-600 mr-2 font-bold">•</span> ရရှိထားသော Discount ခံစားခွင့်သည် ရရှိသော နေ့ရက် တစ်ရက်တည်းအတွက်သာ (24 Hours) အကျုံးဝင်ပါသည်။
+                        <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
+                            <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>ရရှိထားသော Discount ခံစားခွင့်သည် ရရှိသော နေ့ရက် တစ်ရက်တည်းအတွက်သာ (24 Hours) အကျုံးဝင်ပါသည်။</span>
                         </li>
-                        <li className="text-[10px] text-gray-400 font-semibold leading-relaxed flex items-start">
-                            <span className="text-yellow-600 mr-2 font-bold">•</span> VIP Member Card ရှိသူများ အနေဖြင့် ပုံမှန် VIP Discount နှင့် ဤ Campaign Discount အား နှစ်ထပ်ကွမ်း (Double Promotion) အသုံးပြုခွင့် မရှိပါ။ မိမိအတွက် ပိုမိုသက်သာသော Discount တစ်ခုကိုသာ အသုံးပြုနိုင်ပါသည်။
+                        <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
+                            <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>VIP Member Card ရှိသူများ အနေဖြင့် ပုံမှန် VIP Discount နှင့် ဤ Campaign Discount အား နှစ်ထပ်ကွမ်း (Double Promotion) အသုံးပြုခွင့် မရှိပါ။ မိမိအတွက် ပိုမိုသက်သာသော Discount တစ်ခုကိုသာ အသုံးပြုနိုင်ပါသည်။</span>
                         </li>
                     </ul>
                 </div>
