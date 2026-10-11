@@ -2034,15 +2034,7 @@ const handleSaveTherapists = async () => {
                               />
                           </div>
 
-                         {/* 🌟 Campaign Records Table 🌟 */}
-<div className="md:col-span-2 mt-6 pt-6 border-t border-gray-200">
-    <h4 className="font-bold text-sm text-gray-700 mb-3 flex items-center">
-        <PartyPopper className="w-4 h-4 mr-2 text-orange-500"/> Campaign Winners Record
-    </h4>
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-        <CampaignRecordsTable />
-    </div>
-</div>
+                
                           <div className="mb-2">
                               <label className="text-xs font-bold text-gray-500 mb-1 block">Campaign Title (e.g. သီတင်းကျွတ် အထူးပရိုမိုးရှင်း)</label>
                               <input 
