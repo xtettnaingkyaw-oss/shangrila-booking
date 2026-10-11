@@ -1653,17 +1653,6 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   useEffect(() => { if (preselectedStaff && !formData.therapist) { const t = appData.therapists.find(staff => staff.name === preselectedStaff); if (t) setFormData(prev => ({...prev, therapist: t})); } }, [preselectedStaff, appData.therapists, formData.therapist]);
   useEffect(() => { if (staffClockIn && formData.date === todayStr && (!formData.time || !/^\d{1,2}:\d{2}(?::\d{2})?$/.test(formData.time))) { const now = new Date(); const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; setFormData(prev => ({ ...prev, time: hhmm })); } }, [staffClockIn, formData.date, todayStr]);
 
-  // 🌟 FIX: Box Promotion ကို အမှန်ခြစ်ထားမှသာ (isBoxActive) အလုပ်လုပ်မည့် Function 🌟
-  const checkBoxPromoActive = () => {
-      const promo = appData.promotion; 
-      if (!promo?.isBoxActive) return false; 
-      if (!promo.startDate || !promo.endDate) return false;
-      const today = new Date(getLocalTodayStr()).getTime(); 
-      const sDate = new Date(promo.startDate).getTime(); 
-      const eDate = new Date(promo.endDate).getTime();
-      return today >= sDate && today <= eDate;
-  };
-
   const boxPromoActive = checkBoxPromoActive();
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
