@@ -1,14 +1,19 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { doc, getDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, orderBy, setDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth'; 
-import { db, auth } from './firebase'; 
+import { db, auth, requestNotificationPermission, messaging } from './firebase'; 
 import { Download, X, MapPin, Phone, LogOut, DatabaseBackup } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
 
 // 🌟 Premium Loading Screen ကို Import ခေါ်ယူခြင်း 🌟
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
-
 import CustomerApp from './pages/CustomerApp'; 
+
+// 🌟 POS နှင့် Campaign Screen များကို Import ခေါ်ယူခြင်း 🌟
+import POSScreen from './pages/POSScreen';
+import ThadingyutCampaign from './pages/ThadingyutCampaign';
+import ThadingyutPopup from './components/ThadingyutPopup';
+
 const AdminApp = lazy(() => import('./pages/AdminApp'));
 const StaffApp = lazy(() => import('./pages/StaffApp'));
 
@@ -63,7 +68,8 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
 }
 
 function MainApp() {
-  const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff'>('customer');
+  // 🌟 FIX: Add 'pos' and 'campaign' modes 🌟
+  const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff' | 'pos' | 'campaign'>('customer');
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
   const [appData, setAppData] = useState<AppData | null>(null);
   const [dbError, setDbError] = useState(false);
@@ -75,6 +81,25 @@ function MainApp() {
   const [showInstallModal, setShowInstallModal] = useState(false);
 
   const [isScrolled, setIsScrolled] = useState(false);
+
+  // Notification Setup
+  useEffect(() => {
+    const setupNotifications = async () => {
+      try {
+        if (typeof requestNotificationPermission === 'function') {
+          const token = await requestNotificationPermission();
+          if (token && db) {
+            await setDoc(doc(db, 'fcm_tokens', token), {
+              token: token, updatedAt: new Date(), device: navigator.userAgent
+            }, { merge: true });
+          }
+        }
+      } catch (err) {
+        console.warn("Notification Error:", err);
+      }
+    };
+    setupNotifications();
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -101,12 +126,12 @@ function MainApp() {
     const updateFavicon = (url: string) => {
       const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='manifest']"); 
       existingIcons.forEach(icon => document.head.removeChild(icon));
+      
       const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
       const appleIcon = document.createElement('link'); appleIcon.rel = 'apple-touch-icon'; appleIcon.href = url; document.head.appendChild(appleIcon);
     };
     if (appData?.branding?.logoUrl) { 
         updateFavicon(appData.branding.logoUrl); 
-        // 🌟 FIX: Logo အစစ်ကို Loading Screen တွင်သုံးရန် Local Storage သို့ သိမ်းပါမည် 🌟
         localStorage.setItem('shangrila_logo_cache', appData.branding.logoUrl);
     }
   }, [appData?.branding?.logoUrl, appData?.branding?.name]);
@@ -115,6 +140,8 @@ function MainApp() {
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('mode') === 'admin') setAppMode('admin');
     else if (searchParams.get('mode') === 'staff') setAppMode('staff');
+    else if (searchParams.get('mode') === 'pos') setAppMode('pos');
+    else if (searchParams.get('mode') === 'campaign') setAppMode('campaign');
 
     signInAnonymously(auth).catch((error) => { console.error("Firebase Auth Error:", error); });
 
@@ -163,15 +190,21 @@ function MainApp() {
       );
   }
 
- // 🌟 FIX: Data ရ/မရ ကိုပါ တွက်ချက်ပြီး၊ Progress Bar အပြည့်ဖြစ်မှသာ App ပွင့်စေမည် 🌟
   if (!isLoaderFinished) { 
       return <PremiumLoadingScreen isDataReady={!!appData} onFinish={() => setIsLoaderFinished(true)} />; 
   }
 
-  const stepsToShow = appData.installSteps && appData.installSteps.length > 0 ? appData.installSteps : DEFAULT_INSTALL_STEPS;
+  const stepsToShow = appData?.installSteps && appData.installSteps.length > 0 ? appData.installSteps : DEFAULT_INSTALL_STEPS;
+
+  // 🌟 Check if we are in full-screen modes (POS or Campaign)
+  const isFullScreenMode = appMode === 'pos' || appMode === 'campaign';
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col relative">
+      
+      {/* 🌟 Promotion Popup (Customer Mode Only) 🌟 */}
+      {appMode === 'customer' && appData && <ThadingyutPopup appData={appData} />}
+
       {showInstallModal && (
         <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden animate-fade-in shadow-2xl">
@@ -187,48 +220,61 @@ function MainApp() {
         </div>
       )}
 
-      {/* 🌟 SCROLL-AWARE STICKY HEADER 🌟 */}
-      <header 
-        className={`sticky top-0 z-[100] w-full transition-all duration-300 border-b border-gray-200 flex flex-col items-center justify-center ${isScrolled ? 'bg-white/95 backdrop-blur-md shadow-sm' : 'bg-white shadow-sm'} px-4 text-center`}
-        style={{ 
-          paddingTop: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'calc(1.5rem + env(safe-area-inset-top))',
-          paddingBottom: isScrolled ? '0.5rem' : '1.5rem'
-        }}
-      >
-        <div className="flex items-center justify-center mb-1 transition-all duration-300">
-          {appData.branding.logoUrl && (
-            <div className={`rounded-full overflow-hidden mr-2.5 sm:mr-3 border-2 shadow-sm flex-shrink-0 transition-all duration-300 ${isScrolled ? 'w-8 h-8 border-[1px]' : 'w-12 h-12 sm:w-14 sm:h-14 border-2'}`} style={{ borderColor: THEME.gold }}>
-              <img src={appData.branding.logoUrl} alt="Logo" className="w-full h-full object-cover bg-white" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            </div>
+      {/* 🌟 Hide Header for Full Screen Modes (POS / Campaign) 🌟 */}
+      {!isFullScreenMode && (
+        <header 
+          className={`sticky top-0 z-[100] w-full transition-all duration-300 border-b border-gray-200 flex flex-col items-center justify-center ${isScrolled ? 'bg-white/95 backdrop-blur-md shadow-sm' : 'bg-white shadow-sm'} px-4 text-center`}
+          style={{ 
+            paddingTop: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'calc(1.5rem + env(safe-area-inset-top))',
+            paddingBottom: isScrolled ? '0.5rem' : '1.5rem'
+          }}
+        >
+          <div className="flex items-center justify-center mb-1 transition-all duration-300">
+            {appData?.branding?.logoUrl && (
+              <div className={`rounded-full overflow-hidden mr-2.5 sm:mr-3 border-2 shadow-sm flex-shrink-0 transition-all duration-300 ${isScrolled ? 'w-8 h-8 border-[1px]' : 'w-12 h-12 sm:w-14 sm:h-14 border-2'}`} style={{ borderColor: THEME.gold }}>
+                <img src={appData.branding.logoUrl} alt="Logo" className="w-full h-full object-cover bg-white" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              </div>
+            )}
+            <h1 className={`font-bold font-serif tracking-wide transition-all duration-300 ${isScrolled ? 'text-lg sm:text-xl' : 'text-2xl'}`} style={{ color: THEME.primary }}>{appData?.branding?.name || 'The Shangri-La'}</h1>
+          </div>
+          
+          <p className={`font-bold uppercase tracking-[0.2em] transition-all duration-300 overflow-hidden ${isScrolled ? 'h-0 opacity-0 m-0' : 'h-auto opacity-100 text-[10px] sm:text-[11px] mt-1.5'}`} style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
+          
+          {!isStandalone && appMode === 'customer' && (
+             <button onClick={handleDownloadApp} className={`transition-all duration-300 font-bold text-white flex items-center justify-center bg-gradient-to-r from-[#D4AF37] to-yellow-600 rounded-full shadow-sm border border-yellow-500 hover:opacity-90 ${isScrolled ? 'absolute right-3 sm:right-6 text-[9px] px-2.5 py-1.5' : 'mt-4 text-[10px] sm:text-xs px-4 py-2'}`} style={{ top: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'auto' }}>
+               <Download className={`${isScrolled ? 'w-3 h-3 mr-1' : 'w-3.5 h-3.5 mr-1.5'}`} /> {isScrolled ? 'App' : 'Download App'}
+             </button>
           )}
-          <h1 className={`font-bold font-serif tracking-wide transition-all duration-300 ${isScrolled ? 'text-lg sm:text-xl' : 'text-2xl'}`} style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'}</h1>
-        </div>
-        
-        {/* စာလုံးကို ပိုကြီးအောင် text-[10px] sm:text-[11px] သို့ ပြင်ဆင်ထားပါသည် */}
-        <p className={`font-bold uppercase tracking-[0.2em] transition-all duration-300 overflow-hidden ${isScrolled ? 'h-0 opacity-0 m-0' : 'h-auto opacity-100 text-[10px] sm:text-[11px] mt-1.5'}`} style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
-        
-        {!isStandalone && appMode === 'customer' && (
-           <button onClick={handleDownloadApp} className={`transition-all duration-300 font-bold text-white flex items-center justify-center bg-gradient-to-r from-[#D4AF37] to-yellow-600 rounded-full shadow-sm border border-yellow-500 hover:opacity-90 ${isScrolled ? 'absolute right-3 sm:right-6 text-[9px] px-2.5 py-1.5' : 'mt-4 text-[10px] sm:text-xs px-4 py-2'}`} style={{ top: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'auto' }}>
-             <Download className={`${isScrolled ? 'w-3 h-3 mr-1' : 'w-3.5 h-3.5 mr-1.5'}`} /> {isScrolled ? 'App' : 'Download App'}
-           </button>
-        )}
-        {appMode === 'admin' && loggedInAdmin && (
-           <button onClick={() => { setLoggedInAdmin(null); sessionStorage.removeItem('shangrila_admin'); }} className={`absolute right-4 sm:right-6 text-xs font-bold text-red-500 flex items-center bg-red-50 rounded-full hover:bg-red-100 transition border border-red-100 ${isScrolled ? 'px-2 py-1' : 'px-3 py-1.5'}`} style={{ top: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'calc(1.5rem + env(safe-area-inset-top))' }}><LogOut className="w-3 h-3 mr-1" /> Logout</button>
-        )}
-      </header>
+          {appMode === 'admin' && loggedInAdmin && (
+             <button onClick={() => { setLoggedInAdmin(null); sessionStorage.removeItem('shangrila_admin'); }} className={`absolute right-4 sm:right-6 text-xs font-bold text-red-500 flex items-center bg-red-50 rounded-full hover:bg-red-100 transition border border-red-100 ${isScrolled ? 'px-2 py-1' : 'px-3 py-1.5'}`} style={{ top: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'calc(1.5rem + env(safe-area-inset-top))' }}><LogOut className="w-3 h-3 mr-1" /> Logout</button>
+          )}
+        </header>
+      )}
 
-      <main className="flex-1 w-full max-w-4xl mx-auto p-4 py-6">
+      {/* 🌟 MAIN CONTENT AREA 🌟 */}
+      <main className={`flex-1 w-full mx-auto ${isFullScreenMode ? 'max-w-full p-0' : 'max-w-4xl p-4 py-6'}`}>
         <Suspense fallback={<div className="text-center py-20 font-bold text-[#123524] flex flex-col items-center"><div className="w-10 h-10 border-4 border-[#123524] border-t-[#D4AF37] rounded-full animate-spin mb-4"></div>Loading App Module...</div>}>
-            {appMode === 'admin' ? (<AdminApp appData={appData} onSettingsUpdated={setAppData} />) : appMode === 'staff' ? (<StaffApp appData={appData} />) : <CustomerApp appData={appData} />}
+            {appMode === 'admin' ? (
+              <AdminApp appData={appData!} onSettingsUpdated={setAppData} />
+            ) : appMode === 'staff' ? (
+              <StaffApp appData={appData!} />
+            ) : appMode === 'pos' ? (
+              <POSScreen appData={appData!} />
+            ) : appMode === 'campaign' ? (
+              <ThadingyutCampaign appData={appData!} />
+            ) : (
+              <CustomerApp appData={appData!} />
+            )}
         </Suspense>
       </main>
 
-      {appMode !== 'admin' && (
+      {/* 🌟 Hide Footer for Full Screen Modes (POS / Campaign) 🌟 */}
+      {!isFullScreenMode && appMode !== 'admin' && (
         <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500 px-4">
-          <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{appData.branding.name || 'The Shangri-La'} Men's Retreat</h3>
-          <div className="mb-2 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto"><MapPin className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" /><span className="text-left sm:text-center leading-relaxed">{appData.branding.address}</span></div>
-          <div className="mb-4 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto"><Phone className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" /><span className="text-left sm:text-center leading-relaxed">{appData.branding.phone1} &nbsp;|&nbsp; {appData.branding.phone2}</span></div>
-          <p className="text-xs text-gray-400 mt-4">{appData.branding.copyright}</p>
+          <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{appData?.branding?.name || 'The Shangri-La'} Men's Retreat</h3>
+          <div className="mb-2 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto"><MapPin className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" /><span className="text-left sm:text-center leading-relaxed">{appData?.branding?.address}</span></div>
+          <div className="mb-4 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto"><Phone className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" /><span className="text-left sm:text-center leading-relaxed">{appData?.branding?.phone1} &nbsp;|&nbsp; {appData?.branding?.phone2}</span></div>
+          <p className="text-xs text-gray-400 mt-4">{appData?.branding?.copyright}</p>
         </footer>
       )}
     </div>
