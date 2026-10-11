@@ -262,7 +262,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
                 <div className="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4 mb-4 relative z-10">
                   <p className="text-[11px] leading-relaxed text-blue-200 mb-3 font-semibold">
-                    ဆိုင်တွင် Walk-in လာရောက်ကစားလိုပါက ဤစာမျက်နှာကို Screenshot ရိုက်၍ Telegram Admin ထံသို့ ပေးပို့နိုင်ပါသည်။
+                    ယခု​ Discount​ ခံစားခွင့်​အား​ ဆိုင်တွင် Walk-in လာရောက်သည့်အခါတွင် အသုံးပြုနိုင်ရန် အောက်ကခလုတ်ကိုနှိပ်၍ Telegram မှတဆင့်​ Admin ထံသို့​ အကြောင်းကြားပေးပါ။ 
                   </p>
                   {/* 🌟 FIX: Telegram ကို သေချာပေါက် ပွင့်စေမည့် Anchor Tag 🌟 */}
                   <a 
@@ -285,8 +285,11 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                         <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
                             <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>တစ်ရက်လျှင် တစ်ကြိမ်သာ ကံစမ်းခွင့်ရှိပါသည်။</span>
                         </li>
+                      <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
+                            <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>ရရှိထားသော Discount ခံစားခွင့်အား ဆိုင်၏ ဝန်ဆောင်မှုအားလုံးအပေါ်တွင် အသုံးပြုနိုင်ပါသည်။</span>
+                        </li>
                         <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
-                            <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>ရရှိထားသော Discount ခံစားခွင့်သည် ရရှိသော နေ့ရက် တစ်ရက်တည်းအတွက်သာ (24 Hours) အကျုံးဝင်ပါသည်။</span>
+                            <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>ရရှိထားသော Discount ခံစားခွင့်သည် သင်ရရှိလိုက်သော နေ့ရက် တစ်ရက်တည်းအတွက်သာ (24 Hours) အကျုံးဝင်ပါသည်။</span>
                         </li>
                         <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
                             <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>VIP Member Card ရှိသူများ အနေဖြင့် ပုံမှန် VIP Discount နှင့် ဤ Campaign Discount အား နှစ်ထပ်ကွမ်း (Double Promotion) အသုံးပြုခွင့် မရှိပါ။ မိမိအတွက် ပိုမိုသက်သာသော Discount တစ်ခုကိုသာ အသုံးပြုနိုင်ပါသည်။</span>
