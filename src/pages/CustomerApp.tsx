@@ -1700,7 +1700,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
           finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; 
       }
   }
-      }
+     
       
       let bdayPercent = 0; let bdayLabel = '';
       if (userTier && isBirthday()) {
@@ -2123,7 +2123,7 @@ const renderServiceSelection = (currentStep: number) => (
       )}
 
       {/* 🌟 FIX: Admin က isBoxActive ဖွင့်ထားပြီး သတ်မှတ်ရက်အတွင်းဖြစ်မှသာ Box ကို ပြမည် 🌟 */}
-      {promoActive && appData.promotion?.isBoxActive && (
+      {boxPromoActive && !userPastPromo && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between mx-1.5 sm:mx-0">
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div><div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
            <div className="relative z-10 flex items-center">
