@@ -1,21 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { X, Gift } from 'lucide-react';
+import { AppData } from '../shared'; // AppData ကို import လုပ်ပါ
 
-export default function ThadingyutPopup() {
+interface ThadingyutPopupProps {
+  appData: AppData;
+}
+
+export default function ThadingyutPopup({ appData }: ThadingyutPopupProps) {
   const [show, setShow] = useState(false);
 
+  // 🌟 Admin က Promotion ပိတ်ထားလျှင် (isActive === false) ဘာမှမပြပါ
+  const isPromotionActive = appData?.promotion?.isActive;
+  // 🌟 Admin ပေးသော ခေါင်းစဉ် (မရှိပါက Default စာသားပြမည်)
+  const campaignTitle = appData?.promotion?.campaignTitle || "သီတင်းကျွတ် အထူးအစီအစဉ်";
+
   useEffect(() => {
-    // တစ်ရက်ကို တစ်ကြိမ်ပဲ ပေါ်စေရန် LocalStorage စစ်ဆေးခြင်း
+    if (!isPromotionActive) return;
+
     const hasSeenPopup = sessionStorage.getItem('thadingyut_popup_seen');
-    
     if (!hasSeenPopup) {
-      // App ထဲဝင်ပြီး ၃ စက္ကန့်အကြာတွင် Popup တက်လာမည်
       const timer = setTimeout(() => {
         setShow(true);
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [isPromotionActive]);
 
   const handleClose = () => {
     setShow(false);
@@ -24,17 +33,15 @@ export default function ThadingyutPopup() {
 
   const goToCampaign = () => {
     sessionStorage.setItem('thadingyut_popup_seen', 'true');
-    // Campaign Link သို့ သွားမည် (?mode=campaign)
     window.location.href = '/?mode=campaign';
   };
 
-  if (!show) return null;
+  if (!show || !isPromotionActive) return null;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-500">
       <div className="bg-gradient-to-br from-red-950 via-[#1a0f14] to-black w-full max-w-sm rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(255,165,0,0.3)] border border-yellow-600/40 relative animate-in zoom-in-95 duration-500">
         
-        {/* Close Button */}
         <button 
           onClick={handleClose}
           className="absolute top-3 right-3 p-2 bg-black/40 hover:bg-white/20 rounded-full text-white/70 hover:text-white transition z-10"
@@ -42,15 +49,14 @@ export default function ThadingyutPopup() {
           <X className="w-5 h-5" />
         </button>
 
-        {/* Decorative Top */}
         <div className="h-24 bg-gradient-to-r from-yellow-600 via-orange-500 to-red-600 relative overflow-hidden flex items-center justify-center">
           <span className="text-4xl absolute animate-bounce drop-shadow-md">🏮</span>
           <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
         </div>
 
-        {/* Content */}
         <div className="p-6 text-center">
-          <h2 className="text-2xl font-bold text-yellow-400 mb-2">သီတင်းကျွတ် အထူးအစီအစဉ်</h2>
+          {/* 🌟 Dynamic Promotion Title 🌟 */}
+          <h2 className="text-2xl font-bold text-yellow-400 mb-2">{campaignTitle}</h2>
           <p className="text-gray-300 text-sm mb-6 leading-relaxed">
             မီးပုံးလေးတွေကို အမိဖမ်းပြီး လူကြီးမင်းအတွက် <strong className="text-yellow-500">၅၀% အထိ Discount</strong> ကံစမ်းမဲများကို ယခုပဲ ရယူလိုက်ပါ။
           </p>
