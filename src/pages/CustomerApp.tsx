@@ -1533,6 +1533,34 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const [step, setStep] = useState(() => { if (staffClockIn) return isTherapistFirst ? 2 : 1; return initialTherapist ? 2 : 1; });
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [step]);
 
+  // 🌟 အသစ်: User က Promotion ယူပြီးသားလား စစ်ဆေးရန် State နှင့် useEffect 🌟
+  const [userPastPromo, setUserPastPromo] = useState(false);
+
+  useEffect(() => {
+      if (!userPhone) return;
+      const checkPromoUsage = async () => {
+          try {
+              const currentPromoTitle = appData.promotion?.title || 'SPECIAL PROMO';
+              const campaignPromoTitle = appData.promotion?.campaignTitle || 'အထူး ပရိုမိုးရှင်း အစီအစဉ်';
+              const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(100));
+              const snap = await getDocs(q);
+              let used = false;
+              snap.forEach(d => {
+                  const raw = d.data();
+                  const decPhone = decryptText(raw.phone) || raw.phone;
+                  if (decPhone === userPhone && raw.status !== 'cancelled') {
+                      const dLabel = raw.discountLabel ? decryptText(raw.discountLabel) : '';
+                      if (dLabel && (dLabel.includes(currentPromoTitle) || dLabel.includes(campaignPromoTitle) || dLabel.includes('WINNER'))) {
+                          used = true;
+                      }
+                  }
+              });
+              setUserPastPromo(used);
+          } catch (e) {}
+      };
+      checkPromoUsage();
+  }, [userPhone, appData.promotion]);
+
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, therapist2: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   const [loading, setLoading] = useState(false);
@@ -1625,6 +1653,18 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   useEffect(() => { if (preselectedStaff && !formData.therapist) { const t = appData.therapists.find(staff => staff.name === preselectedStaff); if (t) setFormData(prev => ({...prev, therapist: t})); } }, [preselectedStaff, appData.therapists, formData.therapist]);
   useEffect(() => { if (staffClockIn && formData.date === todayStr && (!formData.time || !/^\d{1,2}:\d{2}(?::\d{2})?$/.test(formData.time))) { const now = new Date(); const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`; setFormData(prev => ({ ...prev, time: hhmm })); } }, [staffClockIn, formData.date, todayStr]);
 
+  // 🌟 FIX: Box Promotion ကို အမှန်ခြစ်ထားမှသာ (isBoxActive) အလုပ်လုပ်မည့် Function 🌟
+  const checkBoxPromoActive = () => {
+      const promo = appData.promotion; 
+      if (!promo?.isBoxActive) return false; 
+      if (!promo.startDate || !promo.endDate) return false;
+      const today = new Date(getLocalTodayStr()).getTime(); 
+      const sDate = new Date(promo.startDate).getTime(); 
+      const eDate = new Date(promo.endDate).getTime();
+      return today >= sDate && today <= eDate;
+  };
+
+  const boxPromoActive = checkBoxPromoActive();
   const safePaymentMethods = Array.isArray(appData?.paymentMethods) ? appData.paymentMethods : [];
   const selectedPaymentConfig = safePaymentMethods.find(p => p.name === formData.paymentMethod);
   const getTier = (points: number) => { if(!vipSettings.isActive || !vipSettings.tiers) return null; const sortedTiers = [...vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
@@ -1646,7 +1686,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const boxPromoActive = checkBoxPromoActive(); // အသစ်ပြောင်းထားသော Function ကိုသုံးမည်
   const isBirthday = () => { if (!userProfile?.dob || !formData.date) return false; const dobParts = userProfile.dob.split('-'); const bookParts = formData.date.split('-'); return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; };
 
-  // 🌟 VIP Discount မှန်ကန်စေရန် နှင့် Campaign Discount Auto ဖြတ်ရန် 🌟
+  // 🌟 VIP Discount နှင့် Campaign Discount Auto ဖြတ်ရန် (မှန်ကန်သော Logic) 🌟
   let finalDiscountPercent = 0; let discountLabel = '';
 
   const campaignDiscountStr = localStorage.getItem('shangrila_campaign_discount');
@@ -1659,7 +1699,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
       finalDiscountPercent = campaignPrize;
       discountLabel = `${campaignLabelStr || 'Campaign'} WINNER (${campaignPrize}%)`;
   } else if (boxPromoActive && !userPastPromo) {
-      // ၂။ FIX: Box Promotion ကို ဖွင့်ထားမှသာ (boxPromoActive === true) အောက်ပါ 10% / 20% ကို လျှော့ပေးမည်
+      // ၂။ FIX: Box Promotion ကို ဖွင့်ထားပြီး User က ယူပြီးသားမဟုတ်မှသာ 10% / 20% ကို လျှော့ပေးမည်
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
       discountLabel = `${boxPromoTitle} (${finalDiscountPercent}%)`;
   } else if (vipSettings.isActive && userProfile) {
@@ -1680,6 +1720,26 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
               }
           }
       }
+      
+      let bdayPercent = 0; let bdayLabel = '';
+      if (userTier && isBirthday()) {
+          if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) { 
+              bdayPercent = Math.min(100, 20 + monthlyPts); 
+              bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`; 
+          } else { 
+              bdayPercent = 50; 
+              bdayLabel = `VIP Birthday Bonus (50%)`; 
+          }
+      }
+
+      if (bdayPercent > Math.max(oneTimePercent, tierPercent)) { 
+          finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; 
+      } else if (tierPercent >= oneTimePercent && tierPercent > 0) { 
+          finalDiscountPercent = tierPercent; discountLabel = tierLabel; 
+      } else if (oneTimePercent > 0) { 
+          finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; 
+      }
+  }
       
       let bdayPercent = 0; let bdayLabel = '';
       if (userTier && isBirthday()) {
