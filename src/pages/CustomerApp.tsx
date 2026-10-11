@@ -1659,10 +1659,10 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const getTier = (points: number) => { if(!vipSettings.isActive || !vipSettings.tiers) return null; const sortedTiers = [...vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
   const userTier = getTier(userProfile?.points || 0);
 
-  // 🌟 FIX: Box Promotion ကို အမှန်ခြစ်ထားမှသာ (isBoxActive) အလုပ်လုပ်မည့် Function 🌟
+  // 🌟 FIX 1: Box Promotion ကို အမှန်ခြစ်ထားမှသာ (isBoxActive) အလုပ်လုပ်မည့် Function 🌟
   const checkBoxPromoActive = () => {
       const promo = appData.promotion; 
-      if (!promo?.isBoxActive) return false; // Box ပိတ်ထားရင် Discount လုံးဝမပေးပါ
+      if (!promo?.isBoxActive) return false; 
       if (!promo.startDate || !promo.endDate) return false;
       
       const today = new Date(getLocalTodayStr()).getTime(); 
@@ -1672,10 +1672,10 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   };
 
   const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id) || false;
-  const boxPromoActive = checkBoxPromoActive(); // အသစ်ပြောင်းထားသော Function ကိုသုံးမည်
+  const boxPromoActive = checkBoxPromoActive(); 
   const isBirthday = () => { if (!userProfile?.dob || !formData.date) return false; const dobParts = userProfile.dob.split('-'); const bookParts = formData.date.split('-'); return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; };
 
-  // 🌟 VIP Discount နှင့် Campaign Discount Auto ဖြတ်ရန် (မှန်ကန်သော Logic) 🌟
+  // 🌟 FIX 2: Discount တွက်ချက်သည့်အပိုင်းကို သပ်ရပ်စွာ ပြင်ဆင်ခြင်း 🌟
   let finalDiscountPercent = 0; let discountLabel = '';
 
   const campaignDiscountStr = localStorage.getItem('shangrila_campaign_discount');
@@ -1684,15 +1684,12 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const boxPromoTitle = appData.promotion?.boxTitle || 'SPECIAL PROMO';
 
   if (campaignPrize > 0) {
-      // ၁။ ကံစမ်းမဲ (Mini Game) မှ ရထားသော Discount ကို အရင်ဆုံး ဦးစားပေးသုံးမည်
       finalDiscountPercent = campaignPrize;
       discountLabel = `${campaignLabelStr || 'Campaign'} WINNER (${campaignPrize}%)`;
   } else if (boxPromoActive && !userPastPromo) {
-      // ၂။ FIX: Box Promotion ကို ဖွင့်ထားပြီး User က ယူပြီးသားမဟုတ်မှသာ 10% / 20% ကို လျှော့ပေးမည်
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
       discountLabel = `${boxPromoTitle} (${finalDiscountPercent}%)`;
   } else if (vipSettings.isActive && userProfile) {
-      // ၃။ VIP Discount များ
       const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
       const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
       
@@ -1709,47 +1706,6 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
               }
           }
       }
-      
-      let bdayPercent = 0; let bdayLabel = '';
-      if (userTier && isBirthday()) {
-          if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) { 
-              bdayPercent = Math.min(100, 20 + monthlyPts); 
-              bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`; 
-          } else { 
-              bdayPercent = 50; 
-              bdayLabel = `VIP Birthday Bonus (50%)`; 
-          }
-      }
-
-      if (bdayPercent > Math.max(oneTimePercent, tierPercent)) { 
-          finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; 
-      } else if (tierPercent >= oneTimePercent && tierPercent > 0) { 
-          finalDiscountPercent = tierPercent; discountLabel = tierLabel; 
-      } else if (oneTimePercent > 0) { 
-          finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; 
-      }
-  }
-      
-      let bdayPercent = 0; let bdayLabel = '';
-      if (userTier && isBirthday()) {
-          if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) { 
-              bdayPercent = Math.min(100, 20 + monthlyPts); 
-              bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`; 
-          } else { 
-              bdayPercent = 50; 
-              bdayLabel = `VIP Birthday Bonus (50%)`; 
-          }
-      }
-
-      if (bdayPercent > Math.max(oneTimePercent, tierPercent)) { 
-          finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; 
-      } else if (tierPercent >= oneTimePercent && tierPercent > 0) { 
-          finalDiscountPercent = tierPercent; discountLabel = tierLabel; 
-      } else if (oneTimePercent > 0) { 
-          finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; 
-      }
-  }
-     
       
       let bdayPercent = 0; let bdayLabel = '';
       if (userTier && isBirthday()) {
@@ -2171,7 +2127,7 @@ const renderServiceSelection = (currentStep: number) => (
           </div>
       )}
 
-      {/* 🌟 FIX: Admin က isBoxActive ဖွင့်ထားပြီး သတ်မှတ်ရက်အတွင်းဖြစ်မှသာ Box ကို ပြမည် 🌟 */}
+      {/* 🌟 FIX: boxPromoActive မှန်ကန်မှသာ ဤ Box ကို ပြသမည် 🌟 */}
       {boxPromoActive && !userPastPromo && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between mx-1.5 sm:mx-0">
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div><div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
