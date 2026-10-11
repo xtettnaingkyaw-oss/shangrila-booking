@@ -1310,13 +1310,17 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
     setSaving(false);
   };
 
-  if (!userPhone) return <AuthRequest onLoginSuccess={onLoginSuccess} 
-                 // 🌟 FIX: URL တွင် return=campaign ပါလာပါက Login ဝင်ပြီးသည်နှင့် Campaign ထဲသို့ ပြန်ပို့မည် 🌟
-                 const searchParams = new URLSearchParams(window.location.search);
-                 if (searchParams.get('return') === 'campaign') {
-                     window.location.href = '/?campaign=true';
-                 }
-             }} title="View Profile" />;
+  if (!userPhone) return <AuthRequest onLoginSuccess={
+onLoginSuccess(phone);
+const searchParams = new URLSearchParams(window.location.search);
+if (searchParams.get('return') === 'campaign') {
+window.location.href = '/?campaign=true';
+}
+}}
+title="View Profile"
+/>
+);
+}
   if (loading) return <div className="text-center py-20 font-bold text-[#D4AF37] animate-pulse tracking-widest text-sm uppercase">Loading Profile...</div>;
 
   const sortedTiers = [...(vipSettings.tiers || FALLBACK_VIP_SETTINGS.tiers)].sort((a,b) => a.requiredPoints - b.requiredPoints);
