@@ -2083,12 +2083,20 @@ const renderServiceSelection = (currentStep: number) => (
           </div>
       )}
 
-      {promoActive && (
+      {/* 🌟 FIX: Admin က isBoxActive ဖွင့်ထားပြီး သတ်မှတ်ရက်အတွင်းဖြစ်မှသာ Box ကို ပြမည် 🌟 */}
+      {promoActive && appData.promotion?.isBoxActive && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between mx-1.5 sm:mx-0">
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div><div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
            <div className="relative z-10 flex items-center">
               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0"><Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" /></div>
-              <div><div className="flex items-center gap-2 mb-0.5"><h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-sm tracking-wide uppercase flex items-center"><Sparkles className="w-3 h-3 mr-1" /> {promoTitle}</h4><span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap ml-2">Limited Time</span></div><div className="text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span></div></div>
+              <div>
+                 <div className="flex items-center gap-2 mb-0.5">
+                    {/* Admin မှ ပေးထားသော Box Title သို့မဟုတ် Default Title ကို ပြမည် */}
+                    <h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-sm tracking-wide uppercase flex items-center"><Sparkles className="w-3 h-3 mr-1" /> {appData.promotion?.boxTitle || promoTitle}</h4>
+                    <span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap ml-2">Limited Time</span>
+                 </div>
+                 <div className="text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span></div>
+              </div>
            </div>
            <div className="relative z-10 flex flex-col gap-1.5 ml-3">
                <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm"><span className="flex items-center"><Home className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Hotel</span> <span className="text-[#D4AF37] ml-2">{appData.promotion?.hotelDiscountPercent}% OFF</span></div>
