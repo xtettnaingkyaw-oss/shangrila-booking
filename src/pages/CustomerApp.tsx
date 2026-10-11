@@ -2800,7 +2800,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
               <div className="w-full px-1.5">
                   <div className="w-full bg-white/50 backdrop-blur-xl border border-white/80 shadow-[inset_0_0_5px_rgba(0,0,0,0.02)] p-0.5 rounded-xl">
                       
-                      {/* 🌟 SCROLLABLE TRACK (touchAction: 'pan-x' ကြောင့် အထက်အောက် လိုက်မရွေ့တော့ပါ) 🌟 */}
+                      {/* 🌟 SCROLLABLE TRACK 🌟 */}
                       <div className="w-full overflow-x-auto scrollbar-hide rounded-lg" style={{ touchAction: 'pan-x' }}>
                           <div className="flex sm:flex-wrap sm:justify-center items-center gap-1 w-max sm:w-full mx-auto">
                             {tabs.map((tab) => {
@@ -2809,7 +2809,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
                                 <button 
                                   key={tab.id} 
                                   onClick={() => { setPrefillTherapist(null); setActiveTab(tab.id as any); }}
-                                  className={`relative flex-shrink-0 flex flex-col items-center justify-center py-1.5 px-2.5 sm:py-2 sm:px-4 min-w-[65px] sm:minw-[80px] rounded-lg text-[9px] sm:text-[10px] font-bold transition-all duration-300 ease-out outline-none group ${
+                                  className={`relative flex-shrink-0 flex flex-col items-center justify-center py-1.5 px-2.5 sm:py-2 sm:px-4 min-w-[65px] sm:min-[80px] rounded-lg text-[9px] sm:text-[10px] font-bold transition-all duration-300 ease-out outline-none group ${
                                     isActive 
                                       ? 'bg-white text-[#123524] shadow-[0_2px_5px_rgba(0,0,0,0.05)] border border-gray-100 transform scale-[1.02]' 
                                       : 'text-gray-500 hover:text-[#123524] hover:bg-white/60 border border-transparent'
@@ -2838,11 +2838,12 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
           </div>
        </div>
        
-      {/* 🌟 Main Content Area */}
+       {/* 🌟 Main Content Area */}
        <div className="max-w-2xl mx-auto px-4 sm:px-0">
            {/* 🌟 FIX: showCampaign True ဖြစ်နေပါက ThadingyutCampaign ကိုသာ ပြသမည် 🌟 */}
            {showCampaign ? (
                <div className="fixed inset-0 z-[100] bg-black">
+                   {/* ThadingyutCampaign အား Import လုပ်ထားရန် လိုအပ်သည် */}
                    <ThadingyutCampaign appData={mergedAppData} />
                    <button 
                        onClick={() => {
@@ -2866,3 +2867,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
                </>
            )}
        </div>
+     </div>
+   );
+}
