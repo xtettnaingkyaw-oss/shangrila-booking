@@ -3027,19 +3027,39 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
 function AdminCampaignsView() {
     const [records, setRecords] = useState<any[]>([]);
     const [search, setSearch] = useState('');
+    const [loading, setLoading] = useState(true); // Loading state ထည့်ပါ
 
     useEffect(() => {
         const fetchRecords = async () => {
-            const q = query(collection(db, 'campaign_records'), orderBy('createdAt', 'desc'));
-            const snap = await getDocs(q);
-            const data: any[] = [];
-            snap.forEach(d => data.push({ id: d.id, ...d.data() }));
-            setRecords(data);
+            setLoading(true);
+            try {
+                // 🌟 FIX: orderBy မပါဘဲ အရင်ဆွဲယူကြည့်ပါမည် (Index ပြဿနာ မရှိစေရန်)
+                const q = query(collection(db, 'campaign_records')); 
+                const snap = await getDocs(q);
+                const data: any[] = [];
+                snap.forEach(d => {
+                    data.push({ id: d.id, ...d.data() });
+                });
+                
+                // Client ဖက်ရောက်မှ Date အတိုင်း အစဉ်လိုက် ပြန်စီပါမည်
+                data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                
+                setRecords(data);
+                console.log("Fetched Campaign Records:", data); // Browser Console တွင် စစ်ဆေးရန်
+            } catch (error) {
+                console.error("Error fetching records:", error);
+                alert("မှတ်တမ်းများ ဆွဲယူရာတွင် အခက်အခဲရှိနေပါသည်။ Firebase Rules ကို စစ်ဆေးပါ။");
+            }
+            setLoading(false);
         };
         fetchRecords();
     }, []);
 
     const filtered = records.filter(r => r.phone?.includes(search));
+
+    if (loading) {
+        return <div className="p-10 text-center text-gray-500 font-bold">Loading Records...</div>;
+    }
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
@@ -3055,7 +3075,8 @@ function AdminCampaignsView() {
                         onChange={(e) => setSearch(e.target.value)} 
                         className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-orange-500 text-sm font-semibold" 
                     />
-                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                    {/* Search icon ကို ခေါ်မသုံးထားရင် ဖျက်နိုင်ပါတယ် သို့မဟုတ် ပြန်ထည့်ပါ */}
+                    <span className="text-gray-400 absolute left-3 top-2.5">🔍</span> 
                 </div>
             </div>
             
