@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PartyPopper, ArrowLeft, Sparkles, Timer, UserCircle, LogIn } from 'lucide-react';
 import { AppData } from '../shared';
 import { db } from '../firebase';
-import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query } from 'firebase/firestore';
 
 interface ThadingyutCampaignProps {
   appData: AppData;
@@ -21,7 +21,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   const [lanterns, setLanterns] = useState<Lantern[]>([]);
   const [prize, setPrize] = useState<number>(0);
   
-  // 🌟 Local Storage မှ Login ဝင်ထားသော ဖုန်းနံပါတ်ကို Auto ယူမည် 🌟
   const [userPhone, setUserPhone] = useState<string>('');
   const [checkingUser, setCheckingUser] = useState(false);
   const [caughtLantern, setCaughtLantern] = useState<{ id: number, left: number, top: number } | null>(null);
@@ -29,7 +28,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   const campaignTitle = appData?.promotion?.campaignTitle || "အထူး ပရိုမိုးရှင်း အစီအစဉ်";
 
   useEffect(() => {
-      // Component စပွင့်သည်နှင့် LocalStorage တွင် ဖုန်းနံပါတ် ရှိမရှိ စစ်ဆေးမည်
       const savedPhone = localStorage.getItem('shangrila_user_phone');
       if (savedPhone) {
           setUserPhone(savedPhone);
@@ -55,8 +53,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
     setCheckingUser(true);
     try {
-      // 🌟 Security Rule Error ကို ကာကွယ်ရန် တိုက်ရိုက် Query မလုပ်ဘဲ 
-      // User ဖုန်းနံပါတ်ဖြင့်သာ Filter ခံ၍ စစ်ဆေးပါမည်
       const q = query(collection(db, 'campaign_records'));
       const querySnapshot = await getDocs(q);
 
@@ -79,7 +75,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       }
     } catch (error: any) {
       console.error("Error checking user:", error);
-      // Firebase Rules ကြောင့် Error တက်ပါက ရှင်းလင်းစွာ ပြသမည်
       if (error.message?.includes("Missing or insufficient permissions")) {
           alert("Database ချိတ်ဆက်မှု အခက်အခဲဖြစ်နေပါသည်။ (Firebase Security Rules အား 'campaign_records' အတွက် ဖွင့်ပေးရန် လိုအပ်ပါသည်)");
       } else {
@@ -117,6 +112,22 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     return () => { clearInterval(lanternInterval); clearInterval(timerInterval); };
   }, [gameState]);
 
+  const saveRecordToDB = async (finalPrize: number) => {
+    try {
+      await addDoc(collection(db, 'campaign_records'), {
+        phone: userPhone,
+        discountPercent: finalPrize,
+        title: campaignTitle,
+        date: getTodayStr(),
+        createdAt: Date.now()
+      });
+      console.log("✅ Successfully saved to Database");
+    } catch (err: any) {
+      console.error("Save error", err);
+      alert(`မှတ်တမ်းသိမ်းဆည်းရာတွင် အမှားရှိနေပါသည်။ Firebase Rules ကို စစ်ဆေးပါ။ (${err.message})`);
+    }
+  };
+
   const catchLantern = (e: React.MouseEvent | React.TouchEvent, id: number) => {
     e.stopPropagation();
     if (gameState !== 'playing') return;
@@ -130,35 +141,18 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       clientY = (e as React.MouseEvent).clientY;
     }
 
+    const wonPrize = calculatePrize();
+    setPrize(wonPrize);
     setCaughtLantern({ id, left: clientX, top: clientY });
-    setPrize(calculatePrize());
     setGameState('opening');
 
-    saveRecordToDB();
-  };
-
-  const saveRecordToDB = async () => {
-    const finalPrize = calculatePrize(); 
-    setPrize(finalPrize);
-
-    try {
-      await addDoc(collection(db, 'campaign_records'), {
-        phone: userPhone,
-        discountPercent: finalPrize,
-        title: campaignTitle,
-        date: getTodayStr(),
-        createdAt: Date.now()
-      });
-    } catch (err) {
-      console.error("Save error", err);
-    }
+    saveRecordToDB(wonPrize);
   };
 
   const openCaughtLantern = () => {
     setGameState('result');
   };
 
-  // Login စာမျက်နှာသို့ သွားရန် Function
   const goToLogin = () => {
       window.location.href = '/?view=profile';
   };
@@ -228,7 +222,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
             <h2 className="text-2xl font-bold text-yellow-400 mb-2">{campaignTitle}</h2>
             <p className="text-gray-300 text-xs mb-6 leading-relaxed">မီးပုံးလေးတွေကို ဖမ်းပြီး ၅၀% အထိ Discount ရယူပါ။ (တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</p>
             
-            {/* 🌟 Login ဝင်ထားခြင်း ရှိမရှိ စစ်ဆေးပြီး ပုံစံပြောင်းပြမည် 🌟 */}
             {userPhone ? (
                <div className="space-y-4">
                   <div className="bg-black/40 border border-yellow-600/30 rounded-xl p-3 flex items-center justify-center">
