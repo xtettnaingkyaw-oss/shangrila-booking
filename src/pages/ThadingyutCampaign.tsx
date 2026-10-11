@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PartyPopper, ArrowLeft, Sparkles, Timer, UserCircle, LogIn, MessageCircle } from 'lucide-react';
+import { PartyPopper, ArrowLeft, Sparkles, Timer, UserCircle, LogIn, MessageCircle, AlertCircle } from 'lucide-react';
 import { AppData } from '../shared';
 import { db } from '../firebase';
 import { collection, addDoc, getDocs, query, updateDoc, doc } from 'firebase/firestore';
@@ -20,14 +20,42 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   const [checkingUser, setCheckingUser] = useState(false);
   const [caughtLantern, setCaughtLantern] = useState<{ id: number, left: number, top: number } | null>(null);
   
-  const [recordId, setRecordId] = useState<string | null>(null); // Database Document ID မှတ်ထားရန်
+  const [recordId, setRecordId] = useState<string | null>(null);
+  
+  // 🌟 အသစ်: ကံစမ်းပြီးသားသူများ ပြန်ကြည့်နိုင်ရန် State 🌟
+  const [alreadyPlayedToday, setAlreadyPlayedToday] = useState(false);
 
   const campaignTitle = appData?.promotion?.campaignTitle || "အထူး ပရိုမိုးရှင်း အစီအစဉ်";
 
   useEffect(() => {
       const savedPhone = localStorage.getItem('shangrila_user_phone');
-      if (savedPhone) setUserPhone(savedPhone);
+      if (savedPhone) {
+          setUserPhone(savedPhone);
+          checkInitialStatus(savedPhone); // Component စတက်ကတည်းက စစ်ဆေးထားမည်
+      }
   }, []);
+
+  const getTodayStr = () => {
+    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // 🌟 အသစ်: ဝင်လာကတည်းက ကံစမ်းပြီးသားလား စစ်ဆေးမည် 🌟
+  const checkInitialStatus = async (phone: string) => {
+      try {
+          const q = query(collection(db, 'campaign_records'));
+          const querySnapshot = await getDocs(q);
+          const today = getTodayStr();
+
+          querySnapshot.forEach((doc) => {
+              const data = doc.data();
+              if (data.phone === phone && data.date === today) {
+                  setAlreadyPlayedToday(true);
+                  setPrize(data.discountPercent || 0); // ရခဲ့ဖူးတဲ့ Discount ကို မှတ်ထားမည်
+                  setRecordId(doc.id);
+              }
+          });
+      } catch (e) {}
+  };
 
   const calculatePrize = () => {
     const rand = Math.random() * 100;
@@ -38,13 +66,11 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     return 50;
   };
 
-  const getTodayStr = () => {
-    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  };
-
   const startGame = async () => {
     if (!userPhone) return;
     setCheckingUser(true);
+    
+    // Check Again for Safety
     try {
       const q = query(collection(db, 'campaign_records'));
       const querySnapshot = await getDocs(q);
@@ -53,11 +79,15 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        if (data.phone === userPhone && data.date === today) alreadyPlayed = true;
+        if (data.phone === userPhone && data.date === today) {
+            alreadyPlayed = true;
+            setPrize(data.discountPercent || 0);
+            setRecordId(doc.id);
+        }
       });
 
       if (alreadyPlayed) {
-        alert("လူကြီးမင်းသည် ယနေ့အတွက် ကံစမ်းပြီးဖြစ်ပါသည်။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။");
+        setAlreadyPlayedToday(true);
       } else {
         setGameState('playing'); setTimeLeft(15); setLanterns([]);
       }
@@ -94,11 +124,8 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         createdAt: Date.now()
       });
       setRecordId(docRef.id);
-      
-      // 🌟 App ထဲကနေ တိုက်ရိုက် Booking တင်ရင် Discount Auto ဖြတ်ပေးဖို့ LocalStorage မှတ်မည် 🌟
       localStorage.setItem('shangrila_campaign_discount', finalPrize.toString());
       localStorage.setItem('shangrila_campaign_label', campaignTitle);
-      
     } catch (err: any) { console.error("Save error", err); }
   };
 
@@ -115,27 +142,25 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   };
 
   const openCaughtLantern = () => setGameState('result');
+  const goToLogin = () => window.location.href = '/?view=profile&return=campaign';
 
-  const goToLogin = () => {
-      window.location.href = '/?view=profile&return=campaign';
+  // 🌟 အသစ်: ကံစမ်းပြီးသားကို ကြည့်မည် ကို နှိပ်ပါက Result Screen သို့ တန်းသွားမည် 🌟
+  const viewPreviousResult = () => {
+      setGameState('result');
+      // LocalStorage ကို Update ပြန်လုပ်ပေးမည် (Booking ဆက်တင်ပါက ရစေရန်)
+      localStorage.setItem('shangrila_campaign_discount', prize.toString());
+      localStorage.setItem('shangrila_campaign_label', campaignTitle);
   };
 
-  // 🌟 Telegram သို့ Admin ကို ဆက်သွယ်မည့် Function 🌟
   const handleTelegramClick = async () => {
-      // 1. Admin Dashboard မှာ ပေါ်အောင် telegramClicked ကို True လုပ်မည်
       if (recordId) {
-          try {
-              await updateDoc(doc(db, 'campaign_records', recordId), { telegramClicked: true });
-          } catch(e) {}
+          try { await updateDoc(doc(db, 'campaign_records', recordId), { telegramClicked: true }); } catch(e) {}
       }
-      
-      // 2. Telegram ကို ဖွင့်ပြီး စာပါ တစ်ခါတည်း ရေးပေးထားမည်
       const tgLink = appData.branding?.telegram || 'https://t.me/admin';
       const msg = encodeURIComponent(`မင်္ဂလာပါ။ ${campaignTitle} ကနေ ${prize}% Discount ပေါက်ထားပါတယ်။\nဖုန်းနံပါတ်: ${userPhone}\nPromo Code: PROMO-${prize}`);
       
       let finalLink = tgLink;
       if (!finalLink.startsWith('http')) finalLink = `https://t.me/${finalLink.replace('@', '')}`;
-      
       window.open(`${finalLink}?text=${msg}`, '_blank');
   };
 
@@ -168,9 +193,17 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
             {userPhone ? (
                <div className="space-y-4">
                   <div className="bg-black/40 border border-yellow-600/30 rounded-xl p-3 flex items-center justify-center"><UserCircle className="w-5 h-5 text-yellow-500 mr-2" /><span className="text-sm font-bold text-yellow-500 tracking-widest">{userPhone}</span></div>
-                  <button onClick={startGame} disabled={checkingUser} className="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-500 rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,165,0,0.5)] hover:scale-105 transition-transform text-white flex items-center justify-center disabled:opacity-50">
-                    {checkingUser ? 'စစ်ဆေးနေပါသည်...' : <><Sparkles className="w-5 h-5 mr-2" /> ကစားမည် (Play Now)</>}
-                  </button>
+                  
+                  {/* 🌟 အသစ်: ကံစမ်းပြီးသားဆိုလျှင် ကြည့်ရန် ခလုတ်ပြမည် 🌟 */}
+                  {alreadyPlayedToday ? (
+                     <button onClick={viewPreviousResult} className="w-full py-4 bg-yellow-500/20 border border-yellow-500 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:bg-yellow-500/40 transition-colors text-yellow-500 flex items-center justify-center">
+                        <AlertCircle className="w-4 h-4 mr-2" /> ရရှိထားသော Discount အား ကြည့်မည်
+                     </button>
+                  ) : (
+                     <button onClick={startGame} disabled={checkingUser} className="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-500 rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,165,0,0.5)] hover:scale-105 transition-transform text-white flex items-center justify-center disabled:opacity-50">
+                        {checkingUser ? 'စစ်ဆေးနေပါသည်...' : <><Sparkles className="w-5 h-5 mr-2" /> ကစားမည် (Play Now)</>}
+                     </button>
+                  )}
                </div>
             ) : (
                <div className="space-y-4">
@@ -201,35 +234,52 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
         {/* RESULT SCREEN */}
         {gameState === 'result' && (
-          <div className="text-center z-50 p-6 bg-gradient-to-b from-yellow-900 to-black border-2 border-yellow-500 rounded-3xl max-w-sm w-full mx-4 shadow-[0_0_50px_rgba(255,215,0,0.4)] animate-in zoom-in duration-300 relative">
-            <div className="sparkle-burst"></div>
-            <PartyPopper className="w-16 h-16 mx-auto text-yellow-400 mb-4 animate-bounce relative z-10" />
-            <h2 className="text-xl font-bold text-white mb-2 relative z-10">ဂုဏ်ယူပါတယ် ခင်ဗျာ! 🎉</h2>
-            
-            <div className="bg-black/50 border border-yellow-500/50 rounded-xl p-4 mb-6 relative z-10">
-               <div className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-600 drop-shadow-lg mb-2">{prize}% OFF</div>
-               <p className="text-yellow-500 text-sm font-bold">Discount ရရှိသွားပါပြီ</p>
-            </div>
+          <div className="w-full max-w-sm mx-4 max-h-[85vh] overflow-y-auto scrollbar-hide z-50">
+              <div className="text-center p-6 bg-gradient-to-b from-yellow-900 to-black border-2 border-yellow-500 rounded-3xl shadow-[0_0_50px_rgba(255,215,0,0.4)] animate-in zoom-in duration-300 relative">
+                <div className="sparkle-burst"></div>
+                <PartyPopper className="w-16 h-16 mx-auto text-yellow-400 mb-4 animate-bounce relative z-10" />
+                <h2 className="text-xl font-bold text-white mb-2 relative z-10">ဂုဏ်ယူပါတယ် ခင်ဗျာ! 🎉</h2>
+                
+                <div className="bg-black/50 border border-yellow-500/50 rounded-xl p-4 mb-6 relative z-10">
+                   <div className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-600 drop-shadow-lg mb-2">{prize}% OFF</div>
+                   <p className="text-yellow-500 text-sm font-bold">Discount ရရှိသွားပါပြီ</p>
+                </div>
 
-            <div className="text-left bg-white/10 p-4 rounded-lg mb-6 border border-white/10 relative z-10">
-              <p className="text-xs text-gray-400 mb-1">Promo Code (For {userPhone}):</p>
-              <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-lg tracking-widest text-white">PROMO-{prize}</span>
-                <span className="text-[10px] bg-yellow-500 text-black px-2 py-1 rounded font-bold uppercase">Applied</span>
+                <div className="text-left bg-white/10 p-4 rounded-lg mb-6 border border-white/10 relative z-10">
+                  <p className="text-xs text-gray-400 mb-1">Promo Code (For {userPhone}):</p>
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-lg tracking-widest text-white">PROMO-{prize}</span>
+                    <span className="text-[10px] bg-yellow-500 text-black px-2 py-1 rounded font-bold uppercase">Applied</span>
+                  </div>
+                </div>
+
+                <div className="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4 mb-4 relative z-10">
+                  <p className="text-[11px] leading-relaxed text-blue-200 mb-3 font-semibold">
+                    ဆိုင်တွင် Walk-in လာရောက်ကစားလိုပါက ဤစာမျက်နှာကို Screenshot ရိုက်၍ Telegram Admin ထံသို့ ပေးပို့နိုင်ပါသည်။
+                  </p>
+                  <button onClick={handleTelegramClick} className="w-full py-3 bg-[#0088cc] text-white rounded-lg font-bold text-xs shadow-md hover:bg-[#0077b5] transition flex items-center justify-center">
+                     <MessageCircle className="w-4 h-4 mr-2" /> Telegram Admin သို့ ပို့မည်
+                  </button>
+                </div>
+
+                <button onClick={() => window.location.href = '/'} className="w-full py-4 bg-yellow-500 text-black rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,215,0,0.5)] hover:bg-yellow-400 transition relative z-10">App မှ Booking ပြန်တင်မည်</button>
+                
+                {/* 🌟 အသစ်: Terms & Conditions အပိုင်း 🌟 */}
+                <div className="mt-8 text-left border-t border-yellow-900/50 pt-6">
+                    <h4 className="text-xs font-bold text-yellow-600 uppercase tracking-widest mb-3 flex items-center"><AlertCircle className="w-3.5 h-3.5 mr-1.5" /> Terms & Conditions</h4>
+                    <ul className="space-y-2">
+                        <li className="text-[10px] text-gray-400 font-semibold leading-relaxed flex items-start">
+                            <span className="text-yellow-600 mr-2 font-bold">•</span> တစ်ရက်လျှင် တစ်ကြိမ်သာ ကံစမ်းခွင့်ရှိပါသည်။
+                        </li>
+                        <li className="text-[10px] text-gray-400 font-semibold leading-relaxed flex items-start">
+                            <span className="text-yellow-600 mr-2 font-bold">•</span> ရရှိထားသော Discount ခံစားခွင့်သည် ရရှိသော နေ့ရက် တစ်ရက်တည်းအတွက်သာ (24 Hours) အကျုံးဝင်ပါသည်။
+                        </li>
+                        <li className="text-[10px] text-gray-400 font-semibold leading-relaxed flex items-start">
+                            <span className="text-yellow-600 mr-2 font-bold">•</span> VIP Member Card ရှိသူများ အနေဖြင့် ပုံမှန် VIP Discount နှင့် ဤ Campaign Discount အား နှစ်ထပ်ကွမ်း (Double Promotion) အသုံးပြုခွင့် မရှိပါ။ မိမိအတွက် ပိုမိုသက်သာသော Discount တစ်ခုကိုသာ အသုံးပြုနိုင်ပါသည်။
+                        </li>
+                    </ul>
+                </div>
               </div>
-            </div>
-
-            {/* 🌟 New Telegram Instruction 🌟 */}
-            <div className="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4 mb-4 relative z-10">
-              <p className="text-[11px] leading-relaxed text-blue-200 mb-3 font-semibold">
-                ဆိုင်တွင် Walk-in လာရောက်ကစားလိုပါက ဤစာမျက်နှာကို Screenshot ရိုက်၍ Telegram Admin ထံသို့ ပေးပို့နိုင်ပါသည်။
-              </p>
-              <button onClick={handleTelegramClick} className="w-full py-3 bg-[#0088cc] text-white rounded-lg font-bold text-xs shadow-md hover:bg-[#0077b5] transition flex items-center justify-center">
-                 <MessageCircle className="w-4 h-4 mr-2" /> Telegram Admin သို့ ပို့မည်
-              </button>
-            </div>
-
-            <button onClick={() => window.location.href = '/'} className="w-full py-4 bg-yellow-500 text-black rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,215,0,0.5)] hover:bg-yellow-400 transition relative z-10">App မှ Booking ပြန်တင်မည်</button>
           </div>
         )}
       </div>
