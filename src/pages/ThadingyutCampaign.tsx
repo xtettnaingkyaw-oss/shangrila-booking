@@ -116,7 +116,9 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
   const openCaughtLantern = () => setGameState('result');
 
-  const goToLogin = () => window.location.href = '/?view=profile';
+  const goToLogin = () => {
+      window.location.href = '/?view=profile&return=campaign';
+  };
 
   // 🌟 Telegram သို့ Admin ကို ဆက်သွယ်မည့် Function 🌟
   const handleTelegramClick = async () => {
