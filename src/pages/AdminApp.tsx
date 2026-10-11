@@ -2027,6 +2027,16 @@ const handleSaveTherapists = async () => {
                                   className="w-5 h-5 accent-orange-500 cursor-pointer"
                               />
                           </div>
+
+                         {/* 🌟 Campaign Records Table 🌟 */}
+<div className="md:col-span-2 mt-6 pt-6 border-t border-gray-200">
+    <h4 className="font-bold text-sm text-gray-700 mb-3 flex items-center">
+        <PartyPopper className="w-4 h-4 mr-2 text-orange-500"/> Campaign Winners Record
+    </h4>
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+        <CampaignRecordsTable />
+    </div>
+</div>
                           <div className="mb-2">
                               <label className="text-xs font-bold text-gray-500 mb-1 block">Campaign Title (e.g. သီတင်းကျွတ် အထူးပရိုမိုးရှင်း)</label>
                               <input 
@@ -3004,6 +3014,60 @@ function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfil
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+function CampaignRecordsTable() {
+    const [records, setRecords] = useState<any[]>([]);
+    const [search, setSearch] = useState('');
+
+    useEffect(() => {
+        const fetchRecords = async () => {
+            const q = query(collection(db, 'campaign_records'), orderBy('createdAt', 'desc'));
+            const snap = await getDocs(q);
+            const data: any[] = [];
+            snap.forEach(d => data.push({ id: d.id, ...d.data() }));
+            setRecords(data);
+        };
+        fetchRecords();
+    }, []);
+
+    const filtered = records.filter(r => r.phone?.includes(search));
+
+    return (
+        <div className="flex flex-col">
+            <div className="p-3 border-b border-gray-100 bg-gray-50 flex items-center">
+                <Search className="w-4 h-4 text-gray-400 mr-2"/>
+                <input 
+                    type="text" 
+                    placeholder="Search by Phone Number..." 
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="bg-transparent border-none outline-none text-sm font-semibold w-full"
+                />
+            </div>
+            <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-white sticky top-0 border-b border-gray-200 shadow-sm z-10">
+                        <tr>
+                            <th className="p-3 text-gray-500 font-bold text-xs uppercase">Date</th>
+                            <th className="p-3 text-gray-500 font-bold text-xs uppercase">Phone</th>
+                            <th className="p-3 text-gray-500 font-bold text-xs uppercase text-right">Discount Won</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filtered.length === 0 && <tr><td colSpan={3} className="p-6 text-center text-gray-400">No records found.</td></tr>}
+                        {filtered.map(r => (
+                            <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
+                                <td className="p-3 text-gray-600">{r.date}</td>
+                                <td className="p-3 font-mono font-bold">{r.phone}</td>
+                                <td className="p-3 text-right font-black text-orange-600">{r.discountPercent}% OFF</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
