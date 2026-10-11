@@ -1630,32 +1630,40 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const getTier = (points: number) => { if(!vipSettings.isActive || !vipSettings.tiers) return null; const sortedTiers = [...vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
   const userTier = getTier(userProfile?.points || 0);
 
-  const checkPromoActive = () => {
-      const promo = appData.promotion; if (!promo?.isActive) return false; if (!promo.startDate || !promo.endDate) return false;
-      const today = new Date(getLocalTodayStr()).getTime(); const sDate = new Date(promo.startDate).getTime(); const eDate = new Date(promo.endDate).getTime();
+  // 🌟 FIX: Box Promotion ကို အမှန်ခြစ်ထားမှသာ (isBoxActive) အလုပ်လုပ်မည့် Function 🌟
+  const checkBoxPromoActive = () => {
+      const promo = appData.promotion; 
+      if (!promo?.isBoxActive) return false; // Box ပိတ်ထားရင် Discount လုံးဝမပေးပါ
+      if (!promo.startDate || !promo.endDate) return false;
+      
+      const today = new Date(getLocalTodayStr()).getTime(); 
+      const sDate = new Date(promo.startDate).getTime(); 
+      const eDate = new Date(promo.endDate).getTime();
       return today >= sDate && today <= eDate;
   };
 
   const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id) || false;
-  const promoActive = checkPromoActive();
+  const boxPromoActive = checkBoxPromoActive(); // အသစ်ပြောင်းထားသော Function ကိုသုံးမည်
   const isBirthday = () => { if (!userProfile?.dob || !formData.date) return false; const dobParts = userProfile.dob.split('-'); const bookParts = formData.date.split('-'); return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; };
 
- // 🌟 VIP Discount မှန်ကန်စေရန် နှင့် Campaign Discount Auto ဖြတ်ရန် 🌟
+  // 🌟 VIP Discount မှန်ကန်စေရန် နှင့် Campaign Discount Auto ဖြတ်ရန် 🌟
   let finalDiscountPercent = 0; let discountLabel = '';
 
-  // 1. Campaign ကနေ ရထားတဲ့ Discount ရှိမရှိ စစ်ဆေးမည်
   const campaignDiscountStr = localStorage.getItem('shangrila_campaign_discount');
   const campaignLabelStr = localStorage.getItem('shangrila_campaign_label');
   const campaignPrize = campaignDiscountStr ? parseInt(campaignDiscountStr, 10) : 0;
+  const boxPromoTitle = appData.promotion?.boxTitle || 'SPECIAL PROMO';
 
   if (campaignPrize > 0) {
-      // ကံစမ်းမဲက ရတဲ့ Discount ကို ဦးစားပေးသုံးမည်
+      // ၁။ ကံစမ်းမဲ (Mini Game) မှ ရထားသော Discount ကို အရင်ဆုံး ဦးစားပေးသုံးမည်
       finalDiscountPercent = campaignPrize;
-      discountLabel = `${campaignLabelStr} Winner (${campaignPrize}%)`;
-  } else if (promoActive) {
+      discountLabel = `${campaignLabelStr || 'Campaign'} WINNER (${campaignPrize}%)`;
+  } else if (boxPromoActive && !userPastPromo) {
+      // ၂။ FIX: Box Promotion ကို ဖွင့်ထားမှသာ (boxPromoActive === true) အောက်ပါ 10% / 20% ကို လျှော့ပေးမည်
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
-      discountLabel = `${promoTitle} (${finalDiscountPercent}%)`;
+      discountLabel = `${boxPromoTitle} (${finalDiscountPercent}%)`;
   } else if (vipSettings.isActive && userProfile) {
+      // ၃။ VIP Discount များ
       const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
       const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
       
@@ -1671,6 +1679,27 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
                   if (!hasUsed) { oneTimePercent = tier; oneTimeLabel = rewardLabel; break; }
               }
           }
+      }
+      
+      let bdayPercent = 0; let bdayLabel = '';
+      if (userTier && isBirthday()) {
+          if (userTier.name.toLowerCase().includes('imperial') || userTier.name.toLowerCase().includes('v-vip')) { 
+              bdayPercent = Math.min(100, 20 + monthlyPts); 
+              bdayLabel = `Imperial Birthday Bonus (${bdayPercent}%)`; 
+          } else { 
+              bdayPercent = 50; 
+              bdayLabel = `VIP Birthday Bonus (50%)`; 
+          }
+      }
+
+      if (bdayPercent > Math.max(oneTimePercent, tierPercent)) { 
+          finalDiscountPercent = bdayPercent; discountLabel = bdayLabel; 
+      } else if (tierPercent >= oneTimePercent && tierPercent > 0) { 
+          finalDiscountPercent = tierPercent; discountLabel = tierLabel; 
+      } else if (oneTimePercent > 0) { 
+          finalDiscountPercent = oneTimePercent; discountLabel = oneTimeLabel; 
+      }
+  }
       }
       
       let bdayPercent = 0; let bdayLabel = '';
