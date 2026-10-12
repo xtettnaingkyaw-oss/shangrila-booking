@@ -2779,6 +2779,7 @@ const renderServiceSelection = (currentStep: number) => {
     </div>
   );
 }
+  } //
 
 // 🌟 THE COMPONENT THAT RENDERS THE TABS AND MAIN VIEW 🌟
 // ==========================================
