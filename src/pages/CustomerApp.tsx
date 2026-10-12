@@ -2138,10 +2138,8 @@ const renderServiceSelection = (currentStep: number) => {
     // 🌟 အသစ်: ခလုတ်နှိပ်လိုက်သည့်အခါ Click Effect ပေါ်စေရန် Function 🌟
     const handleCampaignButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
         const button = e.currentTarget;
-        // နှိပ်လိုက်ကြောင်း သိသာစေရန် Scale ကို အနည်းငယ် သေးလိုက်မည်
         button.style.transform = 'scale(0.95)';
         
-        // Ripple (ရေလှိုင်း) Effect ထည့်ရန်
         const circle = document.createElement('span');
         const diameter = Math.max(button.clientWidth, button.clientHeight);
         const radius = diameter / 2;
@@ -2155,16 +2153,46 @@ const renderServiceSelection = (currentStep: number) => {
         button.appendChild(circle);
         
         setTimeout(() => {
-            button.style.transform = 'scale(1)'; // မူလအရွယ်အစားသို့ ပြန်ထားမည်
-            circle.remove(); // Ripple ကို ဖျက်မည်
-            // Campaign ဆီသို့ သွားမည်
+            button.style.transform = 'scale(1)'; 
+            circle.remove(); 
             window.location.href = '/?campaign=true';
-        }, 300); // 300ms ကြာပြီးမှ သွားမည်
+        }, 300); 
     };
 
     return (
     <div className="animate-fade-in -mx-1.5 sm:mx-0">
       {/* 🌟 အသစ်: Ripple Animation အတွက် CSS 🌟 */}
+      <style>{`
+          .ripple-effect {
+              position: absolute;
+              border-radius: 50%;
+              background: rgba(255, 255, 255, 0.4);
+              transform: scale(0);
+              animation: ripple 0.6s linear;
+              pointer-events: none;
+          }
+          @keyframes ripple {
+              to {
+                  transform: scale(4);
+                  opacity: 0;
+              }
+          }
+          @keyframes boxMiniFall { 
+              0% { transform: translateY(-20px) rotate(-10deg); opacity: 0; } 
+              20% { opacity: 1; } 
+              100% { transform: translateY(150px) rotate(15deg); opacity: 0; } 
+          }
+          .box-mini-lantern { 
+              position: absolute; 
+              animation-name: boxMiniFall; 
+              animation-timing-function: ease-in-out; 
+              pointer-events: none; 
+              filter: drop-shadow(0 0 5px rgba(255, 140, 0, 0.5));
+              z-index: 1;
+          }
+      `}</style>
+
+      {/* 🌟 အသစ်: Ripple Animation & Falling Box Lanterns CSS 🌟 */}
       <style>{`
           .ripple-effect {
               position: absolute;
@@ -2214,7 +2242,7 @@ const renderServiceSelection = (currentStep: number) => {
           </div>
       )}
 
-      {/* 🌟 FIX: Box Promotion အသစ် (Falling Lanterns နှင့် Ripple Button) 🌟 */}
+     {/* 🌟 FIX: Box Promotion အသစ် (Falling Lanterns နှင့် Ripple Button) 🌟 */}
       {boxPromoActive && !userPastPromo && (
         <div className="relative overflow-hidden bg-gradient-to-b from-yellow-600 via-orange-800 to-black p-5 sm:p-6 rounded-3xl mb-8 shadow-[0_10px_30px_rgba(255,165,0,0.3)] border-2 border-yellow-500/50 animate-fade-in mx-1.5 sm:mx-0 flex flex-col items-center text-center">
             
