@@ -14,8 +14,10 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   const [gameState, setGameState] = useState<'start' | 'playing' | 'opening' | 'result'>('start');
   const [timeLeft, setTimeLeft] = useState(15);
   const [lanterns, setLanterns] = useState<Lantern[]>([]);
-  // 🌟 အသစ်: Start Screen အတွက် သီးသန့် Background Lanterns 🌟
-  const [bgLanterns, setBgLanterns] = useState<Lantern[]>([]);
+  
+  // 🌟 အသစ်: Pop-up Box အပေါ်ပိုင်းအတွက် မီးပုံးငယ်များ 🌟
+  const [miniLanterns, setMiniLanterns] = useState<Lantern[]>([]);
+
   const [prize, setPrize] = useState<number>(0);
   
   const [userPhone, setUserPhone] = useState<string>('');
@@ -87,7 +89,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       if (alreadyPlayed) {
         setAlreadyPlayedToday(true);
       } else {
-        setGameState('playing'); setTimeLeft(15); setLanterns([]); setBgLanterns([]); // BgLanterns တွေကို ရှင်းလင်းမည်
+        setGameState('playing'); setTimeLeft(15); setLanterns([]); setMiniLanterns([]);
       }
     } catch (error: any) {
       alert(`ချိတ်ဆက်မှု အခက်အခဲဖြစ်နေပါသည်။ (Error: ${error.message})`);
@@ -95,33 +97,31 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     setCheckingUser(false);
   };
 
-  // 🌟 FIX: Start Screen နဲ့ Playing Screen အတွက် Animation များကို ခွဲခြားထားခြင်း 🌟
   useEffect(() => {
-    let lanternInterval: any; let timerInterval: any; let bgLanternInterval: any;
-    
+    let lanternInterval: any; let timerInterval: any; let miniLanternInterval: any;
+
     if (gameState === 'start') {
-        // Start Screen မှာ နောက်ခံအလှပြရန် (နှိပ်လို့မရပါ)
-        bgLanternInterval = setInterval(() => {
-            setBgLanterns(prev => {
-                // အများဆုံး မီးပုံး ၁၅ လုံးထက် မပိုစေရန် (Performance အတွက်)
-                if (prev.length > 15) return prev.slice(1);
-                return [...prev, { id: Date.now() + Math.random(), left: Math.random() * 95, duration: 4 + Math.random() * 4, size: 1.5 + Math.random() * 1.5 }];
+        // 🌟 အသစ်: Pop-up Box အပေါ်ပိုင်းမှာ ပြုတ်ကျလာမယ့် မီးပုံးလေးများ 🌟
+        miniLanternInterval = setInterval(() => {
+            setMiniLanterns(prev => {
+                if (prev.length > 8) return prev.slice(1);
+                // Box ရဲ့ အကျယ် (0% မှ 100%) အတွင်း ကျပန်းနေရာကနေ ကျလာမည်
+                return [...prev, { id: Date.now() + Math.random(), left: Math.random() * 90, duration: 2 + Math.random() * 3, size: 1 + Math.random() * 1.5 }];
             });
-        }, 500);
+        }, 400);
     } else if (gameState === 'playing') {
-        // Playing Screen မှာ အမှန်တကယ် ဖမ်းရမည့် မီးပုံးများ
-        lanternInterval = setInterval(() => {
-          setLanterns(prev => [...prev, { id: Date.now() + Math.random(), left: Math.random() * 90, duration: 1.5 + Math.random() * 2.5, size: 2.5 + Math.random() * 2 }]);
-        }, 150);
-        timerInterval = setInterval(() => {
-          setTimeLeft(prev => {
-            if (prev <= 1) { setGameState('start'); alert("အချိန်ကုန်သွားပါပြီ။ နောက်တစ်ကြိမ် ထပ်မံကံစမ်းကြည့်ပါ!"); return 15; }
-            return prev - 1;
-          });
-        }, 1000);
+      lanternInterval = setInterval(() => {
+        setLanterns(prev => [...prev, { id: Date.now() + Math.random(), left: Math.random() * 90, duration: 1.5 + Math.random() * 2.5, size: 2.5 + Math.random() * 2 }]);
+      }, 150);
+      timerInterval = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) { setGameState('start'); alert("အချိန်ကုန်သွားပါပြီ။ နောက်တစ်ကြိမ် ထပ်မံကံစမ်းကြည့်ပါ!"); return 15; }
+          return prev - 1;
+        });
+      }, 1000);
     }
     
-    return () => { clearInterval(lanternInterval); clearInterval(timerInterval); clearInterval(bgLanternInterval); };
+    return () => { clearInterval(lanternInterval); clearInterval(timerInterval); clearInterval(miniLanternInterval); };
   }, [gameState]);
 
   const saveRecordToDB = async (finalPrize: number) => {
@@ -183,9 +183,21 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         .lantern-anim { position: absolute; animation-name: fall; animation-timing-function: linear; cursor: pointer; filter: drop-shadow(0 0 12px rgba(255, 165, 0, 0.8)); transition: transform 0.1s; }
         .lantern-anim:active { transform: scale(1.5); }
         
-        /* 🌟 အသစ်: Start Screen Background Lanterns အတွက် CSS 🌟 */
-        .bg-lantern-anim { position: absolute; animation-name: fall; animation-timing-function: ease-in-out; pointer-events: none; filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.4)); opacity: 0.6; z-index: 1; }
-        
+        /* 🌟 အသစ်: Pop-up Box အပေါ်ပိုင်းအတွက် Mini Falling Lanterns CSS 🌟 */
+        @keyframes miniFall { 
+            0% { transform: translateY(-20px) rotate(-10deg); opacity: 0; } 
+            20% { opacity: 1; } 
+            100% { transform: translateY(120px) rotate(15deg); opacity: 0; } 
+        }
+        .mini-lantern-anim { 
+            position: absolute; 
+            animation-name: miniFall; 
+            animation-timing-function: ease-in-out; 
+            pointer-events: none; 
+            filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.6));
+            z-index: 10;
+        }
+
         @keyframes flyToCenter { 
           0% { left: var(--start-x); top: var(--start-y); transform: translate(-50%, -50%) scale(1); } 
           100% { left: 50%; top: 50%; transform: translate(-50%, -50%) scale(3.5); } 
@@ -209,46 +221,54 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       </div>
 
       <div className="flex-1 relative flex items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-950 via-black to-black">
-        
-        {/* 🌟 အသစ်: Start Screen တွင် လှပသော နောက်ခံမီးပုံးလေးများ ပြသရန် 🌟 */}
-        {gameState === 'start' && bgLanterns.map((lantern) => (
-            <div key={lantern.id} className="bg-lantern-anim" style={{ left: `${lantern.left}%`, animationDuration: `${lantern.duration}s`, fontSize: `${lantern.size}rem`, top: '-10vh' }}>🏮</div>
-        ))}
-
         {/* START SCREEN */}
         {gameState === 'start' && (
-          <div className="text-center z-10 p-6 bg-black/70 border border-yellow-600/50 rounded-2xl backdrop-blur-md max-w-sm w-full mx-4 shadow-[0_0_30px_rgba(255,215,0,0.1)] relative">
-            <h2 className="text-2xl font-bold text-yellow-400 mb-2">{campaignTitle}</h2>
-            <p className="text-gray-300 text-xs mb-6 leading-relaxed">မီးပုံးလေးတွေကို ဖမ်းပြီး ၅၀% အထိ Discount ရယူပါ။ (တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</p>
-            {userPhone ? (
-               <div className="space-y-4">
-                  <div className="bg-black/40 border border-yellow-600/30 rounded-xl p-3 flex items-center justify-center"><UserCircle className="w-5 h-5 text-yellow-500 mr-2" /><span className="text-sm font-bold text-yellow-500 tracking-widest">{userPhone}</span></div>
-                  
-                  {alreadyPlayedToday ? (
-                     <div className="animate-fade-in space-y-3">
-                         <div className="bg-yellow-900/40 border border-yellow-700/50 rounded-xl p-3 text-center shadow-sm">
-                             <p className="text-[10px] sm:text-xs text-yellow-400 font-semibold leading-relaxed">
-                                လူကြီးမင်းသည် ယနေ့အတွက် ကံစမ်းခွင့် ပြည့်သွားပါပြီ။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။
-                             </p>
+          <div className="text-center z-10 p-6 bg-black/70 border border-yellow-600/50 rounded-2xl backdrop-blur-md max-w-sm w-full mx-4 shadow-[0_0_30px_rgba(255,215,0,0.1)] relative overflow-hidden">
+            
+            {/* 🌟 အသစ်: Pop-up Box ရဲ့ အပေါ်ပိုင်းနေရာလေးမှာ မီးပုံးလေးတွေ ပြုတ်ကျလာမည့် အပိုင်း 🌟 */}
+            <div className="absolute top-0 left-0 w-full h-32 overflow-hidden pointer-events-none rounded-t-2xl">
+                 {miniLanterns.map((lantern) => (
+                    <div key={lantern.id} className="mini-lantern-anim" style={{ left: `${lantern.left}%`, animationDuration: `${lantern.duration}s`, fontSize: `${lantern.size}rem`, top: '0px' }}>🏮</div>
+                 ))}
+            </div>
+
+            {/* မူလ Animation အစား Static Icon လေးတစ်ခုသာ ပြထားပြီး အနောက်မှာ Falling Lanterns များ ပေါ်နေမည် */}
+            <div className="flex justify-center mb-4 pt-6 relative z-20"><span className="text-5xl drop-shadow-md">🏮</span></div>
+            
+            <h2 className="text-2xl font-bold text-yellow-400 mb-2 relative z-20">{campaignTitle}</h2>
+            <p className="text-gray-300 text-xs mb-6 leading-relaxed relative z-20">မီးပုံးလေးတွေကို ဖမ်းပြီး ၅၀% အထိ Discount ရယူပါ။ (တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</p>
+            
+            <div className="relative z-20">
+                {userPhone ? (
+                   <div className="space-y-4">
+                      <div className="bg-black/40 border border-yellow-600/30 rounded-xl p-3 flex items-center justify-center"><UserCircle className="w-5 h-5 text-yellow-500 mr-2" /><span className="text-sm font-bold text-yellow-500 tracking-widest">{userPhone}</span></div>
+                      
+                      {alreadyPlayedToday ? (
+                         <div className="animate-fade-in space-y-3">
+                             <div className="bg-yellow-900/40 border border-yellow-700/50 rounded-xl p-3 text-center shadow-sm">
+                                 <p className="text-[10px] sm:text-xs text-yellow-400 font-semibold leading-relaxed">
+                                    လူကြီးမင်းသည် ယနေ့အတွက် ကံစမ်းခွင့် ပြည့်သွားပါပြီ။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။
+                                 </p>
+                             </div>
+                             <button onClick={viewPreviousResult} className="w-full py-4 bg-yellow-500/20 border border-yellow-500 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:bg-yellow-500/40 transition-colors text-yellow-500 flex items-center justify-center relative overflow-hidden group">
+                                <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></span>
+                                <AlertCircle className="w-4 h-4 mr-2 relative z-10" /> <span className="relative z-10">ရရှိထားသော Discount အား ကြည့်မည်</span>
+                             </button>
                          </div>
-                         <button onClick={viewPreviousResult} className="w-full py-4 bg-yellow-500/20 border border-yellow-500 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:bg-yellow-500/40 transition-colors text-yellow-500 flex items-center justify-center relative overflow-hidden group">
-                            <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></span>
-                            <AlertCircle className="w-4 h-4 mr-2 relative z-10" /> <span className="relative z-10">ရရှိထားသော Discount အား ကြည့်မည်</span>
+                      ) : (
+                         <button onClick={startGame} disabled={checkingUser} className="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-500 rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,165,0,0.5)] hover:scale-105 transition-transform text-white flex items-center justify-center disabled:opacity-50 relative overflow-hidden group">
+                            <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></span>
+                            {checkingUser ? <span className="relative z-10">စစ်ဆေးနေပါသည်...</span> : <><Sparkles className="w-5 h-5 mr-2 relative z-10" /> <span className="relative z-10">ကစားမည် (Play Now)</span></>}
                          </button>
-                     </div>
-                  ) : (
-                     <button onClick={startGame} disabled={checkingUser} className="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-500 rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,165,0,0.5)] hover:scale-105 transition-transform text-white flex items-center justify-center disabled:opacity-50 relative overflow-hidden group">
-                        <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></span>
-                        {checkingUser ? <span className="relative z-10">စစ်ဆေးနေပါသည်...</span> : <><Sparkles className="w-5 h-5 mr-2 relative z-10" /> <span className="relative z-10">ကစားမည် (Play Now)</span></>}
-                     </button>
-                  )}
-               </div>
-            ) : (
-               <div className="space-y-4">
-                  <div className="bg-red-950/50 border border-red-900/50 rounded-xl p-4 text-xs text-red-200">ကံစမ်းမဲ ကစားရန်အတွက် အရင်ဆုံး အကောင့် ဝင်ရန် (Login) လိုအပ်ပါသည်။</div>
-                  <button onClick={goToLogin} className="w-full py-4 bg-white text-black rounded-xl font-bold text-sm shadow-md hover:bg-gray-200 transition flex items-center justify-center"><LogIn className="w-4 h-4 mr-2" /> Login အရင်ဝင်မည်</button>
-               </div>
-            )}
+                      )}
+                   </div>
+                ) : (
+                   <div className="space-y-4">
+                      <div className="bg-red-950/50 border border-red-900/50 rounded-xl p-4 text-xs text-red-200">ကံစမ်းမဲ ကစားရန်အတွက် အရင်ဆုံး အကောင့် ဝင်ရန် (Login) လိုအပ်ပါသည်။</div>
+                      <button onClick={goToLogin} className="w-full py-4 bg-white text-black rounded-xl font-bold text-sm shadow-md hover:bg-gray-200 transition flex items-center justify-center"><LogIn className="w-4 h-4 mr-2" /> Login အရင်ဝင်မည်</button>
+                   </div>
+                )}
+            </div>
           </div>
         )}
 
