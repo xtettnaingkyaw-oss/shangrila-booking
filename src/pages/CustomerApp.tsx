@@ -2118,9 +2118,83 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
     </div>
   );
 
-const renderServiceSelection = (currentStep: number) => (
+const renderServiceSelection = (currentStep: number) => {
+    // 🌟 အသစ်: Pop-up Box အတွက် Mini Lanterns State 🌟
+    const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number, duration: number, size: number}[]>([]);
+    
+    // 🌟 အသစ်: Box ပေါ်လာချိန်တွင် Mini Lanterns များကို စတင်ကျစေမည့် useEffect 🌟
+    useEffect(() => {
+        if (boxPromoActive && !userPastPromo) {
+            const interval = setInterval(() => {
+                setMiniBoxLanterns(prev => {
+                    if (prev.length > 10) return prev.slice(1);
+                    return [...prev, { id: Date.now() + Math.random(), left: Math.random() * 95, duration: 1.5 + Math.random() * 2, size: 0.8 + Math.random() * 0.8 }];
+                });
+            }, 300);
+            return () => clearInterval(interval);
+        }
+    }, [boxPromoActive, userPastPromo]);
+
+    // 🌟 အသစ်: ခလုတ်နှိပ်လိုက်သည့်အခါ Click Effect ပေါ်စေရန် Function 🌟
+    const handleCampaignButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+        const button = e.currentTarget;
+        // နှိပ်လိုက်ကြောင်း သိသာစေရန် Scale ကို အနည်းငယ် သေးလိုက်မည်
+        button.style.transform = 'scale(0.95)';
+        
+        // Ripple (ရေလှိုင်း) Effect ထည့်ရန်
+        const circle = document.createElement('span');
+        const diameter = Math.max(button.clientWidth, button.clientHeight);
+        const radius = diameter / 2;
+        
+        const rect = button.getBoundingClientRect();
+        circle.style.width = circle.style.height = `${diameter}px`;
+        circle.style.left = `${e.clientX - rect.left - radius}px`;
+        circle.style.top = `${e.clientY - rect.top - radius}px`;
+        circle.classList.add('ripple-effect');
+        
+        button.appendChild(circle);
+        
+        setTimeout(() => {
+            button.style.transform = 'scale(1)'; // မူလအရွယ်အစားသို့ ပြန်ထားမည်
+            circle.remove(); // Ripple ကို ဖျက်မည်
+            // Campaign ဆီသို့ သွားမည်
+            window.location.href = '/?campaign=true';
+        }, 300); // 300ms ကြာပြီးမှ သွားမည်
+    };
+
+    return (
     <div className="animate-fade-in -mx-1.5 sm:mx-0">
-      
+      {/* 🌟 အသစ်: Ripple Animation အတွက် CSS 🌟 */}
+      <style>{`
+          .ripple-effect {
+              position: absolute;
+              border-radius: 50%;
+              background: rgba(255, 255, 255, 0.4);
+              transform: scale(0);
+              animation: ripple 0.6s linear;
+              pointer-events: none;
+          }
+          @keyframes ripple {
+              to {
+                  transform: scale(4);
+                  opacity: 0;
+              }
+          }
+          @keyframes boxMiniFall { 
+              0% { transform: translateY(-20px) rotate(-10deg); opacity: 0; } 
+              20% { opacity: 1; } 
+              100% { transform: translateY(150px) rotate(15deg); opacity: 0; } 
+          }
+          .box-mini-lantern { 
+              position: absolute; 
+              animation-name: boxMiniFall; 
+              animation-timing-function: ease-in-out; 
+              pointer-events: none; 
+              filter: drop-shadow(0 0 5px rgba(255, 140, 0, 0.5));
+              z-index: 1;
+          }
+      `}</style>
+
       {viewDesc && (
           <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4 sm:p-6 animate-fade-in backdrop-blur-sm" onClick={() => setViewDesc(null)}>
               <div className="bg-white w-full max-w-sm rounded-[1.5rem] shadow-2xl overflow-hidden flex flex-col animate-slide-up border border-[#D4AF37]/30" onClick={e => e.stopPropagation()}>
@@ -2128,7 +2202,6 @@ const renderServiceSelection = (currentStep: number) => (
                       <h3 className="text-[#D4AF37] font-bold text-sm tracking-wide flex items-center"><Info className="w-4 h-4 mr-2" /> {viewDesc.title}</h3>
                       <button onClick={() => setViewDesc(null)} className="text-white hover:text-red-400 transition bg-white/10 hover:bg-white/20 p-1.5 rounded-full"><X className="w-4 h-4"/></button>
                   </div>
-                  {/* 🌟 ဤနေရာတွင် whitespace-pre-wrap နှင့် text-left ထည့်သွင်းထားပါသည် 🌟 */}
                   <div className="p-6 text-[11px] sm:text-xs text-gray-700 leading-relaxed text-left font-semibold bg-gray-50/50 whitespace-pre-wrap">
                       {viewDesc.desc || 'အကောင်းဆုံးသော ဝန်ဆောင်မှုဖြင့် လူကြီးမင်း၏ ပင်ပန်းနွမ်းနယ်မှုများကို အပြည့်အဝ ပြေပျောက်စေပါမည်။'}
                   </div>
@@ -2141,25 +2214,42 @@ const renderServiceSelection = (currentStep: number) => (
           </div>
       )}
 
-      {/* 🌟 FIX: boxPromoActive မှန်ကန်မှသာ ဤ Box ကို ပြသမည် 🌟 */}
+      {/* 🌟 FIX: Box Promotion အသစ် (Falling Lanterns နှင့် Ripple Button) 🌟 */}
       {boxPromoActive && !userPastPromo && (
-        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between mx-1.5 sm:mx-0">
-           <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div><div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-           <div className="relative z-10 flex items-center">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0"><Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" /></div>
-              <div>
-                 <div className="flex items-center gap-2 mb-0.5">
-                    {/* Admin မှ ပေးထားသော Box Title သို့မဟုတ် Default Title ကို ပြမည် */}
-                    <h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-sm tracking-wide uppercase flex items-center"><Sparkles className="w-3 h-3 mr-1" /> {appData.promotion?.boxTitle || promoTitle}</h4>
-                    <span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap ml-2">Limited Time</span>
-                 </div>
-                 <div className="text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span></div>
-              </div>
-           </div>
-           <div className="relative z-10 flex flex-col gap-1.5 ml-3">
-               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm"><span className="flex items-center"><Home className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Hotel</span> <span className="text-[#D4AF37] ml-2">{appData.promotion?.hotelDiscountPercent}% OFF</span></div>
-               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm"><span className="flex items-center"><Activity className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Other</span><span className="text-[#D4AF37] ml-2">{appData.promotion?.otherDiscountPercent}% OFF</span></div>
-           </div>
+        <div className="relative overflow-hidden bg-gradient-to-b from-yellow-600 via-orange-800 to-black p-5 sm:p-6 rounded-3xl mb-8 shadow-[0_10px_30px_rgba(255,165,0,0.3)] border-2 border-yellow-500/50 animate-fade-in mx-1.5 sm:mx-0 flex flex-col items-center text-center">
+            
+            {/* Background Effects */}
+            <div className="absolute -top-10 -right-10 w-32 h-32 bg-yellow-500 rounded-full mix-blend-screen filter blur-[40px] opacity-40 animate-pulse"></div>
+            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-orange-600 rounded-full mix-blend-screen filter blur-[40px] opacity-40 animate-pulse"></div>
+            
+            {/* 🌟 အသစ်: မီးပုံးများ ကျလာမည့် နေရာ 🌟 */}
+            <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+                 {miniBoxLanterns.map((lantern) => (
+                    <div key={lantern.id} className="box-mini-lantern" style={{ left: `${lantern.left}%`, animationDuration: `${lantern.duration}s`, fontSize: `${lantern.size}rem`, top: '-20px' }}>🏮</div>
+                 ))}
+            </div>
+
+            <div className="relative z-10 w-full">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 to-yellow-500 drop-shadow-md mb-2 flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 mr-2 text-yellow-400" /> {appData.promotion?.boxTitle || promoTitle}
+                </h3>
+                <p className="text-[11px] sm:text-xs text-yellow-100/90 font-semibold leading-relaxed mb-5 max-w-[280px] mx-auto">
+                    မီးပုံးလေးတွေကို ဖမ်းပြီး လူကြီးမင်းအတွက် <span className="text-yellow-400 font-bold text-sm">၅၀% အထိ Discount</span> ကံစမ်းမဲများကို ယခုပဲ ရယူလိုက်ပါ။
+                </p>
+                
+                {/* 🌟 အသစ်: Ripple Click Effect ပါသော ခလုတ် 🌟 */}
+                <button 
+                    onClick={handleCampaignButtonClick}
+                    className="relative overflow-hidden w-full max-w-[250px] mx-auto py-3.5 bg-gradient-to-r from-yellow-400 to-yellow-600 text-black rounded-xl font-black text-sm shadow-[0_0_20px_rgba(255,215,0,0.5)] hover:shadow-[0_0_25px_rgba(255,215,0,0.7)] transition-all duration-200 flex items-center justify-center group"
+                >
+                    <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></span>
+                    <PartyPopper className="w-4 h-4 mr-2 relative z-10" /> <span className="relative z-10">ယခုပဲ ကံစမ်းမည်</span>
+                </button>
+                
+                <div className="mt-3 text-[9px] text-gray-400 font-semibold">
+                    နောက်မှ ကံစမ်းမည်ဆိုပါက အောက်သို့ ဆက်သွားပါ။
+                </div>
+            </div>
         </div>
       )}
 
