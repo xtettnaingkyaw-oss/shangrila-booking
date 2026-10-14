@@ -55,7 +55,7 @@ interface OfflineSaleRecord {
 interface PosPrintSettings {
   paperWidth: '58mm' | '80mm';
   showLogo: boolean;
-  customPrintedLogoDataUrl: string; // Loyverse ကဲ့သို့ Printed Receipt အတွက် သီးသန့် Upload တင်ထားသော Logo
+  customPrintedLogoDataUrl: string;
   logoFilterMode: 'auto_gold_extract' | 'bw_threshold';
   logoThreshold: number;
   logoSize: number;
@@ -79,9 +79,9 @@ const DEFAULT_PRINT_SETTINGS: PosPrintSettings = {
   paperWidth: '58mm',
   showLogo: true,
   customPrintedLogoDataUrl: '',
-  logoFilterMode: 'auto_gold_extract', // အစိမ်းရင့်နောက်ခံကို အဖြူပြောင်းပြီး ရွှေရောင်တောင်တန်းနှင့် စာသားကိုသာ အမည်းရောင်ထုတ်ပေးမည့် စနစ်
+  logoFilterMode: 'auto_gold_extract',
   logoThreshold: 12,
-  logoSize: 184,
+  logoSize: 200,
   shopName: 'THE SHANGRI-LA',
   subtitle: "MEN'S RETREAT",
   headerText: 'Beyond Relaxation',
@@ -230,7 +230,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const [isPrintingBt, setIsPrintingBt] = useState(false);
   const [processedLogoPreview, setProcessedLogoPreview] = useState<string>('');
 
-  // Digital Logo (ဘယ်ဘက်အကွက်) နှင့် Printed Source Logo (ညာဘက်အကွက်)
   const digitalLogoUrl = defaultLogoImg || localAppData?.branding?.logoUrl || '';
   const printedLogoSourceUrl = printSettings.customPrintedLogoDataUrl || digitalLogoUrl;
 
@@ -347,8 +346,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     };
   }, []);
 
-  // 🌟 Loyverse-Grade Smart Monochrome Logo Converter 🌟
-  // အစိမ်းရင့်နောက်ခံ (#123524) ကို ၁၀၀% အဖြူရောင်ပြောင်းပြီး ရွှေရောင်တောင်တန်းနှင့် စာသား (#D4AF37) ကိုသာ အမည်းရောင် Line-Art အဖြစ် ထုတ်ပေးသည်
+  // 🌟 Smart Monochrome Logo Converter 🌟
   const buildLogoRasterData = async (
     imgUrl: string,
     filterMode: 'auto_gold_extract' | 'bw_threshold',
@@ -384,12 +382,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           const rawImgData = tempCtx.getImageData(0, 0, targetWidth, rawHeight);
           const rawPixels = rawImgData.data;
 
-          // ပုံထဲတွင် အဖြူထည်နောက်ခံ ဟုတ်မဟုတ် အနားသတ်ထောင့်များကို စစ်ဆေးခြင်း
           const cornerLum =
-            (rawPixels[0] * 0.299 + rawPixels[1] * 0.587 + rawPixels[2] * 0.114);
+            rawPixels[0] * 0.299 + rawPixels[1] * 0.587 + rawPixels[2] * 0.114;
           const isAlreadyLightBg = cornerLum > 200 || rawPixels[3] < 50;
 
-          // 1-bit pixel matrix တည်ဆောက်ခြင်းနှင့် အပေါ်/အောက် အဖြူသားအပိုများကို Auto-Trim ဖြတ်ထုတ်ခြင်း
           const dotMatrix: boolean[][] = [];
           let firstBlackRow = rawHeight;
           let lastBlackRow = 0;
@@ -408,13 +404,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 const lum = r * 0.299 + g * 0.587 + b * 0.114;
 
                 if (filterMode === 'auto_gold_extract' && !isAlreadyLightBg) {
-                  // အစိမ်းရင့်နောက်ခံတွင် Green > Red ဖြစ်ပြီး၊ ရွှေရောင်/အဖြူရောင် စာသားနှင့် တောင်တန်းတွင် Red > Green နှင့် အလင်းရောင်မြင့်သည်
                   const goldWarmth = r - g;
                   if (goldWarmth >= thresholdVal || lum > 115) {
                     isBlack = true;
                   }
                 } else {
-                  // သာမန် အဖြူနောက်ခံပေါ်မှ အမည်းရောင် Logo အတွက်
                   const bwCutoff = Math.max(40, Math.min(230, 140 + thresholdVal * 2));
                   isBlack = lum < bwCutoff;
                 }
@@ -433,8 +427,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             firstBlackRow = 0;
             lastBlackRow = rawHeight - 1;
           } else {
-            firstBlackRow = Math.max(0, firstBlackRow - 6);
-            lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 6);
+            firstBlackRow = Math.max(0, firstBlackRow - 4);
+            lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 4);
           }
 
           const croppedHeight = Math.max(16, lastBlackRow - firstBlackRow + 1);
@@ -523,7 +517,369 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     printSettings.logoSize
   ]);
 
-  // 🌟 Handle Custom Printed Receipt Logo Upload (Loyverse Style) 🌟
+  // 🌟 FULL GRAPHIC RECEIPT RASTER ENGINE (Matches Preview 100% + Boxed VIP Points!) 🌟
+  const buildFullReceiptGraphicRaster = async (
+    record: OfflineSaleRecord,
+    logoDataUrl: string
+  ): Promise<Uint8Array | null> => {
+    const canvasWidth = printSettings.paperWidth === '80mm' ? 576 : 384;
+    const padX = 10;
+    const innerW = canvasWidth - padX * 2;
+    const centerX = canvasWidth / 2;
+
+    let logoImg: HTMLImageElement | null = null;
+    if (printSettings.showLogo && logoDataUrl) {
+      logoImg = await new Promise((res) => {
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => res(img);
+        img.onerror = () => res(null);
+        img.src = logoDataUrl;
+      });
+    }
+
+    const wrapLines = (ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] => {
+      if (!text) return [];
+      const words = text.split(' ');
+      const lines: string[] = [];
+      let current = '';
+      for (const w of words) {
+        const test = current ? `${current} ${w}` : w;
+        if (ctx.measureText(test).width <= maxW) {
+          current = test;
+        } else {
+          if (current) lines.push(current);
+          current = w;
+        }
+      }
+      if (current) lines.push(current);
+      return lines;
+    };
+
+    // Draw Receipt on Canvas (Pass 1 measures exact height, Pass 2 renders)
+    const renderOnCanvas = (ctx: CanvasRenderingContext2D): number => {
+      const monoFamily = "'Courier New', Courier, monospace";
+      const serifFamily = "Georgia, 'Times New Roman', serif";
+      const sansFamily = "system-ui, -apple-system, sans-serif";
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.fillStyle = '#000000';
+      ctx.strokeStyle = '#000000';
+      ctx.textBaseline = 'top';
+
+      let y = 10;
+
+      const drawDashedDivider = (yPos: number) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([5, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(padX, yPos);
+        ctx.lineTo(canvasWidth - padX, yPos);
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      const drawSolidDivider = (yPos: number) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(padX, yPos);
+        ctx.lineTo(canvasWidth - padX, yPos);
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      const drawRoundedRect = (x: number, yPos: number, w: number, h: number, r: number) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.moveTo(x + r, yPos);
+        ctx.lineTo(x + w - r, yPos);
+        ctx.quadraticCurveTo(x + w, yPos, x + w, yPos + r);
+        ctx.lineTo(x + w, yPos + h - r);
+        ctx.quadraticCurveTo(x + w, yPos + h, x + w - r, yPos + h);
+        ctx.lineTo(x + r, yPos + h);
+        ctx.quadraticCurveTo(x, yPos + h, x, yPos + h - r);
+        ctx.lineTo(x, yPos + r);
+        ctx.quadraticCurveTo(x, yPos, x + r, yPos);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      // 1. Logo
+      if (logoImg) {
+        const lw = Math.min(canvasWidth - 40, printSettings.logoSize);
+        const lh = Math.round(lw * (logoImg.height / (logoImg.width || 1)));
+        ctx.drawImage(logoImg, Math.round((canvasWidth - lw) / 2), y, lw, lh);
+        y += lh + 10;
+      }
+
+      // 2. Store Title (Serif Bold like Preview)
+      if (printSettings.shopName) {
+        ctx.font = `900 24px ${serifFamily}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(printSettings.shopName.toUpperCase(), centerX, y);
+        y += 30;
+      }
+
+      // 3. Subtitle
+      if (printSettings.subtitle) {
+        ctx.font = `bold 15px ${sansFamily}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(printSettings.subtitle.toUpperCase(), centerX, y);
+        y += 22;
+      }
+
+      // 4. Header Text
+      if (printSettings.headerText) {
+        ctx.font = `bold 16px ${monoFamily}`;
+        ctx.textAlign = 'center';
+        const hLines = wrapLines(ctx, printSettings.headerText, innerW);
+        for (const hl of hLines) {
+          ctx.fillText(hl, centerX, y);
+          y += 21;
+        }
+      }
+
+      // 5. Address (Clean 2-line wrap matching Preview)
+      if (printSettings.footerText) {
+        ctx.font = `bold 15px ${monoFamily}`;
+        ctx.textAlign = 'center';
+        const addrLines = wrapLines(ctx, printSettings.footerText, innerW);
+        for (const al of addrLines) {
+          ctx.fillText(al, centerX, y);
+          y += 20;
+        }
+      }
+
+      // 6. Phone
+      if (printSettings.phone) {
+        ctx.font = `bold 15px ${monoFamily}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(`Tel: ${printSettings.phone}`, centerX, y);
+        y += 22;
+      }
+
+      y += 6;
+      drawDashedDivider(y);
+      y += 12;
+
+      // 7. Metadata Rows (Exact Single-Line Fit like Preview)
+      const drawMetaRow = (label: string, val: string) => {
+        ctx.font = `bold 16px ${monoFamily}`;
+        ctx.textAlign = 'left';
+        ctx.fillText(label, padX, y);
+
+        const labelW = ctx.measureText(label + ' ').width;
+        const availW = innerW - labelW;
+
+        // Auto-fit font size so Customer Name + Phone never breaks awkwardly
+        let valFontSize = 17;
+        ctx.font = `900 ${valFontSize}px ${monoFamily}`;
+        while (valFontSize > 12 && ctx.measureText(val).width > availW) {
+          valFontSize -= 1;
+          ctx.font = `900 ${valFontSize}px ${monoFamily}`;
+        }
+
+        ctx.textAlign = 'right';
+        if (ctx.measureText(val).width <= availW) {
+          ctx.fillText(val, canvasWidth - padX, y);
+          y += 25;
+        } else {
+          const vLines = wrapLines(ctx, val, availW);
+          for (const vl of vLines) {
+            ctx.fillText(vl, canvasWidth - padX, y);
+            y += 22;
+          }
+          y += 3;
+        }
+      };
+
+      drawMetaRow('Invoice:', record.invoiceNo);
+      drawMetaRow('Date/Time:', `${record.date} ${record.time}`);
+      if (printSettings.showCustomerInfo) {
+        const custStr = `${record.customerName}${record.customerPhone ? ` (${record.customerPhone})` : ''}`;
+        drawMetaRow('Customer:', custStr);
+      }
+      drawMetaRow('Therapist:', record.therapistName);
+
+      y += 4;
+      drawDashedDivider(y);
+      y += 12;
+
+      // 8. Cart Items
+      record.items.forEach((item, idx) => {
+        const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
+        const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
+        const priceStr = formatPrice(unitPrice * item.qty);
+
+        ctx.font = `900 17px ${monoFamily}`;
+        ctx.textAlign = 'right';
+        ctx.fillText(priceStr, canvasWidth - padX, y);
+        const priceW = ctx.measureText(priceStr + '  ').width;
+
+        ctx.textAlign = 'left';
+        const titleLines = wrapLines(ctx, itemTitle, innerW - priceW);
+        titleLines.forEach((tl) => {
+          ctx.fillText(tl, padX, y);
+          y += 22;
+        });
+
+        const subDetails = [
+          item.duration || '',
+          item.isVvipUpgrade ? '(+VVIP Room)' : '',
+          item.vvipIncluded ? '(VVIP Free)' : ''
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        if (subDetails) {
+          ctx.font = `bold 15px ${monoFamily}`;
+          ctx.fillText(`  ${subDetails}`, padX, y);
+          y += 22;
+        }
+        y += 4;
+      });
+
+      y += 4;
+      drawDashedDivider(y);
+      y += 12;
+
+      // 9. Subtotal & Discount
+      ctx.font = `bold 17px ${monoFamily}`;
+      ctx.textAlign = 'left';
+      ctx.fillText('Subtotal:', padX, y);
+      ctx.font = `900 17px ${monoFamily}`;
+      ctx.textAlign = 'right';
+      ctx.fillText(formatPrice(record.subTotal), canvasWidth - padX, y);
+      y += 25;
+
+      if (record.discountAmount > 0) {
+        ctx.font = `bold 16px ${monoFamily}`;
+        ctx.textAlign = 'left';
+        ctx.fillText(`Discount (${record.discountReason}):`, padX, y);
+        ctx.font = `900 16px ${monoFamily}`;
+        ctx.textAlign = 'right';
+        ctx.fillText(`-${formatPrice(record.discountAmount)}`, canvasWidth - padX, y);
+        y += 24;
+      }
+
+      y += 2;
+      drawSolidDivider(y);
+      y += 10;
+
+      // 10. TOTAL (Bold Prominent Single Line)
+      ctx.font = `900 22px ${monoFamily}`;
+      ctx.textAlign = 'left';
+      ctx.fillText('TOTAL:', padX, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(formatPrice(record.totalPrice), canvasWidth - padX, y);
+      y += 30;
+
+      // 11. Payment & Change
+      ctx.font = `bold 16px ${monoFamily}`;
+      ctx.textAlign = 'left';
+      ctx.fillText(`Payment (${record.paymentMethod}):`, padX, y);
+      ctx.font = `900 16px ${monoFamily}`;
+      ctx.textAlign = 'right';
+      ctx.fillText(formatPrice(record.cashReceived), canvasWidth - padX, y);
+      y += 24;
+
+      if (record.paymentMethod === 'Cash' && record.changeDue > 0) {
+        ctx.font = `bold 16px ${monoFamily}`;
+        ctx.textAlign = 'left';
+        ctx.fillText('Change Due:', padX, y);
+        ctx.font = `900 16px ${monoFamily}`;
+        ctx.textAlign = 'right';
+        ctx.fillText(formatPrice(record.changeDue), canvasWidth - padX, y);
+        y += 24;
+      }
+
+      // 12. 🌟 VIP Points Earned with Rounded Border Box (Just Like Preview!) 🌟
+      if (record.pointsEarned > 0) {
+        y += 6;
+        const boxH = 38;
+        drawRoundedRect(padX, y, innerW, boxH, 8);
+        ctx.font = `900 16px ${monoFamily}`;
+        ctx.textAlign = 'left';
+        ctx.fillText('VIP Points Earned:', padX + 12, y + 10);
+        ctx.textAlign = 'right';
+        ctx.fillText(`+${record.pointsEarned} Pts`, canvasWidth - padX - 12, y + 10);
+        y += boxH + 10;
+      }
+
+      y += 4;
+      drawDashedDivider(y);
+      y += 14;
+
+      // 13. Closing Thank You Note
+      if (printSettings.thankYouText) {
+        const tLines = printSettings.thankYouText.split('\n');
+        tLines.forEach((line, idx) => {
+          ctx.font = idx === 0 ? `900 16px ${monoFamily}` : `bold 15px ${monoFamily}`;
+          ctx.textAlign = 'center';
+          ctx.fillText(line.trim(), centerX, y);
+          y += 22;
+        });
+      }
+
+      y += 24;
+      return y;
+    };
+
+    const dummyCanvas = document.createElement('canvas');
+    dummyCanvas.width = canvasWidth;
+    dummyCanvas.height = 2400;
+    const dummyCtx = dummyCanvas.getContext('2d');
+    if (!dummyCtx) return null;
+
+    const exactHeight = renderOnCanvas(dummyCtx);
+
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = canvasWidth;
+    finalCanvas.height = exactHeight;
+    const finalCtx = finalCanvas.getContext('2d');
+    if (!finalCtx) return null;
+
+    renderOnCanvas(finalCtx);
+
+    const imgData = finalCtx.getImageData(0, 0, canvasWidth, exactHeight);
+    const pixels = imgData.data;
+    const nBytesPerRow = Math.ceil(canvasWidth / 8);
+    const bitmapBytes: number[] = [];
+
+    for (let y = 0; y < exactHeight; y++) {
+      for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const px = xByte * 8 + bit;
+          if (px < canvasWidth) {
+            const idx = (y * canvasWidth + px) * 4;
+            const lum = pixels[idx] * 0.299 + pixels[idx + 1] * 0.587 + pixels[idx + 2] * 0.114;
+            if (lum < 165) {
+              byte |= 1 << (7 - bit);
+            }
+          }
+        }
+        bitmapBytes.push(byte);
+      }
+    }
+
+    const xL = nBytesPerRow & 0xff;
+    const xH = (nBytesPerRow >> 8) & 0xff;
+    const yL = exactHeight & 0xff;
+    const yH = (exactHeight >> 8) & 0xff;
+    const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
+
+    return new Uint8Array([...rasterHeader, ...bitmapBytes]);
+  };
+
+  // 🌟 Handle Custom Printed Receipt Logo Upload 🌟
   const handleUploadPrintedLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -857,7 +1213,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setSavingSale(false);
   };
 
-  // 🌟 Web Bluetooth Printer Pairing Function (With Auto-Save for Reconnect) 🌟
+  // 🌟 Web Bluetooth Printer Pairing Function 🌟
   const handleConnectBluetoothPrinter = async (forceNewChooser = false): Promise<any> => {
     try {
       const bt = (navigator as any).bluetooth;
@@ -915,7 +1271,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   // 🌟 Helper to send byte chunks safely over BLE 🌟
   const sendBytesToPrinter = async (writeChar: any, dataBytes: Uint8Array) => {
-    const chunkSize = 20;
+    // 120-byte chunks for fast, reliable graphic raster streaming
+    const chunkSize = 120;
     for (let i = 0; i < dataBytes.length; i += chunkSize) {
       const chunk = dataBytes.slice(i, i + chunkSize);
       if (writeChar.properties.writeWithoutResponse) {
@@ -923,11 +1280,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       } else {
         await writeChar.writeValue(chunk);
       }
-      await new Promise((r) => setTimeout(r, 12));
+      await new Promise((r) => setTimeout(r, 8));
     }
   };
 
-  // 🌟 Loyverse-Style Direct ESC/POS Bluetooth Print 🌟
+  // 🌟 Loyverse-Style Full Graphic ESC/POS Bluetooth Print 🌟
   const handleBluetoothEscPosPrint = async (customRecord?: OfflineSaleRecord) => {
     const recordToPrint = customRecord || activeReceipt;
     if (!recordToPrint) return;
@@ -953,124 +1310,26 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         }
       }
 
-      const maxCols = printSettings.paperWidth === '80mm' ? 48 : 32;
-      const divider = '-'.repeat(maxCols) + '\n';
-
-      const padLine = (left: string, right: string) => {
-        const l = left.trim();
-        const r = right.trim();
-        const spaces = maxCols - l.length - r.length;
-        if (spaces <= 1) return `${l} ${r}\n`;
-        return `${l}${' '.repeat(spaces)}${r}\n`;
-      };
-
       const ESC = '\x1B';
       const GS = '\x1D';
       const INIT = ESC + '@';
       const ALIGN_CENTER = ESC + 'a\x01';
-      const ALIGN_LEFT = ESC + 'a\x00';
-      const BOLD_ON = ESC + 'E\x01';
-      const BOLD_OFF = ESC + 'E\x00';
-      const DOUBLE_HEIGHT = GS + '!\x01';
-      const NORMAL_TEXT = GS + '!\x00';
       const CUT_PAPER = GS + 'V\x41\x03';
-
       const encoder = new TextEncoder();
 
-      // 1. Printer Init & Center Alignment
+      // 1. Initialize Printer
       await sendBytesToPrinter(writeChar, encoder.encode(INIT + ALIGN_CENTER));
 
-      // 2. Print Clean Loyverse-Style Monochrome Logo
-      if (printSettings.showLogo && printedLogoSourceUrl) {
-        const { rasterBytes } = await buildLogoRasterData(
-          printedLogoSourceUrl,
-          printSettings.logoFilterMode,
-          printSettings.logoThreshold,
-          printSettings.logoSize
-        );
-        if (rasterBytes) {
-          await sendBytesToPrinter(writeChar, rasterBytes);
-        }
+      // 2. Render Full Graphic Receipt (Exact Match to Preview + VIP Box!)
+      const activeLogoForPrint = processedLogoPreview || printedLogoSourceUrl;
+      const fullReceiptBytes = await buildFullReceiptGraphicRaster(recordToPrint, activeLogoForPrint);
+
+      if (fullReceiptBytes) {
+        await sendBytesToPrinter(writeChar, fullReceiptBytes);
       }
 
-      // 3. Header & Receipt Content
-      let cmd = ALIGN_CENTER + BOLD_ON + DOUBLE_HEIGHT;
-      if (printSettings.shopName) {
-        cmd += `${printSettings.shopName.toUpperCase()}\n`;
-      }
-      if (printSettings.subtitle) {
-        cmd += NORMAL_TEXT + `${printSettings.subtitle.toUpperCase()}\n`;
-      }
-      cmd += NORMAL_TEXT + BOLD_OFF;
-      if (printSettings.headerText) {
-        cmd += `${printSettings.headerText}\n`;
-      }
-      if (printSettings.footerText) {
-        cmd += `${printSettings.footerText}\n`;
-      }
-      if (printSettings.phone) {
-        cmd += `Tel: ${printSettings.phone}\n`;
-      }
-      cmd += divider;
-
-      cmd += ALIGN_LEFT;
-      cmd += padLine('Invoice:', recordToPrint.invoiceNo);
-      cmd += padLine('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`);
-      if (printSettings.showCustomerInfo) {
-        cmd += padLine(
-          'Customer:',
-          `${recordToPrint.customerName}${recordToPrint.customerPhone ? ` (${recordToPrint.customerPhone})` : ''}`
-        );
-      }
-      cmd += padLine('Therapist:', recordToPrint.therapistName);
-      cmd += divider;
-
-      recordToPrint.items.forEach((item, idx) => {
-        const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
-        const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
-        const itemPriceStr = formatPrice(unitPrice * item.qty);
-
-        cmd += BOLD_ON + padLine(itemTitle, itemPriceStr) + BOLD_OFF;
-
-        const subDetails = [
-          item.duration || '',
-          item.isVvipUpgrade ? '(+VVIP Room)' : '',
-          item.vvipIncluded ? '(VVIP Free)' : ''
-        ]
-          .filter(Boolean)
-          .join(' ');
-
-        if (subDetails) {
-          cmd += `   ${subDetails}\n`;
-        }
-      });
-      cmd += divider;
-
-      cmd += padLine('Subtotal:', formatPrice(recordToPrint.subTotal));
-      if (recordToPrint.discountAmount > 0) {
-        cmd += padLine(`Discount (${recordToPrint.discountReason}):`, `-${formatPrice(recordToPrint.discountAmount)}`);
-      }
-      cmd += BOLD_ON + DOUBLE_HEIGHT + padLine('TOTAL:', formatPrice(recordToPrint.totalPrice)) + NORMAL_TEXT + BOLD_OFF;
-      cmd += padLine(`Payment (${recordToPrint.paymentMethod}):`, formatPrice(recordToPrint.cashReceived));
-      if (recordToPrint.paymentMethod === 'Cash' && recordToPrint.changeDue > 0) {
-        cmd += padLine('Change Due:', formatPrice(recordToPrint.changeDue));
-      }
-      if (recordToPrint.pointsEarned > 0) {
-        cmd += padLine('VIP Points Earned:', `+${recordToPrint.pointsEarned} Pts`);
-      }
-      cmd += divider;
-
-      cmd += ALIGN_CENTER;
-      if (printSettings.thankYouText) {
-        const lines = printSettings.thankYouText.split('\n');
-        lines.forEach((line, i) => {
-          if (i === 0) cmd += BOLD_ON + `${line}\n` + BOLD_OFF;
-          else cmd += `${line}\n`;
-        });
-      }
-      cmd += `\n\n\n` + CUT_PAPER;
-
-      await sendBytesToPrinter(writeChar, encoder.encode(cmd));
+      // 3. Feed Paper & Cut
+      await sendBytesToPrinter(writeChar, encoder.encode('\n\n\n' + CUT_PAPER));
     } catch (err: any) {
       console.error('Bluetooth print failed:', err);
       setBtCharacteristic(null);
@@ -1382,7 +1641,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               >
                 <Printer className="w-4 h-4 mr-2" />
                 {isPrintingBt
-                  ? 'Printing to Bluetooth Printer...'
+                  ? 'Printing Exact Receipt...'
                   : btCharacteristic
                   ? `ဘောင်ချာထုတ်မည် (${bluetoothDevice?.name || printSettings.savedPrinterName || 'BT Printer'})`
                   : 'ဘောင်ချာထုတ်မည် (Connect & Print)'}
@@ -1442,7 +1701,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-2 gap-6 max-w-md">
-                  {/* Left Box: Digital / Emailed Receipt Logo */}
+                  {/* Left Box: Digital / App Receipt Logo */}
                   <div>
                     <div className="text-xs text-gray-500 mb-2 font-medium">Digital / App receipt</div>
                     <div className="w-36 h-36 rounded-lg border border-gray-200 bg-[#123524] overflow-hidden flex items-center justify-center shadow-sm">
@@ -1592,7 +1851,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     maxLength={500}
                     value={printSettings.headerText}
                     onChange={(e) => updatePrintSettings({ headerText: e.target.value })}
-                    placeholder="e.g. အားပေးမှုကို အထူးကျေးဇူးတင်ရှိပါသည်။"
+                    placeholder="e.g. Beyond Relaxation"
                     className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm outline-none bg-transparent"
                   />
                   <div className="text-right text-[10px] text-gray-400 mt-0.5">
@@ -1712,7 +1971,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               <div className="text-center">
                 <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
                 <p className="text-[11px] text-gray-500">
-                  စာရွက်ပေါ်တွင် အမှန်တကယ် ရိုက်နှိပ်ထွက်လာမည့် 1-Bit Monochrome ပုံစံ
+                  စာရွက်ပေါ်တွင် ယခု မြင်ကွင်းအတိုင်း ဘောင်ကွပ်ကွက်လေးများအပါအဝင် တစ်ထပ်တည်း ထွက်လာပါမည်
                 </p>
               </div>
 
@@ -1723,12 +1982,14 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                       <img
                         src={processedLogoPreview}
                         alt="Thermal Monochrome Preview"
-                        style={{ width: `${Math.round(printSettings.logoSize * 0.6)}px` }}
+                        style={{ width: `${Math.round(printSettings.logoSize * 0.55)}px` }}
                         className="mx-auto mb-2 object-contain"
                       />
                     )}
                     {printSettings.shopName && (
-                      <h2 className="font-black text-sm uppercase tracking-wider">{printSettings.shopName}</h2>
+                      <h2 className="font-serif font-black text-sm uppercase tracking-wider">
+                        {printSettings.shopName}
+                      </h2>
                     )}
                     {printSettings.subtitle && (
                       <p className="text-[9px] font-bold text-gray-600 uppercase tracking-widest">
@@ -1756,7 +2017,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     {printSettings.showCustomerInfo && (
                       <div className="flex justify-between">
                         <span>Customer:</span>
-                        <span className="font-bold">Walk-in Guest</span>
+                        <span className="font-bold">Walk-in Guest (09458884517)</span>
                       </div>
                     )}
                     <div className="flex justify-between">
@@ -1773,7 +2034,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     <div className="text-[10px] text-gray-500 pl-3">60 Mins</div>
                   </div>
 
-                  <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-2 mb-2">
+                  <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
                     <div className="flex justify-between">
                       <span>Subtotal:</span>
                       <span className="font-bold">25,000 Ks</span>
@@ -1781,6 +2042,14 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     <div className="flex justify-between text-sm font-black pt-1 border-t border-gray-200">
                       <span>TOTAL:</span>
                       <span>25,000 Ks</span>
+                    </div>
+                    <div className="flex justify-between text-[11px] pt-1">
+                      <span>Payment (Cash):</span>
+                      <span className="font-bold">25,000 Ks</span>
+                    </div>
+                    <div className="flex justify-between text-[10px] p-1.5 rounded border-2 border-gray-800 mt-1.5">
+                      <span className="font-bold">VIP Points Earned:</span>
+                      <span className="font-black">+1 Pts</span>
                     </div>
                   </div>
 
