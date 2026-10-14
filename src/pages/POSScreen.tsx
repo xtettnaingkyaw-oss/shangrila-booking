@@ -346,7 +346,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     };
   }, []);
 
-  // 🌟 Smart Monochrome Logo Converter (For Preview & Raster) 🌟
+  // 🌟 Smart Monochrome Logo Converter (With Top Peak Protection & Safe Padding!) 🌟
   const buildLogoRasterData = async (
     imgUrl: string,
     filterMode: 'auto_gold_extract' | 'bw_threshold',
@@ -400,16 +400,22 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               const a = rawPixels[idx + 3];
 
               let isBlack = false;
-              if (a > 80) {
+              if (a > 60) {
                 const lum = r * 0.299 + g * 0.587 + b * 0.114;
 
                 if (filterMode === 'auto_gold_extract' && !isAlreadyLightBg) {
+                  // တောင်ထိပ်ဖျားရှိ ပါးလွှာသော ရွှေရောင်အချွန်လေးများ မပျောက်စေရန် ပိုမိုတိကျစွာ ဖမ်းယူခြင်း
                   const goldWarmth = r - g;
-                  if (goldWarmth >= thresholdVal || lum > 115) {
+                  const goldContrast = r - b;
+                  if (
+                    goldWarmth >= Math.max(4, thresholdVal - 3) ||
+                    goldContrast >= 22 ||
+                    lum > 92
+                  ) {
                     isBlack = true;
                   }
                 } else {
-                  const bwCutoff = Math.max(40, Math.min(230, 140 + thresholdVal * 2));
+                  const bwCutoff = Math.max(40, Math.min(235, 150 + thresholdVal * 2));
                   isBlack = lum < bwCutoff;
                 }
               }
@@ -427,27 +433,36 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             firstBlackRow = 0;
             lastBlackRow = rawHeight - 1;
           } else {
-            firstBlackRow = Math.max(0, firstBlackRow - 2);
-            lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 2);
+            // 🌟 တောင်ထိပ်အချွန်လေး လုံးဝမပြတ်စေရန် အပေါ်ဘက်မှ 8px အပြည့်အဝ ချန်ထားပေးခြင်း 🌟
+            firstBlackRow = Math.max(0, firstBlackRow - 8);
+            lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 4);
           }
 
-          const croppedHeight = Math.max(16, lastBlackRow - firstBlackRow + 1);
+          // 🌟 Printer စဆွဲချိန် မော်တာကြောင့် ထိပ်ဖျားမဝိုင်းသွားစေရန် အပေါ်ဆုံးတွင် 14px White Safe-Margin ထည့်သွင်းခြင်း 🌟
+          const topSafePad = 14;
+          const bottomSafePad = 4;
+          const contentHeight = Math.max(16, lastBlackRow - firstBlackRow + 1);
+          const totalOutHeight = contentHeight + topSafePad + bottomSafePad;
+
           const nBytesPerRow = Math.ceil(targetWidth / 8);
           const bitmapBytes: number[] = [];
 
           const outCanvas = document.createElement('canvas');
           outCanvas.width = targetWidth;
-          outCanvas.height = croppedHeight;
+          outCanvas.height = totalOutHeight;
           const outCtx = outCanvas.getContext('2d');
-          const outImgData = outCtx ? outCtx.createImageData(targetWidth, croppedHeight) : null;
+          const outImgData = outCtx ? outCtx.createImageData(targetWidth, totalOutHeight) : null;
 
-          for (let y = 0; y < croppedHeight; y++) {
-            const srcY = firstBlackRow + y;
+          for (let y = 0; y < totalOutHeight; y++) {
+            const srcY = y - topSafePad + firstBlackRow;
+            const inBoundsY = y >= topSafePad && y < topSafePad + contentHeight && srcY < rawHeight;
+
             for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
               let byte = 0;
               for (let bit = 0; bit < 8; bit++) {
                 const pxCol = xByte * 8 + bit;
-                const isBlackDot = pxCol < targetWidth ? dotMatrix[srcY][pxCol] : false;
+                const isBlackDot =
+                  inBoundsY && pxCol < targetWidth ? dotMatrix[srcY][pxCol] : false;
                 if (isBlackDot) {
                   byte |= 1 << (7 - bit);
                 }
@@ -472,8 +487,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
           const xL = nBytesPerRow & 0xff;
           const xH = (nBytesPerRow >> 8) & 0xff;
-          const yL = croppedHeight & 0xff;
-          const yH = (croppedHeight >> 8) & 0xff;
+          const yL = totalOutHeight & 0xff;
+          const yH = (totalOutHeight >> 8) & 0xff;
           const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
 
           resolve({
@@ -490,7 +505,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     });
   };
 
-  // 🌟 NEW: Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT") ကို Preview အတိုင်း Luxury Serif Font ဖြင့် ပရင့်ထုတ်ပေးမည့် Canvas Raster Generator 🌟
+  // 🌟 Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT") ကို Preview အတိုင်း Luxury Serif Font ဖြင့် ပရင့်ထုတ်ပေးမည့် Canvas Raster Generator 🌟
   const buildBrandTitleRasterBytes = (
     shopName: string,
     subtitle: string,
@@ -503,9 +518,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
       if (!titleText && !subText) return null;
 
-      let totalHeight = 8;
-      if (titleText) totalHeight += 36;
-      if (subText) totalHeight += 24;
+      let totalHeight = 6;
+      if (titleText) totalHeight += 34;
+      if (subText) totalHeight += 22;
       totalHeight = Math.ceil(totalHeight / 8) * 8;
 
       const canvas = document.createElement('canvas');
@@ -520,22 +535,20 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
 
-      let currentY = 4;
+      let currentY = 2;
 
       if (titleText) {
-        // Preview ထဲက font-serif font-black uppercase tracking-wider ပုံစံအတိုင်း ဆွဲပေးခြင်း
         ctx.font = '900 25px Georgia, "Times New Roman", Times, serif';
         if ('letterSpacing' in ctx) {
           (ctx as any).letterSpacing = '1.5px';
         }
         ctx.fillText(titleText, canvasWidth / 2, currentY);
-        // Thermal Printer မှာ စာလုံး အထူ (Bold) ပိုပေါ်လွင်စေရန် 0.4px ထပ်ဆွဲပေးခြင်း
         ctx.fillText(titleText, canvasWidth / 2 + 0.4, currentY);
-        currentY += 34;
+        currentY += 32;
       }
 
       if (subText) {
-        ctx.font = '700 14px "Courier New", Courier, monospace, sans-serif';
+        ctx.font = '700 13px "Courier New", Courier, monospace, sans-serif';
         if ('letterSpacing' in ctx) {
           (ctx as any).letterSpacing = '3px';
         }
@@ -572,6 +585,76 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       return new Uint8Array([...rasterHeader, ...bitmapBytes]);
     } catch (e) {
       console.warn('Brand title raster error:', e);
+      return null;
+    }
+  };
+
+  // 🌟 NEW: တကယ်ကျသင့်ငွေ "TOTAL: 37,000 Ks" ကို ဝန်ထမ်း တန်းမြင်သာစေရန် အချိုးအစားကျကျ အကြီးနှင့် အထူ (Prominent Bold) ဆွဲပေးမည့် Canvas Raster Generator 🌟
+  const buildProminentTotalRasterBytes = (
+    totalLabel: string,
+    totalAmountStr: string,
+    paperWidth: '58mm' | '80mm'
+  ): Uint8Array | null => {
+    try {
+      const canvasWidth = paperWidth === '80mm' ? 512 : 384;
+      const totalHeight = 40; // Multiple of 8
+
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasWidth;
+      canvas.height = totalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvasWidth, totalHeight);
+      ctx.fillStyle = '#000000';
+
+      // အပေါ်တွင် မျဉ်းပါးလေး တစ်ကြောင်း ဆွဲပေးခြင်း (Preview ထဲက border-t အတိုင်း)
+      ctx.fillRect(0, 2, canvasWidth, 1);
+
+      // TOTAL: နှင့် ငွေပမာဏကို သဘာဝအချိုးအစားအတိုင်း ကြီးမားထင်ရှားသော 23px Extra-Bold ဖြင့် ဆွဲပေးခြင်း
+      ctx.font = '900 23px "Courier New", Courier, monospace, sans-serif';
+      ctx.textBaseline = 'middle';
+
+      const centerY = 23;
+      ctx.textAlign = 'left';
+      ctx.fillText(totalLabel, 0, centerY);
+      ctx.fillText(totalLabel, 0.5, centerY);
+
+      ctx.textAlign = 'right';
+      ctx.fillText(totalAmountStr, canvasWidth - 1, centerY);
+      ctx.fillText(totalAmountStr, canvasWidth - 1.5, centerY);
+
+      const imgData = ctx.getImageData(0, 0, canvasWidth, totalHeight).data;
+      const nBytesPerRow = Math.ceil(canvasWidth / 8);
+      const bitmapBytes: number[] = [];
+
+      for (let y = 0; y < totalHeight; y++) {
+        for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
+          let byte = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const pxCol = xByte * 8 + bit;
+            if (pxCol < canvasWidth) {
+              const idx = (y * canvasWidth + pxCol) * 4;
+              const lum = imgData[idx] * 0.299 + imgData[idx + 1] * 0.587 + imgData[idx + 2] * 0.114;
+              if (lum < 165) {
+                byte |= 1 << (7 - bit);
+              }
+            }
+          }
+          bitmapBytes.push(byte);
+        }
+      }
+
+      const xL = nBytesPerRow & 0xff;
+      const xH = (nBytesPerRow >> 8) & 0xff;
+      const yL = totalHeight & 0xff;
+      const yH = (totalHeight >> 8) & 0xff;
+      const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
+
+      return new Uint8Array([...rasterHeader, ...bitmapBytes]);
+    } catch (e) {
+      console.warn('Prominent total raster error:', e);
       return null;
     }
   };
@@ -1039,7 +1122,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     return lines;
   };
 
-  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT (With Luxury Serif Brand Title & Natural Proportions!) 🌟
+  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT (Sharp Logo Peak + Prominent Total vs Compact Subtotal/Payment!) 🌟
   const handleBluetoothEscPosPrint = async (customRecord?: OfflineSaleRecord) => {
     const recordToPrint = customRecord || activeReceipt;
     if (!recordToPrint) return;
@@ -1077,12 +1160,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       const BOLD_OFF = ESC + 'E\x00';
       const FONT_A = ESC + 'M\x00'; // Standard Font (12x24)
       const FONT_B = ESC + 'M\x01'; // Compact Font (9x17)
-      const NORMAL_SIZE = GS + '!\x00'; // Natural Proportion (No tall stretched text!)
+      const NORMAL_SIZE = GS + '!\x00';
       const CUT_PAPER = GS + 'V\x41\x03';
 
       const divider = FONT_A + NORMAL_SIZE + BOLD_OFF + '-'.repeat(colsFontA) + '\n';
 
-      // 🌟 Preview အတိုင်း ဘယ်ဘက် Label နှင့် ညာဘက် Value ကို Normal / Bold ခွဲခြားပေးသည့် Function 🌟
+      // Standard Font A Row Formatter (For Metadata & Cart Items)
       const formatHierarchyRow = (
         left: string,
         right: string,
@@ -1118,7 +1201,21 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         );
       };
 
-      // 1. Build Logo Raster Bytes (if enabled)
+      // 🌟 NEW: Subtotal, Discount, Payment, Change Due တို့ကို TOTAL ထက် သေးပြီး သပ်ရပ်လှပစေမည့် Compact Font B Row Formatter 🌟
+      const formatCompactSummaryRow = (
+        left: string,
+        right: string,
+        rightBold = true
+      ): string => {
+        const l = left.trim();
+        const r = right.trim();
+        const leftStr = BOLD_OFF + l;
+        const rightStr = (rightBold ? BOLD_ON : BOLD_OFF) + r + BOLD_OFF;
+        const spaces = Math.max(1, colsFontB - l.length - r.length);
+        return FONT_B + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n' + FONT_A;
+      };
+
+      // 1. Build Logo Raster Bytes (With Top Peak Safe Padding)
       let logoPartBytes: Uint8Array | null = null;
       if (printSettings.showLogo && printedLogoSourceUrl) {
         const { rasterBytes } = await buildLogoRasterData(
@@ -1130,62 +1227,61 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         logoPartBytes = rasterBytes;
       }
 
-      // 2. 🌟 Build Luxury Serif Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT") Raster Bytes 🌟
+      // 2. Build Luxury Serif Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT") Raster Bytes
       const brandTitleRasterBytes = buildBrandTitleRasterBytes(
         printSettings.shopName,
         printSettings.subtitle,
         printSettings.paperWidth
       );
 
-      // 3. Build Remaining Header (Header, Address, Tel in clean Normal font)
-      let cmd = ALIGN_CENTER + NORMAL_SIZE + BOLD_OFF;
+      // 3. Build Part 1 Text (Header, Address, Tel, Metadata, Cart Items, Subtotal/Discount)
+      let cmdBeforeTotal = ALIGN_CENTER + NORMAL_SIZE + BOLD_OFF;
 
-      // Fallback only if canvas fails
       if (!brandTitleRasterBytes) {
         if (printSettings.shopName) {
-          cmd += FONT_A + BOLD_ON + `${printSettings.shopName.toUpperCase()}\n` + BOLD_OFF;
+          cmdBeforeTotal += FONT_A + BOLD_ON + `${printSettings.shopName.toUpperCase()}\n` + BOLD_OFF;
         }
         if (printSettings.subtitle) {
-          cmd += FONT_B + BOLD_OFF + `${printSettings.subtitle.toUpperCase()}\n` + FONT_A;
+          cmdBeforeTotal += FONT_B + BOLD_OFF + `${printSettings.subtitle.toUpperCase()}\n` + FONT_A;
         }
       }
 
       if (printSettings.headerText) {
         wordWrapText(printSettings.headerText, colsFontA).forEach((line) => {
-          cmd += FONT_A + BOLD_OFF + `${line}\n`;
+          cmdBeforeTotal += FONT_A + BOLD_OFF + `${line}\n`;
         });
       }
       if (printSettings.footerText) {
         wordWrapText(printSettings.footerText, colsFontB).forEach((line) => {
-          cmd += FONT_B + BOLD_OFF + `${line}\n`;
+          cmdBeforeTotal += FONT_B + BOLD_OFF + `${line}\n`;
         });
-        cmd += FONT_A;
+        cmdBeforeTotal += FONT_A;
       }
       if (printSettings.phone) {
-        cmd += FONT_B + BOLD_OFF + `Tel: ${printSettings.phone}\n` + FONT_A;
+        cmdBeforeTotal += FONT_B + BOLD_OFF + `Tel: ${printSettings.phone}\n` + FONT_A;
       }
-      cmd += divider;
+      cmdBeforeTotal += divider;
 
-      // 4. Metadata Section (Left Labels = Normal, Right Values = Bold)
-      cmd += ALIGN_LEFT;
-      cmd += formatHierarchyRow('Invoice:', recordToPrint.invoiceNo, false, true);
-      cmd += formatHierarchyRow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`, false, true);
+      // Metadata Section
+      cmdBeforeTotal += ALIGN_LEFT;
+      cmdBeforeTotal += formatHierarchyRow('Invoice:', recordToPrint.invoiceNo, false, true);
+      cmdBeforeTotal += formatHierarchyRow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`, false, true);
       if (printSettings.showCustomerInfo) {
         const customerFull = `${recordToPrint.customerName}${
           recordToPrint.customerPhone ? ` (${recordToPrint.customerPhone})` : ''
         }`;
-        cmd += formatHierarchyRow('Customer:', customerFull, false, true);
+        cmdBeforeTotal += formatHierarchyRow('Customer:', customerFull, false, true);
       }
-      cmd += formatHierarchyRow('Therapist:', recordToPrint.therapistName, false, true);
-      cmd += divider;
+      cmdBeforeTotal += formatHierarchyRow('Therapist:', recordToPrint.therapistName, false, true);
+      cmdBeforeTotal += divider;
 
-      // 5. Cart Items Section (Item Name & Price = Bold, Duration = Normal Small Font B)
+      // Cart Items Section
       recordToPrint.items.forEach((item, idx) => {
         const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
         const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
         const itemPriceStr = formatPrice(unitPrice * item.qty);
 
-        cmd += formatHierarchyRow(itemTitle, itemPriceStr, true, true);
+        cmdBeforeTotal += formatHierarchyRow(itemTitle, itemPriceStr, true, true);
 
         const subDetails = [
           item.duration || '',
@@ -1196,36 +1292,48 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           .join(' ');
 
         if (subDetails) {
-          cmd += FONT_B + NORMAL_SIZE + BOLD_OFF + `    ${subDetails}\n` + FONT_A;
+          cmdBeforeTotal += FONT_B + NORMAL_SIZE + BOLD_OFF + `    ${subDetails}\n` + FONT_A;
         }
       });
-      cmd += divider;
+      cmdBeforeTotal += divider;
 
-      // 6. Totals Section (TOTAL uses natural proportion BOLD instead of stretched DOUBLE_HEIGHT)
-      cmd += formatHierarchyRow('Subtotal:', formatPrice(recordToPrint.subTotal), false, true);
+      // 🌟 Subtotal နှင့် Discount ကို Compact Font B ဖြင့် သေးသေးနှင့် သပ်ရပ်စွာ ပြသခြင်း 🌟
+      cmdBeforeTotal += formatCompactSummaryRow('Subtotal:', formatPrice(recordToPrint.subTotal), true);
       if (recordToPrint.discountAmount > 0) {
-        cmd += formatHierarchyRow(
+        cmdBeforeTotal += formatCompactSummaryRow(
           `Discount (${recordToPrint.discountReason}):`,
           `-${formatPrice(recordToPrint.discountAmount)}`,
-          false,
           true
         );
       }
 
-      // 🌟 Preview အတိုင်း အချိုးအစားကျကျ Bold ဖြင့် TOTAL ကို ပြသခြင်း 🌟
-      cmd += formatHierarchyRow('TOTAL:', formatPrice(recordToPrint.totalPrice), true, true);
+      // 4. 🌟 Build Prominent TOTAL Raster Bytes (ကြီးကြီးနှင့် ထင်ရှားစွာ ပေါ်လွင်စေရန်) 🌟
+      const prominentTotalRasterBytes = buildProminentTotalRasterBytes(
+        'TOTAL:',
+        formatPrice(recordToPrint.totalPrice),
+        printSettings.paperWidth
+      );
 
-      cmd += formatHierarchyRow(
+      // Fallback if canvas fails
+      if (!prominentTotalRasterBytes) {
+        cmdBeforeTotal += formatHierarchyRow('TOTAL:', formatPrice(recordToPrint.totalPrice), true, true);
+      } else {
+        cmdBeforeTotal += ALIGN_CENTER;
+      }
+
+      // 5. Build Part 2 Text (Payment, Change Due in Compact Font B + VIP Box + Footer)
+      let cmdAfterTotal = ALIGN_LEFT + NORMAL_SIZE + BOLD_OFF;
+
+      cmdAfterTotal += formatCompactSummaryRow(
         `Payment (${recordToPrint.paymentMethod}):`,
         formatPrice(recordToPrint.cashReceived),
-        false,
         true
       );
       if (recordToPrint.paymentMethod === 'Cash' && recordToPrint.changeDue > 0) {
-        cmd += formatHierarchyRow('Change Due:', formatPrice(recordToPrint.changeDue), false, true);
+        cmdAfterTotal += formatCompactSummaryRow('Change Due:', formatPrice(recordToPrint.changeDue), true);
       }
 
-      // 7. VIP Points Earned Box (Thin Box Border + Normal Label + Bold Points Value)
+      // VIP Points Earned Box
       if (recordToPrint.pointsEarned > 0) {
         const boxInnerW = colsFontA - 4;
         const vipLeft = 'VIP Points Earned:';
@@ -1240,39 +1348,43 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           BOLD_OFF +
           ` |\n`;
 
-        cmd += FONT_A + NORMAL_SIZE + boxBorder + boxContent + boxBorder;
+        cmdAfterTotal += FONT_A + NORMAL_SIZE + boxBorder + boxContent + boxBorder;
       } else {
-        cmd += divider;
+        cmdAfterTotal += divider;
       }
 
-      // 8. Footer Thank You Note (Line 1 Bold, Line 2 Normal Font B)
-      cmd += ALIGN_CENTER + NORMAL_SIZE;
+      // Footer Thank You Note
+      cmdAfterTotal += ALIGN_CENTER + NORMAL_SIZE;
       if (printSettings.thankYouText) {
         const lines = printSettings.thankYouText.split('\n');
         lines.forEach((line, i) => {
           if (i === 0) {
             wordWrapText(line, colsFontA).forEach((wLine) => {
-              cmd += FONT_A + BOLD_ON + `${wLine}\n` + BOLD_OFF;
+              cmdAfterTotal += FONT_A + BOLD_ON + `${wLine}\n` + BOLD_OFF;
             });
           } else {
             wordWrapText(line, colsFontB).forEach((wLine) => {
-              cmd += FONT_B + BOLD_OFF + `${wLine}\n` + FONT_A;
+              cmdAfterTotal += FONT_B + BOLD_OFF + `${wLine}\n` + FONT_A;
             });
           }
         });
       }
-      cmd += `\n\n\n` + CUT_PAPER;
+      cmdAfterTotal += `\n\n\n` + CUT_PAPER;
 
-      // 9. Combine & Send in One Continuous Stream
+      // 6. Combine All Parts in One Continuous Stream
       const encoder = new TextEncoder();
       const initBytes = encoder.encode(INIT + ALIGN_CENTER);
-      const textBytes = encoder.encode(cmd);
+      const beforeTotalBytes = encoder.encode(cmdBeforeTotal);
+      const afterTotalBytes = encoder.encode(cmdAfterTotal);
 
       const totalByteLen =
         initBytes.length +
         (logoPartBytes ? logoPartBytes.length : 0) +
         (brandTitleRasterBytes ? brandTitleRasterBytes.length : 0) +
-        textBytes.length;
+        beforeTotalBytes.length +
+        (prominentTotalRasterBytes ? prominentTotalRasterBytes.length : 0) +
+        afterTotalBytes.length;
+
       const combinedPayload = new Uint8Array(totalByteLen);
 
       let offset = 0;
@@ -1289,7 +1401,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         offset += brandTitleRasterBytes.length;
       }
 
-      combinedPayload.set(textBytes, offset);
+      combinedPayload.set(beforeTotalBytes, offset);
+      offset += beforeTotalBytes.length;
+
+      if (prominentTotalRasterBytes) {
+        combinedPayload.set(prominentTotalRasterBytes, offset);
+        offset += prominentTotalRasterBytes.length;
+      }
+
+      combinedPayload.set(afterTotalBytes, offset);
 
       await sendBytesToPrinter(writeChar, combinedPayload);
     } catch (err: any) {
@@ -1553,28 +1673,28 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </div>
 
                 <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-3 mb-3">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal:</span>
-                    <span className="font-bold">{formatPrice(activeReceipt.subTotal)}</span>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-gray-500">Subtotal:</span>
+                    <span className="font-bold text-gray-700">{formatPrice(activeReceipt.subTotal)}</span>
                   </div>
                   {activeReceipt.discountAmount > 0 && (
-                    <div className="flex justify-between text-green-700">
+                    <div className="flex justify-between text-[10px] text-green-700">
                       <span>Discount ({activeReceipt.discountReason}):</span>
                       <span className="font-bold">-{formatPrice(activeReceipt.discountAmount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-sm font-black pt-1 border-t border-gray-200 text-[#123524]">
+                  <div className="flex justify-between text-base font-black py-1 border-t border-gray-300 text-[#123524]">
                     <span>TOTAL:</span>
                     <span>{formatPrice(activeReceipt.totalPrice)}</span>
                   </div>
-                  <div className="flex justify-between text-[11px] pt-1">
+                  <div className="flex justify-between text-[10px]">
                     <span className="text-gray-500">Payment ({activeReceipt.paymentMethod}):</span>
-                    <span className="font-bold">{formatPrice(activeReceipt.cashReceived)}</span>
+                    <span className="font-bold text-gray-700">{formatPrice(activeReceipt.cashReceived)}</span>
                   </div>
                   {activeReceipt.paymentMethod === 'Cash' && activeReceipt.changeDue > 0 && (
-                    <div className="flex justify-between text-[11px]">
+                    <div className="flex justify-between text-[10px]">
                       <span className="text-gray-500">Change Due:</span>
-                      <span className="font-bold">{formatPrice(activeReceipt.changeDue)}</span>
+                      <span className="font-bold text-gray-700">{formatPrice(activeReceipt.changeDue)}</span>
                     </div>
                   )}
                   {activeReceipt.pointsEarned > 0 && (
@@ -1933,7 +2053,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               <div className="text-center">
                 <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
                 <p className="text-[11px] text-gray-500">
-                  Luxury Serif Brand Name နှင့် Normal / Bold အထူအပါး ခွဲခြားထားသည့် ဘောင်ချာပုံစံ
+                  တောင်ထိပ်အချွန်အပြည့် Logo နှင့် TOTAL သီးသန့် အကြီး/အထူ ခွဲခြားထားသည့် ဒီဇိုင်း
                 </p>
               </div>
 
@@ -1996,18 +2116,18 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     <div className="text-[10px] text-gray-500 pl-3">60 Mins</div>
                   </div>
 
-                  <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Subtotal:</span>
-                      <span className="font-bold">25,000 Ks</span>
+                  <div className="space-y-1 border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-gray-500">Subtotal:</span>
+                      <span className="font-bold text-gray-700">25,000 Ks</span>
                     </div>
-                    <div className="flex justify-between text-sm font-black pt-1 border-t border-gray-200">
+                    <div className="flex justify-between text-base font-black py-1 border-t border-gray-300">
                       <span>TOTAL:</span>
                       <span>25,000 Ks</span>
                     </div>
-                    <div className="flex justify-between text-[11px] pt-1">
+                    <div className="flex justify-between text-[10px]">
                       <span className="text-gray-500">Payment (Cash):</span>
-                      <span className="font-bold">25,000 Ks</span>
+                      <span className="font-bold text-gray-700">25,000 Ks</span>
                     </div>
                     <div className="flex justify-between text-[10px] p-1.5 rounded border border-gray-500 mt-1.5">
                       <span>VIP Points Earned:</span>
