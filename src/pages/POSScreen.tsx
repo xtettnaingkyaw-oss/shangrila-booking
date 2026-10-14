@@ -3,6 +3,7 @@ import { collection, addDoc, getDocs, updateDoc, doc } from 'firebase/firestore'
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security';
 import { AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
+import defaultLogoImg from '../THE SHANGRI LA - LOGO.png';
 import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
@@ -207,6 +208,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   const [activeReceipt, setActiveReceipt] = useState<OfflineSaleRecord | null>(null);
   const [savingSale, setSavingSale] = useState(false);
+
+  // အသုံးပြုမည့် Logo URL (Project ထဲမှ THE SHANGRI LA - LOGO.png ကို Default အဖြစ် သုံးထားသည်)
+  const effectiveLogoUrl = localAppData?.branding?.logoUrl || defaultLogoImg;
 
   useEffect(() => {
     const handleOnline = () => {
@@ -594,7 +598,93 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Loyverse-Style Direct ESC/POS Bluetooth Print (No System Print Dialog!) 🌟
+  // 🌟 Logo ပုံကို Thermal Printer ဖြင့် ထုတ်နိုင်ရန် 1-bit Monochrome Bitmap သို့ ပြောင်းပေးသည့် Helper Function 🌟
+  const printLogoBitmap = async (imgUrl: string, writeChar: any): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(false);
+            return;
+          }
+
+          // Logo ကို Preview ထဲကအတိုင်း သပ်ရပ်သော အဝိုင်းပုံစံ အရွယ်အစား (160px) ဖြင့် အလယ်တည့်တည့် ထုတ်ပေးမည်
+          const targetWidth = 160;
+          const scale = targetWidth / img.width;
+          const targetHeight = Math.round(img.height * scale);
+
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+          const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+          const pixels = imgData.data;
+
+          const nBytesPerRow = Math.ceil(targetWidth / 8);
+          const bitmapBytes: number[] = [];
+
+          // ESC/POS Raster Bit Image Command: GS v 0
+          const xL = nBytesPerRow & 0xff;
+          const xH = (nBytesPerRow >> 8) & 0xff;
+          const yL = targetHeight & 0xff;
+          const yH = (targetHeight >> 8) & 0xff;
+
+          const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
+
+          for (let y = 0; y < targetHeight; y++) {
+            for (let x = 0; x < nBytesPerRow; x++) {
+              let byte = 0;
+              for (let b = 0; b < 8; b++) {
+                const pxCol = x * 8 + b;
+                if (pxCol < targetWidth) {
+                  const idx = (y * targetWidth + pxCol) * 4;
+                  const red = pixels[idx];
+                  const green = pixels[idx + 1];
+                  const blue = pixels[idx + 2];
+                  const alpha = pixels[idx + 3];
+
+                  if (alpha > 128) {
+                    const grayscale = red * 0.299 + green * 0.587 + blue * 0.114;
+                    if (grayscale < 150) {
+                      byte |= 1 << (7 - b);
+                    }
+                  }
+                }
+              }
+              bitmapBytes.push(byte);
+            }
+          }
+
+          const fullCommand = new Uint8Array([...rasterHeader, ...bitmapBytes, 0x0a]);
+          const chunkSize = 20;
+
+          for (let i = 0; i < fullCommand.length; i += chunkSize) {
+            const chunk = fullCommand.slice(i, i + chunkSize);
+            if (writeChar.properties.writeWithoutResponse) {
+              await writeChar.writeValueWithoutResponse(chunk);
+            } else {
+              await writeChar.writeValue(chunk);
+            }
+            await new Promise((r) => setTimeout(r, 12));
+          }
+          resolve(true);
+        } catch (e) {
+          console.warn('Logo print error:', e);
+          resolve(false);
+        }
+      };
+      img.onerror = () => resolve(false);
+      img.src = imgUrl;
+    });
+  };
+
+  // 🌟 Loyverse-Style Direct ESC/POS Bluetooth Print (With Logo & No System Print Dialog!) 🌟
   const handleBluetoothEscPosPrint = async () => {
     if (!activeReceipt) return;
     setIsPrintingBt(true);
@@ -643,12 +733,25 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       const NORMAL_TEXT = GS + '!\x00';
       const CUT_PAPER = GS + 'V\x41\x03';
 
-      let cmd = INIT;
+      const encoder = new TextEncoder();
 
-      // Header
-      cmd += ALIGN_CENTER + BOLD_ON + DOUBLE_HEIGHT;
-      cmd += `${localAppData?.branding?.name || 'The Shangri-La'}\n`;
-      cmd += NORMAL_TEXT + `Men's Retreat\n` + BOLD_OFF;
+      // 1. Printer Init နှင့် Center Alignment အရင်ပို့မည်
+      const initBytes = encoder.encode(INIT + ALIGN_CENTER);
+      if (writeChar.properties.writeWithoutResponse) {
+        await writeChar.writeValueWithoutResponse(initBytes);
+      } else {
+        await writeChar.writeValue(initBytes);
+      }
+
+      // 2. Logo ပုံကို Thermal Printer ပေါ်သို့ အရင်ဆုံး ရိုက်ထုတ်မည်
+      if (effectiveLogoUrl) {
+        await printLogoBitmap(effectiveLogoUrl, writeChar);
+      }
+
+      // 3. Header နှင့် ဘောင်ချာ စာသားအချက်အလက်များ တည်ဆောက်ခြင်း
+      let cmd = ALIGN_CENTER + BOLD_ON + DOUBLE_HEIGHT;
+      cmd += `${(localAppData?.branding?.name || 'THE SHANGRI-LA').toUpperCase()}\n`;
+      cmd += NORMAL_TEXT + `MEN'S RETREAT\n` + BOLD_OFF;
       if (localAppData?.branding?.address) {
         cmd += `${localAppData.branding.address}\n`;
       }
@@ -711,7 +814,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       cmd += CUT_PAPER;
 
       // Bluetooth Printer Buffer မပြည့်စေရန် 20 bytes စီ ခွဲပို့ခြင်း (100% BLE Printer Compatible)
-      const encoder = new TextEncoder();
       const bytes = encoder.encode(cmd);
       const chunkSize = 20;
 
@@ -856,9 +958,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 className="w-[72mm] bg-white p-3 text-gray-900 font-mono text-xs border border-gray-300 rounded-lg shadow-sm"
               >
                 <div className="text-center border-b border-dashed border-gray-400 pb-2.5 mb-2.5">
-                  {localAppData?.branding?.logoUrl && (
+                  {effectiveLogoUrl && (
                     <img
-                      src={localAppData.branding.logoUrl}
+                      src={effectiveLogoUrl}
                       alt="Logo"
                       className="w-10 h-10 rounded-full mx-auto mb-1 object-cover border border-[#D4AF37]"
                     />
