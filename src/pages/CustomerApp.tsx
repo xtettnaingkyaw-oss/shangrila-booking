@@ -2544,69 +2544,181 @@ const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number
       {step === 1 && (isTherapistFirst ? renderTherapistSelection(1) : renderServiceSelection(1))}
       {step === 2 && (isTherapistFirst ? renderServiceSelection(2) : renderTherapistSelection(2))}
 
-      {step === 3 && (
+     {step === 3 && (
         <div className="animate-fade-in px-2 sm:px-0">
-          <div className="text-center mb-8"><h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Pick Date & Time</h2><p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ် ပါ)</p></div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-            <label className="block mb-2 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Calendar className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Select Date</label>
-            <input type="date" min={minDateStr} max={maxDateStr} value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value, time: '' })} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-gray-50 mb-6" />
-            
+          <div className="text-center mb-6 sm:mb-8">
+            <h2 className="text-2xl font-bold font-serif tracking-wide" style={{ color: THEME.primary }}>Pick Date & Time</h2>
+            <div className="w-12 h-1 bg-[#D4AF37] mx-auto rounded-full my-2"></div>
+            <p className="text-xs sm:text-sm font-bold mt-1" style={{ color: THEME.gold }}>(ဘိုကင်ရယူလိုသော နေ့ရက် နှင့် အချိန် ကို ရွေးချယ်ပါ)</p>
+          </div>
+
+          <div className="relative bg-white p-5 sm:p-7 rounded-[1.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#D4AF37]/25 mb-6 overflow-hidden">
+            {/* Subtle Luxury Background Glow */}
+            <div className="absolute -top-16 -right-16 w-36 h-36 bg-[#D4AF37] opacity-10 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute -bottom-16 -left-16 w-36 h-36 bg-[#123524] opacity-[0.04] rounded-full blur-3xl pointer-events-none"></div>
+
+            {/* 🌟 1. LUXURY 4-DAY DATE SELECTOR CARDS 🌟 */}
+            <div className="relative z-10 mb-7">
+              <div className="flex items-center justify-between mb-3.5">
+                <label className="text-xs sm:text-sm font-extrabold uppercase tracking-wider flex items-center text-[#123524]">
+                  <Calendar className="w-4 h-4 mr-2 text-[#D4AF37]" /> Select Date
+                </label>
+                {formData.date && (
+                  <span className="text-[10px] font-bold text-[#123524] bg-yellow-50 px-2.5 py-1 rounded-full border border-[#D4AF37]/40 shadow-sm">
+                    {new Date(formData.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 sm:gap-3">
+                {Array.from({ length: 4 }).map((_, idx) => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + idx);
+                  const dStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                  const isSelected = formData.date === dStr;
+                  const dayLabel = idx === 0 ? 'Today' : idx === 1 ? 'Tmrw' : d.toLocaleDateString('en-US', { weekday: 'short' });
+                  const dateNum = d.getDate();
+                  const monthName = d.toLocaleDateString('en-US', { month: 'short' });
+
+                  return (
+                    <button
+                      key={dStr}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, date: dStr, time: '' })}
+                      className={`relative py-3 px-1.5 rounded-2xl border flex flex-col items-center justify-center transition-all duration-300 outline-none overflow-hidden group ${
+                        isSelected
+                          ? 'bg-gradient-to-b from-[#123524] to-[#1a4a32] text-white border-[#D4AF37] shadow-[0_6px_15px_rgba(18,53,36,0.25)] scale-[1.03] ring-1 ring-[#D4AF37]'
+                          : 'bg-gray-50/80 text-gray-600 border-gray-200/80 hover:border-[#D4AF37]/60 hover:bg-yellow-50/30'
+                      }`}
+                    >
+                      {isSelected && (
+                        <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#D4AF37] animate-pulse"></div>
+                      )}
+                      <span className={`text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider mb-0.5 ${isSelected ? 'text-[#D4AF37]' : 'text-gray-400 group-hover:text-[#123524]'}`}>
+                        {dayLabel}
+                      </span>
+                      <span className={`text-xl sm:text-2xl font-black leading-tight my-0.5 ${isSelected ? 'text-white drop-shadow-sm' : 'text-[#123524]'}`}>
+                        {dateNum}
+                      </span>
+                      <span className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-widest ${isSelected ? 'text-gray-300' : 'text-gray-400'}`}>
+                        {monthName}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 my-5"></div>
+
+            {/* 🌟 2. PREMIUM TIME SLOTS SECTION 🌟 */}
             {staffClockIn && formData.date === todayStr ? (
-                <div className="bg-yellow-50 p-5 rounded-lg border border-yellow-200 mb-4 animate-fade-in">
-                    <label className="block mb-2 text-sm font-bold flex items-center text-yellow-800"><Clock className="w-4 h-4 mr-2" /> Service Start Time (ဧည့်သည်ရောက်ရှိချိန်)</label>
-                    <input type="time" value={formData.time} onChange={(e) => setFormData({...formData, time: e.target.value})} className="w-full p-4 border border-gray-200 rounded-lg focus:outline-none focus:border-[#D4AF37] text-gray-800 bg-white mb-2 font-bold text-center tracking-wider text-lg" />
-                    <p className="text-[10px] text-yellow-700 font-semibold text-center mt-1">အမှန်တကယ် စတင်သည့်အချိန်ကို ပြင်ဆင်ရွေးချယ်နိုင်ပါသည်။</p>
+                <div className="relative z-10 bg-gradient-to-br from-yellow-50 to-amber-50/50 p-5 rounded-2xl border border-[#D4AF37]/40 mb-2 animate-fade-in shadow-inner">
+                    <label className="block mb-2.5 text-xs sm:text-sm font-extrabold flex items-center justify-center text-[#123524] uppercase tracking-wider">
+                      <Clock className="w-4 h-4 mr-2 text-[#D4AF37]" /> Service Start Time (ဧည့်သည်ရောက်ရှိချိန်)
+                    </label>
+                    <input type="time" value={formData.time} onChange={(e) => setFormData({...formData, time: e.target.value})} className="w-full max-w-full box-border p-3.5 border-2 border-[#D4AF37]/50 rounded-xl focus:outline-none focus:border-[#123524] text-[#123524] bg-white mb-2 font-black text-center tracking-widest text-lg shadow-sm" />
+                    <p className="text-[10px] text-yellow-800 font-semibold text-center mt-1">အမှန်တကယ် စတင်သည့်အချိန်ကို ပြင်ဆင်ရွေးချယ်နိုင်ပါသည်။</p>
                 </div>
             ) : (
-                <>
-                    <label className="block mb-4 text-sm font-bold flex items-center" style={{ color: THEME.primary }}><Clock className="w-4 h-4 mr-2" style={{ color: THEME.primary }} /> Available Times</label>
-                    <div className={`grid gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
-                        {availableTimeSlots.map(t => {
-                            const state = checkSlotState(t); const displayTime = t.includes("to") ? t.split(" to ")[0].trim() : t;
-                            return (
-                                <button key={t} type="button" disabled={!formData.date} 
-                                   onClick={() => {
-                                       if (!state.available) {
-                                           let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
-                                           if (fixedDetails) { const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end); if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length; neededSlots = Math.max(1, endIdx - startIdx); } 
-                                           else if (formData.selectedItem) { const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30); }
-                                           const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded; const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let nextAvailable = '';
-                                           for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
-                                               let durationFree = true; const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
-                                               for(let j=0; j < neededSlots; j++) {
-                                                   const subSlot = ALL_TIME_SLOTS[i+j]; if(!subSlot) { durationFree = false; break; }
-                                                   const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 }; const subTotal = subUsage.vip + subUsage.normal;
-                                                   if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
-                                                   if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
-                                               }
-                                               if (durationFree && formData.therapist) { const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots); for (const slot of testSlots) { if (tBlocked.has(slot)) { durationFree = false; break; } } }
-                                               if (durationFree && formData.therapist2) { const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots); for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } } }
-                                               if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
-                                           }
-                                           if (nextAvailable) { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`); } else { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`); } return;
-                                       }
-                                       handleTimeSlotClick(t, state);
-                                   }} 
-                                   className={`py-3 px-2 text-xs sm:text-sm font-bold rounded-lg border transition-all ${ formData.time === t || formData.time.startsWith(`${displayTime} to`) ? 'border-[#D4AF37] bg-yellow-50 text-yellow-700 shadow-sm' : (!state.available) ? 'border-gray-200 bg-gray-100 text-gray-400 opacity-40 line-through cursor-not-allowed' : 'border-gray-200 bg-white text-gray-600 hover:border-[#D4AF37]' }`}>
-                                   {displayTime}
-                                </button>
-                            )
-                        })}
+                <div className="relative z-10">
+                    <div className="flex items-center justify-between mb-4">
+                      <label className="text-xs sm:text-sm font-extrabold uppercase tracking-wider flex items-center text-[#123524]">
+                        <Clock className="w-4 h-4 mr-2 text-[#D4AF37]" /> Available Times
+                      </label>
+                      <div className="flex items-center gap-2.5 text-[9px] font-bold text-gray-400">
+                        <span className="flex items-center"><span className="w-2 h-2 rounded-full bg-[#123524] mr-1"></span> Selected</span>
+                        <span className="flex items-center"><span className="w-2 h-2 rounded-full bg-gray-200 mr-1"></span> Booked</span>
+                      </div>
                     </div>
+
+                    {!formData.date ? (
+                      <div className="bg-gray-50/80 border border-dashed border-gray-200 rounded-2xl p-8 text-center animate-fade-in">
+                        <Calendar className="w-8 h-8 text-[#D4AF37] mx-auto mb-2 opacity-60 animate-bounce" />
+                        <p className="text-xs font-bold text-gray-500">အချိန်ဇယားများ ကြည့်ရှုရန် အပေါ်တွင် နေ့ရက်အရင် ရွေးချယ်ပေးပါခင်ဗျာ။</p>
+                      </div>
+                    ) : (
+                      <div className={`grid gap-2.5 sm:gap-3 ${availableTimeSlots.length <= 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3 sm:grid-cols-4'}`}>
+                          {availableTimeSlots.map(t => {
+                              const state = checkSlotState(t);
+                              const displayTime = t.includes("to") ? t.split(" to ")[0].trim() : t;
+                              const isTimeSelected = formData.time === t || formData.time.startsWith(`${displayTime} to`);
+
+                              return (
+                                  <button
+                                     key={t}
+                                     type="button"
+                                     disabled={!formData.date}
+                                     onClick={() => {
+                                         if (!state.available) {
+                                             let neededSlots = 2; const fixedDetails = getFixedServiceDetails(formData.selectedItem?.name);
+                                             if (fixedDetails) { const startIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let endIdx = ALL_TIME_SLOTS.indexOf(fixedDetails.end); if (fixedDetails.nextDay || endIdx === -1) endIdx = ALL_TIME_SLOTS.length; neededSlots = Math.max(1, endIdx - startIdx); } 
+                                             else if (formData.selectedItem) { const match = (formData.selectedItem.duration || '').match(/(\d+)\s*Mins/i); if (match) neededSlots = Math.ceil(parseInt(match[1]) / 30); }
+                                             const isUserVip = formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded; const sIdx = ALL_TIME_SLOTS.indexOf(t.split(' to ')[0].trim()); let nextAvailable = '';
+                                             for (let i = sIdx + 1; i < ALL_TIME_SLOTS.length; i++) {
+                                                 let durationFree = true; const actualTestStr = t.includes("to") ? `${ALL_TIME_SLOTS[i]} to ${t.split(' to ')[1]}` : ALL_TIME_SLOTS[i];
+                                                 for(let j=0; j < neededSlots; j++) {
+                                                     const subSlot = ALL_TIME_SLOTS[i+j]; if(!subSlot) { durationFree = false; break; }
+                                                     const subUsage = roomUsageMap.get(subSlot) || { vip: 0, normal: 0 }; const subTotal = subUsage.vip + subUsage.normal;
+                                                     if (isUserVip && (subUsage.vip >= 3 || subTotal >= 5)) durationFree = false;
+                                                     if (!isUserVip && (subUsage.normal >= 2 || subTotal >= 5)) durationFree = false;
+                                                 }
+                                                 if (durationFree && formData.therapist) { const tBlocked = getBlockedSlots(allBookings, formData.therapist.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots); for (const slot of testSlots) { if (tBlocked.has(slot)) { durationFree = false; break; } } }
+                                                 if (durationFree && formData.therapist2) { const tBlocked2 = getBlockedSlots(allBookings, formData.therapist2.name, formData.date); const testSlots = getSlotsFromTimeText(actualTestStr, neededSlots); for (const slot of testSlots) { if (tBlocked2.has(slot)) { durationFree = false; break; } } }
+                                                 if (durationFree) { nextAvailable = ALL_TIME_SLOTS[i]; break; }
+                                             }
+                                             if (nextAvailable) { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ${nextAvailable} အချိန်မှ ပြန်ရပါမည်။`); } else { setAlertMessage(`လတ်တလော အခန်းပြည့်နေပါသည်၊ ယနေ့အတွက် အခန်းမရနိုင်တော့ပါ။`); } return;
+                                         }
+                                         handleTimeSlotClick(t, state);
+                                     }} 
+                                     className={`relative py-3 px-2 rounded-xl text-xs sm:text-sm font-bold border transition-all duration-200 flex items-center justify-center ${
+                                       isTimeSelected
+                                         ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] border-[#D4AF37] shadow-[0_4px_12px_rgba(18,53,36,0.25)] scale-[1.03]'
+                                         : !state.available
+                                         ? 'border-gray-100 bg-gray-100/70 text-gray-400 opacity-50 line-through cursor-not-allowed'
+                                         : 'border-gray-200/90 bg-white text-gray-700 hover:border-[#D4AF37] hover:bg-yellow-50/40 hover:text-[#123524] shadow-sm'
+                                     }`}
+                                  >
+                                     {displayTime}
+                                     {isTimeSelected && (
+                                       <CheckCircle className="w-3 h-3 text-[#D4AF37] absolute top-1 right-1" />
+                                     )}
+                                  </button>
+                              );
+                          })}
+                      </div>
+                    )}
+
                     {formData.time && currentFixedDetails && (
-                        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg shadow-sm animate-fade-in text-center">
-                            <p className="text-sm text-green-800 font-bold mb-1 flex items-center justify-center"><Clock className="w-4 h-4 mr-2" /> ဝန်ဆောင်မှု ရရှိမည့် အချိန်</p>
-                            <p className="text-lg text-green-700 font-bold tracking-wide">{formData.time.split(' to ')[0].trim()} မှ {currentFixedDetails.end}{currentFixedDetails.nextDay ? ' (နောက်ရက်)' : ''} အထိ</p>
-                            <p className="text-xs text-green-600 font-semibold mt-1">(စုစုပေါင်း ကြာချိန် - {calculateTimeDiff(formData.time.split(' to ')[0].trim(), currentFixedDetails.end, currentFixedDetails.nextDay)})</p>
-                            <p className="text-[10px] text-green-600/80 mt-2 border-t border-green-200/50 pt-2">* အချိန်ကျော်လွန်ပြီးမှ ဘိုကင်ယူပါက ပြီးဆုံးမည့်အချိန်ထိသာ ဝန်ဆောင်မှုရရှိပါမည်။</p>
+                        <div className="mt-5 p-4 bg-gradient-to-br from-green-50 to-emerald-50/60 border border-green-200 rounded-2xl shadow-sm animate-fade-in text-center">
+                            <p className="text-xs sm:text-sm text-[#123524] font-extrabold mb-1 flex items-center justify-center"><Clock className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> ဝန်ဆောင်မှု ရရှိမည့် အချိန်</p>
+                            <p className="text-base sm:text-lg text-green-800 font-black tracking-wide">{formData.time.split(' to ')[0].trim()} မှ {currentFixedDetails.end}{currentFixedDetails.nextDay ? ' (နောက်ရက်)' : ''} အထိ</p>
+                            <p className="text-xs text-green-700 font-bold mt-1">(စုစုပေါင်း ကြာချိန် - {calculateTimeDiff(formData.time.split(' to ')[0].trim(), currentFixedDetails.end, currentFixedDetails.nextDay)})</p>
+                            <p className="text-[10px] text-green-700/80 mt-2 border-t border-green-200/60 pt-2 font-semibold">* အချိန်ကျော်လွန်ပြီးမှ ဘိုကင်ယူပါက ပြီးဆုံးမည့်အချိန်ထိသာ ဝန်ဆောင်မှုရရှိပါမည်။</p>
                         </div>
                     )}
-                    {!currentFixedDetails && isSelectedNightService && (<div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-[11px] sm:text-xs font-bold text-center flex items-center justify-center animate-fade-in shadow-sm"><Clock className="w-4 h-4 mr-2"/> ဝန်ဆောင်မှုသည် နောက်ရက် မနက် ၈:၀၀ နာရီတွင် ပြီးဆုံးပါမည်။</div>)}
-                </>
+                    {!currentFixedDetails && isSelectedNightService && (
+                      <div className="mt-5 p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl text-blue-900 text-[11px] sm:text-xs font-bold text-center flex items-center justify-center animate-fade-in shadow-sm">
+                        <Clock className="w-4 h-4 mr-2 text-blue-600 flex-shrink-0"/> ဝန်ဆောင်မှုသည် နောက်ရက် မနက် ၈:၀၀ နာရီတွင် ပြီးဆုံးပါမည်။
+                      </div>
+                    )}
+                </div>
             )}
-            {availableTimeSlots.length === 0 && formData.date && !(staffClockIn && formData.date === todayStr) && <p className="text-sm text-red-500 mt-2 text-center">ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် အချိန်ရွေးချယ်၍ မရနိုင်ပါ။</p>}
+            {availableTimeSlots.length === 0 && formData.date && !(staffClockIn && formData.date === todayStr) && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl text-center">
+                <p className="text-xs sm:text-sm font-bold text-red-600">ရွေးချယ်ထားသော နေ့ရက်အတွက် အချိန်ရွေးချယ်၍ မရနိုင်တော့ပါ။ အခြားနေ့ရက်ကို ရွေးချယ်ကြည့်ပါ။</p>
+              </div>
+            )}
           </div>
-          <div className="mt-8 flex justify-between"><button type="button" onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button><button type="button" disabled={!formData.date || !formData.time.trim()} onClick={() => handleNextStep(4)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>CONTINUE</button></div>
+
+          <div className="mt-8 flex justify-between gap-4">
+            <button type="button" onClick={() => handleNextStep(2)} className="px-6 py-4 rounded-xl font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition shadow-sm text-xs sm:text-sm tracking-wider">
+              BACK
+            </button>
+            <button type="button" disabled={!formData.date || !formData.time.trim()} onClick={() => handleNextStep(4)} className="flex-1 py-4 rounded-xl font-bold text-[#D4AF37] bg-gradient-to-r from-[#123524] to-[#1a4a32] transition disabled:opacity-50 shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] flex items-center justify-center text-xs sm:text-sm tracking-widest uppercase">
+              CONTINUE <ChevronRight className="w-4 h-4 ml-1.5" />
+            </button>
+          </div>
         </div>
       )}
 
