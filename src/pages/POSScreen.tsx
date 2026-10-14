@@ -6,7 +6,8 @@ import { AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
 import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
-  ArrowLeft, History, Search, Banknote, Bluetooth, Settings, Upload, X
+  ArrowLeft, History, Search, Banknote, Bluetooth, Settings, Upload, X,
+  Menu, PackagePlus, Trash2, ChevronRight
 } from 'lucide-react';
 
 // Project ထဲရှိ THE SHANGRI LA - LOGO.png ကို Build Error မတက်စေဘဲ လှမ်းယူခြင်း
@@ -23,6 +24,12 @@ interface CartItem {
   vvipIncluded?: boolean;
   isCustomItem?: boolean;
   qty: number;
+}
+
+interface SavedExtraItem {
+  id: string;
+  name: string;
+  price: number;
 }
 
 interface OfflineSaleRecord {
@@ -85,6 +92,14 @@ const OFFLINE_QUEUE_KEY = 'shangrila_pos_offline_queue_v1';
 const LOCAL_SALES_HISTORY_KEY = 'shangrila_pos_local_history_v1';
 const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
 const POS_PRINT_SETTINGS_KEY = 'shangrila_pos_print_settings_v3';
+const SAVED_EXTRA_ITEMS_KEY = 'shangrila_pos_saved_extra_items_v1';
+
+const DEFAULT_EXTRA_ITEMS: SavedExtraItem[] = [
+  { id: 'ext_1', name: 'Carebeau Massage Oil (Bottle)', price: 15000 },
+  { id: 'ext_2', name: 'Extra Time (30 Mins)', price: 15000 },
+  { id: 'ext_3', name: 'Disposable Underwear /amenites', price: 3000 },
+  { id: 'ext_4', name: 'Energy Drink / Coffee', price: 3000 }
+];
 
 const DEFAULT_PRINT_SETTINGS: PosPrintSettings = {
   paperWidth: '58mm',
@@ -205,7 +220,60 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   });
   const [isSyncing, setIsSyncing] = useState(false);
-  const [activePosView, setActivePosView] = useState<'register' | 'history' | 'settings'>('register');
+
+  // 🌟 Navigation Views & Slide-Out Side Menu State 🌟
+  const [activePosView, setActivePosView] = useState<'register' | 'history' | 'extra_items' | 'settings'>('register');
+  const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
+
+  // 🌟 Saved Extra / Sale Items State (Persisted in LocalStorage) 🌟
+  const [savedExtraItems, setSavedExtraItems] = useState<SavedExtraItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(SAVED_EXTRA_ITEMS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return DEFAULT_EXTRA_ITEMS;
+  });
+
+  const [selectedExtraItemId, setSelectedExtraItemId] = useState<string>('');
+  const [newExtraItemName, setNewExtraItemName] = useState('');
+  const [newExtraItemPrice, setNewExtraItemPrice] = useState('');
+
+  const updateSavedExtraItems = (newList: SavedExtraItem[]) => {
+    setSavedExtraItems(newList);
+    try {
+      localStorage.setItem(SAVED_EXTRA_ITEMS_KEY, JSON.stringify(newList));
+    } catch (e) {
+      console.warn('Extra items storage error:', e);
+    }
+  };
+
+  const handleCreateExtraItemInSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    const priceNum = parseInt(newExtraItemPrice, 10);
+    if (!newExtraItemName.trim() || isNaN(priceNum) || priceNum <= 0) return;
+
+    const newItem: SavedExtraItem = {
+      id: `ext_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: newExtraItemName.trim(),
+      price: priceNum
+    };
+
+    const updated = [newItem, ...savedExtraItems];
+    updateSavedExtraItems(updated);
+    setNewExtraItemName('');
+    setNewExtraItemPrice('');
+  };
+
+  const handleDeleteSavedExtraItem = (id: string) => {
+    const updated = savedExtraItems.filter((item) => item.id !== id);
+    updateSavedExtraItems(updated);
+    if (selectedExtraItemId === id) {
+      setSelectedExtraItemId('');
+    }
+  };
 
   // 🌟 Loyverse-Style Receipt Settings State 🌟
   const [printSettings, setPrintSettings] = useState<PosPrintSettings>(() => {
@@ -238,6 +306,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   // 🌟 UI/UX Animation Refs & States (Jump-to-Bill Effect) 🌟
   const billCardRef = useRef<HTMLDivElement | null>(null);
   const billListScrollRef = useRef<HTMLDivElement | null>(null);
+  const extraDropdownBtnRef = useRef<HTMLButtonElement | null>(null);
   const [flyingBubbles, setFlyingBubbles] = useState<FlyingBubble[]>([]);
   const [isBillCardBouncing, setIsBillCardBouncing] = useState(false);
   const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null);
@@ -257,9 +326,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   );
 
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [customItemName, setCustomItemName] = useState('');
-  const [customItemPrice, setCustomItemPrice] = useState('');
-  const [showCustomItemForm, setShowCustomItemForm] = useState(false);
 
   const [therapist1, setTherapist1] = useState<TherapistProfile | null>(null);
   const [therapist2, setTherapist2] = useState<TherapistProfile | null>(null);
@@ -812,7 +878,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   // 🌟 UI/UX Parabolic Jump-to-Bill Animation Trigger 🌟
   const triggerJumpToBillAnimation = (
-    e: React.MouseEvent<HTMLElement> | null,
+    sourceElement: HTMLElement | null,
     itemName: string,
     priceNum: number,
     targetItemId: string
@@ -832,13 +898,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
     }, 120);
 
-    if (e && billCardRef.current) {
-      const btnRect = e.currentTarget.getBoundingClientRect();
+    if (sourceElement && billCardRef.current) {
+      const btnRect = sourceElement.getBoundingClientRect();
       const billRect = billCardRef.current.getBoundingClientRect();
 
       const startX = btnRect.left + btnRect.width / 2;
       const startY = btnRect.top + btnRect.height / 2;
-      // Target the header/top-center of the Current Walk-in Bill card
       const endX = billRect.left + billRect.width / 2;
       const endY = billRect.top + Math.min(90, billRect.height / 3);
 
@@ -855,13 +920,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
       setFlyingBubbles((prev) => [...prev, newBubble]);
 
-      // Trigger impact bounce on the Bill Card right when the flying chip lands (440ms)
       setTimeout(() => {
         setIsBillCardBouncing(true);
         setTimeout(() => setIsBillCardBouncing(false), 360);
       }, 430);
 
-      // Clean up particle
       setTimeout(() => {
         setFlyingBubbles((prev) => prev.filter((b) => b.id !== bubbleId));
       }, 560);
@@ -879,7 +942,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       const updated = [...cart];
       updated[existingIdx].qty += 1;
       setCart(updated);
-      triggerJumpToBillAnimation(e || null, item.name, basePrice, updated[existingIdx].cartId);
+      triggerJumpToBillAnimation(e?.currentTarget || null, item.name, basePrice, updated[existingIdx].cartId);
     } else {
       const vvipFull = Number(item.vvipPrice) || 0;
       const vvipExtra = vvipFull > basePrice ? vvipFull - basePrice : 0;
@@ -899,7 +962,48 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           qty: 1
         }
       ]);
-      triggerJumpToBillAnimation(e || null, item.name, basePrice, newCartId);
+      triggerJumpToBillAnimation(e?.currentTarget || null, item.name, basePrice, newCartId);
+    }
+  };
+
+  // 🌟 Add Selected Extra Item from Dropdown to Cart (With Jump Animation!) 🌟
+  const handleAddSelectedExtraItemToCart = (
+    extraItemId: string,
+    sourceEl?: HTMLElement | null
+  ) => {
+    const found = savedExtraItems.find((x) => x.id === extraItemId);
+    if (!found) return;
+
+    const existingIdx = cart.findIndex((c) => c.isCustomItem && c.id === found.id);
+    if (existingIdx > -1) {
+      const updated = [...cart];
+      updated[existingIdx].qty += 1;
+      setCart(updated);
+      triggerJumpToBillAnimation(
+        sourceEl || extraDropdownBtnRef.current,
+        found.name,
+        found.price,
+        updated[existingIdx].cartId
+      );
+    } else {
+      const newCartId = `extra_${found.id}_${Date.now()}`;
+      setCart([
+        ...cart,
+        {
+          cartId: newCartId,
+          id: found.id,
+          name: found.name,
+          price: found.price,
+          isCustomItem: true,
+          qty: 1
+        }
+      ]);
+      triggerJumpToBillAnimation(
+        sourceEl || extraDropdownBtnRef.current,
+        found.name,
+        found.price,
+        newCartId
+      );
     }
   };
 
@@ -915,29 +1019,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         .map((c) => (c.cartId === cartId ? { ...c, qty: Math.max(0, c.qty + delta) } : c))
         .filter((c) => c.qty > 0)
     );
-  };
-
-  const handleAddCustomItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    const priceNum = parseInt(customItemPrice, 10);
-    if (!customItemName.trim() || isNaN(priceNum) || priceNum <= 0) return;
-
-    const newCartId = `custom_${Date.now()}`;
-    setCart([
-      ...cart,
-      {
-        cartId: newCartId,
-        id: 'custom',
-        name: customItemName.trim(),
-        price: priceNum,
-        isCustomItem: true,
-        qty: 1
-      }
-    ]);
-    triggerJumpToBillAnimation(null, customItemName.trim(), priceNum, newCartId);
-    setCustomItemName('');
-    setCustomItemPrice('');
-    setShowCustomItemForm(false);
   };
 
   const subTotal = useMemo(() => {
@@ -1457,6 +1538,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     ...(localAppData?.paymentMethods?.map((pm) => pm.name) || ['KBZ PAY', 'WAVE PAY', 'AYA PAY'])
   ];
 
+  const activeViewLabel =
+    activePosView === 'register'
+      ? 'POS Register'
+      : activePosView === 'history'
+      ? `Receipts (${salesHistory.length})`
+      : activePosView === 'extra_items'
+      ? 'Extra Items Setting'
+      : 'Receipt Settings';
+
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
       {/* 🌟 UI/UX Guaranteed Tablet Split-Screen Grid & Parabolic Jump-to-Bill Keyframes 🌟 */}
@@ -1541,49 +1631,214 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       ))}
 
       {/* ==========================================
-          TOP POS HEADER BAR
+          SLIDE-OUT SIDE MENU DRAWER (Loyverse POS Style)
          ========================================== */}
-      <header className="no-print sticky top-0 z-50 bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-3.5 py-2.5 shadow-md border-b border-[#D4AF37]/40 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
+      {isSideMenuOpen && (
+        <div className="fixed inset-0 z-[300] flex">
+          {/* Backdrop */}
+          <div
+            onClick={() => setIsSideMenuOpen(false)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+          />
+
+          {/* Drawer Content */}
+          <aside className="relative w-72 max-w-[82vw] bg-[#0B2419] text-white h-full shadow-2xl border-r border-[#D4AF37]/30 flex flex-col justify-between z-10 animate-fade-in">
+            <div>
+              {/* Drawer Brand Header */}
+              <div className="p-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] border-b border-[#D4AF37]/30 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  {digitalLogoUrl && (
+                    <img
+                      src={digitalLogoUrl}
+                      alt="Logo"
+                      className="w-9 h-9 rounded-full object-cover border border-[#D4AF37]"
+                    />
+                  )}
+                  <div>
+                    <h2 className="font-serif font-black text-sm text-[#D4AF37] tracking-wide">
+                      THE SHANGRI-LA
+                    </h2>
+                    <p className="text-[10px] text-gray-300 font-semibold">POS Navigation & Settings</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSideMenuOpen(false)}
+                  className="p-1.5 rounded-full bg-white/10 text-gray-300 hover:text-white hover:bg-white/20 transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Navigation Menu List */}
+              <nav className="p-3 space-y-1.5">
+                <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-[#D4AF37]/70">
+                  Sales & Register
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActivePosView('register');
+                    setIsSideMenuOpen(false);
+                  }}
+                  className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                    activePosView === 'register'
+                      ? 'bg-[#D4AF37] text-[#123524] shadow-md font-black'
+                      : 'text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <ShoppingBag className="w-4 h-4" /> POS Register (အရောင်းကောင်တာ)
+                  </span>
+                  <ChevronRight className="w-4 h-4 opacity-70" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActivePosView('history');
+                    setIsSideMenuOpen(false);
+                  }}
+                  className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                    activePosView === 'history'
+                      ? 'bg-[#D4AF37] text-[#123524] shadow-md font-black'
+                      : 'text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <History className="w-4 h-4" /> Receipts History ({salesHistory.length})
+                  </span>
+                  <ChevronRight className="w-4 h-4 opacity-70" />
+                </button>
+
+                <div className="pt-3 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-[#D4AF37]/70 border-t border-white/10 mt-2">
+                  POS Settings & Items
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActivePosView('extra_items');
+                    setIsSideMenuOpen(false);
+                  }}
+                  className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                    activePosView === 'extra_items'
+                      ? 'bg-[#D4AF37] text-[#123524] shadow-md font-black'
+                      : 'text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <PackagePlus className="w-4 h-4" /> အပိုပစ္စည်း / Extra Items ({savedExtraItems.length})
+                  </span>
+                  <ChevronRight className="w-4 h-4 opacity-70" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActivePosView('settings');
+                    setIsSideMenuOpen(false);
+                  }}
+                  className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                    activePosView === 'settings'
+                      ? 'bg-[#D4AF37] text-[#123524] shadow-md font-black'
+                      : 'text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Settings className="w-4 h-4" /> Receipt & Printer Settings
+                  </span>
+                  <ChevronRight className="w-4 h-4 opacity-70" />
+                </button>
+              </nav>
+            </div>
+
+            {/* Bottom Actions inside Side Drawer */}
+            <div className="p-3.5 border-t border-white/10 space-y-2 bg-black/20">
+              <button
+                type="button"
+                onClick={handleForceRefreshApp}
+                className="w-full py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-gray-200 flex items-center justify-center gap-2 transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-[#D4AF37]" /> Force Update App Cache
+              </button>
+              <button
+                type="button"
+                onClick={() => (window.location.href = '/?mode=admin')}
+                className="w-full py-2.5 px-3 rounded-xl bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-xs font-bold text-[#D4AF37] border border-[#D4AF37]/40 flex items-center justify-center gap-2 transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> Back to Admin Backoffice
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* ==========================================
+          COMPACT SINGLE-ROW TOP POS HEADER BAR
+         ========================================== */}
+      <header className="no-print sticky top-0 z-50 bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-3 py-2 shadow-md border-b border-[#D4AF37]/40 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* Side Menu Trigger Button */}
           <button
-            onClick={() => (window.location.href = '/?mode=admin')}
-            className="bg-white/10 hover:bg-white/20 text-[#D4AF37] px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center border border-[#D4AF37]/30 transition"
+            type="button"
+            onClick={() => setIsSideMenuOpen(true)}
+            title="Open POS Menu & Settings"
+            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-[#D4AF37] border border-[#D4AF37]/40 shadow-sm flex items-center justify-center transition active:scale-95"
           >
-            <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Backoffice
+            <Menu className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="font-serif font-extrabold text-sm sm:text-base text-[#D4AF37] tracking-wide flex items-center">
-              <Crown className="w-4 h-4 mr-1.5" /> SHANGRI-LA WALK-IN POS
-            </h1>
-            <p className="text-[10px] text-gray-300 font-semibold">Offline-First Point of Sale & Billing</p>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="font-serif font-extrabold text-xs sm:text-sm text-[#D4AF37] tracking-wide flex items-center truncate">
+                <Crown className="w-3.5 h-3.5 mr-1 flex-shrink-0" /> SHANGRI-LA POS
+              </h1>
+              <span className="bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40 px-2 py-0.5 rounded-md text-[9px] font-extrabold whitespace-nowrap">
+                {activeViewLabel}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+          {activePosView !== 'register' && (
+            <button
+              type="button"
+              onClick={() => setActivePosView('register')}
+              className="px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-[#D4AF37] text-[#123524] shadow-sm hover:bg-yellow-400 transition"
+            >
+              ← POS Register
+            </button>
+          )}
+
           {/* Bluetooth Status / Quick Connect Button */}
           <button
             type="button"
             onClick={() => handleConnectBluetoothPrinter(true)}
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center border transition ${
+            className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center border transition ${
               bluetoothDevice && btCharacteristic
                 ? 'bg-green-500/20 text-green-300 border-green-400/40'
                 : 'bg-white/10 text-[#D4AF37] border-[#D4AF37]/30 hover:bg-white/20'
             }`}
           >
-            <Bluetooth className="w-3.5 h-3.5 mr-1" />
-            {bluetoothDevice && btCharacteristic
-              ? `Connected: ${bluetoothDevice.name || printSettings.savedPrinterName || 'Printer'}`
-              : printSettings.savedPrinterName
-              ? `Reconnect ${printSettings.savedPrinterName}`
-              : 'Connect BT Printer'}
+            <Bluetooth className="w-3 h-3 mr-1 flex-shrink-0" />
+            <span className="truncate max-w-[110px] sm:max-w-[160px]">
+              {bluetoothDevice && btCharacteristic
+                ? `${bluetoothDevice.name || printSettings.savedPrinterName || 'Printer'}`
+                : printSettings.savedPrinterName
+                ? `Reconnect`
+                : 'BT Printer'}
+            </span>
           </button>
 
           {isOnline ? (
-            <span className="bg-green-500/20 text-green-300 border border-green-400/40 px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center">
+            <span className="bg-green-500/20 text-green-300 border border-green-400/40 px-2 py-1 rounded-full text-[10px] font-bold flex items-center">
               <Wifi className="w-3 h-3 mr-1 text-green-400" /> Online
             </span>
           ) : (
-            <span className="bg-amber-500/20 text-amber-300 border border-amber-400/40 px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center animate-pulse">
+            <span className="bg-amber-500/20 text-amber-300 border border-amber-400/40 px-2 py-1 rounded-full text-[10px] font-bold flex items-center animate-pulse">
               <WifiOff className="w-3 h-3 mr-1 text-amber-400" /> Offline
             </span>
           )}
@@ -1592,39 +1847,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             <button
               onClick={syncOfflineRecords}
               disabled={!isOnline || isSyncing}
-              className="bg-[#D4AF37] text-[#123524] px-3 py-1 rounded-full text-[10px] font-black flex items-center shadow-sm hover:bg-yellow-400 disabled:opacity-60 transition"
+              className="bg-[#D4AF37] text-[#123524] px-2.5 py-1 rounded-full text-[10px] font-black flex items-center shadow-sm hover:bg-yellow-400 disabled:opacity-60 transition"
             >
               <RefreshCw className={`w-3 h-3 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing...' : `Sync (${offlineQueue.length})`}
+              {isSyncing ? '...' : `Sync (${offlineQueue.length})`}
             </button>
           )}
-
-          <div className="flex bg-black/30 p-0.5 rounded-xl border border-white/10">
-            <button
-              onClick={() => setActivePosView('register')}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition ${
-                activePosView === 'register' ? 'bg-[#D4AF37] text-[#123524]' : 'text-gray-300 hover:text-white'
-              }`}
-            >
-              POS Register
-            </button>
-            <button
-              onClick={() => setActivePosView('history')}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition flex items-center ${
-                activePosView === 'history' ? 'bg-[#D4AF37] text-[#123524]' : 'text-gray-300 hover:text-white'
-              }`}
-            >
-              <History className="w-3 h-3 mr-1" /> Receipts ({salesHistory.length})
-            </button>
-            <button
-              onClick={() => setActivePosView('settings')}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition flex items-center ${
-                activePosView === 'settings' ? 'bg-[#D4AF37] text-[#123524]' : 'text-gray-300 hover:text-white'
-              }`}
-            >
-              <Settings className="w-3 h-3 mr-1" /> Receipt Settings
-            </button>
-          </div>
         </div>
       </header>
 
@@ -1783,9 +2011,125 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       )}
 
       {/* ==========================================
-          VIEW 3: LOYVERSE-STYLE RECEIPT & PRINTER SETTINGS
+          VIEW 4: EXTRA SALE ITEMS SETTING TAB (အပိုပစ္စည်းများ ထည့်သွင်းသိမ်းဆည်းရန်)
          ========================================== */}
-      {activePosView === 'settings' ? (
+      {activePosView === 'extra_items' ? (
+        <div className="max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-5 animate-fade-in">
+          <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-4">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-[#123524] flex items-center">
+                  <PackagePlus className="w-5 h-5 mr-2 text-[#D4AF37]" />
+                  Extra Sale Items Management (အပိုပစ္စည်းများ သိမ်းဆည်းရန်)
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  ဤနေရာတွင် ပေါင်းထည့်ထားသော အပိုပစ္စည်းများအားလုံးကို POS Register ၏ Dropdown Box မှတစ်ဆင့် အဆင်သင့် ရွေးချယ်ထည့်သွင်းနိုင်ပါသည်
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActivePosView('register')}
+                className="px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-bold shadow-sm hover:bg-[#1a4a32] transition"
+              >
+                ← Back to POS Register
+              </button>
+            </div>
+
+            {/* Add New Extra Item Form */}
+            <form
+              onSubmit={handleCreateExtraItemInSettings}
+              className="bg-gradient-to-r from-yellow-50 to-amber-50/40 p-4 rounded-xl border border-[#D4AF37]/40 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
+            >
+              <div className="sm:col-span-6">
+                <label className="block text-[11px] font-bold text-[#123524] uppercase mb-1">
+                  Item / Extra Service Name (ပစ္စည်းအမည်)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ဥပမာ - Carebeau Massage Oil / Extra 30 Mins / Drink"
+                  value={newExtraItemName}
+                  onChange={(e) => setNewExtraItemName(e.target.value)}
+                  className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-[11px] font-bold text-[#123524] uppercase mb-1">
+                  Price (Ks - ဈေးနှုန်း)
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  placeholder="15000"
+                  value={newExtraItemPrice}
+                  onChange={(e) => setNewExtraItemPrice(e.target.value)}
+                  className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#123524]"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <button
+                  type="submit"
+                  className="w-full py-3 px-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black uppercase tracking-wider shadow-md hover:opacity-95 transition flex items-center justify-center"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> သိမ်းဆည်းမည်
+                </button>
+              </div>
+            </form>
+
+            {/* Saved Items List */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">
+                  Saved Extra Items ({savedExtraItems.length})
+                </h3>
+                {savedExtraItems.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => updateSavedExtraItems(DEFAULT_EXTRA_ITEMS)}
+                    className="text-xs font-bold text-[#123524] underline"
+                  >
+                    Restore Sample Items
+                  </button>
+                )}
+              </div>
+
+              {savedExtraItems.length === 0 ? (
+                <div className="p-10 text-center text-gray-400 text-xs font-bold bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                  သိမ်းဆည်းထားသော အပိုပစ္စည်း မရှိသေးပါ။ အပေါ်တွင် အသစ်ထည့်သွင်းနိုင်ပါသည်။
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {savedExtraItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-3.5 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between gap-3 hover:border-[#D4AF37] transition"
+                    >
+                      <div>
+                        <div className="font-bold text-xs text-gray-800">{item.name}</div>
+                        <div className="text-xs font-black text-[#123524] mt-0.5">
+                          {formatPrice(item.price)}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSavedExtraItem(item.id)}
+                        title="Delete Item"
+                        className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : activePosView === 'settings' ? (
+        /* ==========================================
+           VIEW 3: LOYVERSE-STYLE RECEIPT & PRINTER SETTINGS
+           ========================================== */
         <div className="max-w-7xl w-full mx-auto p-3 sm:p-5 pos-split-layout animate-fade-in">
           <div className="space-y-4 min-w-0">
             {/* 1. Loyverse-Style Receipt Settings Card */}
@@ -2294,59 +2638,63 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
             {posStep === 1 && (
               <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3 animate-fade-in">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
-                  <div>
-                    <h2 className="text-sm sm:text-base font-bold text-[#123524]">Select Services & Sale Items</h2>
-                    <p className="text-[10px] text-gray-500">
-                      ဝန်ဆောင်မှုကို နှိပ်လိုက်သည်နှင့် ညာဘက် Bill Card ထဲသို့ တိုက်ရိုက်ခုန်ဝင်သွားပါမည်
-                    </p>
+                {/* 🌟 Ready-to-Pick Extra Sale Items Dropdown Box 🌟 */}
+                <div className="border-b border-gray-100 pb-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h2 className="text-sm sm:text-base font-bold text-[#123524]">
+                        Select Services & Sale Items
+                      </h2>
+                      <p className="text-[10px] text-gray-500">
+                        ဝန်ဆောင်မှု သို့မဟုတ် အပိုပစ္စည်း ရွေးလိုက်သည်နှင့် ညာဘက် Bill ထဲသို့ တိုက်ရိုက်ခုန်ဝင်သွားပါမည်
+                      </p>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomItemForm(!showCustomItemForm)}
-                    className="bg-yellow-50 hover:bg-yellow-100 text-[#123524] border border-[#D4AF37]/50 px-2.5 py-1.5 rounded-xl text-[11px] font-bold flex items-center shadow-sm transition"
-                  >
-                    <Plus className="w-3.5 h-3.5 mr-1 text-[#D4AF37]" /> အပိုပစ္စည်း/Sale Item ထည့်ရန်
-                  </button>
-                </div>
 
-                {showCustomItemForm && (
-                  <form
-                    onSubmit={handleAddCustomItem}
-                    className="bg-gradient-to-r from-yellow-50 to-amber-50/40 p-3 rounded-xl border border-[#D4AF37]/40 flex flex-wrap gap-2 items-end animate-fade-in"
-                  >
-                    <div className="flex-1 min-w-[130px]">
-                      <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">
-                        Item / Extra Service Name
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. Carebeau Oil / Drink"
-                        value={customItemName}
-                        onChange={(e) => setCustomItemName(e.target.value)}
-                        className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#123524]"
-                      />
-                    </div>
-                    <div className="w-24">
-                      <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">Price (Ks)</label>
-                      <input
-                        type="number"
-                        required
-                        placeholder="10000"
-                        value={customItemPrice}
-                        onChange={(e) => setCustomItemPrice(e.target.value)}
-                        className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#123524]"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="px-3.5 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold shadow-sm hover:bg-[#1a4a32]"
+                  <div className="flex items-center gap-1.5 bg-yellow-50/70 p-2 rounded-xl border border-[#D4AF37]/40">
+                    <select
+                      value={selectedExtraItemId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedExtraItemId(val);
+                        if (val) {
+                          handleAddSelectedExtraItemToCart(val, extraDropdownBtnRef.current);
+                        }
+                      }}
+                      className="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-[#123524] outline-none focus:border-[#123524] min-w-0"
                     >
-                      + ထည့်မည်
+                      <option value="">-- အပိုပစ္စည်း / Extra Sale Item အဆင်သင့် ရွေးချယ်ရန် --</option>
+                      {savedExtraItems.map((ext) => (
+                        <option key={ext.id} value={ext.id}>
+                          {ext.name} — {formatPrice(ext.price)}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      ref={extraDropdownBtnRef}
+                      type="button"
+                      disabled={!selectedExtraItemId}
+                      onClick={(e) => {
+                        if (selectedExtraItemId) {
+                          handleAddSelectedExtraItemToCart(selectedExtraItemId, e.currentTarget);
+                        }
+                      }}
+                      className="px-3 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-[11px] font-black whitespace-nowrap shadow-sm hover:bg-[#1a4a32] disabled:opacity-40 transition flex items-center"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-0.5" /> Add
                     </button>
-                  </form>
-                )}
+
+                    <button
+                      type="button"
+                      onClick={() => setActivePosView('extra_items')}
+                      title="Manage Saved Extra Items"
+                      className="p-2 bg-white text-[#123524] border border-[#D4AF37]/50 rounded-lg hover:bg-yellow-100 transition flex-shrink-0"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
 
                 <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
                   {(localAppData?.categories || []).map((cat) => (
