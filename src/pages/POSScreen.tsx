@@ -404,7 +404,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 const lum = r * 0.299 + g * 0.587 + b * 0.114;
 
                 if (filterMode === 'auto_gold_extract' && !isAlreadyLightBg) {
-                  // တောင်ထိပ်ဖျားရှိ ပါးလွှာသော ရွှေရောင်အချွန်လေးများ မပျောက်စေရန် ပိုမိုတိကျစွာ ဖမ်းယူခြင်း
                   const goldWarmth = r - g;
                   const goldContrast = r - b;
                   if (
@@ -433,12 +432,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             firstBlackRow = 0;
             lastBlackRow = rawHeight - 1;
           } else {
-            // 🌟 တောင်ထိပ်အချွန်လေး လုံးဝမပြတ်စေရန် အပေါ်ဘက်မှ 8px အပြည့်အဝ ချန်ထားပေးခြင်း 🌟
             firstBlackRow = Math.max(0, firstBlackRow - 8);
             lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 4);
           }
 
-          // 🌟 Printer စဆွဲချိန် မော်တာကြောင့် ထိပ်ဖျားမဝိုင်းသွားစေရန် အပေါ်ဆုံးတွင် 14px White Safe-Margin ထည့်သွင်းခြင်း 🌟
           const topSafePad = 14;
           const bottomSafePad = 4;
           const contentHeight = Math.max(16, lastBlackRow - firstBlackRow + 1);
@@ -503,160 +500,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       img.onerror = () => resolve({ rasterBytes: null, previewDataUrl: '' });
       img.src = imgUrl;
     });
-  };
-
-  // 🌟 Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT") ကို Preview အတိုင်း Luxury Serif Font ဖြင့် ပရင့်ထုတ်ပေးမည့် Canvas Raster Generator 🌟
-  const buildBrandTitleRasterBytes = (
-    shopName: string,
-    subtitle: string,
-    paperWidth: '58mm' | '80mm'
-  ): Uint8Array | null => {
-    try {
-      const canvasWidth = paperWidth === '80mm' ? 512 : 384;
-      const titleText = (shopName || '').trim().toUpperCase();
-      const subText = (subtitle || '').trim().toUpperCase();
-
-      if (!titleText && !subText) return null;
-
-      let totalHeight = 6;
-      if (titleText) totalHeight += 34;
-      if (subText) totalHeight += 22;
-      totalHeight = Math.ceil(totalHeight / 8) * 8;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = totalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return null;
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvasWidth, totalHeight);
-      ctx.fillStyle = '#000000';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-
-      let currentY = 2;
-
-      if (titleText) {
-        ctx.font = '900 25px Georgia, "Times New Roman", Times, serif';
-        if ('letterSpacing' in ctx) {
-          (ctx as any).letterSpacing = '1.5px';
-        }
-        ctx.fillText(titleText, canvasWidth / 2, currentY);
-        ctx.fillText(titleText, canvasWidth / 2 + 0.4, currentY);
-        currentY += 32;
-      }
-
-      if (subText) {
-        ctx.font = '700 13px "Courier New", Courier, monospace, sans-serif';
-        if ('letterSpacing' in ctx) {
-          (ctx as any).letterSpacing = '3px';
-        }
-        ctx.fillText(subText, canvasWidth / 2, currentY);
-      }
-
-      const imgData = ctx.getImageData(0, 0, canvasWidth, totalHeight).data;
-      const nBytesPerRow = Math.ceil(canvasWidth / 8);
-      const bitmapBytes: number[] = [];
-
-      for (let y = 0; y < totalHeight; y++) {
-        for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
-          let byte = 0;
-          for (let bit = 0; bit < 8; bit++) {
-            const pxCol = xByte * 8 + bit;
-            if (pxCol < canvasWidth) {
-              const idx = (y * canvasWidth + pxCol) * 4;
-              const lum = imgData[idx] * 0.299 + imgData[idx + 1] * 0.587 + imgData[idx + 2] * 0.114;
-              if (lum < 165) {
-                byte |= 1 << (7 - bit);
-              }
-            }
-          }
-          bitmapBytes.push(byte);
-        }
-      }
-
-      const xL = nBytesPerRow & 0xff;
-      const xH = (nBytesPerRow >> 8) & 0xff;
-      const yL = totalHeight & 0xff;
-      const yH = (totalHeight >> 8) & 0xff;
-      const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
-
-      return new Uint8Array([...rasterHeader, ...bitmapBytes]);
-    } catch (e) {
-      console.warn('Brand title raster error:', e);
-      return null;
-    }
-  };
-
-  // 🌟 NEW: တကယ်ကျသင့်ငွေ "TOTAL: 37,000 Ks" ကို ဝန်ထမ်း တန်းမြင်သာစေရန် အချိုးအစားကျကျ အကြီးနှင့် အထူ (Prominent Bold) ဆွဲပေးမည့် Canvas Raster Generator 🌟
-  const buildProminentTotalRasterBytes = (
-    totalLabel: string,
-    totalAmountStr: string,
-    paperWidth: '58mm' | '80mm'
-  ): Uint8Array | null => {
-    try {
-      const canvasWidth = paperWidth === '80mm' ? 512 : 384;
-      const totalHeight = 40; // Multiple of 8
-
-      const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = totalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return null;
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvasWidth, totalHeight);
-      ctx.fillStyle = '#000000';
-
-      // အပေါ်တွင် မျဉ်းပါးလေး တစ်ကြောင်း ဆွဲပေးခြင်း (Preview ထဲက border-t အတိုင်း)
-      ctx.fillRect(0, 2, canvasWidth, 1);
-
-      // TOTAL: နှင့် ငွေပမာဏကို သဘာဝအချိုးအစားအတိုင်း ကြီးမားထင်ရှားသော 23px Extra-Bold ဖြင့် ဆွဲပေးခြင်း
-      ctx.font = '900 23px "Courier New", Courier, monospace, sans-serif';
-      ctx.textBaseline = 'middle';
-
-      const centerY = 23;
-      ctx.textAlign = 'left';
-      ctx.fillText(totalLabel, 0, centerY);
-      ctx.fillText(totalLabel, 0.5, centerY);
-
-      ctx.textAlign = 'right';
-      ctx.fillText(totalAmountStr, canvasWidth - 1, centerY);
-      ctx.fillText(totalAmountStr, canvasWidth - 1.5, centerY);
-
-      const imgData = ctx.getImageData(0, 0, canvasWidth, totalHeight).data;
-      const nBytesPerRow = Math.ceil(canvasWidth / 8);
-      const bitmapBytes: number[] = [];
-
-      for (let y = 0; y < totalHeight; y++) {
-        for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
-          let byte = 0;
-          for (let bit = 0; bit < 8; bit++) {
-            const pxCol = xByte * 8 + bit;
-            if (pxCol < canvasWidth) {
-              const idx = (y * canvasWidth + pxCol) * 4;
-              const lum = imgData[idx] * 0.299 + imgData[idx + 1] * 0.587 + imgData[idx + 2] * 0.114;
-              if (lum < 165) {
-                byte |= 1 << (7 - bit);
-              }
-            }
-          }
-          bitmapBytes.push(byte);
-        }
-      }
-
-      const xL = nBytesPerRow & 0xff;
-      const xH = (nBytesPerRow >> 8) & 0xff;
-      const yL = totalHeight & 0xff;
-      const yH = (totalHeight >> 8) & 0xff;
-      const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
-
-      return new Uint8Array([...rasterHeader, ...bitmapBytes]);
-    } catch (e) {
-      console.warn('Prominent total raster error:', e);
-      return null;
-    }
   };
 
   useEffect(() => {
@@ -1102,27 +945,412 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Smart Word-Wrap Helper 🌟
-  const wordWrapText = (text: string, maxCols: number): string[] => {
-    if (!text) return [];
-    const words = text.trim().split(/\s+/);
-    const lines: string[] = [];
-    let currentLine = '';
+  // 🌟 FULL HIGH-PRECISION CANVAS RECEIPT BODY RENDERER 🌟
+  // Preview ပုံထဲကအတိုင်း 100% တစ်ထပ်တည်း (Normal vs Bold အထူအပါး နှင့် Font အကြီးအသေး အချိုးအစားအတိုင်း) ဆွဲပေးမည့် Engine
+  const buildFullReceiptBodyRasterBytes = (
+    record: OfflineSaleRecord,
+    settings: PosPrintSettings
+  ): Uint8Array | null => {
+    try {
+      const canvasWidth = settings.paperWidth === '80mm' ? 512 : 384;
+      const scale = canvasWidth / 384;
+      const padX = Math.round(6 * scale);
+      const contentWidth = canvasWidth - padX * 2;
+      const monoFamily = '"Courier New", Courier, monospace, sans-serif';
+      const serifFamily = 'Georgia, "Times New Roman", Times, serif';
 
-    for (const word of words) {
-      const candidate = currentLine ? `${currentLine} ${word}` : word;
-      if (candidate.length <= maxCols) {
-        currentLine = candidate;
-      } else {
-        if (currentLine) lines.push(currentLine);
-        currentLine = word;
+      const measureCanvas = document.createElement('canvas');
+      const mCtx = measureCanvas.getContext('2d');
+      if (!mCtx) return null;
+
+      const wrapTextByPx = (text: string, fontStr: string, maxW: number): string[] => {
+        if (!text) return [];
+        mCtx.font = fontStr;
+        const words = text.trim().split(/\s+/);
+        const lines: string[] = [];
+        let cur = '';
+        for (const w of words) {
+          const cand = cur ? `${cur} ${w}` : w;
+          if (mCtx.measureText(cand).width <= maxW) {
+            cur = cand;
+          } else {
+            if (cur) lines.push(cur);
+            cur = w;
+          }
+        }
+        if (cur) lines.push(cur);
+        return lines;
+      };
+
+      // Font Sizes (Scaled proportionally for 58mm / 80mm)
+      const fTitle = `900 ${Math.round(25 * scale)}px ${serifFamily}`;
+      const fSubtitle = `700 ${Math.round(13 * scale)}px ${monoFamily}`;
+      const fHeader = `400 ${Math.round(15 * scale)}px ${monoFamily}`;
+      const fAddress = `400 ${Math.round(13 * scale)}px ${monoFamily}`;
+      const fMetaLabel = `400 ${Math.round(15 * scale)}px ${monoFamily}`;
+      const fMetaVal = `700 ${Math.round(15 * scale)}px ${monoFamily}`;
+      // Service item size is balanced (16px) so TOTAL (26px) stands out much bigger!
+      const fItemTitle = `700 ${Math.round(16 * scale)}px ${monoFamily}`;
+      const fItemSub = `400 ${Math.round(13 * scale)}px ${monoFamily}`;
+      const fSumLabel = `400 ${Math.round(15 * scale)}px ${monoFamily}`;
+      const fSumVal = `700 ${Math.round(15 * scale)}px ${monoFamily}`;
+      // TOTAL is 26px Extra-Bold (Prominent & Clearly the Largest!)
+      const fTotalLabel = `900 ${Math.round(25 * scale)}px ${monoFamily}`;
+      const fTotalVal = `900 ${Math.round(26 * scale)}px ${monoFamily}`;
+      const fVipLabel = `700 ${Math.round(14 * scale)}px ${monoFamily}`;
+      const fVipVal = `900 ${Math.round(15 * scale)}px ${monoFamily}`;
+      const fThankBold = `700 ${Math.round(14 * scale)}px ${monoFamily}`;
+      const fThankSub = `400 ${Math.round(13 * scale)}px ${monoFamily}`;
+
+      type DrawOp = (ctx: CanvasRenderingContext2D) => void;
+      const ops: DrawOp[] = [];
+      let curY = 4;
+
+      const addDashedDivider = (spacingTop = 8, spacingBottom = 10) => {
+        curY += spacingTop;
+        const lineY = curY;
+        ops.push((ctx) => {
+          ctx.save();
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.moveTo(padX, lineY);
+          ctx.lineTo(canvasWidth - padX, lineY);
+          ctx.stroke();
+          ctx.restore();
+        });
+        curY += spacingBottom;
+      };
+
+      const addSolidDivider = (spacingTop = 6, spacingBottom = 6, thickness = 1) => {
+        curY += spacingTop;
+        const lineY = curY;
+        ops.push((ctx) => {
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(padX, lineY, contentWidth, thickness);
+        });
+        curY += thickness + spacingBottom;
+      };
+
+      // Helper to draw crisp normal vs bold text on thermal canvas
+      const drawWeightedText = (
+        ctx: CanvasRenderingContext2D,
+        text: string,
+        x: number,
+        y: number,
+        fontStr: string,
+        align: CanvasTextAlign,
+        weight: 'normal' | 'bold' | 'heavy'
+      ) => {
+        ctx.font = fontStr;
+        ctx.textAlign = align;
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#000000';
+        ctx.fillText(text, x, y);
+        if (weight === 'bold') {
+          ctx.fillText(text, x + (align === 'right' ? -0.45 : 0.45), y);
+        } else if (weight === 'heavy') {
+          ctx.fillText(text, x + (align === 'right' ? -0.7 : 0.7), y);
+          ctx.fillText(text, x, y + 0.35);
+        }
+      };
+
+      // 1. Store Title (THE SHANGRI-LA in Luxury Serif Bold)
+      if (settings.shopName) {
+        const yPos = curY;
+        const titleStr = settings.shopName.trim().toUpperCase();
+        ops.push((ctx) => {
+          ctx.save();
+          if ('letterSpacing' in ctx) (ctx as any).letterSpacing = '1.5px';
+          drawWeightedText(ctx, titleStr, canvasWidth / 2, yPos, fTitle, 'center', 'bold');
+          ctx.restore();
+        });
+        curY += Math.round(31 * scale);
       }
+
+      // 2. Subtitle (MEN'S RETREAT in clean small tracking)
+      if (settings.subtitle) {
+        const yPos = curY;
+        const subStr = settings.subtitle.trim().toUpperCase();
+        ops.push((ctx) => {
+          ctx.save();
+          if ('letterSpacing' in ctx) (ctx as any).letterSpacing = '2.5px';
+          drawWeightedText(ctx, subStr, canvasWidth / 2, yPos, fSubtitle, 'center', 'normal');
+          ctx.restore();
+        });
+        curY += Math.round(20 * scale);
+      }
+
+      // 3. Header Text (Beyond Relaxation - Normal Weight)
+      if (settings.headerText) {
+        const lines = wrapTextByPx(settings.headerText, fHeader, contentWidth);
+        lines.forEach((line) => {
+          const yPos = curY;
+          ops.push((ctx) => {
+            drawWeightedText(ctx, line, canvasWidth / 2, yPos, fHeader, 'center', 'normal');
+          });
+          curY += Math.round(20 * scale);
+        });
+      }
+
+      // 4. Footer Address (Normal Weight - Not Bold!)
+      if (settings.footerText) {
+        curY += 2;
+        const lines = wrapTextByPx(settings.footerText, fAddress, contentWidth);
+        lines.forEach((line) => {
+          const yPos = curY;
+          ops.push((ctx) => {
+            drawWeightedText(ctx, line, canvasWidth / 2, yPos, fAddress, 'center', 'normal');
+          });
+          curY += Math.round(18 * scale);
+        });
+      }
+
+      // 5. Phone (Normal Weight)
+      if (settings.phone) {
+        const yPos = curY;
+        ops.push((ctx) => {
+          drawWeightedText(ctx, `Tel: ${settings.phone}`, canvasWidth / 2, yPos, fAddress, 'center', 'normal');
+        });
+        curY += Math.round(18 * scale);
+      }
+
+      addDashedDivider(8, 10);
+
+      // Helper for Left (Normal) & Right (Bold) Row
+      const addKeyValueRow = (
+        leftLabel: string,
+        rightValue: string,
+        leftFont: string,
+        rightFont: string,
+        leftWeight: 'normal' | 'bold' | 'heavy',
+        rightWeight: 'normal' | 'bold' | 'heavy',
+        rowHeight: number
+      ) => {
+        mCtx.font = leftFont;
+        const leftW = mCtx.measureText(leftLabel).width;
+        const maxRightW = contentWidth - leftW - 12;
+        const rightLines = wrapTextByPx(rightValue, rightFont, Math.max(120, maxRightW));
+
+        if (rightLines.length <= 1) {
+          const yPos = curY;
+          ops.push((ctx) => {
+            drawWeightedText(ctx, leftLabel, padX, yPos, leftFont, 'left', leftWeight);
+            drawWeightedText(ctx, rightValue, canvasWidth - padX, yPos, rightFont, 'right', rightWeight);
+          });
+          curY += rowHeight;
+        } else {
+          rightLines.forEach((rLine, idx) => {
+            const yPos = curY;
+            ops.push((ctx) => {
+              if (idx === 0) {
+                drawWeightedText(ctx, leftLabel, padX, yPos, leftFont, 'left', leftWeight);
+              }
+              drawWeightedText(ctx, rLine, canvasWidth - padX, yPos, rightFont, 'right', rightWeight);
+            });
+            curY += rowHeight;
+          });
+        }
+      };
+
+      // 6. Metadata Rows (Left Label = Normal, Right Value = Bold)
+      const metaRowH = Math.round(23 * scale);
+      addKeyValueRow('Invoice:', record.invoiceNo, fMetaLabel, fMetaVal, 'normal', 'bold', metaRowH);
+      addKeyValueRow('Date/Time:', `${record.date} ${record.time}`, fMetaLabel, fMetaVal, 'normal', 'bold', metaRowH);
+      if (settings.showCustomerInfo) {
+        const custStr = `${record.customerName}${record.customerPhone ? ` (${record.customerPhone})` : ''}`;
+        addKeyValueRow('Customer:', custStr, fMetaLabel, fMetaVal, 'normal', 'bold', metaRowH);
+      }
+      addKeyValueRow('Therapist:', record.therapistName, fMetaLabel, fMetaVal, 'normal', 'bold', metaRowH);
+
+      addDashedDivider(6, 10);
+
+      // 7. Service / Cart Items (Balanced 16px Bold Title + 13px Normal Duration)
+      record.items.forEach((item, idx) => {
+        const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
+        const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
+        const itemPriceStr = formatPrice(unitPrice * item.qty);
+
+        mCtx.font = fItemTitle;
+        const priceW = mCtx.measureText(itemPriceStr).width;
+        const maxTitleW = contentWidth - priceW - 14;
+        const titleLines = wrapTextByPx(itemTitle, fItemTitle, Math.max(140, maxTitleW));
+
+        titleLines.forEach((tLine, lineIdx) => {
+          const yPos = curY;
+          ops.push((ctx) => {
+            drawWeightedText(ctx, tLine, padX, yPos, fItemTitle, 'left', 'bold');
+            if (lineIdx === 0) {
+              drawWeightedText(ctx, itemPriceStr, canvasWidth - padX, yPos, fItemTitle, 'right', 'bold');
+            }
+          });
+          curY += Math.round(22 * scale);
+        });
+
+        const subDetails = [
+          item.duration || '',
+          item.isVvipUpgrade ? '(+VVIP Room)' : '',
+          item.vvipIncluded ? '(VVIP Free)' : ''
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        if (subDetails) {
+          const yPos = curY;
+          ops.push((ctx) => {
+            drawWeightedText(
+              ctx,
+              subDetails,
+              padX + Math.round(14 * scale),
+              yPos,
+              fItemSub,
+              'left',
+              'normal'
+            );
+          });
+          curY += Math.round(20 * scale);
+        }
+        curY += 3;
+      });
+
+      addDashedDivider(5, 10);
+
+      // 8. Subtotal & Discount (15px: Label Normal, Amount Bold)
+      const sumRowH = Math.round(22 * scale);
+      addKeyValueRow('Subtotal:', formatPrice(record.subTotal), fSumLabel, fSumVal, 'normal', 'bold', sumRowH);
+      if (record.discountAmount > 0) {
+        addKeyValueRow(
+          `Discount (${record.discountReason}):`,
+          `-${formatPrice(record.discountAmount)}`,
+          fSumLabel,
+          fSumVal,
+          'normal',
+          'bold',
+          sumRowH
+        );
+      }
+
+      // 9. 🌟 TOTAL Row (Thin Solid Line Above + 26px Extra-Bold Prominent Text!) 🌟
+      addSolidDivider(4, 8, 1);
+      {
+        const yPos = curY;
+        const totalStr = formatPrice(record.totalPrice);
+        ops.push((ctx) => {
+          drawWeightedText(ctx, 'TOTAL:', padX, yPos, fTotalLabel, 'left', 'heavy');
+          drawWeightedText(ctx, totalStr, canvasWidth - padX, yPos, fTotalVal, 'right', 'heavy');
+        });
+        curY += Math.round(33 * scale);
+      }
+
+      // 10. Payment & Change Due (15px: Label Normal, Amount Bold)
+      addKeyValueRow(
+        `Payment (${record.paymentMethod}):`,
+        formatPrice(record.cashReceived),
+        fSumLabel,
+        fSumVal,
+        'normal',
+        'bold',
+        sumRowH
+      );
+      if (record.paymentMethod === 'Cash' && record.changeDue > 0) {
+        addKeyValueRow('Change Due:', formatPrice(record.changeDue), fSumLabel, fSumVal, 'normal', 'bold', sumRowH);
+      }
+
+      // 11. VIP Points Earned Rounded Box (Matches Preview!)
+      if (record.pointsEarned > 0) {
+        curY += 6;
+        const boxY = curY;
+        const boxH = Math.round(32 * scale);
+        const ptsText = `+${record.pointsEarned} Pts`;
+        ops.push((ctx) => {
+          ctx.save();
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1.2;
+          if (typeof (ctx as any).roundRect === 'function') {
+            ctx.beginPath();
+            (ctx as any).roundRect(padX, boxY, contentWidth, boxH, 6);
+            ctx.stroke();
+          } else {
+            ctx.strokeRect(padX, boxY, contentWidth, boxH);
+          }
+          const textY = boxY + Math.round(8 * scale);
+          drawWeightedText(ctx, 'VIP Points Earned:', padX + 10, textY, fVipLabel, 'left', 'bold');
+          drawWeightedText(ctx, ptsText, canvasWidth - padX - 10, textY, fVipVal, 'right', 'heavy');
+          ctx.restore();
+        });
+        curY += boxH + 4;
+      }
+
+      addDashedDivider(8, 12);
+
+      // 12. Closing Thank You Note (Line 1 Bold, Line 2 Normal)
+      if (settings.thankYouText) {
+        const rawLines = settings.thankYouText.split('\n');
+        rawLines.forEach((rLine, idx) => {
+          const fontToUse = idx === 0 ? fThankBold : fThankSub;
+          const weightToUse = idx === 0 ? 'bold' : 'normal';
+          const wrapped = wrapTextByPx(rLine, fontToUse, contentWidth);
+          wrapped.forEach((wLine) => {
+            const yPos = curY;
+            ops.push((ctx) => {
+              drawWeightedText(ctx, wLine, canvasWidth / 2, yPos, fontToUse, 'center', weightToUse);
+            });
+            curY += Math.round(19 * scale);
+          });
+        });
+      }
+
+      curY += 16;
+      const totalHeight = Math.ceil(curY / 8) * 8;
+
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = canvasWidth;
+      outCanvas.height = totalHeight;
+      const outCtx = outCanvas.getContext('2d');
+      if (!outCtx) return null;
+
+      outCtx.fillStyle = '#FFFFFF';
+      outCtx.fillRect(0, 0, canvasWidth, totalHeight);
+
+      ops.forEach((op) => op(outCtx));
+
+      const imgData = outCtx.getImageData(0, 0, canvasWidth, totalHeight).data;
+      const nBytesPerRow = Math.ceil(canvasWidth / 8);
+      const bitmapBytes: number[] = [];
+
+      // Crisp threshold conversion so normal lines stay thin and bold lines stay rich
+      for (let y = 0; y < totalHeight; y++) {
+        for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
+          let byte = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const pxCol = xByte * 8 + bit;
+            if (pxCol < canvasWidth) {
+              const idx = (y * canvasWidth + pxCol) * 4;
+              const lum = imgData[idx] * 0.299 + imgData[idx + 1] * 0.587 + imgData[idx + 2] * 0.114;
+              if (lum < 158) {
+                byte |= 1 << (7 - bit);
+              }
+            }
+          }
+          bitmapBytes.push(byte);
+        }
+      }
+
+      const xL = nBytesPerRow & 0xff;
+      const xH = (nBytesPerRow >> 8) & 0xff;
+      const yL = totalHeight & 0xff;
+      const yH = (totalHeight >> 8) & 0xff;
+      const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
+
+      return new Uint8Array([...rasterHeader, ...bitmapBytes]);
+    } catch (e) {
+      console.warn('Full receipt body raster error:', e);
+      return null;
     }
-    if (currentLine) lines.push(currentLine);
-    return lines;
   };
 
-  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT (Sharp Logo Peak + Prominent Total vs Compact Subtotal/Payment!) 🌟
+  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT (100% Matching Preview Weight & Size Hierarchy!) 🌟
   const handleBluetoothEscPosPrint = async (customRecord?: OfflineSaleRecord) => {
     const recordToPrint = customRecord || activeReceipt;
     if (!recordToPrint) return;
@@ -1148,72 +1376,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         }
       }
 
-      const colsFontA = printSettings.paperWidth === '80mm' ? 48 : 32;
-      const colsFontB = printSettings.paperWidth === '80mm' ? 64 : 42;
-
       const ESC = '\x1B';
       const GS = '\x1D';
       const INIT = ESC + '@';
       const ALIGN_CENTER = ESC + 'a\x01';
-      const ALIGN_LEFT = ESC + 'a\x00';
-      const BOLD_ON = ESC + 'E\x01';
-      const BOLD_OFF = ESC + 'E\x00';
-      const FONT_A = ESC + 'M\x00'; // Standard Font (12x24)
-      const FONT_B = ESC + 'M\x01'; // Compact Font (9x17)
-      const NORMAL_SIZE = GS + '!\x00';
-      const CUT_PAPER = GS + 'V\x41\x03';
-
-      const divider = FONT_A + NORMAL_SIZE + BOLD_OFF + '-'.repeat(colsFontA) + '\n';
-
-      // Standard Font A Row Formatter (For Metadata & Cart Items)
-      const formatHierarchyRow = (
-        left: string,
-        right: string,
-        leftBold = false,
-        rightBold = true
-      ): string => {
-        const l = left.trim();
-        const r = right.trim();
-        const minLen = l.length + r.length + 1;
-
-        const leftStr = (leftBold ? BOLD_ON : BOLD_OFF) + l + BOLD_OFF;
-        const rightStr = (rightBold ? BOLD_ON : BOLD_OFF) + r + BOLD_OFF;
-
-        if (minLen <= colsFontA) {
-          const spaces = colsFontA - l.length - r.length;
-          return FONT_A + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n';
-        }
-
-        if (minLen <= colsFontB) {
-          const spaces = colsFontB - l.length - r.length;
-          return FONT_B + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n' + FONT_A;
-        }
-
-        const spaces = Math.max(1, colsFontA - r.length);
-        return (
-          FONT_A +
-          NORMAL_SIZE +
-          leftStr +
-          '\n' +
-          ' '.repeat(spaces) +
-          rightStr +
-          '\n'
-        );
-      };
-
-      // 🌟 NEW: Subtotal, Discount, Payment, Change Due တို့ကို TOTAL ထက် သေးပြီး သပ်ရပ်လှပစေမည့် Compact Font B Row Formatter 🌟
-      const formatCompactSummaryRow = (
-        left: string,
-        right: string,
-        rightBold = true
-      ): string => {
-        const l = left.trim();
-        const r = right.trim();
-        const leftStr = BOLD_OFF + l;
-        const rightStr = (rightBold ? BOLD_ON : BOLD_OFF) + r + BOLD_OFF;
-        const spaces = Math.max(1, colsFontB - l.length - r.length);
-        return FONT_B + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n' + FONT_A;
-      };
+      const FEED_AND_CUT = '\n\n\n' + GS + 'V\x41\x03';
 
       // 1. Build Logo Raster Bytes (With Top Peak Safe Padding)
       let logoPartBytes: Uint8Array | null = null;
@@ -1227,163 +1394,21 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         logoPartBytes = rasterBytes;
       }
 
-      // 2. Build Luxury Serif Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT") Raster Bytes
-      const brandTitleRasterBytes = buildBrandTitleRasterBytes(
-        printSettings.shopName,
-        printSettings.subtitle,
-        printSettings.paperWidth
-      );
-
-      // 3. Build Part 1 Text (Header, Address, Tel, Metadata, Cart Items, Subtotal/Discount)
-      let cmdBeforeTotal = ALIGN_CENTER + NORMAL_SIZE + BOLD_OFF;
-
-      if (!brandTitleRasterBytes) {
-        if (printSettings.shopName) {
-          cmdBeforeTotal += FONT_A + BOLD_ON + `${printSettings.shopName.toUpperCase()}\n` + BOLD_OFF;
-        }
-        if (printSettings.subtitle) {
-          cmdBeforeTotal += FONT_B + BOLD_OFF + `${printSettings.subtitle.toUpperCase()}\n` + FONT_A;
-        }
+      // 2. Build Full Receipt Body Raster Bytes (Exact Preview Typography: Normal vs Bold & Prominent Total)
+      const bodyRasterBytes = buildFullReceiptBodyRasterBytes(recordToPrint, printSettings);
+      if (!bodyRasterBytes) {
+        throw new Error('Failed to render receipt layout.');
       }
 
-      if (printSettings.headerText) {
-        wordWrapText(printSettings.headerText, colsFontA).forEach((line) => {
-          cmdBeforeTotal += FONT_A + BOLD_OFF + `${line}\n`;
-        });
-      }
-      if (printSettings.footerText) {
-        wordWrapText(printSettings.footerText, colsFontB).forEach((line) => {
-          cmdBeforeTotal += FONT_B + BOLD_OFF + `${line}\n`;
-        });
-        cmdBeforeTotal += FONT_A;
-      }
-      if (printSettings.phone) {
-        cmdBeforeTotal += FONT_B + BOLD_OFF + `Tel: ${printSettings.phone}\n` + FONT_A;
-      }
-      cmdBeforeTotal += divider;
-
-      // Metadata Section
-      cmdBeforeTotal += ALIGN_LEFT;
-      cmdBeforeTotal += formatHierarchyRow('Invoice:', recordToPrint.invoiceNo, false, true);
-      cmdBeforeTotal += formatHierarchyRow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`, false, true);
-      if (printSettings.showCustomerInfo) {
-        const customerFull = `${recordToPrint.customerName}${
-          recordToPrint.customerPhone ? ` (${recordToPrint.customerPhone})` : ''
-        }`;
-        cmdBeforeTotal += formatHierarchyRow('Customer:', customerFull, false, true);
-      }
-      cmdBeforeTotal += formatHierarchyRow('Therapist:', recordToPrint.therapistName, false, true);
-      cmdBeforeTotal += divider;
-
-      // Cart Items Section
-      recordToPrint.items.forEach((item, idx) => {
-        const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
-        const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
-        const itemPriceStr = formatPrice(unitPrice * item.qty);
-
-        cmdBeforeTotal += formatHierarchyRow(itemTitle, itemPriceStr, true, true);
-
-        const subDetails = [
-          item.duration || '',
-          item.isVvipUpgrade ? '(+VVIP Room)' : '',
-          item.vvipIncluded ? '(VVIP Free)' : ''
-        ]
-          .filter(Boolean)
-          .join(' ');
-
-        if (subDetails) {
-          cmdBeforeTotal += FONT_B + NORMAL_SIZE + BOLD_OFF + `    ${subDetails}\n` + FONT_A;
-        }
-      });
-      cmdBeforeTotal += divider;
-
-      // 🌟 Subtotal နှင့် Discount ကို Compact Font B ဖြင့် သေးသေးနှင့် သပ်ရပ်စွာ ပြသခြင်း 🌟
-      cmdBeforeTotal += formatCompactSummaryRow('Subtotal:', formatPrice(recordToPrint.subTotal), true);
-      if (recordToPrint.discountAmount > 0) {
-        cmdBeforeTotal += formatCompactSummaryRow(
-          `Discount (${recordToPrint.discountReason}):`,
-          `-${formatPrice(recordToPrint.discountAmount)}`,
-          true
-        );
-      }
-
-      // 4. 🌟 Build Prominent TOTAL Raster Bytes (ကြီးကြီးနှင့် ထင်ရှားစွာ ပေါ်လွင်စေရန်) 🌟
-      const prominentTotalRasterBytes = buildProminentTotalRasterBytes(
-        'TOTAL:',
-        formatPrice(recordToPrint.totalPrice),
-        printSettings.paperWidth
-      );
-
-      // Fallback if canvas fails
-      if (!prominentTotalRasterBytes) {
-        cmdBeforeTotal += formatHierarchyRow('TOTAL:', formatPrice(recordToPrint.totalPrice), true, true);
-      } else {
-        cmdBeforeTotal += ALIGN_CENTER;
-      }
-
-      // 5. Build Part 2 Text (Payment, Change Due in Compact Font B + VIP Box + Footer)
-      let cmdAfterTotal = ALIGN_LEFT + NORMAL_SIZE + BOLD_OFF;
-
-      cmdAfterTotal += formatCompactSummaryRow(
-        `Payment (${recordToPrint.paymentMethod}):`,
-        formatPrice(recordToPrint.cashReceived),
-        true
-      );
-      if (recordToPrint.paymentMethod === 'Cash' && recordToPrint.changeDue > 0) {
-        cmdAfterTotal += formatCompactSummaryRow('Change Due:', formatPrice(recordToPrint.changeDue), true);
-      }
-
-      // VIP Points Earned Box
-      if (recordToPrint.pointsEarned > 0) {
-        const boxInnerW = colsFontA - 4;
-        const vipLeft = 'VIP Points Earned:';
-        const vipRight = `+${recordToPrint.pointsEarned} Pts`;
-        const vipSpaces = Math.max(1, boxInnerW - vipLeft.length - vipRight.length);
-        const boxBorder = BOLD_OFF + `+${'-'.repeat(colsFontA - 2)}+\n`;
-        const boxContent =
-          BOLD_OFF +
-          `| ${vipLeft}${' '.repeat(vipSpaces)}` +
-          BOLD_ON +
-          vipRight +
-          BOLD_OFF +
-          ` |\n`;
-
-        cmdAfterTotal += FONT_A + NORMAL_SIZE + boxBorder + boxContent + boxBorder;
-      } else {
-        cmdAfterTotal += divider;
-      }
-
-      // Footer Thank You Note
-      cmdAfterTotal += ALIGN_CENTER + NORMAL_SIZE;
-      if (printSettings.thankYouText) {
-        const lines = printSettings.thankYouText.split('\n');
-        lines.forEach((line, i) => {
-          if (i === 0) {
-            wordWrapText(line, colsFontA).forEach((wLine) => {
-              cmdAfterTotal += FONT_A + BOLD_ON + `${wLine}\n` + BOLD_OFF;
-            });
-          } else {
-            wordWrapText(line, colsFontB).forEach((wLine) => {
-              cmdAfterTotal += FONT_B + BOLD_OFF + `${wLine}\n` + FONT_A;
-            });
-          }
-        });
-      }
-      cmdAfterTotal += `\n\n\n` + CUT_PAPER;
-
-      // 6. Combine All Parts in One Continuous Stream
       const encoder = new TextEncoder();
       const initBytes = encoder.encode(INIT + ALIGN_CENTER);
-      const beforeTotalBytes = encoder.encode(cmdBeforeTotal);
-      const afterTotalBytes = encoder.encode(cmdAfterTotal);
+      const cutBytes = encoder.encode(FEED_AND_CUT);
 
       const totalByteLen =
         initBytes.length +
         (logoPartBytes ? logoPartBytes.length : 0) +
-        (brandTitleRasterBytes ? brandTitleRasterBytes.length : 0) +
-        beforeTotalBytes.length +
-        (prominentTotalRasterBytes ? prominentTotalRasterBytes.length : 0) +
-        afterTotalBytes.length;
+        bodyRasterBytes.length +
+        cutBytes.length;
 
       const combinedPayload = new Uint8Array(totalByteLen);
 
@@ -1396,20 +1421,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         offset += logoPartBytes.length;
       }
 
-      if (brandTitleRasterBytes) {
-        combinedPayload.set(brandTitleRasterBytes, offset);
-        offset += brandTitleRasterBytes.length;
-      }
+      combinedPayload.set(bodyRasterBytes, offset);
+      offset += bodyRasterBytes.length;
 
-      combinedPayload.set(beforeTotalBytes, offset);
-      offset += beforeTotalBytes.length;
-
-      if (prominentTotalRasterBytes) {
-        combinedPayload.set(prominentTotalRasterBytes, offset);
-        offset += prominentTotalRasterBytes.length;
-      }
-
-      combinedPayload.set(afterTotalBytes, offset);
+      combinedPayload.set(cutBytes, offset);
 
       await sendBytesToPrinter(writeChar, combinedPayload);
     } catch (err: any) {
@@ -2053,7 +2068,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               <div className="text-center">
                 <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
                 <p className="text-[11px] text-gray-500">
-                  တောင်ထိပ်အချွန်အပြည့် Logo နှင့် TOTAL သီးသန့် အကြီး/အထူ ခွဲခြားထားသည့် ဒီဇိုင်း
+                  Full Canvas Engine ဖြင့် Preview အတိုင်း Normal နှင့် Bold အတိအကျ ထွက်မည့်ပုံစံ
                 </p>
               </div>
 
