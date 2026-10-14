@@ -2129,43 +2129,6 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
     </div>
   );
 
-const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number, duration: number, size: number}[]>([]);
-    
-  useEffect(() => {
-      if (isMiniGameActive() && !userPastPromo) {
-          const interval = setInterval(() => {
-              setMiniBoxLanterns(prev => {
-                  if (prev.length > 10) return prev.slice(1);
-                  return [...prev, { id: Date.now() + Math.random(), left: Math.random() * 95, duration: 1.5 + Math.random() * 2, size: 0.8 + Math.random() * 0.8 }];
-              });
-          }, 300);
-          return () => clearInterval(interval);
-      }
-  }, [appData.promotion, userPastPromo]);
-  
-  const handleCampaignButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-      const button = e.currentTarget;
-      button.style.transform = 'scale(0.95)';
-      
-      const circle = document.createElement('span');
-      const diameter = Math.max(button.clientWidth, button.clientHeight);
-      const radius = diameter / 2;
-      
-      const rect = button.getBoundingClientRect();
-      circle.style.width = circle.style.height = `${diameter}px`;
-      circle.style.left = `${e.clientX - rect.left - radius}px`;
-      circle.style.top = `${e.clientY - rect.top - radius}px`;
-      circle.classList.add('ripple-effect');
-      
-      button.appendChild(circle);
-      
-      setTimeout(() => {
-          button.style.transform = 'scale(1)'; 
-          circle.remove(); 
-          window.location.href = '/?campaign=true';
-      }, 300); 
-  };
-
   const renderServiceSelection = (currentStep: number) => (
     <div className="animate-fade-in -mx-1.5 sm:mx-0">
       
