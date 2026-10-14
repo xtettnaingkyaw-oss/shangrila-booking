@@ -2220,7 +2220,7 @@ const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number
       )}
 
 
-      { Customer App Promotion Box ကို ဖွင့်ထားမှသာ ပေါ်မည့် သီးသန့် Box 🌟 */}
+      {/* 🌟 Customer App Promotion Box ကို ဖွင့်ထားမှသာ ပေါ်မည့် သီးသန့် Box 🌟 */}
       {boxPromoActive && !userPastPromo && (
         <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3.5 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between mx-1.5 sm:mx-0">
            <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
