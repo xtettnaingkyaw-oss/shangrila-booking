@@ -7,7 +7,7 @@ import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
   ArrowLeft, History, Search, Banknote, Bluetooth, Settings, Upload, X,
-  Menu, PackagePlus, Trash2, ChevronRight
+  Menu, PackagePlus, Trash2, ChevronRight, Tag, AlertCircle
 } from 'lucide-react';
 
 // Project ထဲရှိ THE SHANGRI LA - LOGO.png ကို Build Error မတက်စေဘဲ လှမ်းယူခြင်း
@@ -32,14 +32,24 @@ interface SavedExtraItem {
   price: number;
 }
 
+interface SavedDiscountPreset {
+  id: string;
+  label: string;
+  type: 'percent' | 'fixed';
+  value: number;
+  category?: 'vip' | 'campaign' | 'custom';
+}
+
 interface OfflineSaleRecord {
   localId: string;
+  firestoreDocId?: string;
   invoiceNo: string;
   createdAt: number;
   date: string;
   time: string;
   customerName: string;
   customerPhone: string;
+  customerVipTier?: string;
   therapistName: string;
   items: CartItem[];
   subTotal: number;
@@ -49,6 +59,9 @@ interface OfflineSaleRecord {
   discountReason: string;
   totalPrice: number;
   paymentMethod: string;
+  paymentStatus: 'paid_in_full' | 'deposit_only';
+  depositPaid: number;
+  balanceDue: number;
   cashReceived: number;
   changeDue: number;
   serviceStatus: 'in_progress' | 'completed';
@@ -93,12 +106,23 @@ const LOCAL_SALES_HISTORY_KEY = 'shangrila_pos_local_history_v1';
 const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
 const POS_PRINT_SETTINGS_KEY = 'shangrila_pos_print_settings_v3';
 const SAVED_EXTRA_ITEMS_KEY = 'shangrila_pos_saved_extra_items_v1';
+const SAVED_DISCOUNT_PRESETS_KEY = 'shangrila_pos_discount_presets_v1';
 
 const DEFAULT_EXTRA_ITEMS: SavedExtraItem[] = [
   { id: 'ext_1', name: 'Carebeau Massage Oil (Bottle)', price: 15000 },
   { id: 'ext_2', name: 'Extra Time (30 Mins)', price: 15000 },
-  { id: 'ext_3', name: 'Disposable Underwear /amenites', price: 3000 },
+  { id: 'ext_3', name: 'Disposable Underwear / Amenities', price: 3000 },
   { id: 'ext_4', name: 'Energy Drink / Coffee', price: 3000 }
+];
+
+const DEFAULT_DISCOUNT_PRESETS: SavedDiscountPreset[] = [
+  { id: 'vip_jade', label: 'Jade Elite VIP Member (10% OFF)', type: 'percent', value: 10, category: 'vip' },
+  { id: 'vip_gold', label: 'Imperial Gold VIP Member (15% OFF)', type: 'percent', value: 15, category: 'vip' },
+  { id: 'vip_vvip', label: 'Signature V-VIP Member (20% OFF)', type: 'percent', value: 20, category: 'vip' },
+  { id: 'camp_early', label: 'Early Bird Promo (15% OFF)', type: 'percent', value: 15, category: 'campaign' },
+  { id: 'camp_thadingyut', label: 'Special Festival Campaign (20% OFF)', type: 'percent', value: 20, category: 'campaign' },
+  { id: 'camp_tele', label: 'Telegram Channel Subscriber (10% OFF)', type: 'percent', value: 10, category: 'campaign' },
+  { id: 'custom_5000', label: 'Special Cash Voucher (-5,000 Ks)', type: 'fixed', value: 5000, category: 'custom' }
 ];
 
 const DEFAULT_PRINT_SETTINGS: PosPrintSettings = {
@@ -141,6 +165,31 @@ const generateInvoiceNo = () => {
   const ymd = `${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `SL-${ymd}-${rand}`;
+};
+
+// 🌟 Helper to detect VIP Tier & Discount % from Customer Points or Tier String 🌟
+const detectCustomerVipBenefit = (
+  points: number,
+  explicitTier?: string,
+  explicitDiscount?: number
+): { tierName: string; discountPercent: number } | null => {
+  if (explicitDiscount && explicitDiscount > 0) {
+    return {
+      tierName: explicitTier || `VIP ${explicitDiscount}% Member`,
+      discountPercent: explicitDiscount
+    };
+  }
+  const tierNorm = (explicitTier || '').toLowerCase();
+  if (tierNorm.includes('v-vip') || tierNorm.includes('vvip') || tierNorm.includes('signature') || points >= 30) {
+    return { tierName: 'Signature V-VIP Member', discountPercent: 20 };
+  }
+  if (tierNorm.includes('gold') || tierNorm.includes('imperial') || points >= 15) {
+    return { tierName: 'Imperial Gold VIP Member', discountPercent: 15 };
+  }
+  if (tierNorm.includes('jade') || tierNorm.includes('elite') || points >= 5) {
+    return { tierName: 'Jade Elite VIP Member', discountPercent: 10 };
+  }
+  return null;
 };
 
 const saveLiteAppDataToCache = (data: AppData) => {
@@ -222,7 +271,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const [isSyncing, setIsSyncing] = useState(false);
 
   // 🌟 Navigation Views & Slide-Out Side Menu State 🌟
-  const [activePosView, setActivePosView] = useState<'register' | 'history' | 'extra_items' | 'settings'>('register');
+  const [activePosView, setActivePosView] = useState<
+    'register' | 'history' | 'extra_items' | 'discounts' | 'settings'
+  >('register');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
 
   // 🌟 Saved Extra / Sale Items State (Persisted in LocalStorage) 🌟
@@ -274,6 +325,80 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       setSelectedExtraItemId('');
     }
   };
+
+  // 🌟 Saved Discount Presets State (Persisted in LocalStorage + Web App Active Promo Sync) 🌟
+  const [savedDiscountPresets, setSavedDiscountPresets] = useState<SavedDiscountPreset[]>(() => {
+    try {
+      const saved = localStorage.getItem(SAVED_DISCOUNT_PRESETS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_DISCOUNT_PRESETS;
+  });
+
+  const [newDiscountLabel, setNewDiscountLabel] = useState('');
+  const [newDiscountType, setNewDiscountType] = useState<'percent' | 'fixed'>('percent');
+  const [newDiscountValue, setNewDiscountValue] = useState('');
+
+  const updateSavedDiscountPresets = (newList: SavedDiscountPreset[]) => {
+    setSavedDiscountPresets(newList);
+    try {
+      localStorage.setItem(SAVED_DISCOUNT_PRESETS_KEY, JSON.stringify(newList));
+    } catch (e) {
+      console.warn('Discount presets storage error:', e);
+    }
+  };
+
+  const handleCreateDiscountPreset = (e: React.FormEvent) => {
+    e.preventDefault();
+    const valNum = parseInt(newDiscountValue, 10);
+    if (!newDiscountLabel.trim() || isNaN(valNum) || valNum <= 0) return;
+
+    const newPreset: SavedDiscountPreset = {
+      id: `disc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      label: newDiscountLabel.trim(),
+      type: newDiscountType,
+      value: newDiscountType === 'percent' ? Math.min(100, valNum) : valNum,
+      category: 'custom'
+    };
+
+    updateSavedDiscountPresets([newPreset, ...savedDiscountPresets]);
+    setNewDiscountLabel('');
+    setNewDiscountValue('');
+  };
+
+  const handleDeleteDiscountPreset = (id: string) => {
+    updateSavedDiscountPresets(savedDiscountPresets.filter((d) => d.id !== id));
+  };
+
+  // Combine Web App Active Promotion Discounts + Saved Presets for the Dropdown
+  const allAvailableDiscounts = useMemo(() => {
+    const dynamicWebPromos: SavedDiscountPreset[] = [];
+    const promo = localAppData?.promotion;
+    if (promo?.isActive) {
+      if (promo.otherDiscountPercent && promo.otherDiscountPercent > 0) {
+        dynamicWebPromos.push({
+          id: 'webapp_active_promo_other',
+          label: `Active Web Promo - In-Spa (${promo.otherDiscountPercent}% OFF)`,
+          type: 'percent',
+          value: promo.otherDiscountPercent,
+          category: 'campaign'
+        });
+      }
+      if (promo.hotelDiscountPercent && promo.hotelDiscountPercent > 0) {
+        dynamicWebPromos.push({
+          id: 'webapp_active_promo_hotel',
+          label: `Active Web Promo - Hotel/Outcall (${promo.hotelDiscountPercent}% OFF)`,
+          type: 'percent',
+          value: promo.hotelDiscountPercent,
+          category: 'campaign'
+        });
+      }
+    }
+    return [...dynamicWebPromos, ...savedDiscountPresets];
+  }, [localAppData?.promotion, savedDiscountPresets]);
 
   // 🌟 Loyverse-Style Receipt Settings State 🌟
   const [printSettings, setPrintSettings] = useState<PosPrintSettings>(() => {
@@ -337,20 +462,33 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   });
   const [serviceStatus, setServiceStatus] = useState<'in_progress' | 'completed'>('in_progress');
 
+  // 🌟 Customer, VIP Auto-Benefit & Active Promo Conflict Choice States 🌟
   const [customerName, setCustomerName] = useState('Walk-in Guest');
   const [customerPhone, setCustomerPhone] = useState('');
   const [foundCustomerPts, setFoundCustomerPts] = useState<number | null>(null);
+  const [detectedVipBenefit, setDetectedVipBenefit] = useState<{
+    tierName: string;
+    discountPercent: number;
+  } | null>(null);
+  const [benefitChoiceMode, setBenefitChoiceMode] = useState<'vip' | 'promo'>('vip');
 
+  // 🌟 Discount States 🌟
+  const [selectedDiscountPresetId, setSelectedDiscountPresetId] = useState<string>('none');
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent');
   const [discountValue, setDiscountValue] = useState<number>(0);
-  const [discountReason, setDiscountReason] = useState('Walk-in Promo');
+  const [discountReason, setDiscountReason] = useState('No Discount');
+  const [showCustomDiscountInputs, setShowCustomDiscountInputs] = useState(false);
 
+  // 🌟 Payment & Deposit / Balance Due States 🌟
   const [paymentMethod, setPaymentMethod] = useState<string>('Cash');
+  const [onlinePayMode, setOnlinePayMode] = useState<'full' | 'deposit'>('full');
+  const [depositAmountStr, setDepositAmountStr] = useState<string>('');
   const [cashReceived, setCashReceived] = useState<string>('');
   const [specialNote, setSpecialNote] = useState('');
 
   const [activeReceipt, setActiveReceipt] = useState<OfflineSaleRecord | null>(null);
   const [savingSale, setSavingSale] = useState(false);
+  const [approvingBalanceId, setApprovingBalanceId] = useState<string | null>(null);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -734,7 +872,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     return `${h}:${mStr} ${ampm}`;
   };
 
-  const uploadSaleToFirebase = async (record: OfflineSaleRecord) => {
+  const uploadSaleToFirebase = async (record: OfflineSaleRecord): Promise<string> => {
     const serviceSummary = record.items
       .map(
         (item) =>
@@ -751,6 +889,22 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           })`
         : '[Shop Walk-in Sale]';
 
+    const paymentMethodSummary =
+      record.paymentStatus === 'deposit_only'
+        ? `${record.paymentMethod} (စရံ: ${formatPrice(record.depositPaid)} | ကျန်ငွေ: ${formatPrice(record.balanceDue)})`
+        : `${record.paymentMethod} (Shop POS)`;
+
+    const noteWithBalanceInfo = [
+      record.note ? `[POS Note]: ${record.note}` : 'Shop Walk-in POS Sale',
+      record.paymentStatus === 'deposit_only'
+        ? `[PENDING BALANCE]: စရံ ${formatPrice(record.depositPaid)} ပေးချေပြီး၊ ကျန်ငွေ ${formatPrice(
+            record.balanceDue
+          )} ကောက်ခံရန်ကျန်ရှိ`
+        : ''
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
     const bookingPayload: any = {
       name: encryptText(`${record.customerName} (Walk-in)`),
       phone: encryptText(record.customerPhone || 'Walk-in'),
@@ -758,7 +912,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       therapist: record.therapistName || 'Any Available Therapist',
       date: record.date,
       time: record.time,
-      paymentMethod: `${record.paymentMethod} (Shop POS)`,
+      paymentMethod: paymentMethodSummary,
+      paymentStatus: record.paymentStatus,
+      depositPaid: Number(record.depositPaid) || 0,
+      balanceDue: Number(record.balanceDue) || 0,
       txId: encryptText(record.invoiceNo),
       totalPrice: Number(record.totalPrice) || 0,
       originalPrice: encryptText(record.subTotal.toString()),
@@ -768,14 +925,14 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           : Math.round((record.discountAmount / (record.subTotal || 1)) * 100).toString()
       ),
       discountLabel: encryptText(discountLabelText),
-      specialRequest: encryptText(record.note ? `[POS Note]: ${record.note}` : 'Shop Walk-in POS Sale'),
+      specialRequest: encryptText(noteWithBalanceInfo),
       status: record.serviceStatus,
       createdAt: record.createdAt,
       ...(record.startTimeMillis && { startTimeMillis: record.startTimeMillis }),
       ...(record.expectedEndTimeMillis && { expectedEndTimeMillis: record.expectedEndTimeMillis })
     };
 
-    await addDoc(collection(db, 'bookings'), bookingPayload);
+    const docRef = await addDoc(collection(db, 'bookings'), bookingPayload);
 
     if (record.customerPhone && record.customerPhone.trim().length >= 7 && record.pointsEarned > 0) {
       const cleanPhone = record.customerPhone.trim();
@@ -821,18 +978,81 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         createdAt: record.createdAt
       });
     }
+
+    return docRef.id;
+  };
+
+  // 🌟 Approve Remaining Balance Due (Marks Deposit Sale as Paid in Full in Both POS & Admin Backoffice!) 🌟
+  const handleApproveBalancePaid = async (sale: OfflineSaleRecord) => {
+    setApprovingBalanceId(sale.localId);
+    try {
+      const cleanMethod = sale.paymentMethod.split('(')[0].trim();
+      if (navigator.onLine) {
+        let targetDocId = sale.firestoreDocId;
+        if (!targetDocId) {
+          const bookingsSnap = await getDocs(collection(db, 'bookings'));
+          bookingsSnap.forEach((d) => {
+            try {
+              const bData = d.data();
+              const decTx = decryptText(bData.txId) || bData.txId;
+              if (decTx === sale.invoiceNo) {
+                targetDocId = d.id;
+              }
+            } catch {}
+          });
+        }
+        if (targetDocId) {
+          await updateDoc(doc(db, 'bookings', targetDocId), {
+            paymentStatus: 'paid_in_full',
+            balanceDue: 0,
+            depositPaid: sale.totalPrice,
+            paymentMethod: `${cleanMethod} (Full Paid - Approved)`,
+            specialRequest: encryptText(
+              `${sale.note ? `[POS Note]: ${sale.note} | ` : ''}[BALANCE APPROVED]: ကျန်ငွေ ${formatPrice(
+                sale.balanceDue
+              )} အပြည့်အဝ လက်ခံရရှိပြီး`
+            )
+          });
+        }
+      }
+
+      const updatedSale: OfflineSaleRecord = {
+        ...sale,
+        paymentStatus: 'paid_in_full',
+        depositPaid: sale.totalPrice,
+        balanceDue: 0,
+        cashReceived: sale.totalPrice
+      };
+
+      const updatedHistory = salesHistory.map((h) =>
+        h.localId === sale.localId ? updatedSale : h
+      );
+      setSalesHistory(updatedHistory);
+      try {
+        localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updatedHistory));
+      } catch {}
+
+      if (activeReceipt?.localId === sale.localId) {
+        setActiveReceipt(updatedSale);
+      }
+    } catch (err) {
+      console.error('Approve balance error:', err);
+      alert('ကျန်ငွေ အတည်ပြုရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    } finally {
+      setApprovingBalanceId(null);
+    }
   };
 
   const syncOfflineRecords = async () => {
     if (!navigator.onLine || offlineQueue.length === 0 || isSyncing) return;
     setIsSyncing(true);
     const remaining: OfflineSaleRecord[] = [];
-    const syncedIds = new Set<string>();
+    const syncedMap = new Map<string, string>();
 
     for (const record of offlineQueue) {
       try {
-        await uploadSaleToFirebase(record);
-        syncedIds.add(record.localId);
+        const docId = await uploadSaleToFirebase(record);
+        syncedMap.set(record.localId, docId);
       } catch (err) {
         console.warn('Sync failed for record:', record.invoiceNo, err);
         remaining.push(record);
@@ -841,9 +1061,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
     updateOfflineQueue(remaining);
 
-    if (syncedIds.size > 0) {
+    if (syncedMap.size > 0) {
       const updatedHistory = salesHistory.map((h) =>
-        syncedIds.has(h.localId) ? { ...h, synced: true } : h
+        syncedMap.has(h.localId)
+          ? { ...h, synced: true, firestoreDocId: syncedMap.get(h.localId) }
+          : h
       );
       setSalesHistory(updatedHistory);
       try {
@@ -854,25 +1076,85 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setIsSyncing(false);
   };
 
+  // 🌟 Apply Either VIP Member Benefit OR Active Promotion Benefit 🌟
+  const applyVipOrPromoChoice = (
+    choice: 'vip' | 'promo',
+    vipData: { tierName: string; discountPercent: number } | null
+  ) => {
+    setBenefitChoiceMode(choice);
+    const promo = localAppData?.promotion;
+
+    if (choice === 'vip' && vipData) {
+      setDiscountType('percent');
+      setDiscountValue(vipData.discountPercent);
+      setDiscountReason(`${vipData.tierName} (${vipData.discountPercent}% OFF)`);
+      const matchingPreset = allAvailableDiscounts.find(
+        (d) => d.type === 'percent' && d.value === vipData.discountPercent
+      );
+      setSelectedDiscountPresetId(matchingPreset ? matchingPreset.id : 'custom');
+    } else if (choice === 'promo' && promo?.isActive) {
+      const promoPct = promo.otherDiscountPercent || promo.hotelDiscountPercent || 10;
+      setDiscountType('percent');
+      setDiscountValue(promoPct);
+      setDiscountReason(`Active Store Promotion (${promoPct}% OFF)`);
+      setSelectedDiscountPresetId('webapp_active_promo_other');
+    }
+  };
+
+  // 🌟 Customer Phone Lookup -> Auto-Detect VIP Member Card & Apply Discount Automatically! 🌟
   const handleCheckCustomerPhone = async () => {
-    if (!customerPhone.trim() || !isOnline) return;
+    const cleanInput = customerPhone.trim();
+    if (!cleanInput) {
+      setFoundCustomerPts(null);
+      setDetectedVipBenefit(null);
+      return;
+    }
+    if (!isOnline) return;
+
     try {
       const snap = await getDocs(collection(db, 'users'));
       let found = false;
+
       snap.forEach((d) => {
         try {
           const data = d.data();
           const decPhone = decryptText(data.phone) || d.id;
-          if (decPhone === customerPhone.trim()) {
+          if (decPhone === cleanInput || d.id === cleanInput) {
             found = true;
-            const decName = decryptText(data.name);
+            const decName = decryptText(data.name) || data.name;
             const decPts = parseInt(decryptText(data.points) || data.points || '0', 10);
+            const decTier = decryptText(data.vipTier || data.tier || '') || data.vipTier || data.tier || '';
+            const decVipDisc = parseInt(
+              decryptText(data.vipDiscount || data.discountPercent || '') ||
+                data.vipDiscount ||
+                data.discountPercent ||
+                '0',
+              10
+            );
+
             if (decName) setCustomerName(decName);
-            setFoundCustomerPts(isNaN(decPts) ? 0 : decPts);
+            const ptsNum = isNaN(decPts) ? 0 : decPts;
+            setFoundCustomerPts(ptsNum);
+
+            const vipBenefit = detectCustomerVipBenefit(
+              ptsNum,
+              decTier,
+              isNaN(decVipDisc) ? 0 : decVipDisc
+            );
+            setDetectedVipBenefit(vipBenefit);
+
+            if (vipBenefit) {
+              // Automatically apply the member's VIP discount!
+              applyVipOrPromoChoice('vip', vipBenefit);
+            }
           }
         } catch {}
       });
-      if (!found) setFoundCustomerPts(0);
+
+      if (!found) {
+        setFoundCustomerPts(0);
+        setDetectedVipBenefit(null);
+      }
     } catch {}
   };
 
@@ -888,7 +1170,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       setRecentlyAddedItemId((prev) => (prev === targetItemId ? null : prev));
     }, 850);
 
-    // Auto-scroll the bill list to show the newly added/updated item
     setTimeout(() => {
       if (billListScrollRef.current) {
         billListScrollRef.current.scrollTo({
@@ -1045,6 +1326,43 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const cashReceivedNum = parseInt(cashReceived, 10) || 0;
   const changeDue = Math.max(0, cashReceivedNum - finalTotal);
 
+  const isOnlinePaymentSelected = paymentMethod !== 'Cash';
+  const depositPaidNum = useMemo(() => {
+    if (!isOnlinePaymentSelected || onlinePayMode === 'full') {
+      return finalTotal;
+    }
+    const parsed = parseInt(depositAmountStr, 10) || 0;
+    return Math.max(0, Math.min(finalTotal, parsed));
+  }, [isOnlinePaymentSelected, onlinePayMode, depositAmountStr, finalTotal]);
+
+  const balanceDueNum = useMemo(() => {
+    if (!isOnlinePaymentSelected || onlinePayMode === 'full') return 0;
+    return Math.max(0, finalTotal - depositPaidNum);
+  }, [isOnlinePaymentSelected, onlinePayMode, finalTotal, depositPaidNum]);
+
+  const handleSelectDiscountDropdown = (presetId: string) => {
+    setSelectedDiscountPresetId(presetId);
+    if (presetId === 'none') {
+      setDiscountType('percent');
+      setDiscountValue(0);
+      setDiscountReason('No Discount');
+      setShowCustomDiscountInputs(false);
+      return;
+    }
+    if (presetId === 'custom') {
+      setShowCustomDiscountInputs(true);
+      if (discountReason === 'No Discount') setDiscountReason('Special Walk-in Discount');
+      return;
+    }
+    setShowCustomDiscountInputs(false);
+    const found = allAvailableDiscounts.find((d) => d.id === presetId);
+    if (found) {
+      setDiscountType(found.type);
+      setDiscountValue(found.value);
+      setDiscountReason(found.label);
+    }
+  };
+
   const handleCompleteSale = async () => {
     if (cart.length === 0) return;
     setSavingSale(true);
@@ -1069,6 +1387,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         ? therapist1.name
         : 'Any Available Therapist';
 
+    const isDepositSale = isOnlinePaymentSelected && onlinePayMode === 'deposit' && balanceDueNum > 0;
+
     const newRecord: OfflineSaleRecord = {
       localId: `pos_${now}_${Math.random().toString(36).slice(2, 7)}`,
       invoiceNo: generateInvoiceNo(),
@@ -1077,16 +1397,25 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       time: format12Hour(saleTime),
       customerName: customerName.trim() || 'Walk-in Guest',
       customerPhone: customerPhone.trim(),
+      customerVipTier: detectedVipBenefit?.tierName || undefined,
       therapistName: combinedTherapist,
       items: [...cart],
       subTotal,
       discountType,
       discountValue,
       discountAmount,
-      discountReason: discountReason.trim() || 'Walk-in Discount',
+      discountReason: discountAmount > 0 ? discountReason.trim() || 'Walk-in Discount' : '',
       totalPrice: finalTotal,
       paymentMethod,
-      cashReceived: paymentMethod === 'Cash' ? (cashReceivedNum || finalTotal) : finalTotal,
+      paymentStatus: isDepositSale ? 'deposit_only' : 'paid_in_full',
+      depositPaid: isDepositSale ? depositPaidNum : finalTotal,
+      balanceDue: isDepositSale ? balanceDueNum : 0,
+      cashReceived:
+        paymentMethod === 'Cash'
+          ? cashReceivedNum || finalTotal
+          : isDepositSale
+          ? depositPaidNum
+          : finalTotal,
       changeDue: paymentMethod === 'Cash' ? changeDue : 0,
       serviceStatus,
       pointsEarned,
@@ -1098,8 +1427,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
     if (navigator.onLine) {
       try {
-        await uploadSaleToFirebase(newRecord);
+        const docId = await uploadSaleToFirebase(newRecord);
         newRecord.synced = true;
+        newRecord.firestoreDocId = docId;
       } catch (err) {
         console.warn('Saved to offline queue due to network error:', err);
         updateOfflineQueue([...offlineQueue, newRecord]);
@@ -1349,7 +1679,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
         const itemPriceStr = formatPrice(unitPrice * item.qty);
 
-        // Both item name and price are Normal Weight (false, false) as requested!
         cmd += formatCleanFontBRow(itemTitle, itemPriceStr, false, false);
 
         const subDetails = [
@@ -1381,15 +1710,25 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       cmd += subtleTotalSeparator;
       cmd += formatHeroTotalRow('TOTAL:', formatPrice(recordToPrint.totalPrice));
 
-      // 7. Payment & Change Due (Clean Compact Font B Normal Weight)
-      cmd += formatCleanFontBRow(
-        `Payment (${recordToPrint.paymentMethod}):`,
-        formatPrice(recordToPrint.cashReceived),
-        false,
-        false
-      );
-      if (recordToPrint.paymentMethod === 'Cash' && recordToPrint.changeDue > 0) {
-        cmd += formatCleanFontBRow('Change Due:', formatPrice(recordToPrint.changeDue), false, false);
+      // 7. Payment, Deposit & Balance Due (Clean Compact Font B)
+      if (recordToPrint.paymentStatus === 'deposit_only' && recordToPrint.balanceDue > 0) {
+        cmd += formatCleanFontBRow(
+          `Deposit (${recordToPrint.paymentMethod}):`,
+          formatPrice(recordToPrint.depositPaid),
+          false,
+          false
+        );
+        cmd += formatHeroTotalRow('BALANCE DUE:', formatPrice(recordToPrint.balanceDue));
+      } else {
+        cmd += formatCleanFontBRow(
+          `Payment (${recordToPrint.paymentMethod}):`,
+          formatPrice(recordToPrint.cashReceived),
+          false,
+          false
+        );
+        if (recordToPrint.paymentMethod === 'Cash' && recordToPrint.changeDue > 0) {
+          cmd += formatCleanFontBRow('Change Due:', formatPrice(recordToPrint.changeDue), false, false);
+        }
       }
 
       // 8. VIP Points Earned Box (Clean ASCII Box in Font A)
@@ -1509,6 +1848,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     discountReason: '',
     totalPrice: 25000,
     paymentMethod: 'Cash',
+    paymentStatus: 'paid_in_full',
+    depositPaid: 25000,
+    balanceDue: 0,
     cashReceived: 25000,
     changeDue: 0,
     serviceStatus: 'completed',
@@ -1524,7 +1866,14 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setCustomerName('Walk-in Guest');
     setCustomerPhone('');
     setFoundCustomerPts(null);
+    setDetectedVipBenefit(null);
+    setSelectedDiscountPresetId('none');
     setDiscountValue(0);
+    setDiscountReason('No Discount');
+    setShowCustomDiscountInputs(false);
+    setPaymentMethod('Cash');
+    setOnlinePayMode('full');
+    setDepositAmountStr('');
     setCashReceived('');
     setSpecialNote('');
     setActiveReceipt(null);
@@ -1533,10 +1882,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setSaleTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
   };
 
-  const paymentOptions = [
-    'Cash',
-    ...(localAppData?.paymentMethods?.map((pm) => pm.name) || ['KBZ PAY', 'WAVE PAY', 'AYA PAY'])
-  ];
+  const paymentOptions = useMemo(() => {
+    const dynamicMethods = localAppData?.paymentMethods?.map((pm) => pm.name) || [];
+    const defaults = ['KBZ PAY', 'Wave PAY', 'AYA PAY', 'UAB PAY'];
+    const merged = Array.from(new Set(['Cash', ...dynamicMethods, ...defaults]));
+    return merged;
+  }, [localAppData?.paymentMethods]);
 
   const activeViewLabel =
     activePosView === 'register'
@@ -1545,7 +1896,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       ? `Receipts (${salesHistory.length})`
       : activePosView === 'extra_items'
       ? 'Extra Items Setting'
+      : activePosView === 'discounts'
+      ? 'Discounts Setting'
       : 'Receipt Settings';
+
+  const isStorePromoActive = !!localAppData?.promotion?.isActive;
+  const activeStorePromoPct =
+    localAppData?.promotion?.otherDiscountPercent ||
+    localAppData?.promotion?.hotelDiscountPercent ||
+    10;
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
@@ -1635,16 +1994,13 @@ export default function POSScreen({ appData }: { appData: AppData }) {
          ========================================== */}
       {isSideMenuOpen && (
         <div className="fixed inset-0 z-[300] flex">
-          {/* Backdrop */}
           <div
             onClick={() => setIsSideMenuOpen(false)}
             className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
           />
 
-          {/* Drawer Content */}
           <aside className="relative w-72 max-w-[82vw] bg-[#0B2419] text-white h-full shadow-2xl border-r border-[#D4AF37]/30 flex flex-col justify-between z-10 animate-fade-in">
             <div>
-              {/* Drawer Brand Header */}
               <div className="p-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] border-b border-[#D4AF37]/30 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   {digitalLogoUrl && (
@@ -1670,7 +2026,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </button>
               </div>
 
-              {/* Navigation Menu List */}
               <nav className="p-3 space-y-1.5">
                 <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-[#D4AF37]/70">
                   Sales & Register
@@ -1713,7 +2068,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </button>
 
                 <div className="pt-3 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-[#D4AF37]/70 border-t border-white/10 mt-2">
-                  POS Settings & Items
+                  POS Settings & Presets
                 </div>
 
                 <button
@@ -1730,6 +2085,24 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 >
                   <span className="flex items-center gap-2.5">
                     <PackagePlus className="w-4 h-4" /> အပိုပစ္စည်း / Extra Items ({savedExtraItems.length})
+                  </span>
+                  <ChevronRight className="w-4 h-4 opacity-70" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActivePosView('discounts');
+                    setIsSideMenuOpen(false);
+                  }}
+                  className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                    activePosView === 'discounts'
+                      ? 'bg-[#D4AF37] text-[#123524] shadow-md font-black'
+                      : 'text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Tag className="w-4 h-4" /> Discounts & Promos ({allAvailableDiscounts.length})
                   </span>
                   <ChevronRight className="w-4 h-4 opacity-70" />
                 </button>
@@ -1754,7 +2127,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </nav>
             </div>
 
-            {/* Bottom Actions inside Side Drawer */}
             <div className="p-3.5 border-t border-white/10 space-y-2 bg-black/20">
               <button
                 type="button"
@@ -1780,7 +2152,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
          ========================================== */}
       <header className="no-print sticky top-0 z-50 bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-3 py-2 shadow-md border-b border-[#D4AF37]/40 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          {/* Side Menu Trigger Button */}
           <button
             type="button"
             onClick={() => setIsSideMenuOpen(true)}
@@ -1813,7 +2184,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             </button>
           )}
 
-          {/* Bluetooth Status / Quick Connect Button */}
           <button
             type="button"
             onClick={() => handleConnectBluetoothPrinter(true)}
@@ -1958,16 +2328,33 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     <span>TOTAL:</span>
                     <span>{formatPrice(activeReceipt.totalPrice)}</span>
                   </div>
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-gray-500">Payment ({activeReceipt.paymentMethod}):</span>
-                    <span className="text-gray-700">{formatPrice(activeReceipt.cashReceived)}</span>
-                  </div>
-                  {activeReceipt.paymentMethod === 'Cash' && activeReceipt.changeDue > 0 && (
-                    <div className="flex justify-between text-[10px]">
-                      <span className="text-gray-500">Change Due:</span>
-                      <span className="text-gray-700">{formatPrice(activeReceipt.changeDue)}</span>
-                    </div>
+
+                  {activeReceipt.paymentStatus === 'deposit_only' && activeReceipt.balanceDue > 0 ? (
+                    <>
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">စရံငွေ ({activeReceipt.paymentMethod}):</span>
+                        <span className="font-bold text-gray-800">{formatPrice(activeReceipt.depositPaid)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-black text-red-600 pt-0.5">
+                        <span>ကျန်ငွေ (Balance Due):</span>
+                        <span>{formatPrice(activeReceipt.balanceDue)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">Payment ({activeReceipt.paymentMethod}):</span>
+                        <span className="text-gray-700">{formatPrice(activeReceipt.cashReceived)}</span>
+                      </div>
+                      {activeReceipt.paymentMethod === 'Cash' && activeReceipt.changeDue > 0 && (
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-gray-500">Change Due:</span>
+                          <span className="text-gray-700">{formatPrice(activeReceipt.changeDue)}</span>
+                        </div>
+                      )}
+                    </>
                   )}
+
                   {activeReceipt.pointsEarned > 0 && (
                     <div className="flex justify-between text-[10px] bg-yellow-50 p-1.5 rounded border border-yellow-200 mt-1.5">
                       <span className="text-yellow-800">VIP Points Earned:</span>
@@ -1986,7 +2373,20 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             </div>
 
             {/* Action Buttons */}
-            <div className="no-print mt-4 flex flex-col gap-2.5">
+            <div className="no-print mt-4 flex flex-col gap-2">
+              {activeReceipt.paymentStatus === 'deposit_only' && activeReceipt.balanceDue > 0 && (
+                <button
+                  type="button"
+                  disabled={approvingBalanceId === activeReceipt.localId}
+                  onClick={() => handleApproveBalancePaid(activeReceipt)}
+                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs flex items-center justify-center shadow-sm transition"
+                >
+                  <CheckCircle className="w-4 h-4 mr-1.5" />
+                  {approvingBalanceId === activeReceipt.localId
+                    ? 'Approving...'
+                    : `ကျန်ငွေ (${formatPrice(activeReceipt.balanceDue)}) ရရှိကြောင်း Approve လုပ်မည်`}
+                </button>
+              )}
               <button
                 onClick={() => handleBluetoothEscPosPrint()}
                 disabled={isPrintingBt}
@@ -2011,9 +2411,137 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       )}
 
       {/* ==========================================
-          VIEW 4: EXTRA SALE ITEMS SETTING TAB (အပိုပစ္စည်းများ ထည့်သွင်းသိမ်းဆည်းရန်)
+          VIEW 5: DISCOUNTS & PROMOTIONS SETTING TAB
          ========================================== */}
-      {activePosView === 'extra_items' ? (
+      {activePosView === 'discounts' ? (
+        <div className="max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-5 animate-fade-in">
+          <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-4">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-[#123524] flex items-center">
+                  <Tag className="w-5 h-5 mr-2 text-[#D4AF37]" />
+                  Discounts, VIP Tiers & Campaign Settings
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  ဤနေရာတွင် သတ်မှတ်ထားသော Discount % နှင့် Reason များကို POS Checkout Dropdown မှ တစ်ချက်နှိပ်ရုံဖြင့် အဆင်သင့် ရွေးချယ်နိုင်ပါသည်
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActivePosView('register')}
+                className="px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-bold shadow-sm hover:bg-[#1a4a32] transition"
+              >
+                ← Back to POS Register
+              </button>
+            </div>
+
+            {/* Add New Discount Preset Form */}
+            <form
+              onSubmit={handleCreateDiscountPreset}
+              className="bg-gradient-to-r from-yellow-50 to-amber-50/40 p-4 rounded-xl border border-[#D4AF37]/40 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
+            >
+              <div className="sm:col-span-5">
+                <label className="block text-[11px] font-bold text-[#123524] uppercase mb-1">
+                  Discount Reason / Campaign Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ဥပမာ - VIP 20% Member / Happy Hour Promo"
+                  value={newDiscountLabel}
+                  onChange={(e) => setNewDiscountLabel(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-[#123524] uppercase mb-1">Type</label>
+                <select
+                  value={newDiscountType}
+                  onChange={(e) => setNewDiscountType(e.target.value as 'percent' | 'fixed')}
+                  className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-[#123524] outline-none"
+                >
+                  <option value="percent">% ရာခိုင်နှုန်း</option>
+                  <option value="fixed">Ks ငွေပမာဏ</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-[#123524] uppercase mb-1">
+                  Value ({newDiscountType === 'percent' ? '%' : 'Ks'})
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  placeholder={newDiscountType === 'percent' ? '20' : '5000'}
+                  value={newDiscountValue}
+                  onChange={(e) => setNewDiscountValue(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#123524]"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <button
+                  type="submit"
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black uppercase tracking-wider shadow-md hover:opacity-95 transition flex items-center justify-center"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> သိမ်းဆည်းမည်
+                </button>
+              </div>
+            </form>
+
+            {/* Saved Discount Presets List */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">
+                  Available VIP & Campaign Discounts ({allAvailableDiscounts.length})
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => updateSavedDiscountPresets(DEFAULT_DISCOUNT_PRESETS)}
+                  className="text-xs font-bold text-[#123524] underline"
+                >
+                  Reset Default VIP & Campaign List
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {allAvailableDiscounts.map((disc) => (
+                  <div
+                    key={disc.id}
+                    className="p-3.5 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-between gap-3 hover:border-[#D4AF37] transition"
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-xs text-gray-800">{disc.label}</span>
+                        {disc.id.startsWith('webapp_') && (
+                          <span className="bg-green-100 text-green-800 text-[9px] font-black px-1.5 py-0.5 rounded">
+                            Web App Live
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs font-black text-green-700 mt-0.5">
+                        {disc.type === 'percent' ? `${disc.value}% OFF` : `-${formatPrice(disc.value)}`}
+                      </div>
+                    </div>
+                    {!disc.id.startsWith('webapp_') && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDiscountPreset(disc.id)}
+                        title="Delete Discount Preset"
+                        className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : activePosView === 'extra_items' ? (
+        /* ==========================================
+           VIEW 4: EXTRA SALE ITEMS SETTING TAB
+           ========================================== */
         <div className="max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-5 animate-fade-in">
           <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-4">
@@ -2035,7 +2563,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </button>
             </div>
 
-            {/* Add New Extra Item Form */}
             <form
               onSubmit={handleCreateExtraItemInSettings}
               className="bg-gradient-to-r from-yellow-50 to-amber-50/40 p-4 rounded-xl border border-[#D4AF37]/40 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
@@ -2077,7 +2604,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </div>
             </form>
 
-            {/* Saved Items List */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">
@@ -2132,7 +2658,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
            ========================================== */
         <div className="max-w-7xl w-full mx-auto p-3 sm:p-5 pos-split-layout animate-fade-in">
           <div className="space-y-4 min-w-0">
-            {/* 1. Loyverse-Style Receipt Settings Card */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-5">
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                 <div>
@@ -2154,7 +2679,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </button>
               </div>
 
-              {/* Loyverse Dual Logo Section: Digital vs Printed Receipt */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-xs font-bold text-gray-700">Logo</label>
@@ -2170,7 +2694,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 max-w-sm">
-                  {/* Left Box: Digital / App Receipt Logo */}
                   <div>
                     <div className="text-[11px] text-gray-500 mb-1.5 font-medium">Digital / App receipt</div>
                     <div className="w-32 h-32 rounded-lg border border-gray-200 bg-[#123524] overflow-hidden flex items-center justify-center shadow-sm">
@@ -2182,7 +2705,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     </div>
                   </div>
 
-                  {/* Right Box: Printed Receipt Logo (Monochrome Line Art + Upload Button) */}
                   <div>
                     <div className="text-[11px] text-gray-500 mb-1.5 font-medium">Printed receipt</div>
                     <div className="relative w-32 h-32 rounded-lg border border-gray-300 bg-white overflow-hidden flex flex-col justify-between shadow-sm">
@@ -2225,7 +2747,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   </div>
                 </div>
 
-                {/* Smart Thermal Filter & Contrast Controls */}
                 {printSettings.showLogo && (
                   <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2290,7 +2811,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 )}
               </div>
 
-              {/* Loyverse-Style Text Fields */}
               <div className="space-y-3 pt-1">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -2369,7 +2889,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </div>
             </div>
 
-            {/* 2. Bluetooth Hardware & Paper Width Card */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                 <div>
@@ -2427,7 +2946,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             </div>
           </div>
 
-          {/* Right Column: Exact Thermal Receipt Output Preview */}
           <div className="min-w-0 sticky top-16">
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3">
               <div className="text-center">
@@ -2525,13 +3043,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         </div>
       ) : activePosView === 'history' ? (
         /* ==========================================
-           VIEW 2: LOCAL & OFFLINE RECEIPTS HISTORY
+           VIEW 2: LOCAL & OFFLINE RECEIPTS HISTORY (WITH BALANCE DUE APPROVAL)
            ========================================== */
         <div className="max-w-4xl w-full mx-auto p-4 space-y-4">
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-[#123524]">Walk-in POS Receipts History</h2>
-              <p className="text-xs text-gray-500">Offline နှင့် Online သွင်းထားသော ဘောင်ချာမှတ်တမ်းများ</p>
+              <p className="text-xs text-gray-500">
+                Offline/Online ဘောင်ချာမှတ်တမ်းများ နှင့် စရံချေထားသော ကျန်ငွေများကို Approve ပြုလုပ်ရန်
+              </p>
             </div>
             {offlineQueue.length > 0 && (
               <button
@@ -2551,52 +3071,80 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             </div>
           ) : (
             <div className="space-y-3">
-              {salesHistory.map((sale) => (
-                <div
-                  key={sale.localId}
-                  className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-3 hover:border-[#D4AF37] transition"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-black text-sm text-[#123524]">{sale.invoiceNo}</span>
-                      {sale.synced ? (
-                        <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center">
-                          <CheckCircle className="w-2.5 h-2.5 mr-1" /> Synced to Admin
+              {salesHistory.map((sale) => {
+                const hasBalanceDue = sale.paymentStatus === 'deposit_only' && sale.balanceDue > 0;
+                return (
+                  <div
+                    key={sale.localId}
+                    className={`bg-white p-4 rounded-2xl shadow-sm border flex flex-wrap items-center justify-between gap-3 transition ${
+                      hasBalanceDue ? 'border-amber-400 bg-amber-50/20' : 'border-gray-200 hover:border-[#D4AF37]'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-black text-sm text-[#123524]">{sale.invoiceNo}</span>
+                        {sale.synced ? (
+                          <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center">
+                            <CheckCircle className="w-2.5 h-2.5 mr-1" /> Synced
+                          </span>
+                        ) : (
+                          <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
+                            Pending Sync
+                          </span>
+                        )}
+                        <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[9px] font-bold">
+                          {sale.paymentMethod}
                         </span>
-                      ) : (
-                        <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                          Pending Offline Sync
-                        </span>
+                        {hasBalanceDue ? (
+                          <span className="bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center">
+                            <AlertCircle className="w-2.5 h-2.5 mr-1" /> စရံ: {formatPrice(sale.depositPaid)} | ကျန်ငွေ: {formatPrice(sale.balanceDue)}
+                          </span>
+                        ) : (
+                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
+                            Paid in Full
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs font-bold text-gray-800 mt-1">
+                        {sale.items.map((i) => `${i.name} (x${i.qty})`).join(', ')}
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">
+                        Customer: {sale.customerName} | Therapist: {sale.therapistName} | {sale.date} {sale.time}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <div className="text-right">
+                        <div className="text-base font-black text-[#123524]">{formatPrice(sale.totalPrice)}</div>
+                        {sale.discountAmount > 0 && (
+                          <div className="text-[10px] text-green-600 font-bold">
+                            Discount: -{formatPrice(sale.discountAmount)}
+                          </div>
+                        )}
+                      </div>
+
+                      {hasBalanceDue && (
+                        <button
+                          type="button"
+                          disabled={approvingBalanceId === sale.localId}
+                          onClick={() => handleApproveBalancePaid(sale)}
+                          className="px-3 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-[11px] flex items-center shadow-sm transition"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                          {approvingBalanceId === sale.localId ? '...' : 'ကျန်ငွေ Approve'}
+                        </button>
                       )}
-                      <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[9px] font-bold">
-                        {sale.paymentMethod}
-                      </span>
-                    </div>
-                    <div className="text-xs font-bold text-gray-800 mt-1">
-                      {sale.items.map((i) => `${i.name} (x${i.qty})`).join(', ')}
-                    </div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">
-                      Customer: {sale.customerName} | Therapist: {sale.therapistName} | {sale.date} {sale.time}
+
+                      <button
+                        onClick={() => setActiveReceipt(sale)}
+                        className="p-2.5 bg-yellow-50 text-[#123524] border border-[#D4AF37]/40 rounded-xl hover:bg-yellow-100 transition font-bold text-xs flex items-center"
+                      >
+                        <Printer className="w-4 h-4 mr-1" /> ဘောင်ချာ
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <div className="text-base font-black text-[#123524]">{formatPrice(sale.totalPrice)}</div>
-                      {sale.discountAmount > 0 && (
-                        <div className="text-[10px] text-green-600 font-bold">
-                          Discount: -{formatPrice(sale.discountAmount)}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => setActiveReceipt(sale)}
-                      className="p-2.5 bg-yellow-50 text-[#123524] border border-[#D4AF37]/40 rounded-xl hover:bg-yellow-100 transition font-bold text-xs flex items-center"
-                    >
-                      <Printer className="w-4 h-4 mr-1" /> ဘောင်ချာ
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -2713,7 +3261,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   ))}
                 </div>
 
-                {/* Service Cards Grid: 2 Columns on Tablet so both Left & Right panels fit comfortably! */}
                 <div className="grid grid-cols-2 gap-2 max-h-[64vh] overflow-y-auto pr-1">
                   {(localAppData?.categories || [])
                     .find((c) => c.id === activeCategory)
@@ -2936,26 +3483,20 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </div>
             )}
 
+            {/* ==========================================
+                STEP 4: CLEAN & STREAMLINED CUSTOMER, DISCOUNT & PAYMENT UI
+               ========================================== */}
             {posStep === 4 && (
               <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in">
+                {/* 1. Customer & Auto VIP Detection */}
                 <div className="space-y-2.5">
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
-                    <User className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Customer & VIP Points (Optional)
+                    <User className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Customer & VIP Member Lookup
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Customer Name</label>
-                      <input
-                        type="text"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="Walk-in Guest"
-                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-[10px] font-bold text-gray-500 mb-1">
-                        Phone Number (VIP Point ထည့်ပေးရန်)
+                        Phone Number (VIP Card / Point စစ်ရန်)
                       </label>
                       <div className="flex gap-1.5">
                         <input
@@ -2964,132 +3505,214 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           onChange={(e) => setCustomerPhone(e.target.value)}
                           onBlur={handleCheckCustomerPhone}
                           placeholder="09xxxxxxxxx"
-                          className="flex-1 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                          className="flex-1 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
                         />
                         {isOnline && (
                           <button
                             type="button"
                             onClick={handleCheckCustomerPhone}
-                            className="px-2.5 bg-yellow-50 border border-[#D4AF37]/50 rounded-xl text-[#123524] text-xs font-bold"
+                            className="px-3 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-bold shadow-sm hover:bg-[#1a4a32] transition"
                           >
                             <Search className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
-                      {foundCustomerPts !== null && (
-                        <span className="text-[10px] font-bold text-green-700 mt-1 block">
-                          ★ လက်ရှိပွိုင့်: {foundCustomerPts} Pts (+{pointsEarned} Pts ထပ်တိုးမည်)
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Customer Name</label>
+                      <input
+                        type="text"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="Walk-in Guest"
+                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* VIP Member Auto-Detected Banner & Promo vs VIP Switcher */}
+                  {foundCustomerPts !== null && (
+                    <div className="p-2.5 rounded-xl bg-gradient-to-r from-yellow-50 to-amber-50/60 border border-[#D4AF37]/50 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-1">
+                        <span className="text-[11px] font-bold text-[#123524] flex items-center">
+                          <Crown className="w-3.5 h-3.5 mr-1 text-[#D4AF37]" />
+                          {detectedVipBenefit
+                            ? `${detectedVipBenefit.tierName} (${detectedVipBenefit.discountPercent}% OFF)`
+                            : 'Registered Member'}
                         </span>
+                        <span className="text-[10px] font-black bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded-full">
+                          လက်ရှိပွိုင့်: {foundCustomerPts} Pts (+{pointsEarned} Pts တိုးမည်)
+                        </span>
+                      </div>
+
+                      {/* If BOTH VIP Member Benefit AND Store Promotion are active -> Let user choose! */}
+                      {detectedVipBenefit && isStorePromoActive && (
+                        <div className="pt-1.5 border-t border-[#D4AF37]/30 space-y-1.5">
+                          <span className="block text-[10px] font-extrabold text-amber-900">
+                            ★ Promotion ဖွင့်ထားချိန်ဖြစ်ပါသည် — မည်သည့်ခံစားခွင့်ကို အသုံးပြုမည်နည်း?
+                          </span>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => applyVipOrPromoChoice('vip', detectedVipBenefit)}
+                              className={`py-1.5 px-2 rounded-lg text-[10px] font-black border transition ${
+                                benefitChoiceMode === 'vip'
+                                  ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm'
+                                  : 'bg-white text-gray-700 border-gray-200'
+                              }`}
+                            >
+                              VIP Card ({detectedVipBenefit.discountPercent}% OFF) သုံးမည်
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyVipOrPromoChoice('promo', detectedVipBenefit)}
+                              className={`py-1.5 px-2 rounded-lg text-[10px] font-black border transition ${
+                                benefitChoiceMode === 'promo'
+                                  ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm'
+                                  : 'bg-white text-gray-700 border-gray-200'
+                              }`}
+                            >
+                              Active Promo ({activeStorePromoPct}% OFF) သုံးမည်
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                <div className="pt-2.5 border-t border-gray-100 space-y-2.5">
+                {/* 2. Clean Dropdown Discount Selector (Auto-fills % & Reason!) */}
+                <div className="pt-3 border-t border-gray-100 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
-                      <Percent className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Add Discount (လျှော့ဈေး)
+                      <Percent className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Discount / Promotion (လျှော့ဈေး)
                     </h3>
-                    <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDiscountType('percent');
-                          setDiscountValue(0);
-                        }}
-                        className={`px-2 py-1 rounded-md text-[10px] font-bold ${
-                          discountType === 'percent' ? 'bg-[#123524] text-[#D4AF37]' : 'text-gray-600'
-                        }`}
-                      >
-                        % ရာခိုင်နှုန်း
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDiscountType('fixed');
-                          setDiscountValue(0);
-                        }}
-                        className={`px-2 py-1 rounded-md text-[10px] font-bold ${
-                          discountType === 'fixed' ? 'bg-[#123524] text-[#D4AF37]' : 'text-gray-600'
-                        }`}
-                      >
-                        Ks ငွေပမာဏ
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActivePosView('discounts')}
+                      className="text-[10px] font-bold text-[#123524] hover:underline flex items-center"
+                    >
+                      <Settings className="w-3 h-3 mr-1 text-[#D4AF37]" /> Manage Discounts
+                    </button>
                   </div>
 
-                  {discountType === 'percent' && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {[0, 10, 15, 20, 30, 50].map((pct) => (
-                        <button
-                          key={pct}
-                          type="button"
-                          onClick={() => setDiscountValue(pct)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
-                            discountValue === pct
-                              ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
-                              : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-[#D4AF37]'
-                          }`}
-                        >
-                          {pct === 0 ? 'No Discount' : `${pct}% OFF`}
-                        </button>
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={selectedDiscountPresetId}
+                      onChange={(e) => handleSelectDiscountDropdown(e.target.value)}
+                      className="flex-1 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-[#123524] outline-none focus:border-[#123524]"
+                    >
+                      <option value="none">No Discount (လျှော့ဈေး မရှိပါ)</option>
+                      {allAvailableDiscounts.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.label} — ({d.type === 'percent' ? `${d.value}%` : formatPrice(d.value)})
+                        </option>
                       ))}
+                      <option value="custom">+ Custom Discount (စိတ်ကြိုက် ရိုက်ထည့်မည်)...</option>
+                    </select>
+                  </div>
+
+                  {/* Summary pill showing auto-filled Discount & Reason */}
+                  {discountValue > 0 && !showCustomDiscountInputs && (
+                    <div className="px-3 py-2 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between text-xs">
+                      <span className="font-bold text-green-800 truncate pr-2">
+                        Reason: {discountReason}
+                      </span>
+                      <span className="font-black text-green-700 whitespace-nowrap">
+                        -{formatPrice(discountAmount)} ({discountType === 'percent' ? `${discountValue}%` : 'Fixed'})
+                      </span>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">
-                        Discount ({discountType === 'percent' ? '%' : 'Ks'})
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={discountValue || ''}
-                        onChange={(e) => setDiscountValue(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                        placeholder="0"
-                        className="w-full p-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-black text-[#123524]"
-                      />
+                  {/* Custom Discount Inputs (Only shown if '+ Custom Discount' is selected) */}
+                  {showCustomDiscountInputs && (
+                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 grid grid-cols-12 gap-2 items-end animate-fade-in">
+                      <div className="col-span-3">
+                        <label className="block text-[10px] font-bold text-gray-500 mb-1">Type</label>
+                        <select
+                          value={discountType}
+                          onChange={(e) => setDiscountType(e.target.value as 'percent' | 'fixed')}
+                          className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-[#123524]"
+                        >
+                          <option value="percent">%</option>
+                          <option value="fixed">Ks</option>
+                        </select>
+                      </div>
+                      <div className="col-span-4">
+                        <label className="block text-[10px] font-bold text-gray-500 mb-1">
+                          Value ({discountType === 'percent' ? '%' : 'Ks'})
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={discountValue || ''}
+                          onChange={(e) =>
+                            setDiscountValue(Math.max(0, parseInt(e.target.value, 10) || 0))
+                          }
+                          placeholder="0"
+                          className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs font-black text-[#123524]"
+                        />
+                      </div>
+                      <div className="col-span-5">
+                        <label className="block text-[10px] font-bold text-gray-500 mb-1">Reason</label>
+                        <input
+                          type="text"
+                          value={discountReason}
+                          onChange={(e) => setDiscountReason(e.target.value)}
+                          placeholder="Reason..."
+                          className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs font-bold"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Reason</label>
-                      <input
-                        type="text"
-                        value={discountReason}
-                        onChange={(e) => setDiscountReason(e.target.value)}
-                        placeholder="e.g. VIP / Promo"
-                        className="w-full p-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
 
-                <div className="pt-2.5 border-t border-gray-100 space-y-2.5">
-                  <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
-                    <Banknote className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Payment Method
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                    {paymentOptions.map((pm) => (
-                      <button
-                        key={pm}
-                        type="button"
-                        onClick={() => setPaymentMethod(pm)}
-                        className={`py-2.5 px-2 rounded-xl font-black text-[11px] border transition flex items-center justify-center ${
-                          paymentMethod === pm
-                            ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] border-[#D4AF37] shadow-sm'
-                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
-                        }`}
+                {/* 3. Clean Payment Method Dropdown + Online Deposit / Balance Due Split */}
+                <div className="pt-3 border-t border-gray-100 space-y-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-end">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1 flex items-center">
+                        <Banknote className="w-3.5 h-3.5 mr-1 text-[#D4AF37]" /> Payment Method (ငွေပေးချေမှု စနစ်)
+                      </label>
+                      <select
+                        value={paymentMethod}
+                        onChange={(e) => {
+                          setPaymentMethod(e.target.value);
+                          if (e.target.value === 'Cash') {
+                            setOnlinePayMode('full');
+                          }
+                        }}
+                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#123524]"
                       >
-                        {pm}
-                      </button>
-                    ))}
+                        {paymentOptions.map((pm) => (
+                          <option key={pm} value={pm}>
+                            {pm}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">
+                        Remark / Note (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={specialNote}
+                        onChange={(e) => setSpecialNote(e.target.value)}
+                        placeholder="အခြား မှတ်ချက်..."
+                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold outline-none focus:border-[#123524]"
+                      />
+                    </div>
                   </div>
 
-                  {paymentMethod === 'Cash' && (
+                  {/* Cash Received & Change Due (When Cash is selected) */}
+                  {paymentMethod === 'Cash' ? (
                     <div className="bg-green-50/70 p-3 rounded-xl border border-green-200 grid grid-cols-2 gap-2.5 items-center">
                       <div>
                         <label className="block text-[10px] font-bold text-green-800 mb-1">
-                          ပေးငွေ (Cash Received)
+                          ပေးငွေ (Cash Received - Optional)
                         </label>
                         <input
                           type="number"
@@ -3104,18 +3727,67 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         <span className="text-base font-black text-green-800">{formatPrice(changeDue)}</span>
                       </div>
                     </div>
-                  )}
+                  ) : (
+                    /* Online Payment: Full Payment vs Deposit (စရံငွေ / ကျန်ငွေ ခွဲပြရန်) */
+                    <div className="bg-yellow-50/70 p-3 rounded-xl border border-[#D4AF37]/40 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold text-[#123524]">
+                          {paymentMethod} ငွေလွှဲပုံစံ ရွေးချယ်ရန်:
+                        </span>
+                        <div className="flex bg-white p-0.5 rounded-lg border border-gray-200">
+                          <button
+                            type="button"
+                            onClick={() => setOnlinePayMode('full')}
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-black transition ${
+                              onlinePayMode === 'full'
+                                ? 'bg-[#123524] text-[#D4AF37]'
+                                : 'text-gray-600'
+                            }`}
+                          >
+                            အပြည့်ချေ (Full Paid)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOnlinePayMode('deposit')}
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-black transition ${
+                              onlinePayMode === 'deposit'
+                                ? 'bg-amber-500 text-white'
+                                : 'text-gray-600'
+                            }`}
+                          >
+                            စရံငွေသာလွှဲ (Deposit)
+                          </button>
+                        </div>
+                      </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-500 mb-1">Remark / Note (Optional)</label>
-                    <input
-                      type="text"
-                      value={specialNote}
-                      onChange={(e) => setSpecialNote(e.target.value)}
-                      placeholder="အခြား မှတ်ချက်..."
-                      className="w-full p-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold"
-                    />
-                  </div>
+                      {onlinePayMode === 'deposit' && (
+                        <div className="grid grid-cols-2 gap-2.5 items-center pt-1 border-t border-[#D4AF37]/30 animate-fade-in">
+                          <div>
+                            <label className="block text-[10px] font-bold text-amber-900 mb-1">
+                              လွှဲထားသည့် စရံငွေ (Deposit Paid)
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={finalTotal}
+                              value={depositAmountStr}
+                              onChange={(e) => setDepositAmountStr(e.target.value)}
+                              placeholder="ဥပမာ - 10000"
+                              className="w-full p-2 bg-white border border-amber-400 rounded-lg text-xs font-black text-[#123524]"
+                            />
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] font-bold text-red-600 block">
+                              ကျန်ငွေ (Balance Due)
+                            </span>
+                            <span className="text-base font-black text-red-600">
+                              {formatPrice(balanceDueNum)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 flex justify-between gap-2.5">
@@ -3284,8 +3956,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex justify-between text-[11px] text-green-700 font-bold">
-                    <span>Discount ({discountReason})</span>
-                    <span>-{formatPrice(discountAmount)}</span>
+                    <span className="truncate pr-2">Discount ({discountReason})</span>
+                    <span className="whitespace-nowrap">-{formatPrice(discountAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center pt-1.5 border-t border-gray-200">
@@ -3298,6 +3970,21 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     {formatPrice(finalTotal)}
                   </span>
                 </div>
+
+                {/* Live Deposit & Balance Due Preview inside Current Walk-in Bill Card */}
+                {isOnlinePaymentSelected && onlinePayMode === 'deposit' && finalTotal > 0 && (
+                  <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[10px] space-y-0.5">
+                    <div className="flex justify-between text-amber-900 font-bold">
+                      <span>စရံငွေ ({paymentMethod}):</span>
+                      <span>{formatPrice(depositPaidNum)}</span>
+                    </div>
+                    <div className="flex justify-between text-red-600 font-black">
+                      <span>ကျန်ငွေ (Balance Due):</span>
+                      <span>{formatPrice(balanceDueNum)}</span>
+                    </div>
+                  </div>
+                )}
+
                 {pointsEarned > 0 && (
                   <div className="text-[9px] text-right font-bold text-[#D4AF37]">
                     ★ +{pointsEarned} VIP Points ရရှိမည်
