@@ -283,23 +283,31 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     };
   }, [offlineQueue]);
 
-  // 🌟 Find Writable Characteristic from Connected GATT Server 🌟
+  // 🌟 Find Writable Characteristic with Timeout Protection (Never hangs on PRINTING...!) 🌟
   const findWritableCharacteristic = async (device: any) => {
-    if (!device.gatt.connected) {
-      await device.gatt.connect();
-    }
-    const services = await device.gatt.getPrimaryServices();
-    for (const service of services) {
-      try {
-        const characteristics = await service.getCharacteristics();
-        for (const char of characteristics) {
-          if (char.properties.write || char.properties.writeWithoutResponse) {
-            return char;
+    const connectAndDiscover = async () => {
+      if (!device.gatt.connected) {
+        await device.gatt.connect();
+      }
+      const services = await device.gatt.getPrimaryServices();
+      for (const service of services) {
+        try {
+          const characteristics = await service.getCharacteristics();
+          for (const char of characteristics) {
+            if (char.properties.write || char.properties.writeWithoutResponse) {
+              return char;
+            }
           }
-        }
-      } catch {}
-    }
-    throw new Error('Printer write channel not found. Please make sure it is a Bluetooth thermal printer.');
+        } catch {}
+      }
+      throw new Error('Printer write channel not found.');
+    };
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Bluetooth connection timed out.')), 5000)
+    );
+
+    return Promise.race([connectAndDiscover(), timeoutPromise]);
   };
 
   // 🌟 Auto-Reconnect Saved Bluetooth Printer on Page Load / Refresh 🌟
@@ -322,12 +330,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
         if (!targetDevice) return;
 
-        if (!targetDevice.gatt.connected && typeof targetDevice.watchAdvertisements === 'function') {
-          try {
-            await targetDevice.watchAdvertisements();
-          } catch {}
-        }
-
         const writeChar = await findWritableCharacteristic(targetDevice);
         if (!isMounted) return;
 
@@ -346,7 +348,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     };
   }, []);
 
-  // 🌟 Unified Top Header (Logo + "THE SHANGRI-LA" + "MEN'S RETREAT" in a SINGLE Raster Block for Zero Paper Stutter!) 🌟
+  // 🌟 Unified Top Header (Logo + "THE SHANGRI-LA" + "MEN'S RETREAT" in a SINGLE Raster Block for Zero Mid-Receipt Stutter!) 🌟
   const buildUnifiedHeaderRasterData = async (
     imgUrl: string,
     showLogo: boolean,
@@ -362,7 +364,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           const titleText = (shopName || '').trim().toUpperCase();
           const subText = (subtitle || '').trim().toUpperCase();
 
-          // Width is kept compact (max 288px = 36 bytes/row) so BLE transfers in <0.15s without pausing!
           const bannerWidth = 288;
           let logoCanvas: HTMLCanvasElement | null = null;
           let logoHeight = 0;
@@ -998,27 +999,32 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Non-Stop High-Speed BLE Streaming Helper (Zero Delay When WriteWithoutResponse Is Supported!) 🌟
+  // 🌟 Reliable 180-Byte BLE Streaming Helper with Timeout Protection (Never hangs on PRINTING...!) 🌟
+  const writeChunkWithTimeout = (writeChar: any, chunk: Uint8Array, timeoutMs = 2500) => {
+    const op = writeChar.properties.writeWithoutResponse
+      ? writeChar.writeValueWithoutResponse(chunk)
+      : writeChar.writeValue(chunk);
+
+    const timer = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('BLE write timeout')), timeoutMs)
+    );
+    return Promise.race([op, timer]);
+  };
+
   const sendBytesToPrinter = async (writeChar: any, dataBytes: Uint8Array) => {
-    const chunkSize = 244;
+    const chunkSize = 180;
     for (let i = 0; i < dataBytes.length; i += chunkSize) {
       const chunk = dataBytes.slice(i, i + chunkSize);
       try {
-        if (writeChar.properties.writeWithoutResponse) {
-          await writeChar.writeValueWithoutResponse(chunk);
-        } else {
-          await writeChar.writeValue(chunk);
-        }
+        await writeChunkWithTimeout(writeChar, chunk, 2500);
       } catch {
         for (let j = 0; j < chunk.length; j += 20) {
           const sub = chunk.slice(j, j + 20);
-          if (writeChar.properties.writeWithoutResponse) {
-            await writeChar.writeValueWithoutResponse(sub);
-          } else {
-            await writeChar.writeValue(sub);
-          }
+          await writeChunkWithTimeout(writeChar, sub, 2000);
+          await new Promise((r) => setTimeout(r, 5));
         }
       }
+      await new Promise((r) => setTimeout(r, 4));
     }
   };
 
@@ -1042,7 +1048,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     return lines;
   };
 
-  // 🌟 PROFESSIONAL UI/UX NATIVE ESC/POS PRINT ENGINE (Zero Mid-Receipt Stutter + Balanced Typography!) 🌟
+  // 🌟 PROFESSIONAL UI/UX NATIVE ESC/POS PRINT ENGINE (100% Reliable + Zero Mid-Receipt Stutter + Balanced Typography!) 🌟
   const handleBluetoothEscPosPrint = async (customRecord?: OfflineSaleRecord) => {
     const recordToPrint = customRecord || activeReceipt;
     if (!recordToPrint) return;
@@ -1050,6 +1056,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
     try {
       let writeChar = btCharacteristic;
+
+      if (writeChar && bluetoothDevice && !bluetoothDevice.gatt.connected) {
+        writeChar = null;
+      }
 
       if (!writeChar && bluetoothDevice) {
         try {
@@ -1061,7 +1071,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
 
       if (!writeChar) {
-        writeChar = await handleConnectBluetoothPrinter(false);
+        writeChar = await handleConnectBluetoothPrinter(true);
         if (!writeChar) {
           setIsPrintingBt(false);
           return;
@@ -1081,19 +1091,13 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       const FONT_A = ESC + 'M\x00'; // Standard Prominent Font (12x24) -> Reserved for TOTAL & Key Headers!
       const FONT_B = ESC + 'M\x01'; // Clean Compact Font (9x17) -> Used for Body Rows, Service Items & Subtotals!
       const NORMAL_SIZE = GS + '!\x00';
-      const MICRO_SPACE = ESC + 'J\x08'; // 1mm vertical breathing room
       const CUT_PAPER = GS + 'V\x41\x03';
 
       // Clean dashed divider in Font A
       const dashedDivider = FONT_A + NORMAL_SIZE + BOLD_OFF + '-'.repeat(colsFontA) + '\n';
-      // Subtle spaced separator above TOTAL so it never touches the text!
+      // Subtle spaced separator above TOTAL with comfortable vertical spacing
       const subtleTotalSeparator =
-        FONT_B +
-        NORMAL_SIZE +
-        BOLD_OFF +
-        '- '.repeat(Math.floor(colsFontB / 2)) +
-        '\n' +
-        MICRO_SPACE;
+        FONT_B + NORMAL_SIZE + BOLD_OFF + '- '.repeat(Math.floor(colsFontB / 2)) + '\n';
 
       // 🌟 Clean Compact Font B Row (Used for Metadata, Service Items, Subtotal, Payment, Change Due) 🌟
       const formatCleanFontBRow = (
@@ -1115,14 +1119,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         const l = left.trim();
         const r = right.trim();
         const spaces = Math.max(1, colsFontA - l.length - r.length);
-        return (
-          FONT_A +
-          NORMAL_SIZE +
-          BOLD_ON +
-          `${l}${' '.repeat(spaces)}${r}\n` +
-          BOLD_OFF +
-          MICRO_SPACE
-        );
+        return FONT_A + NORMAL_SIZE + BOLD_ON + `${l}${' '.repeat(spaces)}${r}\n` + BOLD_OFF;
       };
 
       // 1. Build Unified Top Header Raster (Logo + Store Title + Subtitle in ONE single image at the very top!)
@@ -1149,8 +1146,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
 
       if (printSettings.headerText) {
-        wordWrapText(printSettings.headerText, colsFontB).forEach((line) => {
-          cmd += FONT_B + BOLD_OFF + `${line}\n`;
+        wordWrapText(printSettings.headerText, colsFontA).forEach((line) => {
+          cmd += FONT_A + BOLD_OFF + `${line}\n`;
         });
       }
       if (printSettings.footerText) {
@@ -1163,7 +1160,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
       cmd += dashedDivider;
 
-      // 3. Metadata Section (Clean Compact Font B: Left Normal, Right Normal/Clean)
+      // 3. Metadata Section (Clean Compact Font B: Left Normal, Right Clean)
       cmd += ALIGN_LEFT;
       cmd += formatCleanFontBRow('Invoice:', recordToPrint.invoiceNo, false, true);
       cmd += formatCleanFontBRow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`, false, false);
@@ -1210,7 +1207,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         );
       }
 
-      // 6. 🌟 HERO TOTAL ROW (Spaced separator above + Large Font A Bold + Breathing space below!) 🌟
+      // 6. 🌟 HERO TOTAL ROW (Spaced separator above + Large Font A Bold!) 🌟
       cmd += subtleTotalSeparator;
       cmd += formatHeroTotalRow('TOTAL:', formatPrice(recordToPrint.totalPrice));
 
@@ -1225,16 +1222,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         cmd += formatCleanFontBRow('Change Due:', formatPrice(recordToPrint.changeDue), false, false);
       }
 
-      // 8. VIP Points Earned Box (Clean ASCII Box in Font B)
+      // 8. VIP Points Earned Box (Clean ASCII Box in Font A)
       if (recordToPrint.pointsEarned > 0) {
-        cmd += MICRO_SPACE;
-        const boxInnerW = colsFontB - 4;
+        const boxInnerW = colsFontA - 4;
         const vipLeft = 'VIP Points Earned:';
         const vipRight = `+${recordToPrint.pointsEarned} Pts`;
         const vipSpaces = Math.max(1, boxInnerW - vipLeft.length - vipRight.length);
-        const boxBorder = FONT_B + BOLD_OFF + `+${'-'.repeat(colsFontB - 2)}+\n`;
+        const boxBorder = FONT_A + BOLD_OFF + `+${'-'.repeat(colsFontA - 2)}+\n`;
         const boxContent =
-          FONT_B +
+          FONT_A +
           BOLD_OFF +
           `| ${vipLeft}${' '.repeat(vipSpaces)}` +
           BOLD_ON +
@@ -1248,18 +1244,24 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
 
       // 9. Footer Thank You Note
-      cmd += MICRO_SPACE + ALIGN_CENTER + NORMAL_SIZE;
+      cmd += ALIGN_CENTER + NORMAL_SIZE;
       if (printSettings.thankYouText) {
         const lines = printSettings.thankYouText.split('\n');
         lines.forEach((line, i) => {
-          wordWrapText(line, colsFontB).forEach((wLine) => {
-            cmd += FONT_B + (i === 0 ? BOLD_ON : BOLD_OFF) + `${wLine}\n` + BOLD_OFF;
-          });
+          if (i === 0) {
+            wordWrapText(line, colsFontA).forEach((wLine) => {
+              cmd += FONT_A + BOLD_ON + `${wLine}\n` + BOLD_OFF;
+            });
+          } else {
+            wordWrapText(line, colsFontB).forEach((wLine) => {
+              cmd += FONT_B + BOLD_OFF + `${wLine}\n`;
+            });
+          }
         });
       }
       cmd += FONT_A + `\n\n\n` + CUT_PAPER;
 
-      // 10. Combine & Send in One Continuous Non-Stop Stream!
+      // 10. Combine & Send in One Reliable Stream!
       const encoder = new TextEncoder();
       const initBytes = encoder.encode(INIT + ALIGN_CENTER);
       const bodyTextBytes = encoder.encode(cmd);
@@ -1391,7 +1393,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           {/* Bluetooth Status / Quick Connect Button */}
           <button
             type="button"
-            onClick={() => handleConnectBluetoothPrinter(false)}
+            onClick={() => handleConnectBluetoothPrinter(true)}
             className={`px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center border transition ${
               bluetoothDevice && btCharacteristic
                 ? 'bg-green-500/20 text-green-300 border-green-400/40'
