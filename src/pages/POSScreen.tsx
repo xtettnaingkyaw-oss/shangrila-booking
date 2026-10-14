@@ -515,52 +515,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setSavingSale(false);
   };
 
-  // 🌟 Direct Thermal Print Function (Fixes Android Chrome Letter Size issue) 🌟
-const handleDirectPrint = () => {
+  const handleDirectPrint = () => {
     window.print();
-  };
-
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
-    if (!printWindow) {
-      window.print();
-      return;
-    }
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Receipt - ${activeReceipt?.invoiceNo || 'POS'}</title>
-          <style>
-            @page {
-              size: 80mm auto;
-              margin: 0;
-            }
-            body {
-              width: 72mm;
-              margin: 0 auto;
-              padding: 2mm;
-              font-family: 'Courier New', Courier, monospace;
-              font-size: 11px;
-              color: #000;
-              background: #fff;
-              line-height: 1.2;
-            }
-            img { max-width: 100%; }
-          </style>
-        </head>
-        <body>
-          ${receiptEl.innerHTML}
-          <script>
-            setTimeout(() => {
-              window.focus();
-              window.print();
-              window.close();
-            }, 300);
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
   };
 
   const startNewSale = () => {
@@ -795,7 +751,7 @@ const handleDirectPrint = () => {
               </div>
             </div>
 
-            {/* Action Buttons (Using handleDirectPrint) */}
+            {/* Action Buttons */}
             <div className="no-print mt-4 flex flex-col gap-2.5">
               <button
                 onClick={handleDirectPrint}
