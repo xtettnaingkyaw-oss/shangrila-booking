@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, X } from 'lucide-react';
+import { Gift, X, Sparkles } from 'lucide-react';
 import { AppData } from '../shared';
 
 const getLocalTodayStr = () => {
@@ -9,7 +9,7 @@ const getLocalTodayStr = () => {
 
 export default function ThadingyutPopup({ appData }: { appData: AppData }) {
   const [isVisible, setIsVisible] = useState(false);
-  const [fallingLanterns, setFallingLanterns] = useState<{ id: number; left: number; duration: number; size: number; delay: number }[]>([]);
+  const [fallingLanterns, setFallingLanterns] = useState<{ id: number; left: number; duration: number; size: number; delay: number; opacity: number }[]>([]);
 
   useEffect(() => {
     const promo = appData?.promotion;
@@ -28,37 +28,19 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
     }
   }, [appData]);
 
-  // 🌟 အပေါ်ပိုင်း Header ထဲတွင် မီးပုံးလေးများ အဆက်မပြတ် ကျလာစေမည့် Animation 🌟
+  // 🌟 နောက်ခံတွင် ညင်သာစွာ ကျဆင်းလာမည့် Ambient Lanterns 🌟
   useEffect(() => {
     if (!isVisible) return;
 
-    // စစချင်း မီးပုံး (၈) လုံး တန်းပေါ်နေစေရန်
-    const initial = Array.from({ length: 8 }).map((_, i) => ({
-      id: Date.now() + i,
-      left: 8 + Math.random() * 84,
-      duration: 2.2 + Math.random() * 1.8,
-      size: 1.1 + Math.random() * 0.9,
-      delay: Math.random() * 1.2
+    const initial = Array.from({ length: 9 }).map((_, i) => ({
+      id: i,
+      left: 6 + (i * 10.5) + (Math.random() * 4 - 2),
+      duration: 4 + Math.random() * 3,
+      size: 0.85 + Math.random() * 0.65,
+      delay: Math.random() * 2.5,
+      opacity: 0.45 + Math.random() * 0.45
     }));
     setFallingLanterns(initial);
-
-    const interval = setInterval(() => {
-      setFallingLanterns(prev => {
-        const next = prev.length > 14 ? prev.slice(1) : prev;
-        return [
-          ...next,
-          {
-            id: Date.now() + Math.random(),
-            left: 8 + Math.random() * 84,
-            duration: 2.2 + Math.random() * 1.8,
-            size: 1.1 + Math.random() * 0.9,
-            delay: 0
-          }
-        ];
-      });
-    }, 350);
-
-    return () => clearInterval(interval);
   }, [isVisible]);
 
   const handleClose = () => {
@@ -69,7 +51,7 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
   // 🌟 ခလုတ်နှိပ်လိုက်သည့်အခါ Ripple Click Effect ပေါ်ပြီးမှ သွားမည့် Function 🌟
   const handlePlayNowClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     const button = e.currentTarget;
-    button.style.transform = 'scale(0.94)';
+    button.style.transform = 'scale(0.95)';
 
     const circle = document.createElement('span');
     const diameter = Math.max(button.clientWidth, button.clientHeight);
@@ -97,28 +79,35 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
   const campaignTitle = appData?.promotion?.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း';
 
   return (
-    <div className="fixed inset-0 z-[999] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-md flex items-center justify-center p-5 animate-fade-in">
       <style>{`
-        @keyframes popupLanternFall {
-          0% { transform: translateY(-35px) rotate(-10deg) scale(0.9); opacity: 0; }
-          20% { opacity: 1; }
-          80% { opacity: 1; }
-          100% { transform: translateY(145px) rotate(12deg) scale(1.05); opacity: 0; }
+        @keyframes ambientLanternDrift {
+          0% { transform: translateY(-30px) translateX(0px) rotate(-6deg) scale(0.85); opacity: 0; }
+          20% { opacity: var(--max-op, 0.75); }
+          65% { opacity: var(--max-op, 0.75); }
+          100% { transform: translateY(190px) translateX(8px) rotate(8deg) scale(1.05); opacity: 0; }
         }
-        .popup-falling-lantern {
+        .ambient-lantern {
           position: absolute;
-          top: -10px;
-          animation-name: popupLanternFall;
-          animation-timing-function: linear;
+          top: 0;
+          animation-name: ambientLanternDrift;
+          animation-timing-function: ease-in-out;
           animation-iteration-count: infinite;
           pointer-events: none;
-          filter: drop-shadow(0 0 8px rgba(255, 200, 0, 0.7));
+          filter: drop-shadow(0 0 10px rgba(255, 165, 0, 0.85));
           user-select: none;
+        }
+        @keyframes centerFloat {
+          0%, 100% { transform: translateY(0px) scale(1); }
+          50% { transform: translateY(-5px) scale(1.04); }
+        }
+        .center-emblem-float {
+          animation: centerFloat 3.5s ease-in-out infinite;
         }
         .popup-ripple-effect {
           position: absolute;
           border-radius: 50%;
-          background: rgba(255, 255, 255, 0.55);
+          background: rgba(255, 255, 255, 0.65);
           transform: scale(0);
           animation: popupRipple 0.55s ease-out;
           pointer-events: none;
@@ -129,26 +118,41 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
             opacity: 0;
           }
         }
+        @keyframes goldShimmer {
+          0% { transform: translateX(-120%) skewX(-15deg); }
+          100% { transform: translateX(220%) skewX(-15deg); }
+        }
+        .btn-shimmer-sweep {
+          animation: goldShimmer 2.8s infinite;
+        }
       `}</style>
 
-      <div className="relative w-full max-w-sm rounded-[2rem] overflow-hidden shadow-[0_15px_50px_rgba(255,140,0,0.35)] border border-yellow-500/40 bg-[#140707] animate-slide-up">
+      {/* 🌟 Main Luxury Modal Card (Seamless Unified Design) 🌟 */}
+      <div className="relative w-full max-w-[340px] rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37]/80 via-[#D4AF37]/25 to-[#D4AF37]/60 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_40px_rgba(212,175,55,0.2)] animate-slide-up overflow-hidden">
         
-        {/* 🌟 အပေါ်ပိုင်း မီးပုံးများ အများကြီးကျလာမည့် Header Area (ပုံ-၁ ဝိုင်းထားသည့်နေရာ) 🌟 */}
-        <div className="relative h-32 bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 overflow-hidden flex items-center justify-center">
-          {/* နောက်ခံ အလင်းရောင် Glow */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,200,0.25),transparent_70%)]"></div>
+        <div className="relative w-full h-full rounded-[calc(2rem-1.5px)] bg-gradient-to-b from-[#2a0e08] via-[#140705] to-[#0a0403] px-6 pt-7 pb-6 text-center overflow-hidden">
+          
+          {/* Inner Luxury Thin Gold Frame */}
+          <div className="absolute inset-2.5 rounded-[1.5rem] border border-[#D4AF37]/15 pointer-events-none z-20"></div>
 
-          {/* အပေါ်မှ တဖွဲဖွဲကျလာသော မီးပုံးများ */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {/* Top Warm Ambient Spotlight (No harsh box line!) */}
+          <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/35 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
+
+          {/* 🌟 Softly Falling Lanterns in Upper Sky (Fades smoothly into text) 🌟 */}
+          <div 
+            className="absolute top-0 left-0 right-0 h-44 overflow-hidden pointer-events-none z-0"
+            style={{ WebkitMaskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)', maskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)' }}
+          >
             {fallingLanterns.map((l) => (
               <div
                 key={l.id}
-                className="popup-falling-lantern"
+                className="ambient-lantern"
                 style={{
                   left: `${l.left}%`,
                   animationDuration: `${l.duration}s`,
                   animationDelay: `${l.delay}s`,
-                  fontSize: `${l.size}rem`
+                  fontSize: `${l.size}rem`,
+                  ['--max-op' as any]: l.opacity
                 }}
               >
                 🏮
@@ -156,46 +160,61 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
             ))}
           </div>
 
-          {/* ညာဘက်အပေါ်ထောင့်မှ ပိတ်သည့် (X) ခလုတ် */}
+          {/* Close (X) Button */}
           <button
             type="button"
             onClick={handleClose}
-            className="absolute top-3.5 right-3.5 z-20 w-9 h-9 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition border border-white/20 shadow-md active:scale-90"
+            className="absolute top-4 right-4 z-30 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-yellow-100/80 hover:text-white flex items-center justify-center transition border border-[#D4AF37]/30 shadow-sm active:scale-90"
           >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* 🌟 အောက်ပိုင်း စာသားနှင့် ခလုတ် Area 🌟 */}
-        <div className="p-6 sm:p-7 text-center relative">
-          <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-40 h-20 bg-orange-500/20 blur-2xl pointer-events-none"></div>
-
-          <h2 className="text-xl sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-yellow-400 to-amber-500 mb-3 tracking-wide leading-snug drop-shadow-sm">
-            {campaignTitle}
-          </h2>
-
-          <p className="text-xs sm:text-sm text-gray-200 font-semibold leading-relaxed mb-6 px-2">
-            မီးပုံးလေးတွေကို အမိဖမ်းပြီး လူကြီးမင်းအတွက်{' '}
-            <span className="text-yellow-400 font-extrabold">၅၀% အထိ Discount</span> ကံစမ်းမဲများကို ယခုပဲ ရယူလိုက်ပါ။
-          </p>
-
-          {/* 🌟 Click Effect ပါဝင်သော "ယခုပဲ ကံစမ်းမည်" ခလုတ် 🌟 */}
-          <button
-            type="button"
-            onClick={handlePlayNowClick}
-            className="relative overflow-hidden w-full py-4 bg-gradient-to-r from-yellow-400 via-amber-400 to-yellow-500 text-black rounded-2xl font-black text-sm sm:text-base shadow-[0_0_25px_rgba(250,204,21,0.5)] hover:shadow-[0_0_35px_rgba(250,204,21,0.75)] transition-all duration-200 flex items-center justify-center"
-          >
-            <Gift className="w-5 h-5 mr-2 relative z-10 stroke-[2.5]" />
-            <span className="relative z-10">ယခုပဲ ကံစမ်းမည်</span>
+            <X className="w-4 h-4" />
           </button>
 
-          <button
-            type="button"
-            onClick={handleClose}
-            className="mt-4 text-xs font-bold text-gray-400 hover:text-gray-200 transition py-1 px-4 active:scale-95"
-          >
-            နောက်မှ ကံစမ်းတော့မည်
-          </button>
+          {/* 🌟 Centerpiece Floating Lantern Emblem 🌟 */}
+          <div className="relative z-10 mt-1 mb-4 flex flex-col items-center">
+            <div className=" inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] text-[9px] font-extrabold uppercase tracking-[0.2em] mb-3 shadow-sm">
+              <Sparkles className="w-2.5 h-2.5" /> Exclusive Event
+            </div>
+
+            <div className="relative w-16 h-16 rounded-full bg-gradient-to-b from-amber-500/25 to-orange-900/40 border border-[#D4AF37]/50 flex items-center justify-center shadow-[0_0_25px_rgba(245,158,11,0.35)] center-emblem-float">
+              <div className="absolute inset-1 rounded-full border border-yellow-300/20"></div>
+              <span className="text-3xl filter drop-shadow-[0_2px_8px_rgba(255,165,0,0.8)]">🏮</span>
+            </div>
+          </div>
+
+          {/* 🌟 Typography & Offer Details 🌟 */}
+          <div className="relative z-10">
+            <h2 className="text-lg sm:text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-[#D4AF37] to-yellow-200 mb-2.5 tracking-wide leading-snug drop-shadow-sm">
+              {campaignTitle}
+            </h2>
+
+            <p className="text-[11.5px] sm:text-xs text-gray-300/95 font-medium leading-relaxed mb-6 px-1">
+              မီးပုံးလေးတွေကို အမိဖမ်းပြီး လူကြီးမင်းအတွက်{' '}
+              <span className="text-yellow-400 font-extrabold underline decoration-[#D4AF37]/50 underline-offset-4">
+                ၅၀% အထိ Discount
+              </span>{' '}
+              ကံစမ်းမဲများကို ယခုပဲ ရယူလိုက်ပါ။
+            </p>
+
+            {/* 🌟 Luxury 3D Gold CTA Button with Ripple & Shimmer 🌟 */}
+            <button
+              type="button"
+              onClick={handlePlayNowClick}
+              className="relative overflow-hidden w-full py-3.5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-xs sm:text-sm shadow-[0_6px_20px_rgba(212,175,55,0.4)] hover:shadow-[0_8px_25px_rgba(212,175,55,0.6)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center tracking-wide"
+            >
+              <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
+              <Gift className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
+              <span className="relative z-10">ယခုပဲ ကံစမ်းမည်</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClose}
+              className="mt-3.5 text-[11px] font-semibold text-gray-400 hover:text-[#D4AF37] transition py-1 px-4 active:scale-95 tracking-wide"
+            >
+              နောက်မှ ကံစမ်းတော့မည်
+            </button>
+          </div>
+
         </div>
       </div>
     </div>
