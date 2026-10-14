@@ -2122,44 +2122,43 @@ const renderServiceSelection = (currentStep: number) => {
     // 🌟 အသစ်: Pop-up Box အတွက် Mini Lanterns State 🌟
     const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number, duration: number, size: number}[]>([]);
     
-    // 🌟 အသစ်: Box ပေါ်လာချိန်တွင် Mini Lanterns များကို စတင်ကျစေမည့် useEffect 🌟
-    useEffect(() => {
-        if (boxPromoActive && !userPastPromo) {
-            const interval = setInterval(() => {
-                setMiniBoxLanterns(prev => {
-                    if (prev.length > 10) return prev.slice(1);
-                    return [...prev, { id: Date.now() + Math.random(), left: Math.random() * 95, duration: 1.5 + Math.random() * 2, size: 0.8 + Math.random() * 0.8 }];
-                });
-            }, 300);
-            return () => clearInterval(interval);
-        }
-    }, [boxPromoActive, userPastPromo]);
+  useEffect(() => {
+      if (boxPromoActive && !userPastPromo) {
+          const interval = setInterval(() => {
+              setMiniBoxLanterns(prev => {
+                  if (prev.length > 10) return prev.slice(1);
+                  return [...prev, { id: Date.now() + Math.random(), left: Math.random() * 95, duration: 1.5 + Math.random() * 2, size: 0.8 + Math.random() * 0.8 }];
+              });
+          }, 300);
+          return () => clearInterval(interval);
+      }
+  }, [boxPromoActive, userPastPromo]);
 
-    // 🌟 အသစ်: ခလုတ်နှိပ်လိုက်သည့်အခါ Click Effect ပေါ်စေရန် Function 🌟
-    const handleCampaignButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-        const button = e.currentTarget;
-        button.style.transform = 'scale(0.95)';
-        
-        const circle = document.createElement('span');
-        const diameter = Math.max(button.clientWidth, button.clientHeight);
-        const radius = diameter / 2;
-        
-        const rect = button.getBoundingClientRect();
-        circle.style.width = circle.style.height = `${diameter}px`;
-        circle.style.left = `${e.clientX - rect.left - radius}px`;
-        circle.style.top = `${e.clientY - rect.top - radius}px`;
-        circle.classList.add('ripple-effect');
-        
-        button.appendChild(circle);
-        
-        setTimeout(() => {
-            button.style.transform = 'scale(1)'; 
-            circle.remove(); 
-            window.location.href = '/?campaign=true';
-        }, 300); 
-    };
+  const handleCampaignButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      const button = e.currentTarget;
+      button.style.transform = 'scale(0.95)';
+      
+      const circle = document.createElement('span');
+      const diameter = Math.max(button.clientWidth, button.clientHeight);
+      const radius = diameter / 2;
+      
+      const rect = button.getBoundingClientRect();
+      circle.style.width = circle.style.height = `${diameter}px`;
+      circle.style.left = `${e.clientX - rect.left - radius}px`;
+      circle.style.top = `${e.clientY - rect.top - radius}px`;
+      circle.classList.add('ripple-effect');
+      
+      button.appendChild(circle);
+      
+      setTimeout(() => {
+          button.style.transform = 'scale(1)'; 
+          circle.remove(); 
+          window.location.href = '/?campaign=true';
+      }, 300); 
+  };
 
-    return (
+  // 👇 renderServiceSelection ထဲတွင် ၎င်းတို့ မရှိတော့ဘဲ တန်းပြီး return ပြန်ပါမည် 👇
+  const renderServiceSelection = (currentStep: number) => (
     <div className="animate-fade-in -mx-1.5 sm:mx-0">
       {/* 🌟 အသစ်: Ripple Animation & Falling Box Lanterns CSS 🌟 */}
       <style>{`
@@ -2392,7 +2391,6 @@ const renderServiceSelection = (currentStep: number) => {
       </div>
     </div>
     );
-  };
 
  const renderTherapistSelection = (currentStep: number) => {
     const is4Hands = formData.selectedItem?.name?.toLowerCase().includes('4') || formData.selectedItem?.name?.toLowerCase().includes('four');
