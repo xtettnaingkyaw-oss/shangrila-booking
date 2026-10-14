@@ -3,12 +3,14 @@ import { collection, addDoc, getDocs, updateDoc, doc } from 'firebase/firestore'
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security';
 import { AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
-import defaultLogoImg from '../THE SHANGRI LA - LOGO.png';
 import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
   ArrowLeft, History, Search, Banknote, Bluetooth, Settings
 } from 'lucide-react';
+
+// TypeScript Build Error မတက်စေရန် URL နည်းလမ်းဖြင့် Logo ဖိုင်ကို လှမ်းယူခြင်း
+const defaultLogoImg = new URL('../THE SHANGRI LA - LOGO.png', import.meta.url).href;
 
 interface CartItem {
   cartId: string;
@@ -75,7 +77,7 @@ const DEFAULT_PRINT_SETTINGS: PosPrintSettings = {
   paperWidth: '58mm',
   showLogo: true,
   logoUrl: '',
-  logoMode: 'invert_circle', // နောက်ခံအမည်းလေးထောင့်ကွက် ပျောက်ပြီး ရွှေရောင်သရဖူနှင့်စာသားကိုသာ လှပစွာထုတ်ပေးမည့် Default Mode
+  logoMode: 'invert_circle',
   logoSize: 152,
   shopName: 'THE SHANGRI-LA',
   subtitle: "MEN'S RETREAT",
@@ -313,7 +315,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
         if (!targetDevice) return;
 
-        // Watch advertisements fallback if device is asleep
         if (!targetDevice.gatt.connected && typeof targetDevice.watchAdvertisements === 'function') {
           try {
             await targetDevice.watchAdvertisements();
@@ -329,9 +330,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
         setBluetoothDevice(targetDevice);
         setBtCharacteristic(writeChar);
-      } catch (err) {
-        // Silently ignore if printer is turned off during initial page load
-      }
+      } catch {}
     };
 
     tryAutoReconnectPrinter();
@@ -404,12 +403,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     const lum = red * 0.299 + green * 0.587 + blue * 0.114;
 
                     if (mode === 'invert_circle') {
-                      // စက်ဝိုင်းအပြင်ဘက် လေးထောင့်ထောင့်ချိုးများကို ဖယ်ရှားပြီး စက်ဝိုင်းဘောင်လေး ဆွဲပေးမည်
                       if (dist <= maxRadius) {
                         if (dist >= innerRingRadius && dist <= maxRadius) {
-                          isBlackDot = true; // ဘောင်အဝိုင်းလိုင်း
+                          isBlackDot = true;
                         } else {
-                          // အလယ်ရှိ ရွှေရောင် သရဖူနှင့် စာသား (အလင်းရောင်) ကိုသာ အမည်းစက်အဖြစ် ပြောင်းပြီး နောက်ခံအစိမ်းရင့်ကို အဖြူထားမည်
                           isBlackDot = lum > 102;
                         }
                       }
@@ -427,7 +424,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   byte |= 1 << (7 - b);
                 }
 
-                // Preview Canvas အတွက် Monochrome ပုံဖော်ခြင်း
                 if (pxCol < targetWidth) {
                   const pIdx = (y * targetWidth + pxCol) * 4;
                   const val = isBlackDot ? 20 : 255;
@@ -810,7 +806,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         return null;
       }
 
-      // 1. အကယ်၍ အရင်ချိတ်ထားဖူးသော Printer ရှိပါက Chooser မပေါ်ဘဲ တိုက်ရိုက် အရင်ချိတ်ကြည့်မည်
       if (!forceNewChooser && typeof bt.getDevices === 'function') {
         try {
           const permitted = await bt.getDevices();
@@ -831,7 +826,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         } catch {}
       }
 
-      // 2. အသစ်ချိတ်ဆက်ရန် Chooser ဖွင့်မည်
       const device = await bt.requestDevice({
         acceptAllDevices: true,
         optionalServices: BT_PRINTER_SERVICES
@@ -926,7 +920,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       // 1. Printer Init & Center Alignment
       await sendBytesToPrinter(writeChar, encoder.encode(INIT + ALIGN_CENTER));
 
-      // 2. Print Clean Monochrome Logo (လေးထောင့်ကွက်မည်း မပါသော သပ်ရပ်သည့် Logo)
+      // 2. Print Clean Monochrome Logo
       if (printSettings.showLogo && effectiveLogoUrl) {
         const { rasterBytes } = await buildLogoRasterData(
           effectiveLogoUrl,
@@ -1017,7 +1011,25 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Sample Receipt for Settings Live Preview & Test Print 🌟
+  // 🌟 Force Update App Cache Function 🌟
+  const handleForceRefreshApp = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) {
+          await r.unregister();
+        }
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) {
+          await caches.delete(k);
+        }
+      }
+    } catch {}
+    window.location.reload();
+  };
+
   const samplePreviewReceipt: OfflineSaleRecord = {
     localId: 'sample_preview',
     invoiceNo: 'SL-261014-8888',
@@ -1321,7 +1333,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           <div className="lg:col-span-7 space-y-5">
             {/* Bluetooth & Paper Setup Card */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-              <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+              <div className="border-b border-gray-100 pb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-base font-bold text-[#123524] flex items-center">
                     <Bluetooth className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Bluetooth Printer & Paper Setup
@@ -1330,15 +1342,24 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     Bluetooth Printer ချိတ်ဆက်မှုနှင့် စာရွက်အရွယ်အစား သတ်မှတ်ရန်
                   </p>
                 </div>
-                {bluetoothDevice && btCharacteristic ? (
-                  <span className="bg-green-50 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold">
-                    ● Connected: {bluetoothDevice.name || 'BT Printer'}
-                  </span>
-                ) : (
-                  <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-xs font-bold">
-                    Not Connected
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {bluetoothDevice && btCharacteristic ? (
+                    <span className="bg-green-50 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold">
+                      ● Connected: {bluetoothDevice.name || 'BT Printer'}
+                    </span>
+                  ) : (
+                    <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-xs font-bold">
+                      Not Connected
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleForceRefreshApp}
+                    className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[10px] font-bold flex items-center"
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" /> Force Update App
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
