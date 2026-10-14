@@ -346,7 +346,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     };
   }, []);
 
-  // 🌟 Smart Monochrome Logo Converter 🌟
+  // 🌟 Smart Monochrome Logo Converter (For Preview & Raster) 🌟
   const buildLogoRasterData = async (
     imgUrl: string,
     filterMode: 'auto_gold_extract' | 'bw_threshold',
@@ -488,6 +488,92 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       img.onerror = () => resolve({ rasterBytes: null, previewDataUrl: '' });
       img.src = imgUrl;
     });
+  };
+
+  // 🌟 NEW: Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT") ကို Preview အတိုင်း Luxury Serif Font ဖြင့် ပရင့်ထုတ်ပေးမည့် Canvas Raster Generator 🌟
+  const buildBrandTitleRasterBytes = (
+    shopName: string,
+    subtitle: string,
+    paperWidth: '58mm' | '80mm'
+  ): Uint8Array | null => {
+    try {
+      const canvasWidth = paperWidth === '80mm' ? 512 : 384;
+      const titleText = (shopName || '').trim().toUpperCase();
+      const subText = (subtitle || '').trim().toUpperCase();
+
+      if (!titleText && !subText) return null;
+
+      let totalHeight = 8;
+      if (titleText) totalHeight += 36;
+      if (subText) totalHeight += 24;
+      totalHeight = Math.ceil(totalHeight / 8) * 8;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasWidth;
+      canvas.height = totalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvasWidth, totalHeight);
+      ctx.fillStyle = '#000000';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+
+      let currentY = 4;
+
+      if (titleText) {
+        // Preview ထဲက font-serif font-black uppercase tracking-wider ပုံစံအတိုင်း ဆွဲပေးခြင်း
+        ctx.font = '900 25px Georgia, "Times New Roman", Times, serif';
+        if ('letterSpacing' in ctx) {
+          (ctx as any).letterSpacing = '1.5px';
+        }
+        ctx.fillText(titleText, canvasWidth / 2, currentY);
+        // Thermal Printer မှာ စာလုံး အထူ (Bold) ပိုပေါ်လွင်စေရန် 0.4px ထပ်ဆွဲပေးခြင်း
+        ctx.fillText(titleText, canvasWidth / 2 + 0.4, currentY);
+        currentY += 34;
+      }
+
+      if (subText) {
+        ctx.font = '700 14px "Courier New", Courier, monospace, sans-serif';
+        if ('letterSpacing' in ctx) {
+          (ctx as any).letterSpacing = '3px';
+        }
+        ctx.fillText(subText, canvasWidth / 2, currentY);
+      }
+
+      const imgData = ctx.getImageData(0, 0, canvasWidth, totalHeight).data;
+      const nBytesPerRow = Math.ceil(canvasWidth / 8);
+      const bitmapBytes: number[] = [];
+
+      for (let y = 0; y < totalHeight; y++) {
+        for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
+          let byte = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const pxCol = xByte * 8 + bit;
+            if (pxCol < canvasWidth) {
+              const idx = (y * canvasWidth + pxCol) * 4;
+              const lum = imgData[idx] * 0.299 + imgData[idx + 1] * 0.587 + imgData[idx + 2] * 0.114;
+              if (lum < 165) {
+                byte |= 1 << (7 - bit);
+              }
+            }
+          }
+          bitmapBytes.push(byte);
+        }
+      }
+
+      const xL = nBytesPerRow & 0xff;
+      const xH = (nBytesPerRow >> 8) & 0xff;
+      const yL = totalHeight & 0xff;
+      const yH = (totalHeight >> 8) & 0xff;
+      const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
+
+      return new Uint8Array([...rasterHeader, ...bitmapBytes]);
+    } catch (e) {
+      console.warn('Brand title raster error:', e);
+      return null;
+    }
   };
 
   useEffect(() => {
@@ -953,7 +1039,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     return lines;
   };
 
-  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT (With Clear Normal vs Bold Hierarchy!) 🌟
+  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT (With Luxury Serif Brand Title & Natural Proportions!) 🌟
   const handleBluetoothEscPosPrint = async (customRecord?: OfflineSaleRecord) => {
     const recordToPrint = customRecord || activeReceipt;
     if (!recordToPrint) return;
@@ -991,8 +1077,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       const BOLD_OFF = ESC + 'E\x00';
       const FONT_A = ESC + 'M\x00'; // Standard Font (12x24)
       const FONT_B = ESC + 'M\x01'; // Compact Font (9x17)
-      const DOUBLE_HEIGHT = GS + '!\x01';
-      const NORMAL_SIZE = GS + '!\x00';
+      const NORMAL_SIZE = GS + '!\x00'; // Natural Proportion (No tall stretched text!)
       const CUT_PAPER = GS + 'V\x41\x03';
 
       const divider = FONT_A + NORMAL_SIZE + BOLD_OFF + '-'.repeat(colsFontA) + '\n';
@@ -1045,28 +1130,32 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         logoPartBytes = rasterBytes;
       }
 
-      // 2. Build Header (Only Store Title is Bold; Subtitle, Header, Address, Tel are Normal!)
+      // 2. 🌟 Build Luxury Serif Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT") Raster Bytes 🌟
+      const brandTitleRasterBytes = buildBrandTitleRasterBytes(
+        printSettings.shopName,
+        printSettings.subtitle,
+        printSettings.paperWidth
+      );
+
+      // 3. Build Remaining Header (Header, Address, Tel in clean Normal font)
       let cmd = ALIGN_CENTER + NORMAL_SIZE + BOLD_OFF;
 
-      if (printSettings.shopName) {
-        cmd +=
-          FONT_A +
-          BOLD_ON +
-          DOUBLE_HEIGHT +
-          `${printSettings.shopName.toUpperCase()}\n` +
-          NORMAL_SIZE +
-          BOLD_OFF;
+      // Fallback only if canvas fails
+      if (!brandTitleRasterBytes) {
+        if (printSettings.shopName) {
+          cmd += FONT_A + BOLD_ON + `${printSettings.shopName.toUpperCase()}\n` + BOLD_OFF;
+        }
+        if (printSettings.subtitle) {
+          cmd += FONT_B + BOLD_OFF + `${printSettings.subtitle.toUpperCase()}\n` + FONT_A;
+        }
       }
-      if (printSettings.subtitle) {
-        cmd += FONT_B + BOLD_OFF + `${printSettings.subtitle.toUpperCase()}\n` + FONT_A;
-      }
+
       if (printSettings.headerText) {
         wordWrapText(printSettings.headerText, colsFontA).forEach((line) => {
           cmd += FONT_A + BOLD_OFF + `${line}\n`;
         });
       }
       if (printSettings.footerText) {
-        // လိပ်စာကို BOLD လုံးဝ မသုံးတော့ဘဲ Preview အတိုင်း ပါးလွှာသပ်ရပ်စွာ ပြသမည်
         wordWrapText(printSettings.footerText, colsFontB).forEach((line) => {
           cmd += FONT_B + BOLD_OFF + `${line}\n`;
         });
@@ -1077,7 +1166,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
       cmd += divider;
 
-      // 3. Metadata Section (Left Labels = Normal, Right Values = Bold)
+      // 4. Metadata Section (Left Labels = Normal, Right Values = Bold)
       cmd += ALIGN_LEFT;
       cmd += formatHierarchyRow('Invoice:', recordToPrint.invoiceNo, false, true);
       cmd += formatHierarchyRow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`, false, true);
@@ -1090,7 +1179,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       cmd += formatHierarchyRow('Therapist:', recordToPrint.therapistName, false, true);
       cmd += divider;
 
-      // 4. Cart Items Section (Item Name & Price = Bold, Duration = Normal Small Font B)
+      // 5. Cart Items Section (Item Name & Price = Bold, Duration = Normal Small Font B)
       recordToPrint.items.forEach((item, idx) => {
         const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
         const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
@@ -1112,7 +1201,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       });
       cmd += divider;
 
-      // 5. Totals Section (Subtotal & Payment Labels = Normal, Amounts = Bold, TOTAL = Prominent Bold)
+      // 6. Totals Section (TOTAL uses natural proportion BOLD instead of stretched DOUBLE_HEIGHT)
       cmd += formatHierarchyRow('Subtotal:', formatPrice(recordToPrint.subTotal), false, true);
       if (recordToPrint.discountAmount > 0) {
         cmd += formatHierarchyRow(
@@ -1123,16 +1212,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         );
       }
 
-      const totalLabel = 'TOTAL:';
-      const totalValStr = formatPrice(recordToPrint.totalPrice);
-      const totalSpaces = Math.max(1, colsFontA - totalLabel.length - totalValStr.length);
-      cmd +=
-        FONT_A +
-        BOLD_ON +
-        DOUBLE_HEIGHT +
-        `${totalLabel}${' '.repeat(totalSpaces)}${totalValStr}\n` +
-        NORMAL_SIZE +
-        BOLD_OFF;
+      // 🌟 Preview အတိုင်း အချိုးအစားကျကျ Bold ဖြင့် TOTAL ကို ပြသခြင်း 🌟
+      cmd += formatHierarchyRow('TOTAL:', formatPrice(recordToPrint.totalPrice), true, true);
 
       cmd += formatHierarchyRow(
         `Payment (${recordToPrint.paymentMethod}):`,
@@ -1144,7 +1225,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         cmd += formatHierarchyRow('Change Due:', formatPrice(recordToPrint.changeDue), false, true);
       }
 
-      // 6. 🌟 VIP Points Earned Box (Thin Box Border + Normal Label + Bold Points Value) 🌟
+      // 7. VIP Points Earned Box (Thin Box Border + Normal Label + Bold Points Value)
       if (recordToPrint.pointsEarned > 0) {
         const boxInnerW = colsFontA - 4;
         const vipLeft = 'VIP Points Earned:';
@@ -1164,7 +1245,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         cmd += divider;
       }
 
-      // 7. Footer Thank You Note (Line 1 Bold, Line 2 Normal Font B)
+      // 8. Footer Thank You Note (Line 1 Bold, Line 2 Normal Font B)
       cmd += ALIGN_CENTER + NORMAL_SIZE;
       if (printSettings.thankYouText) {
         const lines = printSettings.thankYouText.split('\n');
@@ -1182,12 +1263,16 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
       cmd += `\n\n\n` + CUT_PAPER;
 
-      // 8. Combine & Send in One Continuous Stream
+      // 9. Combine & Send in One Continuous Stream
       const encoder = new TextEncoder();
       const initBytes = encoder.encode(INIT + ALIGN_CENTER);
       const textBytes = encoder.encode(cmd);
 
-      const totalByteLen = initBytes.length + (logoPartBytes ? logoPartBytes.length : 0) + textBytes.length;
+      const totalByteLen =
+        initBytes.length +
+        (logoPartBytes ? logoPartBytes.length : 0) +
+        (brandTitleRasterBytes ? brandTitleRasterBytes.length : 0) +
+        textBytes.length;
       const combinedPayload = new Uint8Array(totalByteLen);
 
       let offset = 0;
@@ -1197,6 +1282,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       if (logoPartBytes) {
         combinedPayload.set(logoPartBytes, offset);
         offset += logoPartBytes.length;
+      }
+
+      if (brandTitleRasterBytes) {
+        combinedPayload.set(brandTitleRasterBytes, offset);
+        offset += brandTitleRasterBytes.length;
       }
 
       combinedPayload.set(textBytes, offset);
@@ -1843,7 +1933,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               <div className="text-center">
                 <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
                 <p className="text-[11px] text-gray-500">
-                  Normal နှင့် Bold အထူအပါး ခွဲခြားထားသည့် ရှင်းလင်းသပ်ရပ်သော ဘောင်ချာပုံစံ
+                  Luxury Serif Brand Name နှင့် Normal / Bold အထူအပါး ခွဲခြားထားသည့် ဘောင်ချာပုံစံ
                 </p>
               </div>
 
