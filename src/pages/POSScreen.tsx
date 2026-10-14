@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, addDoc, getDocs, updateDoc, doc, query, orderBy, limit } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security';
-import { THEME, AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
+import { AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
 import {
-  Sparkles, User, Clock, CreditCard, Plus, Trash2, Printer, Wifi, WifiOff,
-  RefreshCw, CheckCircle, Crown, Percent, DollarSign, ShoppingBag,
-  ArrowLeft, History, Search, Banknote, ChevronDown, ChevronUp, FileText, X, Award
+  Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
+  RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
+  ArrowLeft, History, Search, Banknote
 } from 'lucide-react';
 
 interface CartItem {
@@ -51,7 +51,7 @@ interface OfflineSaleRecord {
 
 const OFFLINE_QUEUE_KEY = 'shangrila_pos_offline_queue_v1';
 const LOCAL_SALES_HISTORY_KEY = 'shangrila_pos_local_history_v1';
-const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_v1';
+const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
 
 const getLocalTodayStr = () => {
   const d = new Date();
@@ -65,21 +65,67 @@ const generateInvoiceNo = () => {
   return `SL-${ymd}-${rand}`;
 };
 
+// 🌟 FIX: QuotaExceededError လုံးဝမတက်စေရန် ပုံအကြီးကြီးများ (Base64 Images) ကို ဖယ်ထုတ်ပြီးမှ LocalStorage တွင် သိမ်းမည့် Function 🌟
+const saveLiteAppDataToCache = (data: AppData) => {
+  if (!data) return;
+  try {
+    // အရင်က မှားသိမ်းမိထားသော key အဟောင်းကို ရှင်းထုတ်မည်
+    localStorage.removeItem('shangrila_pos_cached_appdata_v1');
+
+    const liteData: AppData = {
+      ...data,
+      branding: {
+        ...data.branding,
+        logoUrl: data.branding?.logoUrl?.startsWith('data:') ? '' : (data.branding?.logoUrl || '')
+      },
+      categories: (data.categories || []).map((cat) => ({
+        ...cat,
+        items: (cat.items || []).map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          duration: item.duration,
+          vvipPrice: item.vvipPrice,
+          vvipIncluded: item.vvipIncluded
+        }))
+      })),
+      therapists: (data.therapists || []).map((t) => ({
+        id: t.id,
+        name: t.name,
+        order: t.order,
+        images: [],
+        imageUrl: t.imageUrl && !t.imageUrl.startsWith('data:') ? t.imageUrl : ''
+      })),
+      paymentMethods: (data.paymentMethods || []).map((pm) => ({
+        ...pm,
+        logoUrl: ''
+      }))
+    };
+
+    localStorage.setItem(CACHED_APPDATA_KEY, JSON.stringify(liteData));
+  } catch (err) {
+    console.warn('Storage quota warning (ignored safely):', err);
+  }
+};
+
 export default function POSScreen({ appData }: { appData: AppData }) {
-  // 🌟 1. Offline AppData Caching (Loyverse Style) 🌟
+  // 🌟 1. Offline AppData Caching (Safe & Lightweight) 🌟
   const [localAppData, setLocalAppData] = useState<AppData>(() => {
     if (appData && appData.categories?.length > 0) {
-      localStorage.setItem(CACHED_APPDATA_KEY, JSON.stringify(appData));
       return appData;
     }
-    const cached = localStorage.getItem(CACHED_APPDATA_KEY);
-    return cached ? JSON.parse(cached) : appData;
+    try {
+      const cached = localStorage.getItem(CACHED_APPDATA_KEY);
+      return cached ? JSON.parse(cached) : appData;
+    } catch {
+      return appData;
+    }
   });
 
   useEffect(() => {
     if (appData && appData.categories?.length > 0) {
       setLocalAppData(appData);
-      localStorage.setItem(CACHED_APPDATA_KEY, JSON.stringify(appData));
+      saveLiteAppDataToCache(appData);
     }
   }, [appData]);
 
@@ -157,16 +203,24 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     };
   }, [offlineQueue]);
 
-  // 🌟 Save Queue & History to LocalStorage 🌟
+  // 🌟 Save Queue & History Safely to LocalStorage 🌟
   const updateOfflineQueue = (newQueue: OfflineSaleRecord[]) => {
     setOfflineQueue(newQueue);
-    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(newQueue));
+    try {
+      localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(newQueue));
+    } catch (e) {
+      console.warn('Queue storage error:', e);
+    }
   };
 
   const addToLocalHistory = (record: OfflineSaleRecord) => {
-    const updated = [record, ...salesHistory.filter((r) => r.localId !== record.localId)].slice(0, 100);
+    const updated = [record, ...salesHistory.filter((r) => r.localId !== record.localId)].slice(0, 60);
     setSalesHistory(updated);
-    localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updated));
+    try {
+      localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('History storage error:', e);
+    }
   };
 
   // 🌟 Format 24h time to 12h AM/PM 🌟
@@ -294,7 +348,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         syncedIds.has(h.localId) ? { ...h, synced: true } : h
       );
       setSalesHistory(updatedHistory);
-      localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updatedHistory));
+      try {
+        localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updatedHistory));
+      } catch {}
     }
 
     setIsSyncing(false);
@@ -419,7 +475,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     const startDt = new Date(y, m - 1, d, Number(hStr) || 0, Number(mStr) || 0, 0, 0);
     const startTimeMillis = startDt.getTime();
 
-    // Calculate total duration in minutes for active room/therapist tracking
     let totalMins = 60;
     cart.forEach((c) => {
       const match = (c.duration || '').match(/(\d+)\s*Mins/i);
@@ -544,7 +599,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
         {/* Network & Offline Queue Indicator */}
         <div className="flex items-center gap-2">
-          { isOnline ? (
+          {isOnline ? (
             <span className="bg-green-500/20 text-green-300 border border-green-400/40 px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center">
               <Wifi className="w-3 h-3 mr-1 text-green-400" /> Online
             </span>
@@ -804,7 +859,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           {/* LEFT / MAIN PANEL: 4-Step Booking Flow (7 Cols on Desktop) */}
           <div className="lg:col-span-7 space-y-4">
             
-            {/* Stepper Navigation (Same flow as Web App Booking) */}
+            {/* Stepper Navigation */}
             <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-gray-200 grid grid-cols-4 gap-1.5">
               {[
                 { num: 1, label: '1. SERVICE', icon: Sparkles },
@@ -894,7 +949,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
                 {/* Category Tabs */}
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                  {localAppData.categories.map((cat) => (
+                  {(localAppData?.categories || []).map((cat) => (
                     <button
                       key={cat.id}
                       type="button"
@@ -912,7 +967,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
                 {/* Service Items Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[55vh] overflow-y-auto pr-1">
-                  {localAppData.categories
+                  {(localAppData?.categories || [])
                     .find((c) => c.id === activeCategory)
                     ?.items.map((item) => {
                       const inCartQty = cart
@@ -996,7 +1051,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </div>
 
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[55vh] overflow-y-auto">
-                  {localAppData.therapists.map((t) => {
+                  {(localAppData?.therapists || []).map((t) => {
                     const isSelected = therapist1?.id === t.id || therapist2?.id === t.id;
                     return (
                       <button
@@ -1014,11 +1069,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                             : 'border-gray-200 bg-gray-50/60 text-gray-800 hover:border-[#D4AF37]'
                         }`}
                       >
-                        <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 mb-2 border border-[#D4AF37]">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 mb-2 border border-[#D4AF37] flex items-center justify-center">
                           {t.images?.[0] || t.imageUrl ? (
                             <img src={t.images?.[0] || t.imageUrl} alt={t.name} className="w-full h-full object-cover" />
                           ) : (
-                            <User className="w-full h-full p-2.5 text-gray-400" />
+                            <User className="w-6 h-6 text-gray-400" />
                           )}
                         </div>
                         <span className="font-bold text-xs truncate w-full">{t.name}</span>
