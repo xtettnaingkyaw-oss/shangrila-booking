@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shangrila-pos-cache-v6';
+const CACHE_NAME = 'shangrila-pos-cache-v8';
 const CORE_ASSETS = [
   '/',
   '/index.html',
@@ -6,14 +6,14 @@ const CORE_ASSETS = [
   '/manifest.json'
 ];
 
-// 1. Install: ဖိုင်တစ်ခုချင်းစီကို သီးသန့်စီ သေချာပေါက် သိမ်းဆည်းမည် (တစ်ခုချို့ယွင်းလျှင် ကျန်တာမပျက်စေရန်)
+// 1. Install: Service Worker အသစ်ကို ချက်ချင်း အသက်သွင်းမည်
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
       for (const url of CORE_ASSETS) {
         try {
-          const res = await fetch(url, { cache: 'reload' });
+          const res = await fetch(url, { cache: 'no-store' });
           if (res && res.ok) {
             await cache.put(url, res.clone());
             if (url === '/') {
@@ -28,7 +28,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activate: Cache အဟောင်းအားလုံးကို ရှင်းထုတ်မည်
+// 2. Activate: Cache အဟောင်း (v6 အပါအဝင် အားလုံး) ကို ချက်ချင်း ဖျက်ထုတ်မည်
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -41,7 +41,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Fetch: ERR_FAILED လုံးဝ မတက်စေရန် Fallback အဆင့်ဆင့် စစ်ဆေးပေးမည်
+// 3. Fetch: Online ဖြစ်နေပါက ကုဒ်အသစ်ကို အမြဲဦးစားပေးဆွဲပြီး Offline ဖြစ်မှသာ Cache ကို သုံးမည်
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
@@ -52,15 +52,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 🌟 Page Navigation (ဥပမာ - https://www.shangrilamenretreat.online/?mode=pos) 🌟
+  // 🌟 Page Navigation 🌟
   if (event.request.mode === 'navigate') {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE_NAME);
 
         try {
-          // Online ဖြစ်နေပါက Network မှ ဆွဲပြီး Cache ထဲတွင် နေရာစုံ သိမ်းထားမည်
-          const networkResponse = await fetch(event.request);
+          // Online ဖြစ်နေပါက Browser Cache မသုံးဘဲ Server မှ ကုဒ်အသစ်ကို တိုက်ရိုက်ဆွဲမည်
+          const networkResponse = await fetch(event.request, { cache: 'no-store' });
           if (networkResponse && networkResponse.ok) {
             await cache.put(event.request, networkResponse.clone());
             await cache.put('/', networkResponse.clone());
@@ -71,7 +71,6 @@ self.addEventListener('fetch', (event) => {
           // Offline ဖြစ်နေပါက Cache ထဲမှ ရှာဖွေပေးမည်
         }
 
-        // Offline Fallback အဆင့်ဆင့် (တစ်ခုမဟုတ်တစ်ခု သေချာပေါက် ပြန်ပေးမည်)
         const cachedExact = await cache.match(event.request);
         if (cachedExact) return cachedExact;
 
@@ -84,7 +83,6 @@ self.addEventListener('fetch', (event) => {
         const cachedIndex = await cache.match('/index.html');
         if (cachedIndex) return cachedIndex;
 
-        // အကယ်၍ Cache လုံးဝမရှိသေးခင် Offline ဖြစ်သွားပါကလည်း ERR_FAILED မပြဘဲ အသိပေးစာ ပြမည်
         return new Response(
           '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shangri-La POS</title></head><body style="background:#123524;color:#D4AF37;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:20px;"><div><h2>အင်တာနက် ခေတ္တဖွင့်ပြီး တစ်ကြိမ် အရင်ဝင်ပေးပါ</h2><p style="color:#fff;font-size:14px;">Offline စနစ်အတွက် ဖိုင်များသိမ်းဆည်းရန် ပထမဆုံးအကြိမ် အင်တာနက်ဖွင့်၍ Reload နှိပ်ပေးပါ။</p><button onclick="location.reload()" style="margin-top:15px;padding:12px 24px;background:#D4AF37;color:#123524;border:none;border-radius:8px;font-weight:bold;">Reload Now</button></div></body></html>',
           { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
@@ -94,22 +92,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 🌟 JS, CSS, Images နှင့် အခြား Assets ဖိုင်များအတွက် 🌟
+  // 🌟 JS, CSS, Images နှင့် အခြား Assets ဖိုင်များအတွက် (Network First -> Offline Cache Fallback) 🌟
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
-      const cachedResponse = await cache.match(event.request, { ignoreSearch: true });
 
-      const networkFetch = fetch(event.request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.ok) {
-            cache.put(event.request, networkResponse.clone());
-          }
+      try {
+        const networkResponse = await fetch(event.request);
+        if (networkResponse && networkResponse.ok) {
+          cache.put(event.request, networkResponse.clone());
           return networkResponse;
-        })
-        .catch(() => null);
+        }
+      } catch (err) {
+        // Offline ဖြစ်နေချိန်တွင် အောက်ပါ Cache မှ ပြန်ပေးမည်
+      }
 
-      return cachedResponse || (await networkFetch) || new Response('', { status: 408 });
+      const cachedResponse = await cache.match(event.request, { ignoreSearch: true });
+      return cachedResponse || new Response('', { status: 408 });
     })()
   );
 });
