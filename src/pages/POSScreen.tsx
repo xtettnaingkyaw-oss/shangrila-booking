@@ -7,7 +7,7 @@ import defaultLogoImg from '../THE SHANGRI LA - LOGO.png';
 import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
-  ArrowLeft, History, Search, Banknote, Bluetooth
+  ArrowLeft, History, Search, Banknote, Bluetooth, Settings
 } from 'lucide-react';
 
 interface CartItem {
@@ -50,10 +50,42 @@ interface OfflineSaleRecord {
   expectedEndTimeMillis?: number;
 }
 
+interface PosPrintSettings {
+  paperWidth: '58mm' | '80mm';
+  showLogo: boolean;
+  logoUrl: string;
+  logoMode: 'invert_circle' | 'circle' | 'standard';
+  logoSize: number;
+  shopName: string;
+  subtitle: string;
+  address: string;
+  phone: string;
+  footerLine1: string;
+  footerLine2: string;
+  savedPrinterId: string;
+  savedPrinterName: string;
+}
+
 const OFFLINE_QUEUE_KEY = 'shangrila_pos_offline_queue_v1';
 const LOCAL_SALES_HISTORY_KEY = 'shangrila_pos_local_history_v1';
 const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
-const PRINTER_WIDTH_KEY = 'shangrila_pos_printer_width_v1';
+const POS_PRINT_SETTINGS_KEY = 'shangrila_pos_print_settings_v2';
+
+const DEFAULT_PRINT_SETTINGS: PosPrintSettings = {
+  paperWidth: '58mm',
+  showLogo: true,
+  logoUrl: '',
+  logoMode: 'invert_circle', // နောက်ခံအမည်းလေးထောင့်ကွက် ပျောက်ပြီး ရွှေရောင်သရဖူနှင့်စာသားကိုသာ လှပစွာထုတ်ပေးမည့် Default Mode
+  logoSize: 152,
+  shopName: 'THE SHANGRI-LA',
+  subtitle: "MEN'S RETREAT",
+  address: '33th(B) St, Between 65th & 65th(A) Sts, Chan Aye Tharzan Township, Mandalay',
+  phone: '09-458884517',
+  footerLine1: 'Thank You For Visiting Us!',
+  footerLine2: 'We hope to see you again soon.',
+  savedPrinterId: '',
+  savedPrinterName: ''
+};
 
 // Bluetooth Thermal Printer Service UUIDs အားလုံး
 const BT_PRINTER_SERVICES = [
@@ -156,23 +188,41 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   });
   const [isSyncing, setIsSyncing] = useState(false);
-  const [activePosView, setActivePosView] = useState<'register' | 'history'>('register');
+  const [activePosView, setActivePosView] = useState<'register' | 'history' | 'settings'>('register');
+
+  // 🌟 POS Print & Branding Settings State 🌟
+  const [printSettings, setPrintSettings] = useState<PosPrintSettings>(() => {
+    try {
+      const saved = localStorage.getItem(POS_PRINT_SETTINGS_KEY);
+      if (saved) {
+        return { ...DEFAULT_PRINT_SETTINGS, ...JSON.parse(saved) };
+      }
+    } catch {}
+    return {
+      ...DEFAULT_PRINT_SETTINGS,
+      shopName: localAppData?.branding?.name || DEFAULT_PRINT_SETTINGS.shopName,
+      address: localAppData?.branding?.address || DEFAULT_PRINT_SETTINGS.address,
+      phone: localAppData?.branding?.phone1 || DEFAULT_PRINT_SETTINGS.phone
+    };
+  });
+
+  const updatePrintSettings = (partial: Partial<PosPrintSettings>) => {
+    setPrintSettings((prev) => {
+      const updated = { ...prev, ...partial };
+      try {
+        localStorage.setItem(POS_PRINT_SETTINGS_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
 
   // 🌟 Loyverse-Style Direct Web Bluetooth Printer States 🌟
   const [bluetoothDevice, setBluetoothDevice] = useState<any>(null);
   const [btCharacteristic, setBtCharacteristic] = useState<any>(null);
   const [isPrintingBt, setIsPrintingBt] = useState(false);
-  const [printerPaperWidth, setPrinterPaperWidth] = useState<'58mm' | '80mm'>(() => {
-    return (localStorage.getItem(PRINTER_WIDTH_KEY) as '58mm' | '80mm') || '58mm';
-  });
+  const [processedLogoPreview, setProcessedLogoPreview] = useState<string>('');
 
-  const togglePrinterWidth = () => {
-    const next = printerPaperWidth === '58mm' ? '80mm' : '58mm';
-    setPrinterPaperWidth(next);
-    try {
-      localStorage.setItem(PRINTER_WIDTH_KEY, next);
-    } catch {}
-  };
+  const effectiveLogoUrl = printSettings.logoUrl.trim() || defaultLogoImg || localAppData?.branding?.logoUrl || '';
 
   const [posStep, setPosStep] = useState<1 | 2 | 3 | 4>(1);
   const [activeCategory, setActiveCategory] = useState<string | null>(
@@ -209,9 +259,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const [activeReceipt, setActiveReceipt] = useState<OfflineSaleRecord | null>(null);
   const [savingSale, setSavingSale] = useState(false);
 
-  // အသုံးပြုမည့် Logo URL (Project ထဲမှ THE SHANGRI LA - LOGO.png ကို Default အဖြစ် သုံးထားသည်)
-  const effectiveLogoUrl = localAppData?.branding?.logoUrl || defaultLogoImg;
-
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
@@ -226,6 +273,212 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       window.removeEventListener('offline', handleOffline);
     };
   }, [offlineQueue]);
+
+  // 🌟 Find Writable Characteristic from Connected GATT Server 🌟
+  const findWritableCharacteristic = async (device: any) => {
+    if (!device.gatt.connected) {
+      await device.gatt.connect();
+    }
+    const services = await device.gatt.getPrimaryServices();
+    for (const service of services) {
+      try {
+        const characteristics = await service.getCharacteristics();
+        for (const char of characteristics) {
+          if (char.properties.write || char.properties.writeWithoutResponse) {
+            return char;
+          }
+        }
+      } catch {}
+    }
+    throw new Error('Printer write channel not found. Please make sure it is a Bluetooth thermal printer.');
+  };
+
+  // 🌟 Auto-Reconnect Saved Bluetooth Printer on Page Load / Refresh 🌟
+  useEffect(() => {
+    let isMounted = true;
+    const tryAutoReconnectPrinter = async () => {
+      try {
+        const bt = (navigator as any).bluetooth;
+        if (!bt || typeof bt.getDevices !== 'function') return;
+
+        const permittedDevices = await bt.getDevices();
+        if (!permittedDevices || permittedDevices.length === 0) return;
+
+        const targetDevice =
+          permittedDevices.find(
+            (d: any) =>
+              (printSettings.savedPrinterId && d.id === printSettings.savedPrinterId) ||
+              (printSettings.savedPrinterName && d.name === printSettings.savedPrinterName)
+          ) || permittedDevices[0];
+
+        if (!targetDevice) return;
+
+        // Watch advertisements fallback if device is asleep
+        if (!targetDevice.gatt.connected && typeof targetDevice.watchAdvertisements === 'function') {
+          try {
+            await targetDevice.watchAdvertisements();
+          } catch {}
+        }
+
+        const writeChar = await findWritableCharacteristic(targetDevice);
+        if (!isMounted) return;
+
+        targetDevice.addEventListener('gattserverdisconnected', () => {
+          setBtCharacteristic(null);
+        });
+
+        setBluetoothDevice(targetDevice);
+        setBtCharacteristic(writeChar);
+      } catch (err) {
+        // Silently ignore if printer is turned off during initial page load
+      }
+    };
+
+    tryAutoReconnectPrinter();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 🌟 Generate Processed Monochrome Logo Preview & ESC/POS Raster Bytes 🌟
+  const buildLogoRasterData = async (
+    imgUrl: string,
+    mode: 'invert_circle' | 'circle' | 'standard',
+    sizePx: number
+  ): Promise<{ rasterBytes: Uint8Array | null; previewDataUrl: string }> => {
+    return new Promise((resolve) => {
+      if (!imgUrl) {
+        resolve({ rasterBytes: null, previewDataUrl: '' });
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => {
+        try {
+          const targetWidth = Math.max(64, Math.min(384, Math.round(sizePx / 8) * 8));
+          const targetHeight = targetWidth;
+
+          const canvas = document.createElement('canvas');
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve({ rasterBytes: null, previewDataUrl: '' });
+            return;
+          }
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+          const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+          const pixels = imgData.data;
+
+          const nBytesPerRow = Math.ceil(targetWidth / 8);
+          const bitmapBytes: number[] = [];
+
+          const cx = targetWidth / 2;
+          const cy = targetHeight / 2;
+          const maxRadius = (targetWidth / 2) * 0.92;
+          const innerRingRadius = (targetWidth / 2) * 0.87;
+
+          for (let y = 0; y < targetHeight; y++) {
+            for (let x = 0; x < nBytesPerRow; x++) {
+              let byte = 0;
+              for (let b = 0; b < 8; b++) {
+                const pxCol = x * 8 + b;
+                let isBlackDot = false;
+
+                if (pxCol < targetWidth) {
+                  const idx = (y * targetWidth + pxCol) * 4;
+                  const red = pixels[idx];
+                  const green = pixels[idx + 1];
+                  const blue = pixels[idx + 2];
+                  const alpha = pixels[idx + 3];
+
+                  const dx = pxCol - cx;
+                  const dy = y - cy;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+
+                  if (alpha > 100) {
+                    const lum = red * 0.299 + green * 0.587 + blue * 0.114;
+
+                    if (mode === 'invert_circle') {
+                      // စက်ဝိုင်းအပြင်ဘက် လေးထောင့်ထောင့်ချိုးများကို ဖယ်ရှားပြီး စက်ဝိုင်းဘောင်လေး ဆွဲပေးမည်
+                      if (dist <= maxRadius) {
+                        if (dist >= innerRingRadius && dist <= maxRadius) {
+                          isBlackDot = true; // ဘောင်အဝိုင်းလိုင်း
+                        } else {
+                          // အလယ်ရှိ ရွှေရောင် သရဖူနှင့် စာသား (အလင်းရောင်) ကိုသာ အမည်းစက်အဖြစ် ပြောင်းပြီး နောက်ခံအစိမ်းရင့်ကို အဖြူထားမည်
+                          isBlackDot = lum > 102;
+                        }
+                      }
+                    } else if (mode === 'circle') {
+                      if (dist <= maxRadius) {
+                        isBlackDot = lum < 145;
+                      }
+                    } else {
+                      isBlackDot = lum < 145;
+                    }
+                  }
+                }
+
+                if (isBlackDot) {
+                  byte |= 1 << (7 - b);
+                }
+
+                // Preview Canvas အတွက် Monochrome ပုံဖော်ခြင်း
+                if (pxCol < targetWidth) {
+                  const pIdx = (y * targetWidth + pxCol) * 4;
+                  const val = isBlackDot ? 20 : 255;
+                  pixels[pIdx] = val;
+                  pixels[pIdx + 1] = val;
+                  pixels[pIdx + 2] = val;
+                  pixels[pIdx + 3] = 255;
+                }
+              }
+              bitmapBytes.push(byte);
+            }
+          }
+
+          ctx.putImageData(imgData, 0, 0);
+          const previewDataUrl = canvas.toDataURL('image/png');
+
+          const xL = nBytesPerRow & 0xff;
+          const xH = (nBytesPerRow >> 8) & 0xff;
+          const yL = targetHeight & 0xff;
+          const yH = (targetHeight >> 8) & 0xff;
+          const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
+
+          resolve({
+            rasterBytes: new Uint8Array([...rasterHeader, ...bitmapBytes, 0x0a]),
+            previewDataUrl
+          });
+        } catch (e) {
+          console.warn('Logo raster error:', e);
+          resolve({ rasterBytes: null, previewDataUrl: '' });
+        }
+      };
+      img.onerror = () => resolve({ rasterBytes: null, previewDataUrl: '' });
+      img.src = imgUrl;
+    });
+  };
+
+  useEffect(() => {
+    let active = true;
+    if (printSettings.showLogo && effectiveLogoUrl) {
+      buildLogoRasterData(effectiveLogoUrl, printSettings.logoMode, printSettings.logoSize).then((res) => {
+        if (active && res.previewDataUrl) {
+          setProcessedLogoPreview(res.previewDataUrl);
+        }
+      });
+    } else {
+      setProcessedLogoPreview('');
+    }
+    return () => {
+      active = false;
+    };
+  }, [effectiveLogoUrl, printSettings.showLogo, printSettings.logoMode, printSettings.logoSize]);
 
   const updateOfflineQueue = (newQueue: OfflineSaleRecord[]) => {
     setOfflineQueue(newQueue);
@@ -548,34 +801,38 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setSavingSale(false);
   };
 
-  // 🌟 Find Writable Characteristic from Connected GATT Server 🌟
-  const findWritableCharacteristic = async (device: any) => {
-    if (!device.gatt.connected) {
-      await device.gatt.connect();
-    }
-    const services = await device.gatt.getPrimaryServices();
-    for (const service of services) {
-      try {
-        const characteristics = await service.getCharacteristics();
-        for (const char of characteristics) {
-          if (char.properties.write || char.properties.writeWithoutResponse) {
-            return char;
-          }
-        }
-      } catch {}
-    }
-    throw new Error('Printer write channel not found. Please make sure it is a Bluetooth thermal printer.');
-  };
-
-  // 🌟 Web Bluetooth Printer Pairing Function 🌟
-  const handleConnectBluetoothPrinter = async (): Promise<any> => {
+  // 🌟 Web Bluetooth Printer Pairing Function (With Auto-Save for Reconnect) 🌟
+  const handleConnectBluetoothPrinter = async (forceNewChooser = false): Promise<any> => {
     try {
-      if (!(navigator as any).bluetooth) {
+      const bt = (navigator as any).bluetooth;
+      if (!bt) {
         alert('Web Bluetooth မရရှိပါ။ Google Chrome ဖြင့် ဖွင့်ပေးပါ။');
         return null;
       }
 
-      const device = await (navigator as any).bluetooth.requestDevice({
+      // 1. အကယ်၍ အရင်ချိတ်ထားဖူးသော Printer ရှိပါက Chooser မပေါ်ဘဲ တိုက်ရိုက် အရင်ချိတ်ကြည့်မည်
+      if (!forceNewChooser && typeof bt.getDevices === 'function') {
+        try {
+          const permitted = await bt.getDevices();
+          const savedDev =
+            permitted.find(
+              (d: any) =>
+                (printSettings.savedPrinterId && d.id === printSettings.savedPrinterId) ||
+                (printSettings.savedPrinterName && d.name === printSettings.savedPrinterName)
+            ) || permitted[0];
+
+          if (savedDev) {
+            const writeChar = await findWritableCharacteristic(savedDev);
+            savedDev.addEventListener('gattserverdisconnected', () => setBtCharacteristic(null));
+            setBluetoothDevice(savedDev);
+            setBtCharacteristic(writeChar);
+            return writeChar;
+          }
+        } catch {}
+      }
+
+      // 2. အသစ်ချိတ်ဆက်ရန် Chooser ဖွင့်မည်
+      const device = await bt.requestDevice({
         acceptAllDevices: true,
         optionalServices: BT_PRINTER_SERVICES
       });
@@ -588,6 +845,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
       setBluetoothDevice(device);
       setBtCharacteristic(writeChar);
+      updatePrintSettings({
+        savedPrinterId: device.id || '',
+        savedPrinterName: device.name || 'Bluetooth Printer'
+      });
       return writeChar;
     } catch (error: any) {
       console.warn('Bluetooth connection cancelled or failed:', error);
@@ -598,101 +859,29 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Logo ပုံကို Thermal Printer ဖြင့် ထုတ်နိုင်ရန် 1-bit Monochrome Bitmap သို့ ပြောင်းပေးသည့် Helper Function 🌟
-  const printLogoBitmap = async (imgUrl: string, writeChar: any): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'Anonymous';
-      img.onload = async () => {
-        try {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            resolve(false);
-            return;
-          }
-
-          // Logo ကို Preview ထဲကအတိုင်း သပ်ရပ်သော အဝိုင်းပုံစံ အရွယ်အစား (160px) ဖြင့် အလယ်တည့်တည့် ထုတ်ပေးမည်
-          const targetWidth = 160;
-          const scale = targetWidth / img.width;
-          const targetHeight = Math.round(img.height * scale);
-
-          canvas.width = targetWidth;
-          canvas.height = targetHeight;
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, targetWidth, targetHeight);
-          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-
-          const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-          const pixels = imgData.data;
-
-          const nBytesPerRow = Math.ceil(targetWidth / 8);
-          const bitmapBytes: number[] = [];
-
-          // ESC/POS Raster Bit Image Command: GS v 0
-          const xL = nBytesPerRow & 0xff;
-          const xH = (nBytesPerRow >> 8) & 0xff;
-          const yL = targetHeight & 0xff;
-          const yH = (targetHeight >> 8) & 0xff;
-
-          const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
-
-          for (let y = 0; y < targetHeight; y++) {
-            for (let x = 0; x < nBytesPerRow; x++) {
-              let byte = 0;
-              for (let b = 0; b < 8; b++) {
-                const pxCol = x * 8 + b;
-                if (pxCol < targetWidth) {
-                  const idx = (y * targetWidth + pxCol) * 4;
-                  const red = pixels[idx];
-                  const green = pixels[idx + 1];
-                  const blue = pixels[idx + 2];
-                  const alpha = pixels[idx + 3];
-
-                  if (alpha > 128) {
-                    const grayscale = red * 0.299 + green * 0.587 + blue * 0.114;
-                    if (grayscale < 150) {
-                      byte |= 1 << (7 - b);
-                    }
-                  }
-                }
-              }
-              bitmapBytes.push(byte);
-            }
-          }
-
-          const fullCommand = new Uint8Array([...rasterHeader, ...bitmapBytes, 0x0a]);
-          const chunkSize = 20;
-
-          for (let i = 0; i < fullCommand.length; i += chunkSize) {
-            const chunk = fullCommand.slice(i, i + chunkSize);
-            if (writeChar.properties.writeWithoutResponse) {
-              await writeChar.writeValueWithoutResponse(chunk);
-            } else {
-              await writeChar.writeValue(chunk);
-            }
-            await new Promise((r) => setTimeout(r, 12));
-          }
-          resolve(true);
-        } catch (e) {
-          console.warn('Logo print error:', e);
-          resolve(false);
-        }
-      };
-      img.onerror = () => resolve(false);
-      img.src = imgUrl;
-    });
+  // 🌟 Helper to send byte chunks safely over BLE 🌟
+  const sendBytesToPrinter = async (writeChar: any, dataBytes: Uint8Array) => {
+    const chunkSize = 20;
+    for (let i = 0; i < dataBytes.length; i += chunkSize) {
+      const chunk = dataBytes.slice(i, i + chunkSize);
+      if (writeChar.properties.writeWithoutResponse) {
+        await writeChar.writeValueWithoutResponse(chunk);
+      } else {
+        await writeChar.writeValue(chunk);
+      }
+      await new Promise((r) => setTimeout(r, 12));
+    }
   };
 
-  // 🌟 Loyverse-Style Direct ESC/POS Bluetooth Print (With Logo & No System Print Dialog!) 🌟
-  const handleBluetoothEscPosPrint = async () => {
-    if (!activeReceipt) return;
+  // 🌟 Loyverse-Style Direct ESC/POS Bluetooth Print 🌟
+  const handleBluetoothEscPosPrint = async (customRecord?: OfflineSaleRecord) => {
+    const recordToPrint = customRecord || activeReceipt;
+    if (!recordToPrint) return;
     setIsPrintingBt(true);
 
     try {
       let writeChar = btCharacteristic;
 
-      // Printer ချိတ်ထားပြီးသားရှိသော်လည်း ပြတ်သွားပါက ပြန်ချိတ်မည်
       if (!writeChar && bluetoothDevice) {
         try {
           writeChar = await findWritableCharacteristic(bluetoothDevice);
@@ -702,16 +891,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         }
       }
 
-      // Printer လုံးဝ မချိတ်ရသေးပါက ချက်ချင်း ရွေးခိုင်းပြီး တန်းထုတ်မည်
       if (!writeChar) {
-        writeChar = await handleConnectBluetoothPrinter();
+        writeChar = await handleConnectBluetoothPrinter(false);
         if (!writeChar) {
           setIsPrintingBt(false);
           return;
         }
       }
 
-      const maxCols = printerPaperWidth === '80mm' ? 48 : 32;
+      const maxCols = printSettings.paperWidth === '80mm' ? 48 : 32;
       const divider = '-'.repeat(maxCols) + '\n';
 
       const padLine = (left: string, right: string) => {
@@ -735,44 +923,47 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
       const encoder = new TextEncoder();
 
-      // 1. Printer Init နှင့် Center Alignment အရင်ပို့မည်
-      const initBytes = encoder.encode(INIT + ALIGN_CENTER);
-      if (writeChar.properties.writeWithoutResponse) {
-        await writeChar.writeValueWithoutResponse(initBytes);
-      } else {
-        await writeChar.writeValue(initBytes);
+      // 1. Printer Init & Center Alignment
+      await sendBytesToPrinter(writeChar, encoder.encode(INIT + ALIGN_CENTER));
+
+      // 2. Print Clean Monochrome Logo (လေးထောင့်ကွက်မည်း မပါသော သပ်ရပ်သည့် Logo)
+      if (printSettings.showLogo && effectiveLogoUrl) {
+        const { rasterBytes } = await buildLogoRasterData(
+          effectiveLogoUrl,
+          printSettings.logoMode,
+          printSettings.logoSize
+        );
+        if (rasterBytes) {
+          await sendBytesToPrinter(writeChar, rasterBytes);
+        }
       }
 
-      // 2. Logo ပုံကို Thermal Printer ပေါ်သို့ အရင်ဆုံး ရိုက်ထုတ်မည်
-      if (effectiveLogoUrl) {
-        await printLogoBitmap(effectiveLogoUrl, writeChar);
-      }
-
-      // 3. Header နှင့် ဘောင်ချာ စာသားအချက်အလက်များ တည်ဆောက်ခြင်း
+      // 3. Header & Receipt Content
       let cmd = ALIGN_CENTER + BOLD_ON + DOUBLE_HEIGHT;
-      cmd += `${(localAppData?.branding?.name || 'THE SHANGRI-LA').toUpperCase()}\n`;
-      cmd += NORMAL_TEXT + `MEN'S RETREAT\n` + BOLD_OFF;
-      if (localAppData?.branding?.address) {
-        cmd += `${localAppData.branding.address}\n`;
+      cmd += `${(printSettings.shopName || 'THE SHANGRI-LA').toUpperCase()}\n`;
+      if (printSettings.subtitle) {
+        cmd += NORMAL_TEXT + `${printSettings.subtitle.toUpperCase()}\n`;
       }
-      if (localAppData?.branding?.phone1) {
-        cmd += `Tel: ${localAppData.branding.phone1}\n`;
+      cmd += NORMAL_TEXT + BOLD_OFF;
+      if (printSettings.address) {
+        cmd += `${printSettings.address}\n`;
+      }
+      if (printSettings.phone) {
+        cmd += `Tel: ${printSettings.phone}\n`;
       }
       cmd += divider;
 
-      // Metadata
       cmd += ALIGN_LEFT;
-      cmd += padLine('Invoice:', activeReceipt.invoiceNo);
-      cmd += padLine('Date/Time:', `${activeReceipt.date} ${activeReceipt.time}`);
+      cmd += padLine('Invoice:', recordToPrint.invoiceNo);
+      cmd += padLine('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`);
       cmd += padLine(
         'Customer:',
-        `${activeReceipt.customerName}${activeReceipt.customerPhone ? ` (${activeReceipt.customerPhone})` : ''}`
+        `${recordToPrint.customerName}${recordToPrint.customerPhone ? ` (${recordToPrint.customerPhone})` : ''}`
       );
-      cmd += padLine('Therapist:', activeReceipt.therapistName);
+      cmd += padLine('Therapist:', recordToPrint.therapistName);
       cmd += divider;
 
-      // Cart Items
-      activeReceipt.items.forEach((item, idx) => {
+      recordToPrint.items.forEach((item, idx) => {
         const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
         const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
         const itemPriceStr = formatPrice(unitPrice * item.qty);
@@ -793,39 +984,30 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       });
       cmd += divider;
 
-      // Totals
-      cmd += padLine('Subtotal:', formatPrice(activeReceipt.subTotal));
-      if (activeReceipt.discountAmount > 0) {
-        cmd += padLine(`Discount (${activeReceipt.discountReason}):`, `-${formatPrice(activeReceipt.discountAmount)}`);
+      cmd += padLine('Subtotal:', formatPrice(recordToPrint.subTotal));
+      if (recordToPrint.discountAmount > 0) {
+        cmd += padLine(`Discount (${recordToPrint.discountReason}):`, `-${formatPrice(recordToPrint.discountAmount)}`);
       }
-      cmd += BOLD_ON + DOUBLE_HEIGHT + padLine('TOTAL:', formatPrice(activeReceipt.totalPrice)) + NORMAL_TEXT + BOLD_OFF;
-      cmd += padLine(`Payment (${activeReceipt.paymentMethod}):`, formatPrice(activeReceipt.cashReceived));
-      if (activeReceipt.paymentMethod === 'Cash' && activeReceipt.changeDue > 0) {
-        cmd += padLine('Change Due:', formatPrice(activeReceipt.changeDue));
+      cmd += BOLD_ON + DOUBLE_HEIGHT + padLine('TOTAL:', formatPrice(recordToPrint.totalPrice)) + NORMAL_TEXT + BOLD_OFF;
+      cmd += padLine(`Payment (${recordToPrint.paymentMethod}):`, formatPrice(recordToPrint.cashReceived));
+      if (recordToPrint.paymentMethod === 'Cash' && recordToPrint.changeDue > 0) {
+        cmd += padLine('Change Due:', formatPrice(recordToPrint.changeDue));
       }
-      if (activeReceipt.pointsEarned > 0) {
-        cmd += padLine('VIP Points Earned:', `+${activeReceipt.pointsEarned} Pts`);
+      if (recordToPrint.pointsEarned > 0) {
+        cmd += padLine('VIP Points Earned:', `+${recordToPrint.pointsEarned} Pts`);
       }
       cmd += divider;
 
-      // Footer
-      cmd += ALIGN_CENTER + BOLD_ON + `Thank You For Visiting Us!\n` + BOLD_OFF;
-      cmd += `We hope to see you again soon.\n\n\n\n`;
-      cmd += CUT_PAPER;
-
-      // Bluetooth Printer Buffer မပြည့်စေရန် 20 bytes စီ ခွဲပို့ခြင်း (100% BLE Printer Compatible)
-      const bytes = encoder.encode(cmd);
-      const chunkSize = 20;
-
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        const chunk = bytes.slice(i, i + chunkSize);
-        if (writeChar.properties.writeWithoutResponse) {
-          await writeChar.writeValueWithoutResponse(chunk);
-        } else {
-          await writeChar.writeValue(chunk);
-        }
-        await new Promise((r) => setTimeout(r, 12));
+      cmd += ALIGN_CENTER;
+      if (printSettings.footerLine1) {
+        cmd += BOLD_ON + `${printSettings.footerLine1}\n` + BOLD_OFF;
       }
+      if (printSettings.footerLine2) {
+        cmd += `${printSettings.footerLine2}\n`;
+      }
+      cmd += `\n\n\n` + CUT_PAPER;
+
+      await sendBytesToPrinter(writeChar, encoder.encode(cmd));
     } catch (err: any) {
       console.error('Bluetooth print failed:', err);
       setBtCharacteristic(null);
@@ -833,6 +1015,41 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     } finally {
       setIsPrintingBt(false);
     }
+  };
+
+  // 🌟 Sample Receipt for Settings Live Preview & Test Print 🌟
+  const samplePreviewReceipt: OfflineSaleRecord = {
+    localId: 'sample_preview',
+    invoiceNo: 'SL-261014-8888',
+    createdAt: Date.now(),
+    date: getLocalTodayStr(),
+    time: '7:00 PM',
+    customerName: 'Walk-in Guest',
+    customerPhone: '09458884517',
+    therapistName: 'Therapist No-1',
+    items: [
+      {
+        cartId: 'sample_1',
+        id: 'oil',
+        name: 'Oil Massage',
+        duration: '60 Mins',
+        price: 25000,
+        qty: 1
+      }
+    ],
+    subTotal: 25000,
+    discountType: 'percent',
+    discountValue: 0,
+    discountAmount: 0,
+    discountReason: '',
+    totalPrice: 25000,
+    paymentMethod: 'Cash',
+    cashReceived: 25000,
+    changeDue: 0,
+    serviceStatus: 'completed',
+    pointsEarned: 1,
+    note: '',
+    synced: true
   };
 
   const startNewSale = () => {
@@ -878,20 +1095,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Paper Size Toggle (58mm / 80mm) */}
+          {/* Bluetooth Status / Quick Connect Button */}
           <button
             type="button"
-            onClick={togglePrinterWidth}
-            title="Switch Thermal Paper Size (58mm / 80mm)"
-            className="px-2.5 py-1.5 rounded-xl text-[10px] font-bold bg-white/10 text-gray-200 border border-white/20 hover:bg-white/20 transition"
-          >
-            Paper: {printerPaperWidth}
-          </button>
-
-          {/* Bluetooth Connect Button */}
-          <button
-            type="button"
-            onClick={handleConnectBluetoothPrinter}
+            onClick={() => handleConnectBluetoothPrinter(false)}
             className={`px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center border transition ${
               bluetoothDevice && btCharacteristic
                 ? 'bg-green-500/20 text-green-300 border-green-400/40'
@@ -900,7 +1107,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           >
             <Bluetooth className="w-3.5 h-3.5 mr-1" />
             {bluetoothDevice && btCharacteristic
-              ? `Connected: ${bluetoothDevice.name || 'Printer'}`
+              ? `Connected: ${bluetoothDevice.name || printSettings.savedPrinterName || 'Printer'}`
+              : printSettings.savedPrinterName
+              ? `Reconnect ${printSettings.savedPrinterName}`
               : 'Connect BT Printer'}
           </button>
 
@@ -942,6 +1151,14 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             >
               <History className="w-3 h-3 mr-1" /> Receipts ({salesHistory.length})
             </button>
+            <button
+              onClick={() => setActivePosView('settings')}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition flex items-center ${
+                activePosView === 'settings' ? 'bg-[#D4AF37] text-[#123524]' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <Settings className="w-3 h-3 mr-1" /> Printer & Design
+            </button>
           </div>
         </div>
       </header>
@@ -958,19 +1175,27 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 className="w-[72mm] bg-white p-3 text-gray-900 font-mono text-xs border border-gray-300 rounded-lg shadow-sm"
               >
                 <div className="text-center border-b border-dashed border-gray-400 pb-2.5 mb-2.5">
-                  {effectiveLogoUrl && (
+                  {printSettings.showLogo && (processedLogoPreview || effectiveLogoUrl) && (
                     <img
-                      src={effectiveLogoUrl}
+                      src={processedLogoPreview || effectiveLogoUrl}
                       alt="Logo"
-                      className="w-10 h-10 rounded-full mx-auto mb-1 object-cover border border-[#D4AF37]"
+                      className="w-14 h-14 rounded-full mx-auto mb-1.5 object-contain"
                     />
                   )}
                   <h2 className="font-serif font-black text-sm text-[#123524] uppercase tracking-wider">
-                    {localAppData?.branding?.name || 'The Shangri-La'}
+                    {printSettings.shopName || 'THE SHANGRI-LA'}
                   </h2>
-                  <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Men's Retreat</p>
-                  <p className="text-[9px] text-gray-600 mt-0.5">{localAppData?.branding?.address}</p>
-                  <p className="text-[9px] text-gray-600">Tel: {localAppData?.branding?.phone1}</p>
+                  {printSettings.subtitle && (
+                    <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">
+                      {printSettings.subtitle}
+                    </p>
+                  )}
+                  {printSettings.address && (
+                    <p className="text-[9px] text-gray-600 mt-0.5">{printSettings.address}</p>
+                  )}
+                  {printSettings.phone && (
+                    <p className="text-[9px] text-gray-600">Tel: {printSettings.phone}</p>
+                  )}
                 </div>
 
                 <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
@@ -1052,8 +1277,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </div>
 
                 <div className="text-center text-[10px] text-gray-500 space-y-0.5">
-                  <p className="font-bold text-gray-700">Thank You For Visiting Us!</p>
-                  <p>We hope to see you again soon.</p>
+                  {printSettings.footerLine1 && (
+                    <p className="font-bold text-gray-700">{printSettings.footerLine1}</p>
+                  )}
+                  {printSettings.footerLine2 && <p>{printSettings.footerLine2}</p>}
                   {!activeReceipt.synced && (
                     <p className="text-[9px] text-amber-600 font-bold mt-1">[Saved Offline - Pending Sync]</p>
                   )}
@@ -1064,7 +1291,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             {/* Action Buttons */}
             <div className="no-print mt-4 flex flex-col gap-2.5">
               <button
-                onClick={handleBluetoothEscPosPrint}
+                onClick={() => handleBluetoothEscPosPrint()}
                 disabled={isPrintingBt}
                 className="w-full py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center shadow-md hover:opacity-95 transition disabled:opacity-50"
               >
@@ -1072,7 +1299,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 {isPrintingBt
                   ? 'Printing to Bluetooth Printer...'
                   : btCharacteristic
-                  ? `ဘောင်ချာထုတ်မည် (${bluetoothDevice?.name || 'BT Printer'})`
+                  ? `ဘောင်ချာထုတ်မည် (${bluetoothDevice?.name || printSettings.savedPrinterName || 'BT Printer'})`
                   : 'ဘောင်ချာထုတ်မည် (Connect & Print)'}
               </button>
               <button
@@ -1087,9 +1314,328 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       )}
 
       {/* ==========================================
-          VIEW 2: LOCAL & OFFLINE RECEIPTS HISTORY
+          VIEW 3: PRINTER & RECEIPT DESIGN SETTINGS
          ========================================== */}
-      {activePosView === 'history' ? (
+      {activePosView === 'settings' ? (
+        <div className="max-w-6xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
+          <div className="lg:col-span-7 space-y-5">
+            {/* Bluetooth & Paper Setup Card */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+              <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-[#123524] flex items-center">
+                    <Bluetooth className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Bluetooth Printer & Paper Setup
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Bluetooth Printer ချိတ်ဆက်မှုနှင့် စာရွက်အရွယ်အစား သတ်မှတ်ရန်
+                  </p>
+                </div>
+                {bluetoothDevice && btCharacteristic ? (
+                  <span className="bg-green-50 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold">
+                    ● Connected: {bluetoothDevice.name || 'BT Printer'}
+                  </span>
+                ) : (
+                  <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-xs font-bold">
+                    Not Connected
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleConnectBluetoothPrinter(true)}
+                  className="py-3 px-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center shadow-sm hover:bg-[#1a4a32] transition"
+                >
+                  <Bluetooth className="w-4 h-4 mr-2" />
+                  {bluetoothDevice ? 'Change / Pair Bluetooth Printer' : 'Pair Bluetooth Printer'}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isPrintingBt}
+                  onClick={() => handleBluetoothEscPosPrint(samplePreviewReceipt)}
+                  className="py-3 px-4 bg-yellow-50 text-[#123524] border border-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center hover:bg-yellow-100 transition disabled:opacity-50"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  {isPrintingBt ? 'Printing Test...' : 'စမ်းသပ် ဘောင်ချာထုတ်ကြည့်မည် (Test Print)'}
+                </button>
+              </div>
+
+              <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 text-[11px] text-blue-900 space-y-1">
+                <div className="font-bold">💡 Refresh လုပ်တိုင်း Bluetooth အလိုအလျောက် ချိတ်မိနေစေရန် အကြံပြုချက် -</div>
+                <p>
+                  Google Chrome ၏ လုံခြုံရေးစနစ်အရ စာမျက်နှာ Refresh လုပ်တိုင်း Printer ကို အလိုအလျောက် တန်းချိတ်ပေးနိုင်ရန် Chrome Address Bar တွင်{' '}
+                  <code className="bg-white px-1.5 py-0.5 rounded border border-blue-200 font-mono text-[10px] select-all">
+                    chrome://flags/#enable-web-bluetooth-new-permissions-backend
+                  </code>{' '}
+                  ဟု ရိုက်ထည့်ပြီး <b>Enabled</b> ပြောင်းပေးထားပါ။ တစ်ကြိမ်ချိတ်ပြီးရင် အမြဲတမ်း အလိုအလျောက် မှတ်မိနေပါလိမ့်မယ်။
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-2">
+                  Thermal Paper Width (စာရွက် အကျယ်)
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {(['58mm', '80mm'] as const).map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => updatePrintSettings({ paperWidth: w })}
+                      className={`py-3 rounded-xl font-black text-xs border-2 transition ${
+                        printSettings.paperWidth === w
+                          ? 'border-[#123524] bg-[#123524] text-[#D4AF37]'
+                          : 'border-gray-200 bg-gray-50 text-gray-600'
+                      }`}
+                    >
+                      {w === '58mm' ? '58mm (2 inch - အသေး 32 Cols)' : '80mm (3 inch - အကြီး 48 Cols)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Default Branding & Logo Print Design Card */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+              <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-[#123524] flex items-center">
+                    <Crown className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Receipt Branding & Logo Design
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    ဘောင်ချာပေါ်တွင် ရိုက်နှိပ်မည့် Logo ပုံစံနှင့် ဆိုင်အချက်အလက်များကို စိတ်ကြိုက်ပြင်ဆင်ပါ
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Default ဘောင်ချာဒီဇိုင်းအတိုင်း ပြန်ထားမည်မှာ သေချာပါသလား?')) {
+                      updatePrintSettings(DEFAULT_PRINT_SETTINGS);
+                    }
+                  }}
+                  className="text-[11px] font-bold text-red-600 hover:underline"
+                >
+                  Reset to Default
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-200">
+                <div>
+                  <div className="text-xs font-bold text-gray-800">Print Logo on Receipt (ဘောင်ချာတွင် Logo ထည့်မည်)</div>
+                  <div className="text-[10px] text-gray-500">THE SHANGRI LA - LOGO.png ကို အသုံးပြုထားပါသည်</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={printSettings.showLogo}
+                  onChange={(e) => updatePrintSettings({ showLogo: e.target.checked })}
+                  className="w-5 h-5 accent-[#123524]"
+                />
+              </div>
+
+              {printSettings.showLogo && (
+                <div className="space-y-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Logo Thermal Print Style (လေးထောင့်ကွက်မည်း မပေါ်စေရန် ရွေးချယ်မှု)
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {[
+                        {
+                          id: 'invert_circle',
+                          title: 'Invert Gold (အကြံပြု)',
+                          desc: 'နောက်ခံအမည်းဖျောက်ပြီး သရဖူနှင့်စာသားကိုသာ လှပစွာထုတ်မည်'
+                        },
+                        {
+                          id: 'circle',
+                          title: 'Circle Badge',
+                          desc: 'အဝိုင်းပုံစံ တံဆိပ်ဝိုင်းအဖြစ် ထုတ်မည်'
+                        },
+                        {
+                          id: 'standard',
+                          title: 'Standard B&W',
+                          desc: 'မူရင်းအတိုင်း အဖြူအမည်း ထုတ်မည်'
+                        }
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => updatePrintSettings({ logoMode: m.id as any })}
+                          className={`p-3 rounded-xl border text-left transition ${
+                            printSettings.logoMode === m.id
+                              ? 'border-[#123524] bg-green-50/60 ring-1 ring-[#123524]'
+                              : 'border-gray-200 bg-white hover:border-[#D4AF37]'
+                          }`}
+                        >
+                          <div className="font-bold text-xs text-[#123524]">{m.title}</div>
+                          <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">{m.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Logo Size on Paper ({printSettings.logoSize} px)
+                    </label>
+                    <input
+                      type="range"
+                      min={96}
+                      max={224}
+                      step={8}
+                      value={printSettings.logoSize}
+                      onChange={(e) => updatePrintSettings({ logoSize: parseInt(e.target.value, 10) })}
+                      className="w-full accent-[#123524]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Shop Name (ဆိုင်အမည်)</label>
+                  <input
+                    type="text"
+                    value={printSettings.shopName}
+                    onChange={(e) => updatePrintSettings({ shopName: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Subtitle</label>
+                  <input
+                    type="text"
+                    value={printSettings.subtitle}
+                    onChange={(e) => updatePrintSettings({ subtitle: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Shop Address (လိပ်စာ)</label>
+                <input
+                  type="text"
+                  value={printSettings.address}
+                  onChange={(e) => updatePrintSettings({ address: e.target.value })}
+                  className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Phone (ဖုန်းနံပါတ်)</label>
+                  <input
+                    type="text"
+                    value={printSettings.phone}
+                    onChange={(e) => updatePrintSettings({ phone: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Footer Line 1</label>
+                  <input
+                    type="text"
+                    value={printSettings.footerLine1}
+                    onChange={(e) => updatePrintSettings({ footerLine1: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Footer Line 2</label>
+                  <input
+                    type="text"
+                    value={printSettings.footerLine2}
+                    onChange={(e) => updatePrintSettings({ footerLine2: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Live Thermal Paper Preview Column */}
+          <div className="lg:col-span-5">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 sticky top-20 space-y-4">
+              <div className="text-center">
+                <h3 className="text-sm font-extrabold text-[#123524]">Live Thermal Paper Preview</h3>
+                <p className="text-[11px] text-gray-500">Bluetooth Printer မှ ထွက်လာမည့် ပုံစံအစမ်းမြင်ကွင်း</p>
+              </div>
+
+              <div className="bg-gray-100 p-4 rounded-xl flex justify-center">
+                <div className="w-[72mm] bg-white p-4 text-gray-900 font-mono text-xs border border-gray-300 rounded shadow-sm">
+                  <div className="text-center border-b border-dashed border-gray-400 pb-2.5 mb-2.5">
+                    {printSettings.showLogo && (processedLogoPreview || effectiveLogoUrl) && (
+                      <img
+                        src={processedLogoPreview || effectiveLogoUrl}
+                        alt="Thermal Logo Preview"
+                        style={{ width: `${Math.round(printSettings.logoSize * 0.45)}px` }}
+                        className="mx-auto mb-1.5 object-contain"
+                      />
+                    )}
+                    <h2 className="font-black text-sm uppercase tracking-wider">{printSettings.shopName}</h2>
+                    {printSettings.subtitle && (
+                      <p className="text-[9px] font-bold text-gray-600 uppercase tracking-widest">
+                        {printSettings.subtitle}
+                      </p>
+                    )}
+                    {printSettings.address && (
+                      <p className="text-[9px] text-gray-600 mt-0.5">{printSettings.address}</p>
+                    )}
+                    {printSettings.phone && <p className="text-[9px] text-gray-600">Tel: {printSettings.phone}</p>}
+                  </div>
+
+                  <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2 mb-2">
+                    <div className="flex justify-between">
+                      <span>Invoice:</span>
+                      <span className="font-bold">SL-261014-8888</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Date/Time:</span>
+                      <span className="font-bold">{samplePreviewReceipt.date} 7:00 PM</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Customer:</span>
+                      <span className="font-bold">Walk-in Guest</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Therapist:</span>
+                      <span className="font-bold">Therapist No-1</span>
+                    </div>
+                  </div>
+
+                  <div className="border-b border-dashed border-gray-300 pb-2 mb-2 text-[11px]">
+                    <div className="flex justify-between font-bold">
+                      <span>1. Oil Massage</span>
+                      <span>25,000 Ks</span>
+                    </div>
+                    <div className="text-[10px] text-gray-500 pl-3">60 Mins</div>
+                  </div>
+
+                  <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-2 mb-2">
+                    <div className="flex justify-between">
+                      <span>Subtotal:</span>
+                      <span className="font-bold">25,000 Ks</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-black pt-1 border-t border-gray-200">
+                      <span>TOTAL:</span>
+                      <span>25,000 Ks</span>
+                    </div>
+                  </div>
+
+                  <div className="text-center text-[10px] text-gray-600 space-y-0.5">
+                    {printSettings.footerLine1 && <p className="font-bold">{printSettings.footerLine1}</p>}
+                    {printSettings.footerLine2 && <p>{printSettings.footerLine2}</p>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : activePosView === 'history' ? (
+        /* ==========================================
+           VIEW 2: LOCAL & OFFLINE RECEIPTS HISTORY
+           ========================================== */
         <div className="max-w-4xl w-full mx-auto p-4 space-y-4">
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1164,6 +1710,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           )}
         </div>
       ) : (
+        /* ==========================================
+           VIEW 1: POS REGISTER
+           ========================================== */
         <div className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
           <div className="lg:col-span-7 space-y-4">
             <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-gray-200 grid grid-cols-4 gap-1.5">
