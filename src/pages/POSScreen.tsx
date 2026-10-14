@@ -909,7 +909,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   // 🌟 High-Speed BLE Streaming Helper 🌟
   const sendBytesToPrinter = async (writeChar: any, dataBytes: Uint8Array) => {
-    // 180-byte chunks with minimal delay so paper feeds smoothly in one continuous motion
     const chunkSize = 180;
     for (let i = 0; i < dataBytes.length; i += chunkSize) {
       const chunk = dataBytes.slice(i, i + chunkSize);
@@ -920,7 +919,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           await writeChar.writeValue(chunk);
         }
       } catch {
-        // Fallback to smaller 20-byte sub-chunks if the printer BLE MTU is small
         for (let j = 0; j < chunk.length; j += 20) {
           const sub = chunk.slice(j, j + 20);
           if (writeChar.properties.writeWithoutResponse) {
@@ -935,7 +933,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Smart Word-Wrap Helper (စကားလုံးတစ်ဝက်မှ Townshi/p ကဲ့သို့ လုံးဝ မပြတ်ကျစေရန်) 🌟
+  // 🌟 Smart Word-Wrap Helper 🌟
   const wordWrapText = (text: string, maxCols: number): string[] => {
     if (!text) return [];
     const words = text.trim().split(/\s+/);
@@ -955,8 +953,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     return lines;
   };
 
-  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT 🌟
-  // စာရွက်လုံးဝ မထစ်ဘဲ တစ်ဆက်တည်း ထွက်မည်၊ စာလုံး ၁၀၀% ပီသမည်၊ စာကြောင်းမပြတ်ကျပါ၊ VIP Points ဘောင်ကွပ်ပါဝင်မည်
+  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT (With Clear Normal vs Bold Hierarchy!) 🌟
   const handleBluetoothEscPosPrint = async (customRecord?: OfflineSaleRecord) => {
     const recordToPrint = customRecord || activeReceipt;
     if (!recordToPrint) return;
@@ -982,8 +979,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         }
       }
 
-      // Font A (Standard Crisp: 32 cols on 58mm, 48 cols on 80mm)
-      // Font B (Compact Crisp: 42 cols on 58mm, 64 cols on 80mm - ရှည်သော လိပ်စာနှင့် ဖုန်းနံပါတ်တစ်ကြောင်းတည်း ဆံ့စေရန်)
       const colsFontA = printSettings.paperWidth === '80mm' ? 48 : 32;
       const colsFontB = printSettings.paperWidth === '80mm' ? 64 : 42;
 
@@ -994,53 +989,47 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       const ALIGN_LEFT = ESC + 'a\x00';
       const BOLD_ON = ESC + 'E\x01';
       const BOLD_OFF = ESC + 'E\x00';
-      const FONT_A = ESC + 'M\x00'; // Standard Sharp Font (12x24)
-      const FONT_B = ESC + 'M\x01'; // Compact Sharp Font (9x17)
+      const FONT_A = ESC + 'M\x00'; // Standard Font (12x24)
+      const FONT_B = ESC + 'M\x01'; // Compact Font (9x17)
       const DOUBLE_HEIGHT = GS + '!\x01';
       const NORMAL_SIZE = GS + '!\x00';
       const CUT_PAPER = GS + 'V\x41\x03';
 
-      const divider = FONT_A + NORMAL_SIZE + '-'.repeat(colsFontA) + '\n';
+      const divider = FONT_A + NORMAL_SIZE + BOLD_OFF + '-'.repeat(colsFontA) + '\n';
 
-      // Smart Left/Right Row Builder:
-      // 32 လုံးနှင့် ဆံ့ပါက Font A သုံးပြီး၊ 32 လုံးထက် ရှည်ပါက (ဥပမာ Customer + Phone) အောက်မပြုတ်ကျစေဘဲ Font B (42 cols) ဖြင့် တစ်ကြောင်းတည်း သပ်ရပ်စွာ ရိုက်ထုတ်ပေးမည်
-      const formatSmartRow = (left: string, right: string, forceBold = false): string => {
+      // 🌟 Preview အတိုင်း ဘယ်ဘက် Label နှင့် ညာဘက် Value ကို Normal / Bold ခွဲခြားပေးသည့် Function 🌟
+      const formatHierarchyRow = (
+        left: string,
+        right: string,
+        leftBold = false,
+        rightBold = true
+      ): string => {
         const l = left.trim();
         const r = right.trim();
         const minLen = l.length + r.length + 1;
 
+        const leftStr = (leftBold ? BOLD_ON : BOLD_OFF) + l + BOLD_OFF;
+        const rightStr = (rightBold ? BOLD_ON : BOLD_OFF) + r + BOLD_OFF;
+
         if (minLen <= colsFontA) {
           const spaces = colsFontA - l.length - r.length;
-          return (
-            FONT_A +
-            NORMAL_SIZE +
-            (forceBold ? BOLD_ON : '') +
-            `${l}${' '.repeat(spaces)}${r}\n` +
-            (forceBold ? BOLD_OFF : '')
-          );
+          return FONT_A + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n';
         }
 
         if (minLen <= colsFontB) {
           const spaces = colsFontB - l.length - r.length;
-          return (
-            FONT_B +
-            NORMAL_SIZE +
-            BOLD_ON +
-            `${l}${' '.repeat(spaces)}${r}\n` +
-            BOLD_OFF +
-            FONT_A
-          );
+          return FONT_B + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n' + FONT_A;
         }
 
-        // အကယ်၍ 42 လုံးထက်ပါ ပိုရှည်နေပါက စကားလုံးမပြတ်စေဘဲ ညာဘက်ညှိ၍ သပ်ရပ်စွာ ပြပေးမည်
         const spaces = Math.max(1, colsFontA - r.length);
         return (
           FONT_A +
           NORMAL_SIZE +
-          `${l}\n` +
-          BOLD_ON +
-          `${' '.repeat(spaces)}${r}\n` +
-          BOLD_OFF
+          leftStr +
+          '\n' +
+          ' '.repeat(spaces) +
+          rightStr +
+          '\n'
         );
       };
 
@@ -1056,52 +1045,58 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         logoPartBytes = rasterBytes;
       }
 
-      // 2. Build Entire Native Text Command Buffer
-      let cmd = ALIGN_CENTER;
+      // 2. Build Header (Only Store Title is Bold; Subtitle, Header, Address, Tel are Normal!)
+      let cmd = ALIGN_CENTER + NORMAL_SIZE + BOLD_OFF;
 
       if (printSettings.shopName) {
-        cmd += FONT_A + BOLD_ON + DOUBLE_HEIGHT + `${printSettings.shopName.toUpperCase()}\n` + NORMAL_SIZE;
+        cmd +=
+          FONT_A +
+          BOLD_ON +
+          DOUBLE_HEIGHT +
+          `${printSettings.shopName.toUpperCase()}\n` +
+          NORMAL_SIZE +
+          BOLD_OFF;
       }
       if (printSettings.subtitle) {
-        cmd += FONT_A + BOLD_ON + `${printSettings.subtitle.toUpperCase()}\n` + BOLD_OFF;
+        cmd += FONT_B + BOLD_OFF + `${printSettings.subtitle.toUpperCase()}\n` + FONT_A;
       }
       if (printSettings.headerText) {
         wordWrapText(printSettings.headerText, colsFontA).forEach((line) => {
-          cmd += FONT_A + `${line}\n`;
+          cmd += FONT_A + BOLD_OFF + `${line}\n`;
         });
       }
       if (printSettings.footerText) {
-        // လိပ်စာကို Townshi/p ကဲ့သို့ လုံးဝမပြတ်ကျစေဘဲ Preview အတိုင်း ၂ ကြောင်းတည်း သပ်ရပ်စွာ ထွက်စေရန် Font B + Word Wrap သုံးသည်
+        // လိပ်စာကို BOLD လုံးဝ မသုံးတော့ဘဲ Preview အတိုင်း ပါးလွှာသပ်ရပ်စွာ ပြသမည်
         wordWrapText(printSettings.footerText, colsFontB).forEach((line) => {
-          cmd += FONT_B + BOLD_ON + `${line}\n` + BOLD_OFF;
+          cmd += FONT_B + BOLD_OFF + `${line}\n`;
         });
         cmd += FONT_A;
       }
       if (printSettings.phone) {
-        cmd += FONT_A + `Tel: ${printSettings.phone}\n`;
+        cmd += FONT_B + BOLD_OFF + `Tel: ${printSettings.phone}\n` + FONT_A;
       }
       cmd += divider;
 
-      // Metadata Section
+      // 3. Metadata Section (Left Labels = Normal, Right Values = Bold)
       cmd += ALIGN_LEFT;
-      cmd += formatSmartRow('Invoice:', recordToPrint.invoiceNo, true);
-      cmd += formatSmartRow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`);
+      cmd += formatHierarchyRow('Invoice:', recordToPrint.invoiceNo, false, true);
+      cmd += formatHierarchyRow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`, false, true);
       if (printSettings.showCustomerInfo) {
         const customerFull = `${recordToPrint.customerName}${
           recordToPrint.customerPhone ? ` (${recordToPrint.customerPhone})` : ''
         }`;
-        cmd += formatSmartRow('Customer:', customerFull);
+        cmd += formatHierarchyRow('Customer:', customerFull, false, true);
       }
-      cmd += formatSmartRow('Therapist:', recordToPrint.therapistName);
+      cmd += formatHierarchyRow('Therapist:', recordToPrint.therapistName, false, true);
       cmd += divider;
 
-      // Cart Items Section
+      // 4. Cart Items Section (Item Name & Price = Bold, Duration = Normal Small Font B)
       recordToPrint.items.forEach((item, idx) => {
         const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
         const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
         const itemPriceStr = formatPrice(unitPrice * item.qty);
 
-        cmd += formatSmartRow(itemTitle, itemPriceStr, true);
+        cmd += formatHierarchyRow(itemTitle, itemPriceStr, true, true);
 
         const subDetails = [
           item.duration || '',
@@ -1112,21 +1107,22 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           .join(' ');
 
         if (subDetails) {
-          cmd += FONT_A + NORMAL_SIZE + `   ${subDetails}\n`;
+          cmd += FONT_B + NORMAL_SIZE + BOLD_OFF + `    ${subDetails}\n` + FONT_A;
         }
       });
       cmd += divider;
 
-      // Totals Section
-      cmd += formatSmartRow('Subtotal:', formatPrice(recordToPrint.subTotal), true);
+      // 5. Totals Section (Subtotal & Payment Labels = Normal, Amounts = Bold, TOTAL = Prominent Bold)
+      cmd += formatHierarchyRow('Subtotal:', formatPrice(recordToPrint.subTotal), false, true);
       if (recordToPrint.discountAmount > 0) {
-        cmd += formatSmartRow(
+        cmd += formatHierarchyRow(
           `Discount (${recordToPrint.discountReason}):`,
-          `-${formatPrice(recordToPrint.discountAmount)}`
+          `-${formatPrice(recordToPrint.discountAmount)}`,
+          false,
+          true
         );
       }
 
-      // TOTAL (Crisp Double Height)
       const totalLabel = 'TOTAL:';
       const totalValStr = formatPrice(recordToPrint.totalPrice);
       const totalSpaces = Math.max(1, colsFontA - totalLabel.length - totalValStr.length);
@@ -1138,42 +1134,55 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         NORMAL_SIZE +
         BOLD_OFF;
 
-      cmd += formatSmartRow(
+      cmd += formatHierarchyRow(
         `Payment (${recordToPrint.paymentMethod}):`,
-        formatPrice(recordToPrint.cashReceived)
+        formatPrice(recordToPrint.cashReceived),
+        false,
+        true
       );
       if (recordToPrint.paymentMethod === 'Cash' && recordToPrint.changeDue > 0) {
-        cmd += formatSmartRow('Change Due:', formatPrice(recordToPrint.changeDue));
+        cmd += formatHierarchyRow('Change Due:', formatPrice(recordToPrint.changeDue), false, true);
       }
 
-      // 🌟 VIP Points Earned with Crisp Border Box (Preview အတိုင်း ဘောင်ကွပ်ကွက်လေးဖြင့်) 🌟
+      // 6. 🌟 VIP Points Earned Box (Thin Box Border + Normal Label + Bold Points Value) 🌟
       if (recordToPrint.pointsEarned > 0) {
         const boxInnerW = colsFontA - 4;
         const vipLeft = 'VIP Points Earned:';
         const vipRight = `+${recordToPrint.pointsEarned} Pts`;
         const vipSpaces = Math.max(1, boxInnerW - vipLeft.length - vipRight.length);
-        const boxTopBottom = `+${'-'.repeat(colsFontA - 2)}+\n`;
-        const boxMiddle = `| ${vipLeft}${' '.repeat(vipSpaces)}${vipRight} |\n`;
+        const boxBorder = BOLD_OFF + `+${'-'.repeat(colsFontA - 2)}+\n`;
+        const boxContent =
+          BOLD_OFF +
+          `| ${vipLeft}${' '.repeat(vipSpaces)}` +
+          BOLD_ON +
+          vipRight +
+          BOLD_OFF +
+          ` |\n`;
 
-        cmd += FONT_A + NORMAL_SIZE + BOLD_ON + boxTopBottom + boxMiddle + boxTopBottom + BOLD_OFF;
+        cmd += FONT_A + NORMAL_SIZE + boxBorder + boxContent + boxBorder;
       } else {
         cmd += divider;
       }
 
-      // Footer Thank You Note
-      cmd += ALIGN_CENTER + FONT_A + NORMAL_SIZE;
+      // 7. Footer Thank You Note (Line 1 Bold, Line 2 Normal Font B)
+      cmd += ALIGN_CENTER + NORMAL_SIZE;
       if (printSettings.thankYouText) {
         const lines = printSettings.thankYouText.split('\n');
         lines.forEach((line, i) => {
-          wordWrapText(line, colsFontA).forEach((wLine) => {
-            if (i === 0) cmd += BOLD_ON + `${wLine}\n` + BOLD_OFF;
-            else cmd += `${wLine}\n`;
-          });
+          if (i === 0) {
+            wordWrapText(line, colsFontA).forEach((wLine) => {
+              cmd += FONT_A + BOLD_ON + `${wLine}\n` + BOLD_OFF;
+            });
+          } else {
+            wordWrapText(line, colsFontB).forEach((wLine) => {
+              cmd += FONT_B + BOLD_OFF + `${wLine}\n` + FONT_A;
+            });
+          }
         });
       }
       cmd += `\n\n\n` + CUT_PAPER;
 
-      // 3. Combine Init + Logo + All Text into ONE Single Payload for Instant Continuous Feed
+      // 8. Combine & Send in One Continuous Stream
       const encoder = new TextEncoder();
       const initBytes = encoder.encode(INIT + ALIGN_CENTER);
       const textBytes = encoder.encode(cmd);
@@ -1834,7 +1843,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               <div className="text-center">
                 <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
                 <p className="text-[11px] text-gray-500">
-                  Native Hardware Font ဖြင့် ပီသကြည်လင်စွာနှင့် တစ်ဆက်တည်း ထွက်လာမည့် ပုံစံ
+                  Normal နှင့် Bold အထူအပါး ခွဲခြားထားသည့် ရှင်းလင်းသပ်ရပ်သော ဘောင်ချာပုံစံ
                 </p>
               </div>
 
@@ -1855,12 +1864,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                       </h2>
                     )}
                     {printSettings.subtitle && (
-                      <p className="text-[9px] font-bold text-gray-600 uppercase tracking-widest">
+                      <p className="text-[9px] text-gray-600 uppercase tracking-widest">
                         {printSettings.subtitle}
                       </p>
                     )}
                     {printSettings.headerText && (
-                      <p className="text-[10px] font-semibold text-gray-800 mt-0.5">{printSettings.headerText}</p>
+                      <p className="text-[10px] text-gray-700 mt-0.5">{printSettings.headerText}</p>
                     )}
                     {printSettings.footerText && (
                       <p className="text-[9px] text-gray-600 mt-0.5">{printSettings.footerText}</p>
@@ -1870,21 +1879,21 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
                   <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2 mb-2">
                     <div className="flex justify-between">
-                      <span>Invoice:</span>
+                      <span className="text-gray-500">Invoice:</span>
                       <span className="font-bold">SL-261014-8888</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Date/Time:</span>
+                      <span className="text-gray-500">Date/Time:</span>
                       <span className="font-bold">{samplePreviewReceipt.date} 7:00 PM</span>
                     </div>
                     {printSettings.showCustomerInfo && (
                       <div className="flex justify-between">
-                        <span>Customer:</span>
+                        <span className="text-gray-500">Customer:</span>
                         <span className="font-bold">Walk-in Guest (09458884517)</span>
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span>Therapist:</span>
+                      <span className="text-gray-500">Therapist:</span>
                       <span className="font-bold">Therapist No-1</span>
                     </div>
                   </div>
@@ -1899,7 +1908,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
                   <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
                     <div className="flex justify-between">
-                      <span>Subtotal:</span>
+                      <span className="text-gray-600">Subtotal:</span>
                       <span className="font-bold">25,000 Ks</span>
                     </div>
                     <div className="flex justify-between text-sm font-black pt-1 border-t border-gray-200">
@@ -1907,11 +1916,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                       <span>25,000 Ks</span>
                     </div>
                     <div className="flex justify-between text-[11px] pt-1">
-                      <span>Payment (Cash):</span>
+                      <span className="text-gray-500">Payment (Cash):</span>
                       <span className="font-bold">25,000 Ks</span>
                     </div>
-                    <div className="flex justify-between text-[10px] p-1.5 rounded border-2 border-gray-800 mt-1.5">
-                      <span className="font-bold">VIP Points Earned:</span>
+                    <div className="flex justify-between text-[10px] p-1.5 rounded border border-gray-500 mt-1.5">
+                      <span>VIP Points Earned:</span>
                       <span className="font-black">+1 Pts</span>
                     </div>
                   </div>
