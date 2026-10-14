@@ -17,17 +17,30 @@ interface Lantern {
   opacity?: number;
 }
 
-// 🌟 မီးပန်းဖွာထွက်မည့် Particle ဒေတာများ (၁၆ ခု - အရပ်မျက်နှာပေါင်းစုံ) 🌟
-const FIREWORK_PARTICLES = Array.from({ length: 18 }).map((_, i) => {
-  const angle = (i * 20 * Math.PI) / 180;
-  const distance = 90 + (i % 3) * 45;
+// 🌟 မီးပုံးဖွင့်ချိန်တွင် အရပ်မျက်နှာပေါင်းစုံသို့ ဖြည်းဖြည်းနှင့် ကြီးကျယ်စွာ ဖွာထွက်မည့် မီးပန်း (၂၄) ခု 🌟
+const OPENING_FIREWORKS = Array.from({ length: 24 }).map((_, i) => {
+  const angle = (i * 15 * Math.PI) / 180;
+  const distance = 110 + (i % 4) * 45;
   return {
     id: i,
     tx: `${Math.cos(angle) * distance}px`,
     ty: `${Math.sin(angle) * distance}px`,
-    color: i % 3 === 0 ? '#FFD700' : i % 3 === 1 ? '#FF6B00' : '#FFF3B0',
-    size: i % 2 === 0 ? '8px' : '5px',
-    emoji: i % 4 === 0 ? '✨' : i % 5 === 0 ? '🎆' : ''
+    color: i % 3 === 0 ? '#FFD700' : i % 3 === 1 ? '#FF5E00' : '#FFF7C2',
+    size: i % 2 === 0 ? '10px' : '7px',
+    delay: `${(i % 3) * 0.12}s`,
+    emoji: i % 4 === 0 ? '✨' : i % 6 === 0 ? '🎆' : i % 5 === 0 ? '⭐' : ''
+  };
+});
+
+// 🌟 Result Screen ထိပ်တွင် အဆက်မပြတ် ပေါက်ကွဲနေမည့် မီးရှူးမီးပန်း အလင်းစက် (၁၂) ခု 🌟
+const HEADER_SPARK_RAYS = Array.from({ length: 12 }).map((_, i) => {
+  const angle = (i * 30 * Math.PI) / 180;
+  const dist = 48 + (i % 2) * 18;
+  return {
+    id: i,
+    tx: `${Math.cos(angle) * dist}px`,
+    ty: `${Math.sin(angle) * dist}px`,
+    color: i % 2 === 0 ? '#FFD700' : '#FF8C00'
   };
 });
 
@@ -124,7 +137,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     let timerInterval: any;
 
     if (gameState === 'start') {
-      // Start Card အပေါ်ပိုင်းတွင် ညင်သာစွာ ကျလာမည့် Ambient Lanterns
       const initial = Array.from({ length: 9 }).map((_, i) => ({
         id: i,
         left: 6 + i * 10.5 + (Math.random() * 4 - 2),
@@ -141,11 +153,11 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
           {
             id: Date.now() + Math.random(),
             left: 5 + Math.random() * 85,
-            duration: 1.6 + Math.random() * 2.2,
+            duration: 1.8 + Math.random() * 2.2,
             size: 2.5 + Math.random() * 1.8
           }
         ]);
-      }, 160);
+      }, 170);
       timerInterval = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
@@ -203,14 +215,14 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     saveRecordToDB(wonPrize);
   };
 
-  // 🌟 မီးပုံးကို နှိပ်လိုက်သည့်အခါ မီးပန်းများ ဖွာထွက်ပြီးမှ Result ပြမည် 🌟
+  // 🌟 FIX: မီးပုံးဖွင့်သည့် မီးပန်း Effect ကို သေချာမြင်ရစေရန် 1.75 စက္ကန့် (1750ms) အထိ နှေးပေးထားသည် 🌟
   const openCaughtLantern = () => {
     if (isBursting) return;
     setIsBursting(true);
     setTimeout(() => {
       setGameState('result');
       setIsBursting(false);
-    }, 750);
+    }, 1750);
   };
 
   const goToLogin = () => {
@@ -263,7 +275,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       button.style.transform = 'scale(1)';
       circle.remove();
       callback();
-    }, 280);
+    }, 300);
   };
 
   return (
@@ -330,47 +342,49 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
           to { transform: scale(4); opacity: 0; }
         }
 
-        /* 🌟 ဖမ်းမိသော မီးပုံး အလယ်သို့ပျံလာပြီး တဆတ်ဆတ် လှုပ်ခါနေမည့် Animation 🌟 */
-        @keyframes flyToCenter {
-          0% { left: var(--start-x); top: var(--start-y); transform: translate(-50%, -50%) scale(0.8); }
-          100% { left: 50%; top: 46%; transform: translate(-50%, -50%) scale(1); }
+        /* 🌟 ၁။ ဖမ်းမိသော မီးပုံး အလယ်သို့ ဖြည်းညင်းစွာပျံလာပြီး လှုပ်ခါနေမည့် Animation 🌟 */
+        @keyframes flyToCenterSlow {
+          0% { left: var(--start-x); top: var(--start-y); transform: translate(-50%, -50%) scale(0.6); }
+          100% { left: 50%; top: 45%; transform: translate(-50%, -50%) scale(1); }
         }
-        @keyframes lanternWobble {
+        @keyframes lanternWobbleSlow {
           0%, 100% { transform: rotate(0deg) scale(1); }
-          15% { transform: rotate(-14deg) scale(1.08); }
-          30% { transform: rotate(12deg) scale(1.1); }
-          45% { transform: rotate(-10deg) scale(1.08); }
-          60% { transform: rotate(8deg) scale(1.05); }
-          75% { transform: rotate(-5deg) scale(1.02); }
+          20% { transform: rotate(-15deg) scale(1.08); }
+          40% { transform: rotate(15deg) scale(1.12); }
+          60% { transform: rotate(-12deg) scale(1.08); }
+          80% { transform: rotate(10deg) scale(1.04); }
         }
         .caught-lantern-wrapper {
           position: fixed;
           z-index: 100;
-          animation: flyToCenter 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+          animation: flyToCenterSlow 0.95s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
         .lantern-shake-continuous {
           display: inline-block;
-          font-size: 5.5rem;
-          animation: lanternWobble 1.1s ease-in-out infinite;
-          filter: drop-shadow(0 0 35px rgba(255, 180, 0, 0.95));
+          font-size: 6rem;
+          animation: lanternWobbleSlow 1.4s ease-in-out infinite;
+          filter: drop-shadow(0 0 40px rgba(255, 180, 0, 0.95));
           user-select: none;
         }
-        @keyframes lanternPopOut {
-          0% { transform: scale(1); opacity: 1; }
-          40% { transform: scale(1.55); opacity: 0.9; filter: brightness(2); }
-          100% { transform: scale(0); opacity: 0; }
+
+        /* 🌟 ၂။ မီးပုံးကို နှိပ်ဖွင့်လိုက်သည့်အခါ ဖြည်းဖြည်းနှင့် ထင်ရှားစွာ ပေါက်ကွဲထွက်မည့် Animation (1.75s) 🌟 */
+        @keyframes lanternGrandBurst {
+          0% { transform: scale(1) rotate(0deg); opacity: 1; }
+          25% { transform: scale(1.35) rotate(-10deg); filter: brightness(1.8) drop-shadow(0 0 50px #FFD700); opacity: 1; }
+          50% { transform: scale(1.75) rotate(10deg); filter: brightness(2.5) drop-shadow(0 0 80px #FFF); opacity: 0.9; }
+          100% { transform: scale(0.1); opacity: 0; }
         }
         .lantern-bursting {
           display: inline-block;
-          font-size: 5.5rem;
-          animation: lanternPopOut 0.45s ease-out forwards;
+          font-size: 6rem;
+          animation: lanternGrandBurst 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
 
-        /* 🌟 မီးပန်းဖွာထွက်သည့် Firework Particle Animation 🌟 */
-        @keyframes fireworkShoot {
-          0% { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
-          70% { opacity: 1; }
-          100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1.3); opacity: 0; }
+        @keyframes fireworkShootSlow {
+          0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+          15% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+          75% { opacity: 1; }
+          100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1.35); opacity: 0; }
         }
         .firework-particle {
           position: absolute;
@@ -378,23 +392,49 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
           left: 50%;
           border-radius: 50%;
           pointer-events: none;
-          animation: fireworkShoot 0.75s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+          animation: fireworkShootSlow 1.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-        @keyframes shockwaveRing {
-          0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.95; border-width: 6px; }
-          100% { transform: translate(-50%, -50%) scale(3.2); opacity: 0; border-width: 1px; }
+        @keyframes shockwaveRingSlow {
+          0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; border-width: 8px; }
+          70% { opacity: 0.8; }
+          100% { transform: translate(-50%, -50%) scale(3.8); opacity: 0; border-width: 1px; }
         }
         .firework-ring {
           position: absolute;
           top: 50%;
           left: 50%;
-          width: 90px;
-          height: 90px;
+          width: 100px;
+          height: 100px;
           border-radius: 50%;
-          border: 4px solid #FFD700;
-          box-shadow: 0 0 25px #FFD700;
+          border: 5px solid #FFD700;
+          box-shadow: 0 0 35px #FFD700, inset 0 0 20px #FF8C00;
           pointer-events: none;
-          animation: shockwaveRing 0.7s ease-out forwards;
+          animation: shockwaveRingSlow 1.4s ease-out forwards;
+        }
+
+        /* 🌟 ၃။ Result Card အပေါ်ထိပ်တွင် အဆက်မပြတ် ပေါက်ကွဲဖွာထွက်နေမည့် Continuous Fireworks CSS 🌟 */
+        @keyframes continuousSparkRay {
+          0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+          20% { opacity: 1; }
+          70% { opacity: 0.9; }
+          100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1.2); opacity: 0; }
+        }
+        .continuous-firework-ray {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          pointer-events: none;
+          animation: continuousSparkRay 2.4s ease-out infinite;
+        }
+        @keyframes resultCardEntrance {
+          0% { transform: scale(0.82) translateY(20px); opacity: 0; }
+          100% { transform: scale(1) translateY(0px); opacity: 1; }
+        }
+        .result-card-slow-enter {
+          animation: resultCardEntrance 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
       `}</style>
 
@@ -415,19 +455,15 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       <div className="flex-1 relative flex items-center justify-center p-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#2b0f08] via-[#0f0504] to-[#070302]">
         
         {/* ==========================================
-            1. START SCREEN (Unified Luxury Popup Style)
+            1. START SCREEN
            ========================================== */}
         {gameState === 'start' && (
           <div className="relative z-10 w-full max-w-[355px] rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37]/85 via-[#D4AF37]/25 to-[#D4AF37]/65 shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_45px_rgba(212,175,55,0.18)] animate-fade-in overflow-hidden">
             <div className="relative w-full h-full rounded-[calc(2rem-1.5px)] bg-gradient-to-b from-[#2a0e08] via-[#140705] to-[#0a0403] px-6 pt-7 pb-7 text-center overflow-hidden">
               
-              {/* Inner Luxury Thin Gold Frame */}
               <div className="absolute inset-2.5 rounded-[1.5rem] border border-[#D4AF37]/15 pointer-events-none z-20"></div>
-
-              {/* Top Warm Ambient Spotlight */}
               <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/35 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
 
-              {/* 🌟 Softly Falling Ambient Lanterns (No harsh box border!) 🌟 */}
               <div
                 className="absolute top-0 left-0 right-0 h-48 overflow-hidden pointer-events-none z-0"
                 style={{
@@ -452,7 +488,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                 ))}
               </div>
 
-              {/* 🌟 Centerpiece Floating Lantern Emblem 🌟 */}
               <div className="relative z-10 mt-1 mb-4 flex flex-col items-center">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] text-[9px] font-extrabold uppercase tracking-[0.2em] mb-3.5 shadow-sm">
                   <Sparkles className="w-3 h-3" /> Lucky Draw Game
@@ -464,7 +499,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                 </div>
               </div>
 
-              {/* Title & Description */}
               <h2 className="relative z-10 text-xl sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-[#D4AF37] to-yellow-200 mb-2.5 tracking-wide leading-snug drop-shadow-sm">
                 {campaignTitle}
               </h2>
@@ -476,11 +510,9 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                 ရယူပါ။ <span className="block text-[10.5px] text-gray-400 mt-1">(တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</span>
               </p>
 
-              {/* User Status & Action Buttons */}
               <div className="relative z-10">
                 {userPhone ? (
                   <div className="space-y-3.5">
-                    {/* Luxury User Phone Pill */}
                     <div className="bg-black/50 border border-[#D4AF37]/35 rounded-xl py-3 px-4 flex items-center justify-center shadow-inner">
                       <UserCircle className="w-4 h-4 text-[#D4AF37] mr-2" />
                       <span className="text-xs sm:text-sm font-black text-yellow-400 tracking-[0.18em]">{userPhone}</span>
@@ -545,7 +577,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         )}
 
         {/* ==========================================
-            2. PLAYING SCREEN (Catching Lanterns)
+            2. PLAYING SCREEN
            ========================================== */}
         {gameState === 'playing' && (
           <>
@@ -577,7 +609,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         )}
 
         {/* ==========================================
-            3. OPENING CAUGHT LANTERN (Shaking + Firework Burst!)
+            3. OPENING CAUGHT LANTERN (Slow & Grandiose Burst!)
            ========================================== */}
         {gameState === 'opening' && caughtLantern && (
           <div
@@ -591,16 +623,17 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
               {/* Ambient Pulsing Rings behind Shaking Lantern */}
               {!isBursting && (
                 <>
-                  <div className="absolute w-36 h-36 rounded-full bg-amber-500/25 blur-2xl animate-pulse pointer-events-none"></div>
-                  <div className="absolute w-28 h-28 rounded-full border border-[#D4AF37]/40 animate-ping pointer-events-none" style={{ animationDuration: '1.8s' }}></div>
+                  <div className="absolute w-44 h-44 rounded-full bg-amber-500/30 blur-2xl animate-pulse pointer-events-none"></div>
+                  <div className="absolute w-32 h-32 rounded-full border-2 border-[#D4AF37]/50 animate-ping pointer-events-none" style={{ animationDuration: '2s' }}></div>
                 </>
               )}
 
-              {/* 🌟 နှိပ်လိုက်သည့်အခါ မီးပန်းများ ဖွာထွက်လာမည့် Fireworks Effect 🌟 */}
+              {/* 🌟 နှိပ်လိုက်သည့်အခါ ဖြည်းဖြည်းနှင့် ကြီးကျယ်စွာ ဖွာထွက်လာမည့် Fireworks Effect 🌟 */}
               {isBursting && (
                 <>
                   <div className="firework-ring"></div>
-                  {FIREWORK_PARTICLES.map((p) => (
+                  <div className="firework-ring" style={{ animationDelay: '0.25s' }}></div>
+                  {OPENING_FIREWORKS.map((p) => (
                     <div
                       key={p.id}
                       className="firework-particle flex items-center justify-center"
@@ -608,14 +641,15 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                         {
                           '--tx': p.tx,
                           '--ty': p.ty,
+                          animationDelay: p.delay,
                           width: p.size,
                           height: p.size,
                           backgroundColor: p.emoji ? 'transparent' : p.color,
-                          boxShadow: p.emoji ? 'none' : `0 0 12px ${p.color}`
+                          boxShadow: p.emoji ? 'none' : `0 0 14px ${p.color}`
                         } as React.CSSProperties
                       }
                     >
-                      {p.emoji && <span className="text-lg">{p.emoji}</span>}
+                      {p.emoji && <span className="text-xl drop-shadow-[0_0_10px_rgba(255,215,0,0.9)]">{p.emoji}</span>}
                     </div>
                   ))}
                 </>
@@ -627,10 +661,16 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
               </div>
             </div>
 
-            {!isBursting && (
+            {!isBursting ? (
               <div className="absolute bottom-24 text-center px-6 animate-fade-in">
-                <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-[#D4AF37]/20 via-amber-500/30 to-[#D4AF37]/20 border border-[#D4AF37]/60 text-yellow-300 font-extrabold text-sm sm:text-base shadow-[0_0_25px_rgba(212,175,55,0.3)] animate-bounce">
-                  <Sparkles className="w-4 h-4 text-yellow-400" /> ဆုမဲဖွင့်ရန် မီးပုံးလေးကို နှိပ်ပါ
+                <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-[#D4AF37]/25 via-amber-500/35 to-[#D4AF37]/25 border border-[#D4AF37]/70 text-yellow-200 font-extrabold text-sm sm:text-base shadow-[0_0_30px_rgba(212,175,55,0.4)] animate-bounce">
+                  <Sparkles className="w-5 h-5 text-yellow-400" /> ဆုမဲဖွင့်ရန် မီးပုံးလေးကို နှိပ်ပါ
+                </div>
+              </div>
+            ) : (
+              <div className="absolute bottom-24 text-center px-6 animate-fade-in">
+                <div className="text-yellow-300 font-black text-base sm:text-lg tracking-wider drop-shadow-[0_0_12px_rgba(255,215,0,0.8)] animate-pulse">
+                  ✨ ကံထူးဆုမဲ ပွင့်နေပါပြီ... ✨
                 </div>
               </div>
             )}
@@ -638,14 +678,66 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         )}
 
         {/* ==========================================
-            4. RESULT SCREEN (Luxury VIP Reward Card)
+            4. RESULT SCREEN (With Continuous Top Fireworks!)
            ========================================== */}
         {gameState === 'result' && (
-          <div className="w-full max-w-[365px] mx-auto max-h-[85vh] overflow-y-auto scrollbar-hide z-50 rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37] via-[#D4AF37]/30 to-[#D4AF37]/70 shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_50px_rgba(212,175,55,0.25)] animate-fade-in">
+          <div className="w-full max-w-[365px] mx-auto max-h-[85vh] overflow-y-auto scrollbar-hide z-50 rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37] via-[#D4AF37]/30 to-[#D4AF37]/70 shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_50px_rgba(212,175,55,0.25)] result-card-slow-enter">
             <div className="relative text-center p-6 bg-gradient-to-b from-[#2a0e08] via-[#140705] to-[#0a0403] rounded-[calc(2rem-1.5px)] overflow-hidden">
               
-              {/* Top Golden Spotlight & Celebration Sparkles */}
+              {/* Top Golden Spotlight */}
               <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/35 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
+
+              {/* 🌟 FIX: Result Card အပေါ်ထိပ်တွင် မီးရှူးမီးပန်းများ အဆက်မပြတ် ဖွာထွက်နေမည့် အပိုင်း (ဘယ်၊ အလယ်၊ ညာ ၃ နေရာ) 🌟 */}
+              <div className="absolute top-0 left-0 right-0 h-44 overflow-hidden pointer-events-none z-0">
+                {/* ၁။ အလယ်ဗဟို မီးပန်း */}
+                <div className="absolute top-12 left-1/2 -translate-x-1/2">
+                  {HEADER_SPARK_RAYS.map((r) => (
+                    <div
+                      key={`center-${r.id}`}
+                      className="continuous-firework-ray"
+                      style={{
+                        '--tx': r.tx,
+                        '--ty': r.ty,
+                        backgroundColor: r.color,
+                        boxShadow: `0 0 10px ${r.color}`,
+                        animationDelay: '0s'
+                      } as React.CSSProperties}
+                    />
+                  ))}
+                </div>
+                {/* ၂။ ဘယ်ဘက်အပေါ် မီးပန်း */}
+                <div className="absolute top-10 left-[20%]">
+                  {HEADER_SPARK_RAYS.map((r) => (
+                    <div
+                      key={`left-${r.id}`}
+                      className="continuous-firework-ray"
+                      style={{
+                        '--tx': r.tx,
+                        '--ty': r.ty,
+                        backgroundColor: r.color,
+                        boxShadow: `0 0 10px ${r.color}`,
+                        animationDelay: '0.8s'
+                      } as React.CSSProperties}
+                    />
+                  ))}
+                </div>
+                {/* ၃။ ညာဘက်အပေါ် မီးပန်း */}
+                <div className="absolute top-10 left-[80%]">
+                  {HEADER_SPARK_RAYS.map((r) => (
+                    <div
+                      key={`right-${r.id}`}
+                      className="continuous-firework-ray"
+                      style={{
+                        '--tx': r.tx,
+                        '--ty': r.ty,
+                        backgroundColor: r.color,
+                        boxShadow: `0 0 10px ${r.color}`,
+                        animationDelay: '1.6s'
+                      } as React.CSSProperties}
+                    />
+                  ))}
+                </div>
+              </div>
 
               {/* Celebration Emblem */}
               <div className="relative z-10 w-16 h-16 rounded-full bg-gradient-to-b from-[#D4AF37]/30 to-amber-900/40 border border-[#D4AF37]/60 flex items-center justify-center mx-auto mb-3 shadow-[0_0_25px_rgba(212,175,55,0.4)] center-emblem-float">
