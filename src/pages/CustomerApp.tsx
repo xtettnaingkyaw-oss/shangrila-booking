@@ -2381,13 +2381,16 @@ const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number
         {formData.selectedItem?.vvipIncluded ? <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200">INCLUDED</span> : <input type="checkbox" checked={formData.isVvipUpgrade} disabled={disableVvipToggle} onChange={(e) => setFormData({ ...formData, isVvipUpgrade: e.target.checked, time: '' })} className="w-6 h-6 accent-[#D4AF37] cursor-pointer disabled:opacity-50" />}
       </div>
 
-      <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'} mx-1.5 sm:mx-0`}>
-        {currentStep === 2 && <button type="button" onClick={() => handleNextStep(1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>}
-        <button type="button" disabled={!formData.selectedItem} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md hover:opacity-90 flex items-center" style={{ backgroundColor: THEME.primary }}>
-          {isTherapistFirst && currentStep === 2 ? 'CONTINUE TO DATE & TIME' : 'CONTINUE TO THERAPIST'} <ChevronRight className="w-5 h-5 ml-2" />
+     <div className="mt-8 flex justify-between gap-4 mx-1.5 sm:mx-0">
+        {currentStep > 1 && (
+          <button type="button" onClick={() => handleNextStep(currentStep - 1)} className="px-6 py-4 rounded-xl font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition shadow-sm text-xs sm:text-sm tracking-wider">
+            BACK
+          </button>
+        )}
+        <button type="button" disabled={!formData.selectedItem} onClick={() => handleNextStep(currentStep + 1)} className="flex-1 py-4 px-4 rounded-xl font-bold text-[#D4AF37] bg-gradient-to-r from-[#123524] to-[#1a4a32] transition disabled:opacity-50 shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] flex items-center justify-center text-xs sm:text-sm tracking-widest uppercase whitespace-nowrap">
+          {isTherapistFirst && currentStep === 2 ? 'CONTINUE TO DATE & TIME' : 'CONTINUE TO THERAPIST'} <ChevronRight className="w-4 h-4 ml-1.5 flex-shrink-0" />
         </button>
       </div>
-    </div>
     );
 
  const renderTherapistSelection = (currentStep: number) => {
@@ -2513,14 +2516,14 @@ const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number
         })}
       </div>
 
-      <div className={`mt-8 flex ${currentStep === 1 ? 'justify-end' : 'justify-between'}`}>
+     <div className="mt-8 flex justify-between gap-4">
         {currentStep > 1 && (
-          <button type="button" onClick={() => handleNextStep(currentStep - 1)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">
+          <button type="button" onClick={() => handleNextStep(currentStep - 1)} className="px-6 py-4 rounded-xl font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition shadow-sm text-xs sm:text-sm tracking-wider">
             BACK
           </button>
         )}
-        <button type="button" disabled={is4Hands ? (!formData.therapist || !formData.therapist2) : !formData.therapist} onClick={() => handleNextStep(currentStep + 1)} className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-md flex items-center" style={{ backgroundColor: THEME.primary }}>
-          {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE TO DATE & TIME'} <ChevronRight className="w-5 h-5 ml-2" />
+        <button type="button" disabled={is4Hands ? (!formData.therapist || !formData.therapist2) : !formData.therapist} onClick={() => handleNextStep(currentStep + 1)} className="flex-1 py-4 px-4 rounded-xl font-bold text-[#D4AF37] bg-gradient-to-r from-[#123524] to-[#1a4a32] transition disabled:opacity-50 shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] flex items-center justify-center text-xs sm:text-sm tracking-widest uppercase whitespace-nowrap">
+          {isTherapistFirst && currentStep === 1 ? 'CONTINUE TO SERVICE' : 'CONTINUE TO DATE & TIME'} <ChevronRight className="w-4 h-4 ml-1.5 flex-shrink-0" />
         </button>
       </div>
     </div>
@@ -2878,9 +2881,13 @@ const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number
             )}
           </div>
 
-          <div className="mt-8 flex justify-between">
-            <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-lg font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">BACK</button>
-            <button disabled={loading || (!isStaffMode && !formData.paymentMethod) || (!isStaffMode && (formData.txId || '').trim().length !== 6)} type="submit" className="px-8 py-4 rounded-lg font-bold text-white transition disabled:opacity-50 shadow-lg flex-1 ml-4 flex justify-center items-center hover:opacity-90" style={{ backgroundColor: THEME.primary }}>{loading ? 'PROCESSING...' : (staffClockIn && formData.date === todayStr ? 'CONFIRM AND START NOW' : 'CONFIRM BOOKING')}</button>
+          <div className="mt-8 flex justify-between gap-4">
+            <button type="button" onClick={() => handleNextStep(3)} className="px-6 py-4 rounded-xl font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition shadow-sm text-xs sm:text-sm tracking-wider">
+              BACK
+            </button>
+            <button disabled={loading || (!isStaffMode && !formData.paymentMethod) || (!isStaffMode && (formData.txId || '').trim().length !== 6)} type="submit" className="flex-1 py-4 px-4 rounded-xl font-bold text-[#D4AF37] bg-gradient-to-r from-[#123524] to-[#1a4a32] transition disabled:opacity-50 shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:shadow-[0_6px_20px_rgba(18,53,36,0.4)] flex items-center justify-center text-xs sm:text-sm tracking-widest uppercase whitespace-nowrap">
+              {loading ? 'PROCESSING...' : (staffClockIn && formData.date === todayStr ? 'CONFIRM & START NOW' : 'CONFIRM BOOKING')} <ChevronRight className="w-4 h-4 ml-1.5 flex-shrink-0" />
+            </button>
           </div>
         </form>
       )}
