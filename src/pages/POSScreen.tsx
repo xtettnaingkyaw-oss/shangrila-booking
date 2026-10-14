@@ -539,11 +539,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
       {/* 🌟 Thermal Printer CSS (72mm/80mm Fixed Width) 🌟 */}
-      <style>{`
+    <style>{`
         @media print {
           @page {
             size: 80mm auto;
-            margin: 0;
+            margin: 0mm;
           }
           * {
             -webkit-print-color-adjust: exact !important;
@@ -551,7 +551,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           }
           body, html {
             width: 80mm !important;
-            height: auto !important;
+            min-height: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
@@ -562,15 +562,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 72mm !important;
-            max-width: 72mm !important;
-            margin: 0 auto !important;
-            padding: 2mm !important;
+            width: 78mm !important;
+            max-width: 78mm !important;
+            margin: 0 !important;
+            padding: 1mm 2mm !important;
             background: #ffffff !important;
             color: #000000 !important;
             font-family: 'Courier New', Courier, monospace !important;
             font-size: 11px !important;
-            line-height: 1.25 !important;
+            line-height: 1.2 !important;
           }
           .no-print { display: none !important; }
         }
