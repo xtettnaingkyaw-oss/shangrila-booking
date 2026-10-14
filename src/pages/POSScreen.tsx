@@ -346,146 +346,212 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     };
   }, []);
 
-  // 🌟 Smart Monochrome Logo Converter (With Top Peak Protection & Safe Padding!) 🌟
-  const buildLogoRasterData = async (
+  // 🌟 Unified Top Header (Logo + "THE SHANGRI-LA" + "MEN'S RETREAT" in a SINGLE Raster Block for Zero Paper Stutter!) 🌟
+  const buildUnifiedHeaderRasterData = async (
     imgUrl: string,
+    showLogo: boolean,
     filterMode: 'auto_gold_extract' | 'bw_threshold',
     thresholdVal: number,
-    sizePx: number
+    sizePx: number,
+    shopName: string,
+    subtitle: string
   ): Promise<{ rasterBytes: Uint8Array | null; previewDataUrl: string }> => {
     return new Promise((resolve) => {
-      if (!imgUrl) {
-        resolve({ rasterBytes: null, previewDataUrl: '' });
-        return;
-      }
-      const img = new Image();
-      img.crossOrigin = 'Anonymous';
-      img.onload = () => {
+      const renderHeaderWithOptionalLogo = (loadedImg: HTMLImageElement | null) => {
         try {
-          const targetWidth = Math.max(96, Math.min(384, Math.round(sizePx / 8) * 8));
-          const aspect = img.height / (img.width || 1);
-          const rawHeight = Math.round(targetWidth * aspect);
+          const titleText = (shopName || '').trim().toUpperCase();
+          const subText = (subtitle || '').trim().toUpperCase();
 
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = targetWidth;
-          tempCanvas.height = rawHeight;
-          const tempCtx = tempCanvas.getContext('2d');
-          if (!tempCtx) {
-            resolve({ rasterBytes: null, previewDataUrl: '' });
+          // Width is kept compact (max 288px = 36 bytes/row) so BLE transfers in <0.15s without pausing!
+          const bannerWidth = 288;
+          let logoCanvas: HTMLCanvasElement | null = null;
+          let logoHeight = 0;
+          let previewDataUrl = '';
+
+          if (showLogo && loadedImg) {
+            const targetLogoW = Math.max(96, Math.min(256, Math.round(sizePx / 8) * 8));
+            const aspect = loadedImg.height / (loadedImg.width || 1);
+            const rawHeight = Math.round(targetLogoW * aspect);
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = targetLogoW;
+            tempCanvas.height = rawHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            if (tempCtx) {
+              tempCtx.fillStyle = '#FFFFFF';
+              tempCtx.fillRect(0, 0, targetLogoW, rawHeight);
+              tempCtx.drawImage(loadedImg, 0, 0, targetLogoW, rawHeight);
+
+              const rawImgData = tempCtx.getImageData(0, 0, targetLogoW, rawHeight);
+              const rawPixels = rawImgData.data;
+
+              const cornerLum =
+                rawPixels[0] * 0.299 + rawPixels[1] * 0.587 + rawPixels[2] * 0.114;
+              const isAlreadyLightBg = cornerLum > 200 || rawPixels[3] < 50;
+
+              const dotMatrix: boolean[][] = [];
+              let firstBlackRow = rawHeight;
+              let lastBlackRow = 0;
+
+              for (let y = 0; y < rawHeight; y++) {
+                const row: boolean[] = [];
+                for (let x = 0; x < targetLogoW; x++) {
+                  const idx = (y * targetLogoW + x) * 4;
+                  const r = rawPixels[idx];
+                  const g = rawPixels[idx + 1];
+                  const b = rawPixels[idx + 2];
+                  const a = rawPixels[idx + 3];
+
+                  let isBlack = false;
+                  if (a > 60) {
+                    const lum = r * 0.299 + g * 0.587 + b * 0.114;
+                    if (filterMode === 'auto_gold_extract' && !isAlreadyLightBg) {
+                      const goldWarmth = r - g;
+                      const goldContrast = r - b;
+                      if (
+                        goldWarmth >= Math.max(4, thresholdVal - 3) ||
+                        goldContrast >= 22 ||
+                        lum > 92
+                      ) {
+                        isBlack = true;
+                      }
+                    } else {
+                      const bwCutoff = Math.max(40, Math.min(235, 150 + thresholdVal * 2));
+                      isBlack = lum < bwCutoff;
+                    }
+                  }
+
+                  row.push(isBlack);
+                  if (isBlack) {
+                    if (y < firstBlackRow) firstBlackRow = y;
+                    if (y > lastBlackRow) lastBlackRow = y;
+                  }
+                }
+                dotMatrix.push(row);
+              }
+
+              if (firstBlackRow > lastBlackRow) {
+                firstBlackRow = 0;
+                lastBlackRow = rawHeight - 1;
+              } else {
+                firstBlackRow = Math.max(0, firstBlackRow - 8);
+                lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 4);
+              }
+
+              const topSafePad = 12;
+              const bottomSafePad = 4;
+              const contentH = Math.max(16, lastBlackRow - firstBlackRow + 1);
+              logoHeight = contentH + topSafePad + bottomSafePad;
+
+              logoCanvas = document.createElement('canvas');
+              logoCanvas.width = targetLogoW;
+              logoCanvas.height = logoHeight;
+              const lCtx = logoCanvas.getContext('2d');
+              const lImgData = lCtx ? lCtx.createImageData(targetLogoW, logoHeight) : null;
+
+              if (lCtx && lImgData) {
+                for (let y = 0; y < logoHeight; y++) {
+                  const srcY = y - topSafePad + firstBlackRow;
+                  const inBoundsY =
+                    y >= topSafePad && y < topSafePad + contentH && srcY < rawHeight;
+                  for (let x = 0; x < targetLogoW; x++) {
+                    const isBlackDot = inBoundsY ? dotMatrix[srcY][x] : false;
+                    const pIdx = (y * targetLogoW + x) * 4;
+                    const val = isBlackDot ? 20 : 255;
+                    lImgData.data[pIdx] = val;
+                    lImgData.data[pIdx + 1] = val;
+                    lImgData.data[pIdx + 2] = val;
+                    lImgData.data[pIdx + 3] = 255;
+                  }
+                }
+                lCtx.putImageData(lImgData, 0, 0);
+                previewDataUrl = logoCanvas.toDataURL('image/png');
+              }
+            }
+          }
+
+          let textBlockH = 0;
+          if (titleText) textBlockH += 30;
+          if (subText) textBlockH += 18;
+
+          const totalBannerH = Math.ceil((logoHeight + textBlockH + 4) / 8) * 8;
+          if (totalBannerH <= 8) {
+            resolve({ rasterBytes: null, previewDataUrl });
             return;
           }
 
-          tempCtx.fillStyle = '#FFFFFF';
-          tempCtx.fillRect(0, 0, targetWidth, rawHeight);
-          tempCtx.drawImage(img, 0, 0, targetWidth, rawHeight);
-
-          const rawImgData = tempCtx.getImageData(0, 0, targetWidth, rawHeight);
-          const rawPixels = rawImgData.data;
-
-          const cornerLum =
-            rawPixels[0] * 0.299 + rawPixels[1] * 0.587 + rawPixels[2] * 0.114;
-          const isAlreadyLightBg = cornerLum > 200 || rawPixels[3] < 50;
-
-          const dotMatrix: boolean[][] = [];
-          let firstBlackRow = rawHeight;
-          let lastBlackRow = 0;
-
-          for (let y = 0; y < rawHeight; y++) {
-            const row: boolean[] = [];
-            for (let x = 0; x < targetWidth; x++) {
-              const idx = (y * targetWidth + x) * 4;
-              const r = rawPixels[idx];
-              const g = rawPixels[idx + 1];
-              const b = rawPixels[idx + 2];
-              const a = rawPixels[idx + 3];
-
-              let isBlack = false;
-              if (a > 60) {
-                const lum = r * 0.299 + g * 0.587 + b * 0.114;
-
-                if (filterMode === 'auto_gold_extract' && !isAlreadyLightBg) {
-                  const goldWarmth = r - g;
-                  const goldContrast = r - b;
-                  if (
-                    goldWarmth >= Math.max(4, thresholdVal - 3) ||
-                    goldContrast >= 22 ||
-                    lum > 92
-                  ) {
-                    isBlack = true;
-                  }
-                } else {
-                  const bwCutoff = Math.max(40, Math.min(235, 150 + thresholdVal * 2));
-                  isBlack = lum < bwCutoff;
-                }
-              }
-
-              row.push(isBlack);
-              if (isBlack) {
-                if (y < firstBlackRow) firstBlackRow = y;
-                if (y > lastBlackRow) lastBlackRow = y;
-              }
-            }
-            dotMatrix.push(row);
+          const masterCanvas = document.createElement('canvas');
+          masterCanvas.width = bannerWidth;
+          masterCanvas.height = totalBannerH;
+          const mCtx = masterCanvas.getContext('2d');
+          if (!mCtx) {
+            resolve({ rasterBytes: null, previewDataUrl });
+            return;
           }
 
-          if (firstBlackRow > lastBlackRow) {
-            firstBlackRow = 0;
-            lastBlackRow = rawHeight - 1;
+          mCtx.fillStyle = '#FFFFFF';
+          mCtx.fillRect(0, 0, bannerWidth, totalBannerH);
+
+          let curY = 0;
+          if (logoCanvas) {
+            const logoX = Math.round((bannerWidth - logoCanvas.width) / 2);
+            mCtx.drawImage(logoCanvas, logoX, 0);
+            curY += logoHeight + 2;
           } else {
-            firstBlackRow = Math.max(0, firstBlackRow - 8);
-            lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 4);
+            curY += 4;
           }
 
-          const topSafePad = 14;
-          const bottomSafePad = 2;
-          const contentHeight = Math.max(16, lastBlackRow - firstBlackRow + 1);
-          const totalOutHeight = contentHeight + topSafePad + bottomSafePad;
+          mCtx.fillStyle = '#000000';
+          mCtx.textAlign = 'center';
+          mCtx.textBaseline = 'top';
 
-          const nBytesPerRow = Math.ceil(targetWidth / 8);
+          if (titleText) {
+            mCtx.font = '900 23px Georgia, "Times New Roman", Times, serif';
+            if ('letterSpacing' in mCtx) {
+              (mCtx as any).letterSpacing = '1.2px';
+            }
+            mCtx.fillText(titleText, bannerWidth / 2, curY);
+            mCtx.fillText(titleText, bannerWidth / 2 + 0.45, curY);
+            curY += 28;
+          }
+
+          if (subText) {
+            mCtx.font = '700 12px "Courier New", Courier, monospace, sans-serif';
+            if ('letterSpacing' in mCtx) {
+              (mCtx as any).letterSpacing = '2.5px';
+            }
+            mCtx.fillText(subText, bannerWidth / 2, curY);
+          }
+
+          const finalPixels = mCtx.getImageData(0, 0, bannerWidth, totalBannerH).data;
+          const nBytesPerRow = Math.ceil(bannerWidth / 8);
           const bitmapBytes: number[] = [];
 
-          const outCanvas = document.createElement('canvas');
-          outCanvas.width = targetWidth;
-          outCanvas.height = totalOutHeight;
-          const outCtx = outCanvas.getContext('2d');
-          const outImgData = outCtx ? outCtx.createImageData(targetWidth, totalOutHeight) : null;
-
-          for (let y = 0; y < totalOutHeight; y++) {
-            const srcY = y - topSafePad + firstBlackRow;
-            const inBoundsY = y >= topSafePad && y < topSafePad + contentHeight && srcY < rawHeight;
-
+          for (let y = 0; y < totalBannerH; y++) {
             for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
               let byte = 0;
               for (let bit = 0; bit < 8; bit++) {
                 const pxCol = xByte * 8 + bit;
-                const isBlackDot =
-                  inBoundsY && pxCol < targetWidth ? dotMatrix[srcY][pxCol] : false;
-                if (isBlackDot) {
-                  byte |= 1 << (7 - bit);
-                }
-                if (outImgData && pxCol < targetWidth) {
-                  const pIdx = (y * targetWidth + pxCol) * 4;
-                  const val = isBlackDot ? 20 : 255;
-                  outImgData.data[pIdx] = val;
-                  outImgData.data[pIdx + 1] = val;
-                  outImgData.data[pIdx + 2] = val;
-                  outImgData.data[pIdx + 3] = 255;
+                if (pxCol < bannerWidth) {
+                  const idx = (y * bannerWidth + pxCol) * 4;
+                  const lum =
+                    finalPixels[idx] * 0.299 +
+                    finalPixels[idx + 1] * 0.587 +
+                    finalPixels[idx + 2] * 0.114;
+                  if (lum < 165) {
+                    byte |= 1 << (7 - bit);
+                  }
                 }
               }
               bitmapBytes.push(byte);
             }
           }
 
-          let previewDataUrl = '';
-          if (outCtx && outImgData) {
-            outCtx.putImageData(outImgData, 0, 0);
-            previewDataUrl = outCanvas.toDataURL('image/png');
-          }
-
           const xL = nBytesPerRow & 0xff;
           const xH = (nBytesPerRow >> 8) & 0xff;
-          const yL = totalOutHeight & 0xff;
-          const yH = (totalOutHeight >> 8) & 0xff;
+          const yL = totalBannerH & 0xff;
+          const yH = (totalBannerH >> 8) & 0xff;
           const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
 
           resolve({
@@ -493,177 +559,34 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             previewDataUrl
           });
         } catch (e) {
-          console.warn('Logo raster error:', e);
+          console.warn('Unified header raster error:', e);
           resolve({ rasterBytes: null, previewDataUrl: '' });
         }
       };
-      img.onerror = () => resolve({ rasterBytes: null, previewDataUrl: '' });
-      img.src = imgUrl;
+
+      if (showLogo && imgUrl) {
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => renderHeaderWithOptionalLogo(img);
+        img.onerror = () => renderHeaderWithOptionalLogo(null);
+        img.src = imgUrl;
+      } else {
+        renderHeaderWithOptionalLogo(null);
+      }
     });
-  };
-
-  // 🌟 Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT") Small & Fast Raster Generator 🌟
-  const buildBrandTitleRasterBytes = (
-    shopName: string,
-    subtitle: string,
-    paperWidth: '58mm' | '80mm'
-  ): Uint8Array | null => {
-    try {
-      const canvasWidth = paperWidth === '80mm' ? 512 : 384;
-      const titleText = (shopName || '').trim().toUpperCase();
-      const subText = (subtitle || '').trim().toUpperCase();
-
-      if (!titleText && !subText) return null;
-
-      let totalHeight = 4;
-      if (titleText) totalHeight += 32;
-      if (subText) totalHeight += 20;
-      totalHeight = Math.ceil(totalHeight / 8) * 8;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = totalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return null;
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvasWidth, totalHeight);
-      ctx.fillStyle = '#000000';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-
-      let currentY = 2;
-
-      if (titleText) {
-        ctx.font = '900 25px Georgia, "Times New Roman", Times, serif';
-        if ('letterSpacing' in ctx) {
-          (ctx as any).letterSpacing = '1.5px';
-        }
-        ctx.fillText(titleText, canvasWidth / 2, currentY);
-        ctx.fillText(titleText, canvasWidth / 2 + 0.5, currentY);
-        currentY += 30;
-      }
-
-      if (subText) {
-        ctx.font = '700 13px "Courier New", Courier, monospace, sans-serif';
-        if ('letterSpacing' in ctx) {
-          (ctx as any).letterSpacing = '3px';
-        }
-        ctx.fillText(subText, canvasWidth / 2, currentY);
-      }
-
-      const imgData = ctx.getImageData(0, 0, canvasWidth, totalHeight).data;
-      const nBytesPerRow = Math.ceil(canvasWidth / 8);
-      const bitmapBytes: number[] = [];
-
-      for (let y = 0; y < totalHeight; y++) {
-        for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
-          let byte = 0;
-          for (let bit = 0; bit < 8; bit++) {
-            const pxCol = xByte * 8 + bit;
-            if (pxCol < canvasWidth) {
-              const idx = (y * canvasWidth + pxCol) * 4;
-              const lum = imgData[idx] * 0.299 + imgData[idx + 1] * 0.587 + imgData[idx + 2] * 0.114;
-              if (lum < 165) {
-                byte |= 1 << (7 - bit);
-              }
-            }
-          }
-          bitmapBytes.push(byte);
-        }
-      }
-
-      const xL = nBytesPerRow & 0xff;
-      const xH = (nBytesPerRow >> 8) & 0xff;
-      const yL = totalHeight & 0xff;
-      const yH = (totalHeight >> 8) & 0xff;
-      const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
-
-      return new Uint8Array([...rasterHeader, ...bitmapBytes]);
-    } catch (e) {
-      console.warn('Brand title raster error:', e);
-      return null;
-    }
-  };
-
-  // 🌟 Prominent TOTAL Row (28px Extra-Bold & Big so it is clearly larger than everything else!) 🌟
-  const buildBigTotalRasterBytes = (
-    totalLabel: string,
-    totalAmountStr: string,
-    paperWidth: '58mm' | '80mm'
-  ): Uint8Array | null => {
-    try {
-      const canvasWidth = paperWidth === '80mm' ? 512 : 384;
-      const totalHeight = 40;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = canvasWidth;
-      canvas.height = totalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return null;
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvasWidth, totalHeight);
-      ctx.fillStyle = '#000000';
-
-      // Thin top separator line
-      ctx.fillRect(0, 2, canvasWidth, 1);
-
-      // 28px Heavy Extra-Bold Arial/Sans-Serif (Much bigger & clearer than Font B items!)
-      ctx.font = '900 27px Arial, Helvetica, sans-serif';
-      ctx.textBaseline = 'middle';
-
-      const centerY = 23;
-      ctx.textAlign = 'left';
-      ctx.fillText(totalLabel, 2, centerY);
-      ctx.fillText(totalLabel, 2.6, centerY);
-
-      ctx.textAlign = 'right';
-      ctx.fillText(totalAmountStr, canvasWidth - 2, centerY);
-      ctx.fillText(totalAmountStr, canvasWidth - 2.6, centerY);
-
-      const imgData = ctx.getImageData(0, 0, canvasWidth, totalHeight).data;
-      const nBytesPerRow = Math.ceil(canvasWidth / 8);
-      const bitmapBytes: number[] = [];
-
-      for (let y = 0; y < totalHeight; y++) {
-        for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
-          let byte = 0;
-          for (let bit = 0; bit < 8; bit++) {
-            const pxCol = xByte * 8 + bit;
-            if (pxCol < canvasWidth) {
-              const idx = (y * canvasWidth + pxCol) * 4;
-              const lum = imgData[idx] * 0.299 + imgData[idx + 1] * 0.587 + imgData[idx + 2] * 0.114;
-              if (lum < 165) {
-                byte |= 1 << (7 - bit);
-              }
-            }
-          }
-          bitmapBytes.push(byte);
-        }
-      }
-
-      const xL = nBytesPerRow & 0xff;
-      const xH = (nBytesPerRow >> 8) & 0xff;
-      const yL = totalHeight & 0xff;
-      const yH = (totalHeight >> 8) & 0xff;
-      const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
-
-      return new Uint8Array([...rasterHeader, ...bitmapBytes]);
-    } catch (e) {
-      console.warn('Big total raster error:', e);
-      return null;
-    }
   };
 
   useEffect(() => {
     let active = true;
     if (printSettings.showLogo && printedLogoSourceUrl) {
-      buildLogoRasterData(
+      buildUnifiedHeaderRasterData(
         printedLogoSourceUrl,
+        true,
         printSettings.logoFilterMode,
         printSettings.logoThreshold,
-        printSettings.logoSize
+        printSettings.logoSize,
+        printSettings.shopName,
+        printSettings.subtitle
       ).then((res) => {
         if (active && res.previewDataUrl) {
           setProcessedLogoPreview(res.previewDataUrl);
@@ -680,7 +603,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     printSettings.showLogo,
     printSettings.logoFilterMode,
     printSettings.logoThreshold,
-    printSettings.logoSize
+    printSettings.logoSize,
+    printSettings.shopName,
+    printSettings.subtitle
   ]);
 
   // 🌟 Handle Custom Printed Receipt Logo Upload 🌟
@@ -1073,9 +998,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Ultra-Fast Continuous BLE Streaming Helper (စာရွက်လုံးဝမထစ်ဘဲ တစ်ဆက်တည်း ထွက်စေရန်) 🌟
+  // 🌟 Non-Stop High-Speed BLE Streaming Helper (Zero Delay When WriteWithoutResponse Is Supported!) 🌟
   const sendBytesToPrinter = async (writeChar: any, dataBytes: Uint8Array) => {
-    const chunkSize = 240;
+    const chunkSize = 244;
     for (let i = 0; i < dataBytes.length; i += chunkSize) {
       const chunk = dataBytes.slice(i, i + chunkSize);
       try {
@@ -1092,10 +1017,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           } else {
             await writeChar.writeValue(sub);
           }
-          await new Promise((r) => setTimeout(r, 4));
         }
       }
-      await new Promise((r) => setTimeout(r, 2));
     }
   };
 
@@ -1119,7 +1042,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     return lines;
   };
 
-  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT (Fast Continuous Paper Feed + Small Service Item + Big Prominent Total!) 🌟
+  // 🌟 PROFESSIONAL UI/UX NATIVE ESC/POS PRINT ENGINE (Zero Mid-Receipt Stutter + Balanced Typography!) 🌟
   const handleBluetoothEscPosPrint = async (customRecord?: OfflineSaleRecord) => {
     const recordToPrint = customRecord || activeReceipt;
     if (!recordToPrint) return;
@@ -1155,123 +1078,112 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       const ALIGN_LEFT = ESC + 'a\x00';
       const BOLD_ON = ESC + 'E\x01';
       const BOLD_OFF = ESC + 'E\x00';
-      const FONT_A = ESC + 'M\x00'; // Standard Font (12x24)
-      const FONT_B = ESC + 'M\x01'; // Compact Font (9x17) - Crisp & Smaller!
+      const FONT_A = ESC + 'M\x00'; // Standard Prominent Font (12x24) -> Reserved for TOTAL & Key Headers!
+      const FONT_B = ESC + 'M\x01'; // Clean Compact Font (9x17) -> Used for Body Rows, Service Items & Subtotals!
       const NORMAL_SIZE = GS + '!\x00';
+      const MICRO_SPACE = ESC + 'J\x08'; // 1mm vertical breathing room
       const CUT_PAPER = GS + 'V\x41\x03';
 
-      const divider = FONT_A + NORMAL_SIZE + BOLD_OFF + '-'.repeat(colsFontA) + '\n';
+      // Clean dashed divider in Font A
+      const dashedDivider = FONT_A + NORMAL_SIZE + BOLD_OFF + '-'.repeat(colsFontA) + '\n';
+      // Subtle spaced separator above TOTAL so it never touches the text!
+      const subtleTotalSeparator =
+        FONT_B +
+        NORMAL_SIZE +
+        BOLD_OFF +
+        '- '.repeat(Math.floor(colsFontB / 2)) +
+        '\n' +
+        MICRO_SPACE;
 
-      // Standard Font A Row Formatter (For Metadata)
-      const formatFontARow = (
+      // 🌟 Clean Compact Font B Row (Used for Metadata, Service Items, Subtotal, Payment, Change Due) 🌟
+      const formatCleanFontBRow = (
         left: string,
         right: string,
         leftBold = false,
-        rightBold = true
-      ): string => {
-        const l = left.trim();
-        const r = right.trim();
-        const minLen = l.length + r.length + 1;
-
-        const leftStr = (leftBold ? BOLD_ON : BOLD_OFF) + l + BOLD_OFF;
-        const rightStr = (rightBold ? BOLD_ON : BOLD_OFF) + r + BOLD_OFF;
-
-        if (minLen <= colsFontA) {
-          const spaces = colsFontA - l.length - r.length;
-          return FONT_A + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n';
-        }
-
-        if (minLen <= colsFontB) {
-          const spaces = colsFontB - l.length - r.length;
-          return FONT_B + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n' + FONT_A;
-        }
-
-        const spaces = Math.max(1, colsFontA - r.length);
-        return FONT_A + NORMAL_SIZE + leftStr + '\n' + ' '.repeat(spaces) + rightStr + '\n';
-      };
-
-      // 🌟 Compact Hardware Font B Row Formatter (For Service Items, Subtotal, Payment, Change Due so they are smaller than TOTAL!) 🌟
-      const formatCompactFontBRow = (
-        left: string,
-        right: string,
-        leftBold = false,
-        rightBold = true
+        rightBold = false
       ): string => {
         const l = left.trim();
         const r = right.trim();
         const leftStr = (leftBold ? BOLD_ON : BOLD_OFF) + l + BOLD_OFF;
         const rightStr = (rightBold ? BOLD_ON : BOLD_OFF) + r + BOLD_OFF;
         const spaces = Math.max(1, colsFontB - l.length - r.length);
-        return FONT_B + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n' + FONT_A;
+        return FONT_B + NORMAL_SIZE + leftStr + ' '.repeat(spaces) + rightStr + '\n';
       };
 
-      // 1. Build Logo Raster Bytes
-      let logoPartBytes: Uint8Array | null = null;
-      if (printSettings.showLogo && printedLogoSourceUrl) {
-        const { rasterBytes } = await buildLogoRasterData(
-          printedLogoSourceUrl,
-          printSettings.logoFilterMode,
-          printSettings.logoThreshold,
-          printSettings.logoSize
+      // 🌟 Prominent Font A Row (Reserved for TOTAL so it stands out 35% larger & bolder than Font B rows!) 🌟
+      const formatHeroTotalRow = (left: string, right: string): string => {
+        const l = left.trim();
+        const r = right.trim();
+        const spaces = Math.max(1, colsFontA - l.length - r.length);
+        return (
+          FONT_A +
+          NORMAL_SIZE +
+          BOLD_ON +
+          `${l}${' '.repeat(spaces)}${r}\n` +
+          BOLD_OFF +
+          MICRO_SPACE
         );
-        logoPartBytes = rasterBytes;
-      }
+      };
 
-      // 2. Build Luxury Serif Brand Title ("THE SHANGRI-LA" & "MEN'S RETREAT")
-      const brandTitleRasterBytes = buildBrandTitleRasterBytes(
+      // 1. Build Unified Top Header Raster (Logo + Store Title + Subtitle in ONE single image at the very top!)
+      const { rasterBytes: headerBannerBytes } = await buildUnifiedHeaderRasterData(
+        printedLogoSourceUrl,
+        printSettings.showLogo,
+        printSettings.logoFilterMode,
+        printSettings.logoThreshold,
+        printSettings.logoSize,
         printSettings.shopName,
-        printSettings.subtitle,
-        printSettings.paperWidth
+        printSettings.subtitle
       );
 
-      // 3. Build Native Hardware Text Before TOTAL
-      let cmdBeforeTotal = ALIGN_CENTER + NORMAL_SIZE + BOLD_OFF;
+      // 2. Build 100% Native Text Body (Zero mid-receipt images = Zero paper stutter!)
+      let cmd = ALIGN_CENTER + NORMAL_SIZE + BOLD_OFF;
 
-      if (!brandTitleRasterBytes) {
+      if (!headerBannerBytes) {
         if (printSettings.shopName) {
-          cmdBeforeTotal += FONT_A + BOLD_ON + `${printSettings.shopName.toUpperCase()}\n` + BOLD_OFF;
+          cmd += FONT_A + BOLD_ON + `${printSettings.shopName.toUpperCase()}\n` + BOLD_OFF;
         }
         if (printSettings.subtitle) {
-          cmdBeforeTotal += FONT_B + BOLD_OFF + `${printSettings.subtitle.toUpperCase()}\n` + FONT_A;
+          cmd += FONT_B + BOLD_OFF + `${printSettings.subtitle.toUpperCase()}\n`;
         }
       }
 
       if (printSettings.headerText) {
-        wordWrapText(printSettings.headerText, colsFontA).forEach((line) => {
-          cmdBeforeTotal += FONT_A + BOLD_OFF + `${line}\n`;
+        wordWrapText(printSettings.headerText, colsFontB).forEach((line) => {
+          cmd += FONT_B + BOLD_OFF + `${line}\n`;
         });
       }
       if (printSettings.footerText) {
         wordWrapText(printSettings.footerText, colsFontB).forEach((line) => {
-          cmdBeforeTotal += FONT_B + BOLD_OFF + `${line}\n`;
+          cmd += FONT_B + BOLD_OFF + `${line}\n`;
         });
-        cmdBeforeTotal += FONT_A;
       }
       if (printSettings.phone) {
-        cmdBeforeTotal += FONT_B + BOLD_OFF + `Tel: ${printSettings.phone}\n` + FONT_A;
+        cmd += FONT_B + BOLD_OFF + `Tel: ${printSettings.phone}\n`;
       }
-      cmdBeforeTotal += divider;
+      cmd += dashedDivider;
 
-      // Metadata Section (Invoice, Date/Time, Customer, Therapist)
-      cmdBeforeTotal += ALIGN_LEFT;
-      cmdBeforeTotal += formatFontARow('Invoice:', recordToPrint.invoiceNo, false, true);
-      cmdBeforeTotal += formatFontARow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`, false, true);
+      // 3. Metadata Section (Clean Compact Font B: Left Normal, Right Normal/Clean)
+      cmd += ALIGN_LEFT;
+      cmd += formatCleanFontBRow('Invoice:', recordToPrint.invoiceNo, false, true);
+      cmd += formatCleanFontBRow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`, false, false);
       if (printSettings.showCustomerInfo) {
         const customerFull = `${recordToPrint.customerName}${
           recordToPrint.customerPhone ? ` (${recordToPrint.customerPhone})` : ''
         }`;
-        cmdBeforeTotal += formatFontARow('Customer:', customerFull, false, true);
+        cmd += formatCleanFontBRow('Customer:', customerFull, false, false);
       }
-      cmdBeforeTotal += formatFontARow('Therapist:', recordToPrint.therapistName, false, true);
-      cmdBeforeTotal += divider;
+      cmd += formatCleanFontBRow('Therapist:', recordToPrint.therapistName, false, false);
+      cmd += dashedDivider;
 
-      // 🌟 Service Items Section ("1. Oil Massage 37,000 Ks" -> Printed in Crisp Compact FONT_B so it is smaller than TOTAL!) 🌟
+      // 4. 🌟 Service Items Section ("1. Oil Massage   37,000 Ks" -> Normal Weight, NOT Bold, Clean & Crisp!) 🌟
       recordToPrint.items.forEach((item, idx) => {
         const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
         const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
         const itemPriceStr = formatPrice(unitPrice * item.qty);
 
-        cmdBeforeTotal += formatCompactFontBRow(itemTitle, itemPriceStr, true, true);
+        // Both item name and price are Normal Weight (false, false) as requested!
+        cmd += formatCleanFontBRow(itemTitle, itemPriceStr, false, false);
 
         const subDetails = [
           item.duration || '',
@@ -1282,56 +1194,47 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           .join(' ');
 
         if (subDetails) {
-          cmdBeforeTotal += FONT_B + NORMAL_SIZE + BOLD_OFF + `   ${subDetails}\n` + FONT_A;
+          cmd += FONT_B + NORMAL_SIZE + BOLD_OFF + `   ${subDetails}\n`;
         }
       });
-      cmdBeforeTotal += divider;
+      cmd += dashedDivider;
 
-      // 🌟 Subtotal & Discount in Compact FONT_B 🌟
-      cmdBeforeTotal += formatCompactFontBRow('Subtotal:', formatPrice(recordToPrint.subTotal), false, true);
+      // 5. Subtotal & Discount (Clean Compact Font B Normal Weight)
+      cmd += formatCleanFontBRow('Subtotal:', formatPrice(recordToPrint.subTotal), false, false);
       if (recordToPrint.discountAmount > 0) {
-        cmdBeforeTotal += formatCompactFontBRow(
+        cmd += formatCleanFontBRow(
           `Discount (${recordToPrint.discountReason}):`,
           `-${formatPrice(recordToPrint.discountAmount)}`,
           false,
-          true
+          false
         );
       }
 
-      // 4. 🌟 Build Big Prominent TOTAL Raster Bytes ("TOTAL: 37,000 Ks" -> 27px Extra-Bold!) 🌟
-      const bigTotalRasterBytes = buildBigTotalRasterBytes(
-        'TOTAL:',
-        formatPrice(recordToPrint.totalPrice),
-        printSettings.paperWidth
-      );
+      // 6. 🌟 HERO TOTAL ROW (Spaced separator above + Large Font A Bold + Breathing space below!) 🌟
+      cmd += subtleTotalSeparator;
+      cmd += formatHeroTotalRow('TOTAL:', formatPrice(recordToPrint.totalPrice));
 
-      if (!bigTotalRasterBytes) {
-        cmdBeforeTotal += formatFontARow('TOTAL:', formatPrice(recordToPrint.totalPrice), true, true);
-      } else {
-        cmdBeforeTotal += ALIGN_CENTER;
-      }
-
-      // 5. Build Native Hardware Text After TOTAL (Payment, Change Due in Compact FONT_B + VIP Box + Footer)
-      let cmdAfterTotal = ALIGN_LEFT + NORMAL_SIZE + BOLD_OFF;
-
-      cmdAfterTotal += formatCompactFontBRow(
+      // 7. Payment & Change Due (Clean Compact Font B Normal Weight)
+      cmd += formatCleanFontBRow(
         `Payment (${recordToPrint.paymentMethod}):`,
         formatPrice(recordToPrint.cashReceived),
         false,
-        true
+        false
       );
       if (recordToPrint.paymentMethod === 'Cash' && recordToPrint.changeDue > 0) {
-        cmdAfterTotal += formatCompactFontBRow('Change Due:', formatPrice(recordToPrint.changeDue), false, true);
+        cmd += formatCleanFontBRow('Change Due:', formatPrice(recordToPrint.changeDue), false, false);
       }
 
-      // VIP Points Earned Box
+      // 8. VIP Points Earned Box (Clean ASCII Box in Font B)
       if (recordToPrint.pointsEarned > 0) {
-        const boxInnerW = colsFontA - 4;
+        cmd += MICRO_SPACE;
+        const boxInnerW = colsFontB - 4;
         const vipLeft = 'VIP Points Earned:';
         const vipRight = `+${recordToPrint.pointsEarned} Pts`;
         const vipSpaces = Math.max(1, boxInnerW - vipLeft.length - vipRight.length);
-        const boxBorder = BOLD_OFF + `+${'-'.repeat(colsFontA - 2)}+\n`;
+        const boxBorder = FONT_B + BOLD_OFF + `+${'-'.repeat(colsFontB - 2)}+\n`;
         const boxContent =
+          FONT_B +
           BOLD_OFF +
           `| ${vipLeft}${' '.repeat(vipSpaces)}` +
           BOLD_ON +
@@ -1339,42 +1242,32 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           BOLD_OFF +
           ` |\n`;
 
-        cmdAfterTotal += FONT_A + NORMAL_SIZE + boxBorder + boxContent + boxBorder;
+        cmd += boxBorder + boxContent + boxBorder;
       } else {
-        cmdAfterTotal += divider;
+        cmd += dashedDivider;
       }
 
-      // Footer Thank You Note
-      cmdAfterTotal += ALIGN_CENTER + NORMAL_SIZE;
+      // 9. Footer Thank You Note
+      cmd += MICRO_SPACE + ALIGN_CENTER + NORMAL_SIZE;
       if (printSettings.thankYouText) {
         const lines = printSettings.thankYouText.split('\n');
         lines.forEach((line, i) => {
-          if (i === 0) {
-            wordWrapText(line, colsFontA).forEach((wLine) => {
-              cmdAfterTotal += FONT_A + BOLD_ON + `${wLine}\n` + BOLD_OFF;
-            });
-          } else {
-            wordWrapText(line, colsFontB).forEach((wLine) => {
-              cmdAfterTotal += FONT_B + BOLD_OFF + `${wLine}\n` + FONT_A;
-            });
-          }
+          wordWrapText(line, colsFontB).forEach((wLine) => {
+            cmd += FONT_B + (i === 0 ? BOLD_ON : BOLD_OFF) + `${wLine}\n` + BOLD_OFF;
+          });
         });
       }
-      cmdAfterTotal += `\n\n\n` + CUT_PAPER;
+      cmd += FONT_A + `\n\n\n` + CUT_PAPER;
 
-      // 6. Combine & Stream Fast to Printer
+      // 10. Combine & Send in One Continuous Non-Stop Stream!
       const encoder = new TextEncoder();
       const initBytes = encoder.encode(INIT + ALIGN_CENTER);
-      const beforeTotalBytes = encoder.encode(cmdBeforeTotal);
-      const afterTotalBytes = encoder.encode(cmdAfterTotal);
+      const bodyTextBytes = encoder.encode(cmd);
 
       const totalByteLen =
         initBytes.length +
-        (logoPartBytes ? logoPartBytes.length : 0) +
-        (brandTitleRasterBytes ? brandTitleRasterBytes.length : 0) +
-        beforeTotalBytes.length +
-        (bigTotalRasterBytes ? bigTotalRasterBytes.length : 0) +
-        afterTotalBytes.length;
+        (headerBannerBytes ? headerBannerBytes.length : 0) +
+        bodyTextBytes.length;
 
       const combinedPayload = new Uint8Array(totalByteLen);
 
@@ -1382,25 +1275,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       combinedPayload.set(initBytes, offset);
       offset += initBytes.length;
 
-      if (logoPartBytes) {
-        combinedPayload.set(logoPartBytes, offset);
-        offset += logoPartBytes.length;
+      if (headerBannerBytes) {
+        combinedPayload.set(headerBannerBytes, offset);
+        offset += headerBannerBytes.length;
       }
 
-      if (brandTitleRasterBytes) {
-        combinedPayload.set(brandTitleRasterBytes, offset);
-        offset += brandTitleRasterBytes.length;
-      }
-
-      combinedPayload.set(beforeTotalBytes, offset);
-      offset += beforeTotalBytes.length;
-
-      if (bigTotalRasterBytes) {
-        combinedPayload.set(bigTotalRasterBytes, offset);
-        offset += bigTotalRasterBytes.length;
-      }
-
-      combinedPayload.set(afterTotalBytes, offset);
+      combinedPayload.set(bodyTextBytes, offset);
 
       await sendBytesToPrinter(writeChar, combinedPayload);
     } catch (err: any) {
@@ -1616,21 +1496,21 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   )}
                 </div>
 
-                <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
+                <div className="space-y-1 text-[10px] border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
                   <div className="flex justify-between">
                     <span className="text-gray-500">Invoice:</span>
                     <span className="font-bold">{activeReceipt.invoiceNo}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Date/Time:</span>
-                    <span className="font-bold">
+                    <span className="text-gray-800">
                       {activeReceipt.date} {activeReceipt.time}
                     </span>
                   </div>
                   {printSettings.showCustomerInfo && (
                     <div className="flex justify-between">
                       <span className="text-gray-500">Customer:</span>
-                      <span className="font-bold">
+                      <span className="text-gray-800">
                         {activeReceipt.customerName}{' '}
                         {activeReceipt.customerPhone ? `(${activeReceipt.customerPhone})` : ''}
                       </span>
@@ -1638,7 +1518,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   )}
                   <div className="flex justify-between">
                     <span className="text-gray-500">Therapist:</span>
-                    <span className="font-bold text-right">{activeReceipt.therapistName}</span>
+                    <span className="text-gray-800 text-right">{activeReceipt.therapistName}</span>
                   </div>
                 </div>
 
@@ -1647,7 +1527,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
                     return (
                       <div key={idx} className="text-[10px]">
-                        <div className="flex justify-between font-bold">
+                        <div className="flex justify-between font-normal text-gray-800">
                           <span>
                             {idx + 1}. {item.name} {item.qty > 1 ? `x${item.qty}` : ''}
                           </span>
@@ -1655,8 +1535,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         </div>
                         <div className="text-[9px] text-gray-500 pl-3">
                           {item.duration && <span>{item.duration} </span>}
-                          {item.isVvipUpgrade && <span className="text-amber-700 font-bold">(+VVIP Room)</span>}
-                          {item.vvipIncluded && <span className="text-green-700 font-bold">(VVIP Free)</span>}
+                          {item.isVvipUpgrade && <span className="text-amber-700">(+VVIP Room)</span>}
+                          {item.vvipIncluded && <span className="text-green-700">(VVIP Free)</span>}
                         </div>
                       </div>
                     );
@@ -1666,31 +1546,31 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-3 mb-3">
                   <div className="flex justify-between text-[10px]">
                     <span className="text-gray-500">Subtotal:</span>
-                    <span className="font-bold text-gray-700">{formatPrice(activeReceipt.subTotal)}</span>
+                    <span className="text-gray-700">{formatPrice(activeReceipt.subTotal)}</span>
                   </div>
                   {activeReceipt.discountAmount > 0 && (
                     <div className="flex justify-between text-[10px] text-green-700">
                       <span>Discount ({activeReceipt.discountReason}):</span>
-                      <span className="font-bold">-{formatPrice(activeReceipt.discountAmount)}</span>
+                      <span>-{formatPrice(activeReceipt.discountAmount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-base font-black py-1 border-t border-gray-300 text-[#123524]">
+                  <div className="flex justify-between text-sm font-black py-1.5 my-1 border-t border-dashed border-gray-300 text-[#123524]">
                     <span>TOTAL:</span>
                     <span>{formatPrice(activeReceipt.totalPrice)}</span>
                   </div>
                   <div className="flex justify-between text-[10px]">
                     <span className="text-gray-500">Payment ({activeReceipt.paymentMethod}):</span>
-                    <span className="font-bold text-gray-700">{formatPrice(activeReceipt.cashReceived)}</span>
+                    <span className="text-gray-700">{formatPrice(activeReceipt.cashReceived)}</span>
                   </div>
                   {activeReceipt.paymentMethod === 'Cash' && activeReceipt.changeDue > 0 && (
                     <div className="flex justify-between text-[10px]">
                       <span className="text-gray-500">Change Due:</span>
-                      <span className="font-bold text-gray-700">{formatPrice(activeReceipt.changeDue)}</span>
+                      <span className="text-gray-700">{formatPrice(activeReceipt.changeDue)}</span>
                     </div>
                   )}
                   {activeReceipt.pointsEarned > 0 && (
-                    <div className="flex justify-between text-[10px] bg-yellow-50 p-1.5 rounded border border-yellow-200 mt-1">
-                      <span className="font-bold text-yellow-800">VIP Points Earned:</span>
+                    <div className="flex justify-between text-[10px] bg-yellow-50 p-1.5 rounded border border-yellow-200 mt-1.5">
+                      <span className="text-yellow-800">VIP Points Earned:</span>
                       <span className="font-black text-[#123524]">+{activeReceipt.pointsEarned} Pts</span>
                     </div>
                   )}
@@ -2044,7 +1924,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               <div className="text-center">
                 <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
                 <p className="text-[11px] text-gray-500">
-                  Native Hardware Print (စာရွက်တစ်ဆက်တည်း တန်းထွက်ပြီး TOTAL သီးသန့် အကြီး/အထူ ပေါ်မည့်ပုံစံ)
+                  စာရွက်လုံးဝမထစ်ဘဲ တစ်ဆက်တည်းထွက်မည့် Professional UI/UX Typography Hierarchy
                 </p>
               </div>
 
@@ -2078,29 +1958,29 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     {printSettings.phone && <p className="text-[9px] text-gray-600">Tel: {printSettings.phone}</p>}
                   </div>
 
-                  <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2 mb-2">
+                  <div className="space-y-1 text-[10px] border-b border-dashed border-gray-300 pb-2 mb-2">
                     <div className="flex justify-between">
                       <span className="text-gray-500">Invoice:</span>
                       <span className="font-bold">SL-261014-8888</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Date/Time:</span>
-                      <span className="font-bold">{samplePreviewReceipt.date} 7:00 PM</span>
+                      <span className="text-gray-800">{samplePreviewReceipt.date} 7:00 PM</span>
                     </div>
                     {printSettings.showCustomerInfo && (
                       <div className="flex justify-between">
                         <span className="text-gray-500">Customer:</span>
-                        <span className="font-bold">Walk-in Guest (09458884517)</span>
+                        <span className="text-gray-800">Walk-in Guest (09458884517)</span>
                       </div>
                     )}
                     <div className="flex justify-between">
                       <span className="text-gray-500">Therapist:</span>
-                      <span className="font-bold">Therapist No-1</span>
+                      <span className="text-gray-800">Therapist No-1</span>
                     </div>
                   </div>
 
                   <div className="border-b border-dashed border-gray-300 pb-2 mb-2 text-[10px]">
-                    <div className="flex justify-between font-bold">
+                    <div className="flex justify-between font-normal text-gray-800">
                       <span>1. Oil Massage</span>
                       <span>25,000 Ks</span>
                     </div>
@@ -2110,15 +1990,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   <div className="space-y-1 border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
                     <div className="flex justify-between text-[10px]">
                       <span className="text-gray-500">Subtotal:</span>
-                      <span className="font-bold text-gray-700">25,000 Ks</span>
+                      <span className="text-gray-700">25,000 Ks</span>
                     </div>
-                    <div className="flex justify-between text-base font-black py-1 border-t border-gray-300">
+                    <div className="flex justify-between text-sm font-black py-1.5 my-1 border-t border-dashed border-gray-300">
                       <span>TOTAL:</span>
                       <span>25,000 Ks</span>
                     </div>
                     <div className="flex justify-between text-[10px]">
                       <span className="text-gray-500">Payment (Cash):</span>
-                      <span className="font-bold text-gray-700">25,000 Ks</span>
+                      <span className="text-gray-700">25,000 Ks</span>
                     </div>
                     <div className="flex justify-between text-[10px] p-1.5 rounded border border-gray-500 mt-1.5">
                       <span>VIP Points Earned:</span>
