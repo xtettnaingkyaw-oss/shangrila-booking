@@ -6,7 +6,7 @@ import { AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
 import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
-  ArrowLeft, History, Search, Banknote
+  ArrowLeft, History, Search, Banknote, Bluetooth
 } from 'lucide-react';
 
 interface CartItem {
@@ -143,6 +143,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   });
   const [isSyncing, setIsSyncing] = useState(false);
   const [activePosView, setActivePosView] = useState<'register' | 'history'>('register');
+
+  // 🌟 Web Bluetooth Printer States 🌟
+  const [bluetoothDevice, setBluetoothDevice] = useState<any>(null);
+  const [isPrintingBt, setIsPrintingBt] = useState(false);
 
   const [posStep, setPosStep] = useState<1 | 2 | 3 | 4>(1);
   const [activeCategory, setActiveCategory] = useState<string | null>(
@@ -515,8 +519,131 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setSavingSale(false);
   };
 
-  const handleDirectPrint = () => {
-    window.print();
+  // 🌟 Web Bluetooth Printer Pairing Function 🌟
+  const handleConnectBluetoothPrinter = async () => {
+    try {
+      if (!(navigator as any).bluetooth) {
+        alert("Your browser does not support Web Bluetooth. Please use Google Chrome.");
+        return;
+      }
+
+      const device = await (navigator as any).bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          '000018f0-0000-1000-8000-00805f9b34fb',
+          '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+          '0000ff00-0000-1000-8000-00805f9b34fb'
+        ]
+      });
+
+      await device.gatt.connect();
+      setBluetoothDevice(device);
+      alert(`✅ Successfully connected to printer: ${device.name || 'Bluetooth Printer'}`);
+    } catch (error: any) {
+      console.warn("Bluetooth connection cancelled or failed:", error);
+      if (error.name !== 'NotFoundError') {
+        alert("Failed to connect Bluetooth printer: " + error.message);
+      }
+    }
+  };
+
+  // 🌟 ESC/POS Direct Bluetooth Print Function (Replaces window.print) 🌟
+  const handleBluetoothEscPosPrint = async () => {
+    if (!bluetoothDevice || !bluetoothDevice.gatt.connected) {
+      alert("Please connect your Bluetooth Printer first!");
+      await handleConnectBluetoothPrinter();
+      return;
+    }
+
+    if (!activeReceipt) return;
+
+    setIsPrintingBt(true);
+    try {
+      const server = await bluetoothDevice.gatt.connected;
+      const serviceUuids = [
+        '000018f0-0000-1000-8000-00805f9b34fb',
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+        '0000ff00-0000-1000-8000-00805f9b34fb'
+      ];
+      
+      let targetService = null;
+      let targetCharacteristic = null;
+
+      for (const uuid of serviceUuids) {
+        try {
+          targetService = await server.getPrimaryService(uuid);
+          const characteristics = await targetService.getCharacteristics();
+          targetCharacteristic = characteristics.find((c: any) => c.properties.write || c.properties.writeWithoutResponse);
+          if (targetCharacteristic) break;
+        } catch {}
+      }
+
+      if (!targetCharacteristic) {
+        throw new Error("Could not find writable characteristic on the Bluetooth printer.");
+      }
+
+      const encoder = new TextEncoder();
+      const ESC = '\x1B';
+      const GS = '\x1D';
+      
+      let commands = '';
+      commands += ESC + '@'; // Initialize printer
+      commands += ESC + 'a' + '\x01'; // Center alignment
+
+      commands += `${localAppData?.branding?.name || 'THE SHANGRI-LA'}\n`;
+      commands += `MEN'S RETREAT\n`;
+      commands += `${localAppData?.branding?.address || ''}\n`;
+      commands += `Tel: ${localAppData?.branding?.phone1 || ''}\n`;
+      commands += `--------------------------------\n`;
+      commands += ESC + 'a' + '\x00'; // Left alignment
+      commands += `Invoice : ${activeReceipt.invoiceNo}\n`;
+      commands += `Date    : ${activeReceipt.date} ${activeReceipt.time}\n`;
+      commands += `Customer: ${activeReceipt.customerName}\n`;
+      commands += `Therapist: ${activeReceipt.therapistName}\n`;
+      commands += `--------------------------------\n`;
+      
+      activeReceipt.items.forEach((item, idx) => {
+        const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
+        commands += `${idx + 1}. ${item.name} x${item.qty}\n`;
+        commands += `   ${formatPrice(unitPrice * item.qty)}\n`;
+      });
+
+      commands += `--------------------------------\n`;
+      commands += `Subtotal : ${formatPrice(activeReceipt.subTotal)}\n`;
+      if (activeReceipt.discountAmount > 0) {
+        commands += `Discount : -${formatPrice(activeReceipt.discountAmount)}\n`;
+      }
+      commands += ESC + 'E' + '\x01'; // Bold on
+      commands += `TOTAL    : ${formatPrice(activeReceipt.totalPrice)}\n`;
+      commands += ESC + 'E' + '\x00'; // Bold off
+      commands += `Payment  : ${activeReceipt.paymentMethod} (${formatPrice(activeReceipt.cashReceived)})\n`;
+      if (activeReceipt.pointsEarned > 0) {
+        commands += `VIP Pts  : +${activeReceipt.pointsEarned} Pts\n`;
+      }
+      commands += `--------------------------------\n`;
+      commands += ESC + 'a' + '\x01'; // Center alignment
+      commands += `Thank You For Visiting Us!\n\n\n`;
+      commands += GS + 'V' + '\x41' + '\x03'; // Cut paper
+
+      const data = encoder.encode(commands);
+      const MAX_CHUNK_SIZE = 512;
+      for (let i = 0; i < data.length; i += MAX_CHUNK_SIZE) {
+        const chunk = data.slice(i, i + MAX_CHUNK_SIZE);
+        if (targetCharacteristic.properties.writeWithoutResponse) {
+          await targetCharacteristic.writeValueWithoutResponse(chunk);
+        } else {
+          await targetCharacteristic.writeValue(chunk);
+        }
+      }
+
+      alert("✅ Receipt printed successfully via Bluetooth!");
+    } catch (err: any) {
+      console.warn("Print error:", err);
+      // Fallback to standard print if Bluetooth ESC/POS write fails
+      window.print();
+    } finally {
+      setIsPrintingBt(false);
+    }
   };
 
   const startNewSale = () => {
@@ -548,13 +675,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             size: 80mm auto;
             margin: 0;
           }
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
           body, html {
             width: 80mm !important;
-            height: auto !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
@@ -599,13 +721,27 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Bluetooth Connect Button */}
+          <button
+            type="button"
+            onClick={handleConnectBluetoothPrinter}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold flex items-center border transition ${
+              bluetoothDevice 
+                ? 'bg-green-500/20 text-green-300 border-green-400/40' 
+                : 'bg-white/10 text-[#D4AF37] border-[#D4AF37]/30 hover:bg-white/20'
+            }`}
+          >
+            <Bluetooth className="w-3.5 h-3.5 mr-1" />
+            {bluetoothDevice ? 'BT Connected' : 'Connect BT Printer'}
+          </button>
+
           {isOnline ? (
             <span className="bg-green-500/20 text-green-300 border border-green-400/40 px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center">
               <Wifi className="w-3 h-3 mr-1 text-green-400" /> Online
             </span>
           ) : (
             <span className="bg-amber-500/20 text-amber-300 border border-amber-400/40 px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center animate-pulse">
-              <WifiOff className="w-3 h-3 mr-1 text-amber-400" /> Offline Mode
+              <WifiOff className="w-3 h-3 mr-1 text-amber-400" /> Offline
             </span>
           )}
 
@@ -751,13 +887,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </div>
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons (Using Bluetooth ESC/POS Print) */}
             <div className="no-print mt-4 flex flex-col gap-2.5">
               <button
-                onClick={handleDirectPrint}
-                className="w-full py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center shadow-md hover:opacity-95 transition"
+                onClick={handleBluetoothEscPosPrint}
+                disabled={isPrintingBt}
+                className="w-full py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center shadow-md hover:opacity-95 transition disabled:opacity-50"
               >
-                <Printer className="w-4 h-4 mr-2" /> ဘောင်ချာထုတ်မည် (Print Receipt)
+                <Printer className="w-4 h-4 mr-2" />
+                {isPrintingBt ? 'Printing via Bluetooth...' : 'ဘောင်ချာထုတ်မည် (Bluetooth Print)'}
               </button>
               <button
                 onClick={startNewSale}
