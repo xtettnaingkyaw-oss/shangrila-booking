@@ -81,7 +81,7 @@ const DEFAULT_PRINT_SETTINGS: PosPrintSettings = {
   customPrintedLogoDataUrl: '',
   logoFilterMode: 'auto_gold_extract',
   logoThreshold: 12,
-  logoSize: 200,
+  logoSize: 192,
   shopName: 'THE SHANGRI-LA',
   subtitle: "MEN'S RETREAT",
   headerText: 'Beyond Relaxation',
@@ -427,8 +427,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             firstBlackRow = 0;
             lastBlackRow = rawHeight - 1;
           } else {
-            firstBlackRow = Math.max(0, firstBlackRow - 4);
-            lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 4);
+            firstBlackRow = Math.max(0, firstBlackRow - 2);
+            lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 2);
           }
 
           const croppedHeight = Math.max(16, lastBlackRow - firstBlackRow + 1);
@@ -477,7 +477,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
 
           resolve({
-            rasterBytes: new Uint8Array([...rasterHeader, ...bitmapBytes, 0x0a]),
+            rasterBytes: new Uint8Array([...rasterHeader, ...bitmapBytes]),
             previewDataUrl
           });
         } catch (e) {
@@ -516,368 +516,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     printSettings.logoThreshold,
     printSettings.logoSize
   ]);
-
-  // 🌟 FULL GRAPHIC RECEIPT RASTER ENGINE (Matches Preview 100% + Boxed VIP Points!) 🌟
-  const buildFullReceiptGraphicRaster = async (
-    record: OfflineSaleRecord,
-    logoDataUrl: string
-  ): Promise<Uint8Array | null> => {
-    const canvasWidth = printSettings.paperWidth === '80mm' ? 576 : 384;
-    const padX = 10;
-    const innerW = canvasWidth - padX * 2;
-    const centerX = canvasWidth / 2;
-
-    let logoImg: HTMLImageElement | null = null;
-    if (printSettings.showLogo && logoDataUrl) {
-      logoImg = await new Promise((res) => {
-        const img = new Image();
-        img.crossOrigin = 'Anonymous';
-        img.onload = () => res(img);
-        img.onerror = () => res(null);
-        img.src = logoDataUrl;
-      });
-    }
-
-    const wrapLines = (ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] => {
-      if (!text) return [];
-      const words = text.split(' ');
-      const lines: string[] = [];
-      let current = '';
-      for (const w of words) {
-        const test = current ? `${current} ${w}` : w;
-        if (ctx.measureText(test).width <= maxW) {
-          current = test;
-        } else {
-          if (current) lines.push(current);
-          current = w;
-        }
-      }
-      if (current) lines.push(current);
-      return lines;
-    };
-
-    // Draw Receipt on Canvas (Pass 1 measures exact height, Pass 2 renders)
-    const renderOnCanvas = (ctx: CanvasRenderingContext2D): number => {
-      const monoFamily = "'Courier New', Courier, monospace";
-      const serifFamily = "Georgia, 'Times New Roman', serif";
-      const sansFamily = "system-ui, -apple-system, sans-serif";
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-      ctx.fillStyle = '#000000';
-      ctx.strokeStyle = '#000000';
-      ctx.textBaseline = 'top';
-
-      let y = 10;
-
-      const drawDashedDivider = (yPos: number) => {
-        ctx.save();
-        ctx.beginPath();
-        ctx.setLineDash([5, 4]);
-        ctx.lineWidth = 1.5;
-        ctx.moveTo(padX, yPos);
-        ctx.lineTo(canvasWidth - padX, yPos);
-        ctx.stroke();
-        ctx.restore();
-      };
-
-      const drawSolidDivider = (yPos: number) => {
-        ctx.save();
-        ctx.beginPath();
-        ctx.setLineDash([]);
-        ctx.lineWidth = 1.5;
-        ctx.moveTo(padX, yPos);
-        ctx.lineTo(canvasWidth - padX, yPos);
-        ctx.stroke();
-        ctx.restore();
-      };
-
-      const drawRoundedRect = (x: number, yPos: number, w: number, h: number, r: number) => {
-        ctx.save();
-        ctx.beginPath();
-        ctx.lineWidth = 2;
-        ctx.setLineDash([]);
-        ctx.moveTo(x + r, yPos);
-        ctx.lineTo(x + w - r, yPos);
-        ctx.quadraticCurveTo(x + w, yPos, x + w, yPos + r);
-        ctx.lineTo(x + w, yPos + h - r);
-        ctx.quadraticCurveTo(x + w, yPos + h, x + w - r, yPos + h);
-        ctx.lineTo(x + r, yPos + h);
-        ctx.quadraticCurveTo(x, yPos + h, x, yPos + h - r);
-        ctx.lineTo(x, yPos + r);
-        ctx.quadraticCurveTo(x, yPos, x + r, yPos);
-        ctx.closePath();
-        ctx.stroke();
-        ctx.restore();
-      };
-
-      // 1. Logo
-      if (logoImg) {
-        const lw = Math.min(canvasWidth - 40, printSettings.logoSize);
-        const lh = Math.round(lw * (logoImg.height / (logoImg.width || 1)));
-        ctx.drawImage(logoImg, Math.round((canvasWidth - lw) / 2), y, lw, lh);
-        y += lh + 10;
-      }
-
-      // 2. Store Title (Serif Bold like Preview)
-      if (printSettings.shopName) {
-        ctx.font = `900 24px ${serifFamily}`;
-        ctx.textAlign = 'center';
-        ctx.fillText(printSettings.shopName.toUpperCase(), centerX, y);
-        y += 30;
-      }
-
-      // 3. Subtitle
-      if (printSettings.subtitle) {
-        ctx.font = `bold 15px ${sansFamily}`;
-        ctx.textAlign = 'center';
-        ctx.fillText(printSettings.subtitle.toUpperCase(), centerX, y);
-        y += 22;
-      }
-
-      // 4. Header Text
-      if (printSettings.headerText) {
-        ctx.font = `bold 16px ${monoFamily}`;
-        ctx.textAlign = 'center';
-        const hLines = wrapLines(ctx, printSettings.headerText, innerW);
-        for (const hl of hLines) {
-          ctx.fillText(hl, centerX, y);
-          y += 21;
-        }
-      }
-
-      // 5. Address (Clean 2-line wrap matching Preview)
-      if (printSettings.footerText) {
-        ctx.font = `bold 15px ${monoFamily}`;
-        ctx.textAlign = 'center';
-        const addrLines = wrapLines(ctx, printSettings.footerText, innerW);
-        for (const al of addrLines) {
-          ctx.fillText(al, centerX, y);
-          y += 20;
-        }
-      }
-
-      // 6. Phone
-      if (printSettings.phone) {
-        ctx.font = `bold 15px ${monoFamily}`;
-        ctx.textAlign = 'center';
-        ctx.fillText(`Tel: ${printSettings.phone}`, centerX, y);
-        y += 22;
-      }
-
-      y += 6;
-      drawDashedDivider(y);
-      y += 12;
-
-      // 7. Metadata Rows (Exact Single-Line Fit like Preview)
-      const drawMetaRow = (label: string, val: string) => {
-        ctx.font = `bold 16px ${monoFamily}`;
-        ctx.textAlign = 'left';
-        ctx.fillText(label, padX, y);
-
-        const labelW = ctx.measureText(label + ' ').width;
-        const availW = innerW - labelW;
-
-        // Auto-fit font size so Customer Name + Phone never breaks awkwardly
-        let valFontSize = 17;
-        ctx.font = `900 ${valFontSize}px ${monoFamily}`;
-        while (valFontSize > 12 && ctx.measureText(val).width > availW) {
-          valFontSize -= 1;
-          ctx.font = `900 ${valFontSize}px ${monoFamily}`;
-        }
-
-        ctx.textAlign = 'right';
-        if (ctx.measureText(val).width <= availW) {
-          ctx.fillText(val, canvasWidth - padX, y);
-          y += 25;
-        } else {
-          const vLines = wrapLines(ctx, val, availW);
-          for (const vl of vLines) {
-            ctx.fillText(vl, canvasWidth - padX, y);
-            y += 22;
-          }
-          y += 3;
-        }
-      };
-
-      drawMetaRow('Invoice:', record.invoiceNo);
-      drawMetaRow('Date/Time:', `${record.date} ${record.time}`);
-      if (printSettings.showCustomerInfo) {
-        const custStr = `${record.customerName}${record.customerPhone ? ` (${record.customerPhone})` : ''}`;
-        drawMetaRow('Customer:', custStr);
-      }
-      drawMetaRow('Therapist:', record.therapistName);
-
-      y += 4;
-      drawDashedDivider(y);
-      y += 12;
-
-      // 8. Cart Items
-      record.items.forEach((item, idx) => {
-        const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
-        const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
-        const priceStr = formatPrice(unitPrice * item.qty);
-
-        ctx.font = `900 17px ${monoFamily}`;
-        ctx.textAlign = 'right';
-        ctx.fillText(priceStr, canvasWidth - padX, y);
-        const priceW = ctx.measureText(priceStr + '  ').width;
-
-        ctx.textAlign = 'left';
-        const titleLines = wrapLines(ctx, itemTitle, innerW - priceW);
-        titleLines.forEach((tl) => {
-          ctx.fillText(tl, padX, y);
-          y += 22;
-        });
-
-        const subDetails = [
-          item.duration || '',
-          item.isVvipUpgrade ? '(+VVIP Room)' : '',
-          item.vvipIncluded ? '(VVIP Free)' : ''
-        ]
-          .filter(Boolean)
-          .join(' ');
-
-        if (subDetails) {
-          ctx.font = `bold 15px ${monoFamily}`;
-          ctx.fillText(`  ${subDetails}`, padX, y);
-          y += 22;
-        }
-        y += 4;
-      });
-
-      y += 4;
-      drawDashedDivider(y);
-      y += 12;
-
-      // 9. Subtotal & Discount
-      ctx.font = `bold 17px ${monoFamily}`;
-      ctx.textAlign = 'left';
-      ctx.fillText('Subtotal:', padX, y);
-      ctx.font = `900 17px ${monoFamily}`;
-      ctx.textAlign = 'right';
-      ctx.fillText(formatPrice(record.subTotal), canvasWidth - padX, y);
-      y += 25;
-
-      if (record.discountAmount > 0) {
-        ctx.font = `bold 16px ${monoFamily}`;
-        ctx.textAlign = 'left';
-        ctx.fillText(`Discount (${record.discountReason}):`, padX, y);
-        ctx.font = `900 16px ${monoFamily}`;
-        ctx.textAlign = 'right';
-        ctx.fillText(`-${formatPrice(record.discountAmount)}`, canvasWidth - padX, y);
-        y += 24;
-      }
-
-      y += 2;
-      drawSolidDivider(y);
-      y += 10;
-
-      // 10. TOTAL (Bold Prominent Single Line)
-      ctx.font = `900 22px ${monoFamily}`;
-      ctx.textAlign = 'left';
-      ctx.fillText('TOTAL:', padX, y);
-      ctx.textAlign = 'right';
-      ctx.fillText(formatPrice(record.totalPrice), canvasWidth - padX, y);
-      y += 30;
-
-      // 11. Payment & Change
-      ctx.font = `bold 16px ${monoFamily}`;
-      ctx.textAlign = 'left';
-      ctx.fillText(`Payment (${record.paymentMethod}):`, padX, y);
-      ctx.font = `900 16px ${monoFamily}`;
-      ctx.textAlign = 'right';
-      ctx.fillText(formatPrice(record.cashReceived), canvasWidth - padX, y);
-      y += 24;
-
-      if (record.paymentMethod === 'Cash' && record.changeDue > 0) {
-        ctx.font = `bold 16px ${monoFamily}`;
-        ctx.textAlign = 'left';
-        ctx.fillText('Change Due:', padX, y);
-        ctx.font = `900 16px ${monoFamily}`;
-        ctx.textAlign = 'right';
-        ctx.fillText(formatPrice(record.changeDue), canvasWidth - padX, y);
-        y += 24;
-      }
-
-      // 12. 🌟 VIP Points Earned with Rounded Border Box (Just Like Preview!) 🌟
-      if (record.pointsEarned > 0) {
-        y += 6;
-        const boxH = 38;
-        drawRoundedRect(padX, y, innerW, boxH, 8);
-        ctx.font = `900 16px ${monoFamily}`;
-        ctx.textAlign = 'left';
-        ctx.fillText('VIP Points Earned:', padX + 12, y + 10);
-        ctx.textAlign = 'right';
-        ctx.fillText(`+${record.pointsEarned} Pts`, canvasWidth - padX - 12, y + 10);
-        y += boxH + 10;
-      }
-
-      y += 4;
-      drawDashedDivider(y);
-      y += 14;
-
-      // 13. Closing Thank You Note
-      if (printSettings.thankYouText) {
-        const tLines = printSettings.thankYouText.split('\n');
-        tLines.forEach((line, idx) => {
-          ctx.font = idx === 0 ? `900 16px ${monoFamily}` : `bold 15px ${monoFamily}`;
-          ctx.textAlign = 'center';
-          ctx.fillText(line.trim(), centerX, y);
-          y += 22;
-        });
-      }
-
-      y += 24;
-      return y;
-    };
-
-    const dummyCanvas = document.createElement('canvas');
-    dummyCanvas.width = canvasWidth;
-    dummyCanvas.height = 2400;
-    const dummyCtx = dummyCanvas.getContext('2d');
-    if (!dummyCtx) return null;
-
-    const exactHeight = renderOnCanvas(dummyCtx);
-
-    const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = canvasWidth;
-    finalCanvas.height = exactHeight;
-    const finalCtx = finalCanvas.getContext('2d');
-    if (!finalCtx) return null;
-
-    renderOnCanvas(finalCtx);
-
-    const imgData = finalCtx.getImageData(0, 0, canvasWidth, exactHeight);
-    const pixels = imgData.data;
-    const nBytesPerRow = Math.ceil(canvasWidth / 8);
-    const bitmapBytes: number[] = [];
-
-    for (let y = 0; y < exactHeight; y++) {
-      for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
-        let byte = 0;
-        for (let bit = 0; bit < 8; bit++) {
-          const px = xByte * 8 + bit;
-          if (px < canvasWidth) {
-            const idx = (y * canvasWidth + px) * 4;
-            const lum = pixels[idx] * 0.299 + pixels[idx + 1] * 0.587 + pixels[idx + 2] * 0.114;
-            if (lum < 165) {
-              byte |= 1 << (7 - bit);
-            }
-          }
-        }
-        bitmapBytes.push(byte);
-      }
-    }
-
-    const xL = nBytesPerRow & 0xff;
-    const xH = (nBytesPerRow >> 8) & 0xff;
-    const yL = exactHeight & 0xff;
-    const yH = (exactHeight >> 8) & 0xff;
-    const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
-
-    return new Uint8Array([...rasterHeader, ...bitmapBytes]);
-  };
 
   // 🌟 Handle Custom Printed Receipt Logo Upload 🌟
   const handleUploadPrintedLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1269,22 +907,56 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Helper to send byte chunks safely over BLE 🌟
+  // 🌟 High-Speed BLE Streaming Helper 🌟
   const sendBytesToPrinter = async (writeChar: any, dataBytes: Uint8Array) => {
-    // 120-byte chunks for fast, reliable graphic raster streaming
-    const chunkSize = 120;
+    // 180-byte chunks with minimal delay so paper feeds smoothly in one continuous motion
+    const chunkSize = 180;
     for (let i = 0; i < dataBytes.length; i += chunkSize) {
       const chunk = dataBytes.slice(i, i + chunkSize);
-      if (writeChar.properties.writeWithoutResponse) {
-        await writeChar.writeValueWithoutResponse(chunk);
-      } else {
-        await writeChar.writeValue(chunk);
+      try {
+        if (writeChar.properties.writeWithoutResponse) {
+          await writeChar.writeValueWithoutResponse(chunk);
+        } else {
+          await writeChar.writeValue(chunk);
+        }
+      } catch {
+        // Fallback to smaller 20-byte sub-chunks if the printer BLE MTU is small
+        for (let j = 0; j < chunk.length; j += 20) {
+          const sub = chunk.slice(j, j + 20);
+          if (writeChar.properties.writeWithoutResponse) {
+            await writeChar.writeValueWithoutResponse(sub);
+          } else {
+            await writeChar.writeValue(sub);
+          }
+          await new Promise((r) => setTimeout(r, 5));
+        }
       }
-      await new Promise((r) => setTimeout(r, 8));
+      await new Promise((r) => setTimeout(r, 4));
     }
   };
 
-  // 🌟 Loyverse-Style Full Graphic ESC/POS Bluetooth Print 🌟
+  // 🌟 Smart Word-Wrap Helper (စကားလုံးတစ်ဝက်မှ Townshi/p ကဲ့သို့ လုံးဝ မပြတ်ကျစေရန်) 🌟
+  const wordWrapText = (text: string, maxCols: number): string[] => {
+    if (!text) return [];
+    const words = text.trim().split(/\s+/);
+    const lines: string[] = [];
+    let currentLine = '';
+
+    for (const word of words) {
+      const candidate = currentLine ? `${currentLine} ${word}` : word;
+      if (candidate.length <= maxCols) {
+        currentLine = candidate;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    return lines;
+  };
+
+  // 🌟 INSTANT & CRISP NATIVE ESC/POS BLUETOOTH PRINT 🌟
+  // စာရွက်လုံးဝ မထစ်ဘဲ တစ်ဆက်တည်း ထွက်မည်၊ စာလုံး ၁၀၀% ပီသမည်၊ စာကြောင်းမပြတ်ကျပါ၊ VIP Points ဘောင်ကွပ်ပါဝင်မည်
   const handleBluetoothEscPosPrint = async (customRecord?: OfflineSaleRecord) => {
     const recordToPrint = customRecord || activeReceipt;
     if (!recordToPrint) return;
@@ -1310,26 +982,217 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         }
       }
 
+      // Font A (Standard Crisp: 32 cols on 58mm, 48 cols on 80mm)
+      // Font B (Compact Crisp: 42 cols on 58mm, 64 cols on 80mm - ရှည်သော လိပ်စာနှင့် ဖုန်းနံပါတ်တစ်ကြောင်းတည်း ဆံ့စေရန်)
+      const colsFontA = printSettings.paperWidth === '80mm' ? 48 : 32;
+      const colsFontB = printSettings.paperWidth === '80mm' ? 64 : 42;
+
       const ESC = '\x1B';
       const GS = '\x1D';
       const INIT = ESC + '@';
       const ALIGN_CENTER = ESC + 'a\x01';
+      const ALIGN_LEFT = ESC + 'a\x00';
+      const BOLD_ON = ESC + 'E\x01';
+      const BOLD_OFF = ESC + 'E\x00';
+      const FONT_A = ESC + 'M\x00'; // Standard Sharp Font (12x24)
+      const FONT_B = ESC + 'M\x01'; // Compact Sharp Font (9x17)
+      const DOUBLE_HEIGHT = GS + '!\x01';
+      const NORMAL_SIZE = GS + '!\x00';
       const CUT_PAPER = GS + 'V\x41\x03';
-      const encoder = new TextEncoder();
 
-      // 1. Initialize Printer
-      await sendBytesToPrinter(writeChar, encoder.encode(INIT + ALIGN_CENTER));
+      const divider = FONT_A + NORMAL_SIZE + '-'.repeat(colsFontA) + '\n';
 
-      // 2. Render Full Graphic Receipt (Exact Match to Preview + VIP Box!)
-      const activeLogoForPrint = processedLogoPreview || printedLogoSourceUrl;
-      const fullReceiptBytes = await buildFullReceiptGraphicRaster(recordToPrint, activeLogoForPrint);
+      // Smart Left/Right Row Builder:
+      // 32 လုံးနှင့် ဆံ့ပါက Font A သုံးပြီး၊ 32 လုံးထက် ရှည်ပါက (ဥပမာ Customer + Phone) အောက်မပြုတ်ကျစေဘဲ Font B (42 cols) ဖြင့် တစ်ကြောင်းတည်း သပ်ရပ်စွာ ရိုက်ထုတ်ပေးမည်
+      const formatSmartRow = (left: string, right: string, forceBold = false): string => {
+        const l = left.trim();
+        const r = right.trim();
+        const minLen = l.length + r.length + 1;
 
-      if (fullReceiptBytes) {
-        await sendBytesToPrinter(writeChar, fullReceiptBytes);
+        if (minLen <= colsFontA) {
+          const spaces = colsFontA - l.length - r.length;
+          return (
+            FONT_A +
+            NORMAL_SIZE +
+            (forceBold ? BOLD_ON : '') +
+            `${l}${' '.repeat(spaces)}${r}\n` +
+            (forceBold ? BOLD_OFF : '')
+          );
+        }
+
+        if (minLen <= colsFontB) {
+          const spaces = colsFontB - l.length - r.length;
+          return (
+            FONT_B +
+            NORMAL_SIZE +
+            BOLD_ON +
+            `${l}${' '.repeat(spaces)}${r}\n` +
+            BOLD_OFF +
+            FONT_A
+          );
+        }
+
+        // အကယ်၍ 42 လုံးထက်ပါ ပိုရှည်နေပါက စကားလုံးမပြတ်စေဘဲ ညာဘက်ညှိ၍ သပ်ရပ်စွာ ပြပေးမည်
+        const spaces = Math.max(1, colsFontA - r.length);
+        return (
+          FONT_A +
+          NORMAL_SIZE +
+          `${l}\n` +
+          BOLD_ON +
+          `${' '.repeat(spaces)}${r}\n` +
+          BOLD_OFF
+        );
+      };
+
+      // 1. Build Logo Raster Bytes (if enabled)
+      let logoPartBytes: Uint8Array | null = null;
+      if (printSettings.showLogo && printedLogoSourceUrl) {
+        const { rasterBytes } = await buildLogoRasterData(
+          printedLogoSourceUrl,
+          printSettings.logoFilterMode,
+          printSettings.logoThreshold,
+          printSettings.logoSize
+        );
+        logoPartBytes = rasterBytes;
       }
 
-      // 3. Feed Paper & Cut
-      await sendBytesToPrinter(writeChar, encoder.encode('\n\n\n' + CUT_PAPER));
+      // 2. Build Entire Native Text Command Buffer
+      let cmd = ALIGN_CENTER;
+
+      if (printSettings.shopName) {
+        cmd += FONT_A + BOLD_ON + DOUBLE_HEIGHT + `${printSettings.shopName.toUpperCase()}\n` + NORMAL_SIZE;
+      }
+      if (printSettings.subtitle) {
+        cmd += FONT_A + BOLD_ON + `${printSettings.subtitle.toUpperCase()}\n` + BOLD_OFF;
+      }
+      if (printSettings.headerText) {
+        wordWrapText(printSettings.headerText, colsFontA).forEach((line) => {
+          cmd += FONT_A + `${line}\n`;
+        });
+      }
+      if (printSettings.footerText) {
+        // လိပ်စာကို Townshi/p ကဲ့သို့ လုံးဝမပြတ်ကျစေဘဲ Preview အတိုင်း ၂ ကြောင်းတည်း သပ်ရပ်စွာ ထွက်စေရန် Font B + Word Wrap သုံးသည်
+        wordWrapText(printSettings.footerText, colsFontB).forEach((line) => {
+          cmd += FONT_B + BOLD_ON + `${line}\n` + BOLD_OFF;
+        });
+        cmd += FONT_A;
+      }
+      if (printSettings.phone) {
+        cmd += FONT_A + `Tel: ${printSettings.phone}\n`;
+      }
+      cmd += divider;
+
+      // Metadata Section
+      cmd += ALIGN_LEFT;
+      cmd += formatSmartRow('Invoice:', recordToPrint.invoiceNo, true);
+      cmd += formatSmartRow('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`);
+      if (printSettings.showCustomerInfo) {
+        const customerFull = `${recordToPrint.customerName}${
+          recordToPrint.customerPhone ? ` (${recordToPrint.customerPhone})` : ''
+        }`;
+        cmd += formatSmartRow('Customer:', customerFull);
+      }
+      cmd += formatSmartRow('Therapist:', recordToPrint.therapistName);
+      cmd += divider;
+
+      // Cart Items Section
+      recordToPrint.items.forEach((item, idx) => {
+        const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
+        const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
+        const itemPriceStr = formatPrice(unitPrice * item.qty);
+
+        cmd += formatSmartRow(itemTitle, itemPriceStr, true);
+
+        const subDetails = [
+          item.duration || '',
+          item.isVvipUpgrade ? '(+VVIP Room)' : '',
+          item.vvipIncluded ? '(VVIP Free)' : ''
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        if (subDetails) {
+          cmd += FONT_A + NORMAL_SIZE + `   ${subDetails}\n`;
+        }
+      });
+      cmd += divider;
+
+      // Totals Section
+      cmd += formatSmartRow('Subtotal:', formatPrice(recordToPrint.subTotal), true);
+      if (recordToPrint.discountAmount > 0) {
+        cmd += formatSmartRow(
+          `Discount (${recordToPrint.discountReason}):`,
+          `-${formatPrice(recordToPrint.discountAmount)}`
+        );
+      }
+
+      // TOTAL (Crisp Double Height)
+      const totalLabel = 'TOTAL:';
+      const totalValStr = formatPrice(recordToPrint.totalPrice);
+      const totalSpaces = Math.max(1, colsFontA - totalLabel.length - totalValStr.length);
+      cmd +=
+        FONT_A +
+        BOLD_ON +
+        DOUBLE_HEIGHT +
+        `${totalLabel}${' '.repeat(totalSpaces)}${totalValStr}\n` +
+        NORMAL_SIZE +
+        BOLD_OFF;
+
+      cmd += formatSmartRow(
+        `Payment (${recordToPrint.paymentMethod}):`,
+        formatPrice(recordToPrint.cashReceived)
+      );
+      if (recordToPrint.paymentMethod === 'Cash' && recordToPrint.changeDue > 0) {
+        cmd += formatSmartRow('Change Due:', formatPrice(recordToPrint.changeDue));
+      }
+
+      // 🌟 VIP Points Earned with Crisp Border Box (Preview အတိုင်း ဘောင်ကွပ်ကွက်လေးဖြင့်) 🌟
+      if (recordToPrint.pointsEarned > 0) {
+        const boxInnerW = colsFontA - 4;
+        const vipLeft = 'VIP Points Earned:';
+        const vipRight = `+${recordToPrint.pointsEarned} Pts`;
+        const vipSpaces = Math.max(1, boxInnerW - vipLeft.length - vipRight.length);
+        const boxTopBottom = `+${'-'.repeat(colsFontA - 2)}+\n`;
+        const boxMiddle = `| ${vipLeft}${' '.repeat(vipSpaces)}${vipRight} |\n`;
+
+        cmd += FONT_A + NORMAL_SIZE + BOLD_ON + boxTopBottom + boxMiddle + boxTopBottom + BOLD_OFF;
+      } else {
+        cmd += divider;
+      }
+
+      // Footer Thank You Note
+      cmd += ALIGN_CENTER + FONT_A + NORMAL_SIZE;
+      if (printSettings.thankYouText) {
+        const lines = printSettings.thankYouText.split('\n');
+        lines.forEach((line, i) => {
+          wordWrapText(line, colsFontA).forEach((wLine) => {
+            if (i === 0) cmd += BOLD_ON + `${wLine}\n` + BOLD_OFF;
+            else cmd += `${wLine}\n`;
+          });
+        });
+      }
+      cmd += `\n\n\n` + CUT_PAPER;
+
+      // 3. Combine Init + Logo + All Text into ONE Single Payload for Instant Continuous Feed
+      const encoder = new TextEncoder();
+      const initBytes = encoder.encode(INIT + ALIGN_CENTER);
+      const textBytes = encoder.encode(cmd);
+
+      const totalByteLen = initBytes.length + (logoPartBytes ? logoPartBytes.length : 0) + textBytes.length;
+      const combinedPayload = new Uint8Array(totalByteLen);
+
+      let offset = 0;
+      combinedPayload.set(initBytes, offset);
+      offset += initBytes.length;
+
+      if (logoPartBytes) {
+        combinedPayload.set(logoPartBytes, offset);
+        offset += logoPartBytes.length;
+      }
+
+      combinedPayload.set(textBytes, offset);
+
+      await sendBytesToPrinter(writeChar, combinedPayload);
     } catch (err: any) {
       console.error('Bluetooth print failed:', err);
       setBtCharacteristic(null);
@@ -1641,7 +1504,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               >
                 <Printer className="w-4 h-4 mr-2" />
                 {isPrintingBt
-                  ? 'Printing Exact Receipt...'
+                  ? 'Printing...'
                   : btCharacteristic
                   ? `ဘောင်ချာထုတ်မည် (${bluetoothDevice?.name || printSettings.savedPrinterName || 'BT Printer'})`
                   : 'ဘောင်ချာထုတ်မည် (Connect & Print)'}
@@ -1971,7 +1834,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               <div className="text-center">
                 <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
                 <p className="text-[11px] text-gray-500">
-                  စာရွက်ပေါ်တွင် ယခု မြင်ကွင်းအတိုင်း ဘောင်ကွပ်ကွက်လေးများအပါအဝင် တစ်ထပ်တည်း ထွက်လာပါမည်
+                  Native Hardware Font ဖြင့် ပီသကြည်လင်စွာနှင့် တစ်ဆက်တည်း ထွက်လာမည့် ပုံစံ
                 </p>
               </div>
 
