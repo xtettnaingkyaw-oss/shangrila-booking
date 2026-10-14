@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security';
@@ -6,10 +6,10 @@ import { AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
 import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
-  ArrowLeft, History, Search, Banknote, Bluetooth, Settings
+  ArrowLeft, History, Search, Banknote, Bluetooth, Settings, Upload, X
 } from 'lucide-react';
 
-// TypeScript Build Error မတက်စေရန် URL နည်းလမ်းဖြင့် Logo ဖိုင်ကို လှမ်းယူခြင်း
+// Project ထဲရှိ THE SHANGRI LA - LOGO.png ကို Build Error မတက်စေဘဲ လှမ်းယူခြင်း
 const defaultLogoImg = new URL('../THE SHANGRI LA - LOGO.png', import.meta.url).href;
 
 interface CartItem {
@@ -55,15 +55,17 @@ interface OfflineSaleRecord {
 interface PosPrintSettings {
   paperWidth: '58mm' | '80mm';
   showLogo: boolean;
-  logoUrl: string;
-  logoMode: 'invert_circle' | 'circle' | 'standard';
+  customPrintedLogoDataUrl: string; // Loyverse ကဲ့သို့ Printed Receipt အတွက် သီးသန့် Upload တင်ထားသော Logo
+  logoFilterMode: 'auto_gold_extract' | 'bw_threshold';
+  logoThreshold: number;
   logoSize: number;
   shopName: string;
   subtitle: string;
-  address: string;
+  headerText: string;
+  footerText: string;
   phone: string;
-  footerLine1: string;
-  footerLine2: string;
+  thankYouText: string;
+  showCustomerInfo: boolean;
   savedPrinterId: string;
   savedPrinterName: string;
 }
@@ -71,20 +73,22 @@ interface PosPrintSettings {
 const OFFLINE_QUEUE_KEY = 'shangrila_pos_offline_queue_v1';
 const LOCAL_SALES_HISTORY_KEY = 'shangrila_pos_local_history_v1';
 const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
-const POS_PRINT_SETTINGS_KEY = 'shangrila_pos_print_settings_v2';
+const POS_PRINT_SETTINGS_KEY = 'shangrila_pos_print_settings_v3';
 
 const DEFAULT_PRINT_SETTINGS: PosPrintSettings = {
   paperWidth: '58mm',
   showLogo: true,
-  logoUrl: '',
-  logoMode: 'invert_circle',
-  logoSize: 152,
+  customPrintedLogoDataUrl: '',
+  logoFilterMode: 'auto_gold_extract', // အစိမ်းရင့်နောက်ခံကို အဖြူပြောင်းပြီး ရွှေရောင်တောင်တန်းနှင့် စာသားကိုသာ အမည်းရောင်ထုတ်ပေးမည့် စနစ်
+  logoThreshold: 12,
+  logoSize: 184,
   shopName: 'THE SHANGRI-LA',
   subtitle: "MEN'S RETREAT",
-  address: '33th(B) St, Between 65th & 65th(A) Sts, Chan Aye Tharzan Township, Mandalay',
+  headerText: 'Beyond Relaxation',
+  footerText: '33th(B) St, Between 65th & 65th(A) Sts, Chan Aye Tharzan Township, Mandalay',
   phone: '09-458884517',
-  footerLine1: 'Thank You For Visiting Us!',
-  footerLine2: 'We hope to see you again soon.',
+  thankYouText: 'Thank You For Visiting Us!\nWe hope to see you again soon.',
+  showCustomerInfo: true,
   savedPrinterId: '',
   savedPrinterName: ''
 };
@@ -192,7 +196,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [activePosView, setActivePosView] = useState<'register' | 'history' | 'settings'>('register');
 
-  // 🌟 POS Print & Branding Settings State 🌟
+  // 🌟 Loyverse-Style Receipt Settings State 🌟
   const [printSettings, setPrintSettings] = useState<PosPrintSettings>(() => {
     try {
       const saved = localStorage.getItem(POS_PRINT_SETTINGS_KEY);
@@ -203,7 +207,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     return {
       ...DEFAULT_PRINT_SETTINGS,
       shopName: localAppData?.branding?.name || DEFAULT_PRINT_SETTINGS.shopName,
-      address: localAppData?.branding?.address || DEFAULT_PRINT_SETTINGS.address,
+      footerText: localAppData?.branding?.address || DEFAULT_PRINT_SETTINGS.footerText,
       phone: localAppData?.branding?.phone1 || DEFAULT_PRINT_SETTINGS.phone
     };
   });
@@ -218,13 +222,17 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     });
   };
 
-  // 🌟 Loyverse-Style Direct Web Bluetooth Printer States 🌟
+  const printedLogoInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 🌟 Direct Web Bluetooth Printer States 🌟
   const [bluetoothDevice, setBluetoothDevice] = useState<any>(null);
   const [btCharacteristic, setBtCharacteristic] = useState<any>(null);
   const [isPrintingBt, setIsPrintingBt] = useState(false);
   const [processedLogoPreview, setProcessedLogoPreview] = useState<string>('');
 
-  const effectiveLogoUrl = printSettings.logoUrl.trim() || defaultLogoImg || localAppData?.branding?.logoUrl || '';
+  // Digital Logo (ဘယ်ဘက်အကွက်) နှင့် Printed Source Logo (ညာဘက်အကွက်)
+  const digitalLogoUrl = defaultLogoImg || localAppData?.branding?.logoUrl || '';
+  const printedLogoSourceUrl = printSettings.customPrintedLogoDataUrl || digitalLogoUrl;
 
   const [posStep, setPosStep] = useState<1 | 2 | 3 | 4>(1);
   const [activeCategory, setActiveCategory] = useState<string | null>(
@@ -339,10 +347,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     };
   }, []);
 
-  // 🌟 Generate Processed Monochrome Logo Preview & ESC/POS Raster Bytes 🌟
+  // 🌟 Loyverse-Grade Smart Monochrome Logo Converter 🌟
+  // အစိမ်းရင့်နောက်ခံ (#123524) ကို ၁၀၀% အဖြူရောင်ပြောင်းပြီး ရွှေရောင်တောင်တန်းနှင့် စာသား (#D4AF37) ကိုသာ အမည်းရောင် Line-Art အဖြစ် ထုတ်ပေးသည်
   const buildLogoRasterData = async (
     imgUrl: string,
-    mode: 'invert_circle' | 'circle' | 'standard',
+    filterMode: 'auto_gold_extract' | 'bw_threshold',
+    thresholdVal: number,
     sizePx: number
   ): Promise<{ rasterBytes: Uint8Array | null; previewDataUrl: string }> => {
     return new Promise((resolve) => {
@@ -354,96 +364,122 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       img.crossOrigin = 'Anonymous';
       img.onload = () => {
         try {
-          const targetWidth = Math.max(64, Math.min(384, Math.round(sizePx / 8) * 8));
-          const targetHeight = targetWidth;
+          const targetWidth = Math.max(96, Math.min(384, Math.round(sizePx / 8) * 8));
+          const aspect = img.height / (img.width || 1);
+          const rawHeight = Math.round(targetWidth * aspect);
 
-          const canvas = document.createElement('canvas');
-          canvas.width = targetWidth;
-          canvas.height = targetHeight;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = targetWidth;
+          tempCanvas.height = rawHeight;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (!tempCtx) {
             resolve({ rasterBytes: null, previewDataUrl: '' });
             return;
           }
 
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, targetWidth, targetHeight);
-          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          tempCtx.fillStyle = '#FFFFFF';
+          tempCtx.fillRect(0, 0, targetWidth, rawHeight);
+          tempCtx.drawImage(img, 0, 0, targetWidth, rawHeight);
 
-          const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-          const pixels = imgData.data;
+          const rawImgData = tempCtx.getImageData(0, 0, targetWidth, rawHeight);
+          const rawPixels = rawImgData.data;
 
+          // ပုံထဲတွင် အဖြူထည်နောက်ခံ ဟုတ်မဟုတ် အနားသတ်ထောင့်များကို စစ်ဆေးခြင်း
+          const cornerLum =
+            (rawPixels[0] * 0.299 + rawPixels[1] * 0.587 + rawPixels[2] * 0.114);
+          const isAlreadyLightBg = cornerLum > 200 || rawPixels[3] < 50;
+
+          // 1-bit pixel matrix တည်ဆောက်ခြင်းနှင့် အပေါ်/အောက် အဖြူသားအပိုများကို Auto-Trim ဖြတ်ထုတ်ခြင်း
+          const dotMatrix: boolean[][] = [];
+          let firstBlackRow = rawHeight;
+          let lastBlackRow = 0;
+
+          for (let y = 0; y < rawHeight; y++) {
+            const row: boolean[] = [];
+            for (let x = 0; x < targetWidth; x++) {
+              const idx = (y * targetWidth + x) * 4;
+              const r = rawPixels[idx];
+              const g = rawPixels[idx + 1];
+              const b = rawPixels[idx + 2];
+              const a = rawPixels[idx + 3];
+
+              let isBlack = false;
+              if (a > 80) {
+                const lum = r * 0.299 + g * 0.587 + b * 0.114;
+
+                if (filterMode === 'auto_gold_extract' && !isAlreadyLightBg) {
+                  // အစိမ်းရင့်နောက်ခံတွင် Green > Red ဖြစ်ပြီး၊ ရွှေရောင်/အဖြူရောင် စာသားနှင့် တောင်တန်းတွင် Red > Green နှင့် အလင်းရောင်မြင့်သည်
+                  const goldWarmth = r - g;
+                  if (goldWarmth >= thresholdVal || lum > 115) {
+                    isBlack = true;
+                  }
+                } else {
+                  // သာမန် အဖြူနောက်ခံပေါ်မှ အမည်းရောင် Logo အတွက်
+                  const bwCutoff = Math.max(40, Math.min(230, 140 + thresholdVal * 2));
+                  isBlack = lum < bwCutoff;
+                }
+              }
+
+              row.push(isBlack);
+              if (isBlack) {
+                if (y < firstBlackRow) firstBlackRow = y;
+                if (y > lastBlackRow) lastBlackRow = y;
+              }
+            }
+            dotMatrix.push(row);
+          }
+
+          if (firstBlackRow > lastBlackRow) {
+            firstBlackRow = 0;
+            lastBlackRow = rawHeight - 1;
+          } else {
+            firstBlackRow = Math.max(0, firstBlackRow - 6);
+            lastBlackRow = Math.min(rawHeight - 1, lastBlackRow + 6);
+          }
+
+          const croppedHeight = Math.max(16, lastBlackRow - firstBlackRow + 1);
           const nBytesPerRow = Math.ceil(targetWidth / 8);
           const bitmapBytes: number[] = [];
 
-          const cx = targetWidth / 2;
-          const cy = targetHeight / 2;
-          const maxRadius = (targetWidth / 2) * 0.92;
-          const innerRingRadius = (targetWidth / 2) * 0.87;
+          const outCanvas = document.createElement('canvas');
+          outCanvas.width = targetWidth;
+          outCanvas.height = croppedHeight;
+          const outCtx = outCanvas.getContext('2d');
+          const outImgData = outCtx ? outCtx.createImageData(targetWidth, croppedHeight) : null;
 
-          for (let y = 0; y < targetHeight; y++) {
-            for (let x = 0; x < nBytesPerRow; x++) {
+          for (let y = 0; y < croppedHeight; y++) {
+            const srcY = firstBlackRow + y;
+            for (let xByte = 0; xByte < nBytesPerRow; xByte++) {
               let byte = 0;
-              for (let b = 0; b < 8; b++) {
-                const pxCol = x * 8 + b;
-                let isBlackDot = false;
-
-                if (pxCol < targetWidth) {
-                  const idx = (y * targetWidth + pxCol) * 4;
-                  const red = pixels[idx];
-                  const green = pixels[idx + 1];
-                  const blue = pixels[idx + 2];
-                  const alpha = pixels[idx + 3];
-
-                  const dx = pxCol - cx;
-                  const dy = y - cy;
-                  const dist = Math.sqrt(dx * dx + dy * dy);
-
-                  if (alpha > 100) {
-                    const lum = red * 0.299 + green * 0.587 + blue * 0.114;
-
-                    if (mode === 'invert_circle') {
-                      if (dist <= maxRadius) {
-                        if (dist >= innerRingRadius && dist <= maxRadius) {
-                          isBlackDot = true;
-                        } else {
-                          isBlackDot = lum > 102;
-                        }
-                      }
-                    } else if (mode === 'circle') {
-                      if (dist <= maxRadius) {
-                        isBlackDot = lum < 145;
-                      }
-                    } else {
-                      isBlackDot = lum < 145;
-                    }
-                  }
-                }
-
+              for (let bit = 0; bit < 8; bit++) {
+                const pxCol = xByte * 8 + bit;
+                const isBlackDot = pxCol < targetWidth ? dotMatrix[srcY][pxCol] : false;
                 if (isBlackDot) {
-                  byte |= 1 << (7 - b);
+                  byte |= 1 << (7 - bit);
                 }
-
-                if (pxCol < targetWidth) {
+                if (outImgData && pxCol < targetWidth) {
                   const pIdx = (y * targetWidth + pxCol) * 4;
                   const val = isBlackDot ? 20 : 255;
-                  pixels[pIdx] = val;
-                  pixels[pIdx + 1] = val;
-                  pixels[pIdx + 2] = val;
-                  pixels[pIdx + 3] = 255;
+                  outImgData.data[pIdx] = val;
+                  outImgData.data[pIdx + 1] = val;
+                  outImgData.data[pIdx + 2] = val;
+                  outImgData.data[pIdx + 3] = 255;
                 }
               }
               bitmapBytes.push(byte);
             }
           }
 
-          ctx.putImageData(imgData, 0, 0);
-          const previewDataUrl = canvas.toDataURL('image/png');
+          let previewDataUrl = '';
+          if (outCtx && outImgData) {
+            outCtx.putImageData(outImgData, 0, 0);
+            previewDataUrl = outCanvas.toDataURL('image/png');
+          }
 
           const xL = nBytesPerRow & 0xff;
           const xH = (nBytesPerRow >> 8) & 0xff;
-          const yL = targetHeight & 0xff;
-          const yH = (targetHeight >> 8) & 0xff;
+          const yL = croppedHeight & 0xff;
+          const yH = (croppedHeight >> 8) & 0xff;
           const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
 
           resolve({
@@ -462,8 +498,13 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   useEffect(() => {
     let active = true;
-    if (printSettings.showLogo && effectiveLogoUrl) {
-      buildLogoRasterData(effectiveLogoUrl, printSettings.logoMode, printSettings.logoSize).then((res) => {
+    if (printSettings.showLogo && printedLogoSourceUrl) {
+      buildLogoRasterData(
+        printedLogoSourceUrl,
+        printSettings.logoFilterMode,
+        printSettings.logoThreshold,
+        printSettings.logoSize
+      ).then((res) => {
         if (active && res.previewDataUrl) {
           setProcessedLogoPreview(res.previewDataUrl);
         }
@@ -474,7 +515,26 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     return () => {
       active = false;
     };
-  }, [effectiveLogoUrl, printSettings.showLogo, printSettings.logoMode, printSettings.logoSize]);
+  }, [
+    printedLogoSourceUrl,
+    printSettings.showLogo,
+    printSettings.logoFilterMode,
+    printSettings.logoThreshold,
+    printSettings.logoSize
+  ]);
+
+  // 🌟 Handle Custom Printed Receipt Logo Upload (Loyverse Style) 🌟
+  const handleUploadPrintedLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        updatePrintSettings({ customPrintedLogoDataUrl: reader.result });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const updateOfflineQueue = (newQueue: OfflineSaleRecord[]) => {
     setOfflineQueue(newQueue);
@@ -920,11 +980,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       // 1. Printer Init & Center Alignment
       await sendBytesToPrinter(writeChar, encoder.encode(INIT + ALIGN_CENTER));
 
-      // 2. Print Clean Monochrome Logo
-      if (printSettings.showLogo && effectiveLogoUrl) {
+      // 2. Print Clean Loyverse-Style Monochrome Logo
+      if (printSettings.showLogo && printedLogoSourceUrl) {
         const { rasterBytes } = await buildLogoRasterData(
-          effectiveLogoUrl,
-          printSettings.logoMode,
+          printedLogoSourceUrl,
+          printSettings.logoFilterMode,
+          printSettings.logoThreshold,
           printSettings.logoSize
         );
         if (rasterBytes) {
@@ -934,13 +995,18 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
       // 3. Header & Receipt Content
       let cmd = ALIGN_CENTER + BOLD_ON + DOUBLE_HEIGHT;
-      cmd += `${(printSettings.shopName || 'THE SHANGRI-LA').toUpperCase()}\n`;
+      if (printSettings.shopName) {
+        cmd += `${printSettings.shopName.toUpperCase()}\n`;
+      }
       if (printSettings.subtitle) {
         cmd += NORMAL_TEXT + `${printSettings.subtitle.toUpperCase()}\n`;
       }
       cmd += NORMAL_TEXT + BOLD_OFF;
-      if (printSettings.address) {
-        cmd += `${printSettings.address}\n`;
+      if (printSettings.headerText) {
+        cmd += `${printSettings.headerText}\n`;
+      }
+      if (printSettings.footerText) {
+        cmd += `${printSettings.footerText}\n`;
       }
       if (printSettings.phone) {
         cmd += `Tel: ${printSettings.phone}\n`;
@@ -950,10 +1016,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       cmd += ALIGN_LEFT;
       cmd += padLine('Invoice:', recordToPrint.invoiceNo);
       cmd += padLine('Date/Time:', `${recordToPrint.date} ${recordToPrint.time}`);
-      cmd += padLine(
-        'Customer:',
-        `${recordToPrint.customerName}${recordToPrint.customerPhone ? ` (${recordToPrint.customerPhone})` : ''}`
-      );
+      if (printSettings.showCustomerInfo) {
+        cmd += padLine(
+          'Customer:',
+          `${recordToPrint.customerName}${recordToPrint.customerPhone ? ` (${recordToPrint.customerPhone})` : ''}`
+        );
+      }
       cmd += padLine('Therapist:', recordToPrint.therapistName);
       cmd += divider;
 
@@ -993,11 +1061,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       cmd += divider;
 
       cmd += ALIGN_CENTER;
-      if (printSettings.footerLine1) {
-        cmd += BOLD_ON + `${printSettings.footerLine1}\n` + BOLD_OFF;
-      }
-      if (printSettings.footerLine2) {
-        cmd += `${printSettings.footerLine2}\n`;
+      if (printSettings.thankYouText) {
+        const lines = printSettings.thankYouText.split('\n');
+        lines.forEach((line, i) => {
+          if (i === 0) cmd += BOLD_ON + `${line}\n` + BOLD_OFF;
+          else cmd += `${line}\n`;
+        });
       }
       cmd += `\n\n\n` + CUT_PAPER;
 
@@ -1169,7 +1238,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 activePosView === 'settings' ? 'bg-[#D4AF37] text-[#123524]' : 'text-gray-300 hover:text-white'
               }`}
             >
-              <Settings className="w-3 h-3 mr-1" /> Printer & Design
+              <Settings className="w-3 h-3 mr-1" /> Receipt Settings
             </button>
           </div>
         </div>
@@ -1187,23 +1256,28 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 className="w-[72mm] bg-white p-3 text-gray-900 font-mono text-xs border border-gray-300 rounded-lg shadow-sm"
               >
                 <div className="text-center border-b border-dashed border-gray-400 pb-2.5 mb-2.5">
-                  {printSettings.showLogo && (processedLogoPreview || effectiveLogoUrl) && (
+                  {printSettings.showLogo && (processedLogoPreview || printedLogoSourceUrl) && (
                     <img
-                      src={processedLogoPreview || effectiveLogoUrl}
-                      alt="Logo"
-                      className="w-14 h-14 rounded-full mx-auto mb-1.5 object-contain"
+                      src={processedLogoPreview || printedLogoSourceUrl}
+                      alt="Printed Logo"
+                      className="w-24 mx-auto mb-1.5 object-contain"
                     />
                   )}
-                  <h2 className="font-serif font-black text-sm text-[#123524] uppercase tracking-wider">
-                    {printSettings.shopName || 'THE SHANGRI-LA'}
-                  </h2>
+                  {printSettings.shopName && (
+                    <h2 className="font-serif font-black text-sm text-[#123524] uppercase tracking-wider">
+                      {printSettings.shopName}
+                    </h2>
+                  )}
                   {printSettings.subtitle && (
                     <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">
                       {printSettings.subtitle}
                     </p>
                   )}
-                  {printSettings.address && (
-                    <p className="text-[9px] text-gray-600 mt-0.5">{printSettings.address}</p>
+                  {printSettings.headerText && (
+                    <p className="text-[10px] font-semibold text-gray-700 mt-0.5">{printSettings.headerText}</p>
+                  )}
+                  {printSettings.footerText && (
+                    <p className="text-[9px] text-gray-600 mt-0.5">{printSettings.footerText}</p>
                   )}
                   {printSettings.phone && (
                     <p className="text-[9px] text-gray-600">Tel: {printSettings.phone}</p>
@@ -1221,13 +1295,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                       {activeReceipt.date} {activeReceipt.time}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Customer:</span>
-                    <span className="font-bold">
-                      {activeReceipt.customerName}{' '}
-                      {activeReceipt.customerPhone ? `(${activeReceipt.customerPhone})` : ''}
-                    </span>
-                  </div>
+                  {printSettings.showCustomerInfo && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Customer:</span>
+                      <span className="font-bold">
+                        {activeReceipt.customerName}{' '}
+                        {activeReceipt.customerPhone ? `(${activeReceipt.customerPhone})` : ''}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-gray-500">Therapist:</span>
                     <span className="font-bold text-right">{activeReceipt.therapistName}</span>
@@ -1288,11 +1364,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   )}
                 </div>
 
-                <div className="text-center text-[10px] text-gray-500 space-y-0.5">
-                  {printSettings.footerLine1 && (
-                    <p className="font-bold text-gray-700">{printSettings.footerLine1}</p>
-                  )}
-                  {printSettings.footerLine2 && <p>{printSettings.footerLine2}</p>}
+                <div className="text-center text-[10px] text-gray-500 space-y-0.5 whitespace-pre-line">
+                  {printSettings.thankYouText}
                   {!activeReceipt.synced && (
                     <p className="text-[9px] text-amber-600 font-bold mt-1">[Saved Offline - Pending Sync]</p>
                   )}
@@ -1326,106 +1399,18 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       )}
 
       {/* ==========================================
-          VIEW 3: PRINTER & RECEIPT DESIGN SETTINGS
+          VIEW 3: LOYVERSE-STYLE RECEIPT & PRINTER SETTINGS
          ========================================== */}
       {activePosView === 'settings' ? (
         <div className="max-w-6xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
           <div className="lg:col-span-7 space-y-5">
-            {/* Bluetooth & Paper Setup Card */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-              <div className="border-b border-gray-100 pb-3 flex flex-wrap items-center justify-between gap-2">
+            {/* 1. Loyverse-Style Receipt Settings Card */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-4">
                 <div>
-                  <h2 className="text-base font-bold text-[#123524] flex items-center">
-                    <Bluetooth className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Bluetooth Printer & Paper Setup
-                  </h2>
+                  <h2 className="text-lg font-bold text-gray-800">Receipt settings</h2>
                   <p className="text-xs text-gray-500">
-                    Bluetooth Printer ချိတ်ဆက်မှုနှင့် စာရွက်အရွယ်အစား သတ်မှတ်ရန်
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {bluetoothDevice && btCharacteristic ? (
-                    <span className="bg-green-50 text-green-700 border border-green-200 px-3 py-1 rounded-full text-xs font-bold">
-                      ● Connected: {bluetoothDevice.name || 'BT Printer'}
-                    </span>
-                  ) : (
-                    <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-xs font-bold">
-                      Not Connected
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleForceRefreshApp}
-                    className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[10px] font-bold flex items-center"
-                  >
-                    <RefreshCw className="w-3 h-3 mr-1" /> Force Update App
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleConnectBluetoothPrinter(true)}
-                  className="py-3 px-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center shadow-sm hover:bg-[#1a4a32] transition"
-                >
-                  <Bluetooth className="w-4 h-4 mr-2" />
-                  {bluetoothDevice ? 'Change / Pair Bluetooth Printer' : 'Pair Bluetooth Printer'}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isPrintingBt}
-                  onClick={() => handleBluetoothEscPosPrint(samplePreviewReceipt)}
-                  className="py-3 px-4 bg-yellow-50 text-[#123524] border border-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center hover:bg-yellow-100 transition disabled:opacity-50"
-                >
-                  <Printer className="w-4 h-4 mr-2" />
-                  {isPrintingBt ? 'Printing Test...' : 'စမ်းသပ် ဘောင်ချာထုတ်ကြည့်မည် (Test Print)'}
-                </button>
-              </div>
-
-              <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 text-[11px] text-blue-900 space-y-1">
-                <div className="font-bold">💡 Refresh လုပ်တိုင်း Bluetooth အလိုအလျောက် ချိတ်မိနေစေရန် အကြံပြုချက် -</div>
-                <p>
-                  Google Chrome ၏ လုံခြုံရေးစနစ်အရ စာမျက်နှာ Refresh လုပ်တိုင်း Printer ကို အလိုအလျောက် တန်းချိတ်ပေးနိုင်ရန် Chrome Address Bar တွင်{' '}
-                  <code className="bg-white px-1.5 py-0.5 rounded border border-blue-200 font-mono text-[10px] select-all">
-                    chrome://flags/#enable-web-bluetooth-new-permissions-backend
-                  </code>{' '}
-                  ဟု ရိုက်ထည့်ပြီး <b>Enabled</b> ပြောင်းပေးထားပါ။ တစ်ကြိမ်ချိတ်ပြီးရင် အမြဲတမ်း အလိုအလျောက် မှတ်မိနေပါလိမ့်မယ်။
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-2">
-                  Thermal Paper Width (စာရွက် အကျယ်)
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {(['58mm', '80mm'] as const).map((w) => (
-                    <button
-                      key={w}
-                      type="button"
-                      onClick={() => updatePrintSettings({ paperWidth: w })}
-                      className={`py-3 rounded-xl font-black text-xs border-2 transition ${
-                        printSettings.paperWidth === w
-                          ? 'border-[#123524] bg-[#123524] text-[#D4AF37]'
-                          : 'border-gray-200 bg-gray-50 text-gray-600'
-                      }`}
-                    >
-                      {w === '58mm' ? '58mm (2 inch - အသေး 32 Cols)' : '80mm (3 inch - အကြီး 48 Cols)'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Default Branding & Logo Print Design Card */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-              <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
-                <div>
-                  <h2 className="text-base font-bold text-[#123524] flex items-center">
-                    <Crown className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Receipt Branding & Logo Design
-                  </h2>
-                  <p className="text-xs text-gray-500">
-                    ဘောင်ချာပေါ်တွင် ရိုက်နှိပ်မည့် Logo ပုံစံနှင့် ဆိုင်အချက်အလက်များကို စိတ်ကြိုက်ပြင်ဆင်ပါ
+                    Loyverse ပုံစံအတိုင်း Digital Logo နှင့် Thermal Printed Logo တို့ကို သီးသန့်စီ စိတ်ကြိုက်ချိန်ညှိနိုင်ပါသည်
                   </p>
                 </div>
                 <button
@@ -1435,173 +1420,326 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                       updatePrintSettings(DEFAULT_PRINT_SETTINGS);
                     }
                   }}
-                  className="text-[11px] font-bold text-red-600 hover:underline"
+                  className="text-xs font-bold text-red-600 hover:underline"
                 >
-                  Reset to Default
+                  Reset Default
                 </button>
               </div>
 
-              <div className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-200">
-                <div>
-                  <div className="text-xs font-bold text-gray-800">Print Logo on Receipt (ဘောင်ချာတွင် Logo ထည့်မည်)</div>
-                  <div className="text-[10px] text-gray-500">THE SHANGRI LA - LOGO.png ကို အသုံးပြုထားပါသည်</div>
+              {/* Loyverse Dual Logo Section: Digital vs Printed Receipt */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-bold text-gray-700">Logo</label>
+                  <label className="flex items-center gap-2 text-xs font-bold text-[#123524] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={printSettings.showLogo}
+                      onChange={(e) => updatePrintSettings({ showLogo: e.target.checked })}
+                      className="w-4 h-4 accent-[#123524]"
+                    />
+                    Print Logo on Thermal Receipt
+                  </label>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={printSettings.showLogo}
-                  onChange={(e) => updatePrintSettings({ showLogo: e.target.checked })}
-                  className="w-5 h-5 accent-[#123524]"
-                />
-              </div>
 
-              {printSettings.showLogo && (
-                <div className="space-y-3 pt-1">
+                <div className="grid grid-cols-2 sm:grid-cols-2 gap-6 max-w-md">
+                  {/* Left Box: Digital / Emailed Receipt Logo */}
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Logo Thermal Print Style (လေးထောင့်ကွက်မည်း မပေါ်စေရန် ရွေးချယ်မှု)
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {[
-                        {
-                          id: 'invert_circle',
-                          title: 'Invert Gold (အကြံပြု)',
-                          desc: 'နောက်ခံအမည်းဖျောက်ပြီး သရဖူနှင့်စာသားကိုသာ လှပစွာထုတ်မည်'
-                        },
-                        {
-                          id: 'circle',
-                          title: 'Circle Badge',
-                          desc: 'အဝိုင်းပုံစံ တံဆိပ်ဝိုင်းအဖြစ် ထုတ်မည်'
-                        },
-                        {
-                          id: 'standard',
-                          title: 'Standard B&W',
-                          desc: 'မူရင်းအတိုင်း အဖြူအမည်း ထုတ်မည်'
-                        }
-                      ].map((m) => (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => updatePrintSettings({ logoMode: m.id as any })}
-                          className={`p-3 rounded-xl border text-left transition ${
-                            printSettings.logoMode === m.id
-                              ? 'border-[#123524] bg-green-50/60 ring-1 ring-[#123524]'
-                              : 'border-gray-200 bg-white hover:border-[#D4AF37]'
-                          }`}
-                        >
-                          <div className="font-bold text-xs text-[#123524]">{m.title}</div>
-                          <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">{m.desc}</div>
-                        </button>
-                      ))}
+                    <div className="text-xs text-gray-500 mb-2 font-medium">Digital / App receipt</div>
+                    <div className="w-36 h-36 rounded-lg border border-gray-200 bg-[#123524] overflow-hidden flex items-center justify-center shadow-sm">
+                      {digitalLogoUrl ? (
+                        <img src={digitalLogoUrl} alt="Digital Logo" className="w-full h-full object-contain" />
+                      ) : (
+                        <span className="text-xs text-white">No Logo</span>
+                      )}
                     </div>
                   </div>
 
+                  {/* Right Box: Printed Receipt Logo (Monochrome Line Art + Upload Button) */}
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      Logo Size on Paper ({printSettings.logoSize} px)
-                    </label>
+                    <div className="text-xs text-gray-500 mb-2 font-medium">Printed receipt</div>
+                    <div className="relative w-36 h-36 rounded-lg border border-gray-300 bg-white overflow-hidden flex flex-col justify-between shadow-sm">
+                      {printSettings.customPrintedLogoDataUrl && (
+                        <button
+                          type="button"
+                          onClick={() => updatePrintSettings({ customPrintedLogoDataUrl: '' })}
+                          title="Remove custom uploaded logo"
+                          className="absolute top-1.5 left-1.5 z-10 w-6 h-6 rounded-full bg-white border border-gray-300 shadow flex items-center justify-center text-gray-600 hover:text-red-600"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <div className="flex-1 flex items-center justify-center p-2 overflow-hidden">
+                        {processedLogoPreview ? (
+                          <img
+                            src={processedLogoPreview}
+                            alt="Printed Receipt Monochrome"
+                            className="max-w-full max-h-24 object-contain"
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-400">No Logo</span>
+                        )}
+                      </div>
+                      <input
+                        ref={printedLogoInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadPrintedLogo}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => printedLogoInputRef.current?.click()}
+                        className="w-full py-2 bg-[#8bc34a] hover:bg-[#7cb342] text-white font-bold text-xs uppercase tracking-wider transition flex items-center justify-center"
+                      >
+                        <Upload className="w-3.5 h-3.5 mr-1" /> Upload
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Smart Thermal Filter & Contrast Controls */}
+                {printSettings.showLogo && (
+                  <div className="mt-4 p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-gray-700">Thermal Logo Conversion Mode:</span>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => updatePrintSettings({ logoFilterMode: 'auto_gold_extract', logoThreshold: 12 })}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition ${
+                            printSettings.logoFilterMode === 'auto_gold_extract'
+                              ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
+                              : 'bg-white text-gray-600 border-gray-200'
+                          }`}
+                        >
+                          Auto Extract Gold Logo (အစိမ်းရင့်နောက်ခံဖျောက်)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updatePrintSettings({ logoFilterMode: 'bw_threshold', logoThreshold: 0 })}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition ${
+                            printSettings.logoFilterMode === 'bw_threshold'
+                              ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
+                              : 'bg-white text-gray-600 border-gray-200'
+                          }`}
+                        >
+                          Standard B&W Image
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                          Logo Sharpness / Contrast ({printSettings.logoThreshold})
+                        </label>
+                        <input
+                          type="range"
+                          min={-20}
+                          max={45}
+                          step={1}
+                          value={printSettings.logoThreshold}
+                          onChange={(e) => updatePrintSettings({ logoThreshold: parseInt(e.target.value, 10) })}
+                          className="w-full accent-[#123524]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                          Printed Logo Width ({printSettings.logoSize} px)
+                        </label>
+                        <input
+                          type="range"
+                          min={112}
+                          max={256}
+                          step={8}
+                          value={printSettings.logoSize}
+                          onChange={(e) => updatePrintSettings({ logoSize: parseInt(e.target.value, 10) })}
+                          className="w-full accent-[#123524]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Loyverse-Style Text Fields */}
+              <div className="space-y-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold mb-1">Store Title</label>
                     <input
-                      type="range"
-                      min={96}
-                      max={224}
-                      step={8}
-                      value={printSettings.logoSize}
-                      onChange={(e) => updatePrintSettings({ logoSize: parseInt(e.target.value, 10) })}
-                      className="w-full accent-[#123524]"
+                      type="text"
+                      value={printSettings.shopName}
+                      onChange={(e) => updatePrintSettings({ shopName: e.target.value })}
+                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm font-bold outline-none bg-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold mb-1">Subtitle</label>
+                    <input
+                      type="text"
+                      value={printSettings.subtitle}
+                      onChange={(e) => updatePrintSettings({ subtitle: e.target.value })}
+                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm font-bold outline-none bg-transparent"
                     />
                   </div>
                 </div>
-              )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Shop Name (ဆိုင်အမည်)</label>
+                  <label className="block text-xs text-gray-500 font-semibold mb-1">Header</label>
                   <input
                     type="text"
-                    value={printSettings.shopName}
-                    onChange={(e) => updatePrintSettings({ shopName: e.target.value })}
-                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                    maxLength={500}
+                    value={printSettings.headerText}
+                    onChange={(e) => updatePrintSettings({ headerText: e.target.value })}
+                    placeholder="e.g. အားပေးမှုကို အထူးကျေးဇူးတင်ရှိပါသည်။"
+                    className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm outline-none bg-transparent"
                   />
+                  <div className="text-right text-[10px] text-gray-400 mt-0.5">
+                    {printSettings.headerText.length} / 500
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Subtitle</label>
-                  <input
-                    type="text"
-                    value={printSettings.subtitle}
-                    onChange={(e) => updatePrintSettings({ subtitle: e.target.value })}
-                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Shop Address (လိပ်စာ)</label>
-                <input
-                  type="text"
-                  value={printSettings.address}
-                  onChange={(e) => updatePrintSettings({ address: e.target.value })}
-                  className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs text-gray-500 font-semibold mb-1">Footer (Address)</label>
+                  <input
+                    type="text"
+                    maxLength={500}
+                    value={printSettings.footerText}
+                    onChange={(e) => updatePrintSettings({ footerText: e.target.value })}
+                    placeholder="33th(B), Between 65th & 65(A)th Streets, Chan Aye Tharzan Township, Mandalay."
+                    className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm outline-none bg-transparent"
+                  />
+                  <div className="text-right text-[10px] text-gray-400 mt-0.5">
+                    {printSettings.footerText.length} / 500
+                  </div>
+                </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Phone (ဖုန်းနံပါတ်)</label>
-                  <input
-                    type="text"
-                    value={printSettings.phone}
-                    onChange={(e) => updatePrintSettings({ phone: e.target.value })}
-                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold mb-1">Phone Number</label>
+                    <input
+                      type="text"
+                      value={printSettings.phone}
+                      onChange={(e) => updatePrintSettings({ phone: e.target.value })}
+                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm outline-none bg-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold mb-1">Closing Note</label>
+                    <input
+                      type="text"
+                      value={printSettings.thankYouText}
+                      onChange={(e) => updatePrintSettings({ thankYouText: e.target.value })}
+                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm outline-none bg-transparent"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Footer Line 1</label>
+
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                  <span className="text-sm font-medium text-gray-800">Show customer info</span>
                   <input
-                    type="text"
-                    value={printSettings.footerLine1}
-                    onChange={(e) => updatePrintSettings({ footerLine1: e.target.value })}
-                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Footer Line 2</label>
-                  <input
-                    type="text"
-                    value={printSettings.footerLine2}
-                    onChange={(e) => updatePrintSettings({ footerLine2: e.target.value })}
-                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                    type="checkbox"
+                    checked={printSettings.showCustomerInfo}
+                    onChange={(e) => updatePrintSettings({ showCustomerInfo: e.target.checked })}
+                    className="w-5 h-5 accent-[#123524]"
                   />
                 </div>
               </div>
             </div>
+
+            {/* 2. Bluetooth Hardware & Paper Width Card */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-[#123524] flex items-center">
+                    <Bluetooth className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Bluetooth Printer & Paper Size
+                  </h3>
+                  <p className="text-xs text-gray-500">ချိတ်ဆက်ထားသော Printer ကို အလိုအလျောက် မှတ်သားပေးထားပါသည်</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleForceRefreshApp}
+                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold flex items-center"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1" /> Force Update App
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleConnectBluetoothPrinter(true)}
+                  className="py-3 px-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center shadow-sm hover:bg-[#1a4a32] transition"
+                >
+                  <Bluetooth className="w-4 h-4 mr-2" />
+                  {bluetoothDevice ? `Connected (${bluetoothDevice.name || 'Change'})` : 'Pair Bluetooth Printer'}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isPrintingBt}
+                  onClick={() => handleBluetoothEscPosPrint(samplePreviewReceipt)}
+                  className="py-3 px-4 bg-yellow-50 text-[#123524] border border-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center hover:bg-yellow-100 transition disabled:opacity-50"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  {isPrintingBt ? 'Printing...' : 'စမ်းသပ် ဘောင်ချာထုတ်ကြည့်မည် (Test Print)'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                {(['58mm', '80mm'] as const).map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => updatePrintSettings({ paperWidth: w })}
+                    className={`py-2.5 rounded-xl font-black text-xs border-2 transition ${
+                      printSettings.paperWidth === w
+                        ? 'border-[#123524] bg-[#123524] text-[#D4AF37]'
+                        : 'border-gray-200 bg-gray-50 text-gray-600'
+                    }`}
+                  >
+                    Paper Size: {w}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {/* Live Thermal Paper Preview Column */}
+          {/* Right Column: Exact Thermal Receipt Output Preview */}
           <div className="lg:col-span-5">
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 sticky top-20 space-y-4">
               <div className="text-center">
-                <h3 className="text-sm font-extrabold text-[#123524]">Live Thermal Paper Preview</h3>
-                <p className="text-[11px] text-gray-500">Bluetooth Printer မှ ထွက်လာမည့် ပုံစံအစမ်းမြင်ကွင်း</p>
+                <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
+                <p className="text-[11px] text-gray-500">
+                  စာရွက်ပေါ်တွင် အမှန်တကယ် ရိုက်နှိပ်ထွက်လာမည့် 1-Bit Monochrome ပုံစံ
+                </p>
               </div>
 
               <div className="bg-gray-100 p-4 rounded-xl flex justify-center">
                 <div className="w-[72mm] bg-white p-4 text-gray-900 font-mono text-xs border border-gray-300 rounded shadow-sm">
                   <div className="text-center border-b border-dashed border-gray-400 pb-2.5 mb-2.5">
-                    {printSettings.showLogo && (processedLogoPreview || effectiveLogoUrl) && (
+                    {printSettings.showLogo && processedLogoPreview && (
                       <img
-                        src={processedLogoPreview || effectiveLogoUrl}
-                        alt="Thermal Logo Preview"
-                        style={{ width: `${Math.round(printSettings.logoSize * 0.45)}px` }}
-                        className="mx-auto mb-1.5 object-contain"
+                        src={processedLogoPreview}
+                        alt="Thermal Monochrome Preview"
+                        style={{ width: `${Math.round(printSettings.logoSize * 0.6)}px` }}
+                        className="mx-auto mb-2 object-contain"
                       />
                     )}
-                    <h2 className="font-black text-sm uppercase tracking-wider">{printSettings.shopName}</h2>
+                    {printSettings.shopName && (
+                      <h2 className="font-black text-sm uppercase tracking-wider">{printSettings.shopName}</h2>
+                    )}
                     {printSettings.subtitle && (
                       <p className="text-[9px] font-bold text-gray-600 uppercase tracking-widest">
                         {printSettings.subtitle}
                       </p>
                     )}
-                    {printSettings.address && (
-                      <p className="text-[9px] text-gray-600 mt-0.5">{printSettings.address}</p>
+                    {printSettings.headerText && (
+                      <p className="text-[10px] font-semibold text-gray-800 mt-0.5">{printSettings.headerText}</p>
+                    )}
+                    {printSettings.footerText && (
+                      <p className="text-[9px] text-gray-600 mt-0.5">{printSettings.footerText}</p>
                     )}
                     {printSettings.phone && <p className="text-[9px] text-gray-600">Tel: {printSettings.phone}</p>}
                   </div>
@@ -1615,10 +1753,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                       <span>Date/Time:</span>
                       <span className="font-bold">{samplePreviewReceipt.date} 7:00 PM</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Customer:</span>
-                      <span className="font-bold">Walk-in Guest</span>
-                    </div>
+                    {printSettings.showCustomerInfo && (
+                      <div className="flex justify-between">
+                        <span>Customer:</span>
+                        <span className="font-bold">Walk-in Guest</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span>Therapist:</span>
                       <span className="font-bold">Therapist No-1</span>
@@ -1644,9 +1784,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     </div>
                   </div>
 
-                  <div className="text-center text-[10px] text-gray-600 space-y-0.5">
-                    {printSettings.footerLine1 && <p className="font-bold">{printSettings.footerLine1}</p>}
-                    {printSettings.footerLine2 && <p>{printSettings.footerLine2}</p>}
+                  <div className="text-center text-[10px] text-gray-600 whitespace-pre-line">
+                    {printSettings.thankYouText}
                   </div>
                 </div>
               </div>
