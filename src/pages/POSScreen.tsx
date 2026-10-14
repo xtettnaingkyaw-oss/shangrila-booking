@@ -559,37 +559,37 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       {/* 🌟 Print-Only Thermal Receipt CSS 🌟 */}
       <style>{`
         @media print {
-          @page {
-            size: 80mm auto;
-            margin: 0;
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           body, html {
             width: 80mm !important;
+            height: auto !important;
             margin: 0 !important;
             padding: 0 !important;
-            background: #fff !important;
-            -webkit-print-color-adjust: exact;
+            background: #ffffff !important;
           }
           body * { visibility: hidden !important; }
           #pos-printable-receipt, #pos-printable-receipt * { visibility: visible !important; }
           #pos-printable-receipt {
-            position: fixed !important;
+            position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 78mm !important;
-            max-width: 78mm !important;
+            width: 72mm !important;
+            max-width: 72mm !important;
+            margin: 0 auto !important;
             padding: 2mm !important;
-            margin: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            background: #fff !important;
-            color: #000 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-family: 'Courier New', Courier, monospace !important;
             font-size: 11px !important;
-            line-height: 1.2 !important;
+            line-height: 1.25 !important;
           }
           .no-print { display: none !important; }
         }
       `}</style>
+      
       {/* ==========================================
           TOP POS HEADER BAR (With Offline Sync Status)
          ========================================== */}
@@ -660,25 +660,26 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         <div className="fixed inset-0 z-[200] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-[#D4AF37]/40 my-auto animate-fade-in">
             
-            {/* Printable Voucher Area */}
-            <div id="pos-printable-receipt" className="bg-white p-4 text-gray-900 font-mono text-xs border border-dashed border-gray-300 rounded-xl">
-              <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
-                {localAppData?.branding?.logoUrl && (
-                  <img
-                    src={localAppData.branding.logoUrl}
-                    alt="Logo"
-                    className="w-12 h-12 rounded-full mx-auto mb-1.5 object-cover border border-[#D4AF37]"
-                  />
-                )}
-                <h2 className="font-serif font-black text-base text-[#123524] uppercase tracking-wider">
-                  {localAppData?.branding?.name || 'The Shangri-La'}
-                </h2>
-                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                  Men's Retreat (Beyond Relaxation)
-                </p>
-                <p className="text-[10px] text-gray-600 mt-1">{localAppData?.branding?.address}</p>
-                <p className="text-[10px] text-gray-600">Tel: {localAppData?.branding?.phone1}</p>
-              </div>
+            {/* Printable Voucher Area Wrapper */}
+            <div className="w-full overflow-hidden flex justify-center bg-gray-100 p-2 rounded-xl">
+              <div id="pos-printable-receipt" className="w-[72mm] bg-white p-3 text-gray-900 font-mono text-xs border border-gray-300 rounded-lg shadow-sm">
+                <div className="text-center border-b border-dashed border-gray-400 pb-2.5 mb-2.5">
+                  {localAppData?.branding?.logoUrl && (
+                    <img
+                      src={localAppData.branding.logoUrl}
+                      alt="Logo"
+                      className="w-10 h-10 rounded-full mx-auto mb-1 object-cover border border-[#D4AF37]"
+                    />
+                  )}
+                  <h2 className="font-serif font-black text-sm text-[#123524] uppercase tracking-wider">
+                    {localAppData?.branding?.name || 'The Shangri-La'}
+                  </h2>
+                  <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">
+                    Men's Retreat
+                  </p>
+                  <p className="text-[9px] text-gray-600 mt-0.5">{localAppData?.branding?.address}</p>
+                  <p className="text-[9px] text-gray-600">Tel: {localAppData?.branding?.phone1}</p>
+                </div>
 
               <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
                 <div className="flex justify-between">
