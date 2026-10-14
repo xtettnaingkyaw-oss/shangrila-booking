@@ -594,7 +594,88 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Loyverse-Style Direct ESC/POS Bluetooth Print (No System Print Dialog!) 🌟
+  // 🌟 Logo ပုံကို Thermal Printer ဖြင့် ထုတ်နိုင်ရန် 1-bit Monochrome Bitmap သို့ ပြောင်းပေးသည့် Helper Function 🌟
+  const printLogoBitmap = async (imgUrl: string, writeChar: any): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(false);
+            return;
+          }
+
+          const targetWidth = printerPaperWidth === '80mm' ? 384 : 200;
+          const scale = targetWidth / img.width;
+          const targetHeight = Math.round(img.height * scale);
+
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+          const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+          const pixels = imgData.data;
+
+          const nBytesPerRow = Math.ceil(targetWidth / 8);
+          const bitmapBytes: number[] = [];
+
+          // ESC/POS Raster Bit Image Command: GS v 0
+          const xL = nBytesPerRow & 0xff;
+          const xH = (nBytesPerRow >> 8) & 0xff;
+          const yL = targetHeight & 0xff;
+          const yH = (targetHeight >> 8) & 0xff;
+
+          const rasterHeader = [0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH];
+
+          for (let y = 0; y < targetHeight; y++) {
+            for (let x = 0; x < nBytesPerRow; x++) {
+              let byte = 0;
+              for (let b = 0; b < 8; b++) {
+                const pxCol = x * 8 + b;
+                if (pxCol < targetWidth) {
+                  const idx = (y * targetWidth + pxCol) * 4;
+                  const red = pixels[idx];
+                  const green = pixels[idx + 1];
+                  const blue = pixels[idx + 2];
+                  const grayscale = (red * 0.299 + green * 0.587 + blue * 0.114);
+                  if (grayscale < 140) {
+                    byte |= (1 << (7 - b));
+                  }
+                }
+              }
+              bitmapBytes.push(byte);
+            }
+          }
+
+          const fullCommand = new Uint8Array([...rasterHeader, ...bitmapBytes]);
+          const chunkSize = 20;
+
+          for (let i = 0; i < fullCommand.length; i += chunkSize) {
+            const chunk = fullCommand.slice(i, i + chunkSize);
+            if (writeChar.properties.writeWithoutResponse) {
+              await writeChar.writeValueWithoutResponse(chunk);
+            } else {
+              await writeChar.writeValue(chunk);
+            }
+            await new Promise((r) => setTimeout(r, 12));
+          }
+          resolve(true);
+        } catch (e) {
+          console.warn('Logo print error:', e);
+          resolve(false);
+        }
+      };
+      img.onerror = () => resolve(false);
+      img.src = imgUrl;
+    });
+  };
+
+  // 🌟 Direct ESC/POS Bluetooth Print with Logo & Loyverse Style 🌟
   const handleBluetoothEscPosPrint = async () => {
     if (!activeReceipt) return;
     setIsPrintingBt(true);
@@ -602,7 +683,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     try {
       let writeChar = btCharacteristic;
 
-      // Printer ချိတ်ထားပြီးသားရှိသော်လည်း ပြတ်သွားပါက ပြန်ချိတ်မည်
       if (!writeChar && bluetoothDevice) {
         try {
           writeChar = await findWritableCharacteristic(bluetoothDevice);
@@ -612,7 +692,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         }
       }
 
-      // Printer လုံးဝ မချိတ်ရသေးပါက ချက်ချင်း ရွေးခိုင်းပြီး တန်းထုတ်မည်
       if (!writeChar) {
         writeChar = await handleConnectBluetoothPrinter();
         if (!writeChar) {
@@ -643,10 +722,18 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       const NORMAL_TEXT = GS + '!\x00';
       const CUT_PAPER = GS + 'V\x41\x03';
 
-      let cmd = INIT;
+      const encoder = new TextEncoder();
 
-      // Header
-      cmd += ALIGN_CENTER + BOLD_ON + DOUBLE_HEIGHT;
+      // 1. အရင်ဆုံး Init Command ပို့မည်
+      await writeChar.writeValueWithoutResponse(encoder.encode(INIT + ALIGN_CENTER));
+
+      // 2. Logo ပုံပါရှိပါက Bitmap အဖြစ် အရင်ဆုံး ပို့မည်
+      if (localAppData?.branding?.logoUrl && !localAppData.branding.logoUrl.startsWith('data:')) {
+        await printLogoBitmap(localAppData.branding.logoUrl, writeChar);
+      }
+
+      // 3. ဘောင်ချာ စာသားအချက်အလက်များ တည်ဆောက်ခြင်း
+      let cmd = INIT + ALIGN_CENTER + BOLD_ON + DOUBLE_HEIGHT;
       cmd += `${localAppData?.branding?.name || 'The Shangri-La'}\n`;
       cmd += NORMAL_TEXT + `Men's Retreat\n` + BOLD_OFF;
       if (localAppData?.branding?.address) {
@@ -657,7 +744,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
       cmd += divider;
 
-      // Metadata
       cmd += ALIGN_LEFT;
       cmd += padLine('Invoice:', activeReceipt.invoiceNo);
       cmd += padLine('Date/Time:', `${activeReceipt.date} ${activeReceipt.time}`);
@@ -668,7 +754,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       cmd += padLine('Therapist:', activeReceipt.therapistName);
       cmd += divider;
 
-      // Cart Items
       activeReceipt.items.forEach((item, idx) => {
         const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
         const itemTitle = `${idx + 1}. ${item.name}${item.qty > 1 ? ` x${item.qty}` : ''}`;
@@ -690,7 +775,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       });
       cmd += divider;
 
-      // Totals
       cmd += padLine('Subtotal:', formatPrice(activeReceipt.subTotal));
       if (activeReceipt.discountAmount > 0) {
         cmd += padLine(`Discount (${activeReceipt.discountReason}):`, `-${formatPrice(activeReceipt.discountAmount)}`);
@@ -705,13 +789,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
       cmd += divider;
 
-      // Footer
       cmd += ALIGN_CENTER + BOLD_ON + `Thank You For Visiting Us!\n` + BOLD_OFF;
       cmd += `We hope to see you again soon.\n\n\n\n`;
       cmd += CUT_PAPER;
 
-      // Bluetooth Printer Buffer မပြည့်စေရန် 20 bytes စီ ခွဲပို့ခြင်း (100% BLE Printer Compatible)
-      const encoder = new TextEncoder();
       const bytes = encoder.encode(cmd);
       const chunkSize = 20;
 
