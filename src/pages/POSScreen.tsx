@@ -559,25 +559,37 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       {/* 🌟 Print-Only Thermal Receipt CSS 🌟 */}
       <style>{`
         @media print {
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          body, html {
+            width: 80mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            -webkit-print-color-adjust: exact;
+          }
           body * { visibility: hidden !important; }
           #pos-printable-receipt, #pos-printable-receipt * { visibility: visible !important; }
           #pos-printable-receipt {
-            position: absolute !important;
+            position: fixed !important;
             left: 0 !important;
             top: 0 !important;
-            width: 80mm !important;
-            max-width: 100% !important;
-            padding: 4mm !important;
+            width: 78mm !important;
+            max-width: 78mm !important;
+            padding: 2mm !important;
             margin: 0 !important;
             box-shadow: none !important;
             border: none !important;
             background: #fff !important;
             color: #000 !important;
+            font-size: 11px !important;
+            line-height: 1.2 !important;
           }
           .no-print { display: none !important; }
         }
       `}</style>
-
       {/* ==========================================
           TOP POS HEADER BAR (With Offline Sync Status)
          ========================================== */}
