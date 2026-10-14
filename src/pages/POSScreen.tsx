@@ -516,12 +516,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   };
 
   // 🌟 Direct Thermal Print Function (Fixes Android Chrome Letter Size issue) 🌟
-  const handleDirectPrint = () => {
-    const receiptEl = document.getElementById('pos-printable-receipt');
-    if (!receiptEl) {
-      window.print();
-      return;
-    }
+const handleDirectPrint = () => {
+    window.print();
+  };
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');
     if (!printWindow) {
@@ -593,10 +590,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         @media print {
           @page {
             size: 80mm auto;
-            margin: 0mm;
+            margin: 0;
+          }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           body, html {
             width: 80mm !important;
+            height: auto !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
@@ -605,16 +607,17 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           #pos-printable-receipt, #pos-printable-receipt * { visibility: visible !important; }
           #pos-printable-receipt {
             position: absolute !important;
-            left: 0 !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
             top: 0 !important;
-            width: 78mm !important;
-            max-width: 78mm !important;
+            width: 76mm !important;
+            max-width: 76mm !important;
             margin: 0 !important;
-            padding: 1mm 2mm !important;
+            padding: 2mm !important;
             background: #ffffff !important;
             color: #000000 !important;
-            font-family: 'Courier New', Courier, monospace !important;
-            font-size: 11px !important;
+            box-shadow: none !important;
+            border: none !important;
           }
           .no-print { display: none !important; }
         }
