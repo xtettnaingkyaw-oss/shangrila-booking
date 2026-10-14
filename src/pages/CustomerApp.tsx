@@ -2391,6 +2391,7 @@ const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number
           {isTherapistFirst && currentStep === 2 ? 'CONTINUE TO DATE & TIME' : 'CONTINUE TO THERAPIST'} <ChevronRight className="w-4 h-4 ml-1.5 flex-shrink-0" />
         </button>
       </div>
+      </div> 
     );
 
  const renderTherapistSelection = (currentStep: number) => {
