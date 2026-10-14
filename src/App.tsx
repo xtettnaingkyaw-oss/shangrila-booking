@@ -1,15 +1,15 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { doc, getDoc, collection, getDocs, query, orderBy, setDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth'; 
-import { db, auth, requestNotificationPermission, messaging } from './firebase'; 
-import { Download, X, MapPin, Phone, LogOut, DatabaseBackup } from 'lucide-react';
+import { db, auth, requestNotificationPermission } from './firebase'; 
+import { Download, X, MapPin, Phone, LogOut } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
 
 // 🌟 Premium Loading Screen ကို Import ခေါ်ယူခြင်း 🌟
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
 import CustomerApp from './pages/CustomerApp'; 
 
-// 🌟 POS နှင့် Campaign Screen များကို Import ခေါ်ယူခြင်း 🌟
+// 🌟 POS နှင့် Campaign Screen များကို Import ခေါ်ယူခြင်း 🌟
 import POSScreen from './pages/POSScreen';
 import ThadingyutCampaign from './pages/ThadingyutCampaign';
 import ThadingyutPopup from './components/ThadingyutPopup';
@@ -18,6 +18,7 @@ const AdminApp = lazy(() => import('./pages/AdminApp'));
 const StaffApp = lazy(() => import('./pages/StaffApp'));
 
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
+const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
 
 const DEFAULT_BRANDING: AppBranding = {
   logoUrl: '', name: "The Shangri-La", address: "33th(B) St, Between 65th & 65th(A) Sts, Mandalay",
@@ -52,6 +53,32 @@ const DEFAULT_INSTALL_STEPS: InstallStep[] = [
    { id: '3', text: '"Add" ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။', imageUrl: '' }
 ];
 
+const FALLBACK_APPDATA: AppData = {
+  categories: DEFAULT_CATEGORIES,
+  therapists: DEFAULT_THERAPISTS,
+  branding: DEFAULT_BRANDING,
+  paymentMethods: DEFAULT_PAYMENT_METHODS,
+  promotion: DEFAULT_PROMOTION,
+  installSteps: DEFAULT_INSTALL_STEPS
+};
+
+// LocalStorage မှ သိမ်းထားသော Cache Data ကို ချက်ချင်း ဆွဲထုတ်မည့် Helper Function
+const getInitialAppData = (): AppData | null => {
+  try {
+    const cached = localStorage.getItem(CACHED_APPDATA_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && parsed.categories?.length > 0) return parsed;
+    }
+  } catch {}
+  // Offline ဖြစ်နေပါက သို့မဟုတ် POS mode ဖြစ်နေပါက Fallback Data ဖြင့် ချက်ချင်း ပွင့်စေမည်
+  const isPos = window.location.search.includes('mode=pos');
+  if (!navigator.onLine || isPos) {
+    return FALLBACK_APPDATA;
+  }
+  return null;
+};
+
 class ErrorBoundary extends React.Component<{ children: any }, { hasError: boolean, error: any }> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
@@ -68,22 +95,31 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
 }
 
 function MainApp() {
-  // 🌟 FIX: Add 'pos' and 'campaign' modes 🌟
-  const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff' | 'pos' | 'campaign'>('customer');
-  const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
-  const [appData, setAppData] = useState<AppData | null>(null);
-  const [dbError, setDbError] = useState(false);
+  // 🌟 URL မှ Mode ကို စဖွင့်ဖွင့်ချင်း ချက်ချင်း ဖတ်ယူမည် 🌟
+  const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff' | 'pos' | 'campaign'>(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const mode = searchParams.get('mode');
+    if (mode === 'admin' || mode === 'staff' || mode === 'pos' || mode === 'campaign') return mode;
+    return 'customer';
+  });
 
-  const [isLoaderFinished, setIsLoaderFinished] = useState(false);
+  const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
+  const [appData, setAppData] = useState<AppData | null>(() => getInitialAppData());
+
+  // 🌟 POS Mode သို့မဟုတ် Offline ဖြစ်နေပါက Loading Screen ကို လုံးဝကျော်သွားမည် 🌟
+  const [isLoaderFinished, setIsLoaderFinished] = useState<boolean>(() => {
+    const isPos = window.location.search.includes('mode=pos');
+    return isPos || !navigator.onLine;
+  });
   
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
-
   const [isScrolled, setIsScrolled] = useState(false);
 
   // Notification Setup
   useEffect(() => {
+    if (!navigator.onLine) return;
     const setupNotifications = async () => {
       try {
         if (typeof requestNotificationPermission === 'function') {
@@ -124,7 +160,7 @@ function MainApp() {
   useEffect(() => {
     document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
     const updateFavicon = (url: string) => {
-      const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon'], link[rel='manifest']"); 
+      const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon']"); 
       existingIcons.forEach(icon => document.head.removeChild(icon));
       
       const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
@@ -132,41 +168,66 @@ function MainApp() {
     };
     if (appData?.branding?.logoUrl) { 
         updateFavicon(appData.branding.logoUrl); 
-        localStorage.setItem('shangrila_logo_cache', appData.branding.logoUrl);
+        try { localStorage.setItem('shangrila_logo_cache', appData.branding.logoUrl); } catch {}
     }
   }, [appData?.branding?.logoUrl, appData?.branding?.name]);
 
+  // 🌟 FIX: အင်တာနက်လိုင်း လေးနေလျှင် ၂.၅ စက္ကန့်ထက် ပိုမစောင့်ဘဲ Cache/Fallback Data ဖြင့် Loading ကို ချက်ချင်း ဖွင့်ပေးမည် 🌟
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get('mode') === 'admin') setAppMode('admin');
-    else if (searchParams.get('mode') === 'staff') setAppMode('staff');
-    else if (searchParams.get('mode') === 'pos') setAppMode('pos');
-    else if (searchParams.get('mode') === 'campaign') setAppMode('campaign');
+    const safetyTimer = setTimeout(() => {
+      setAppData((prev) => prev || getInitialAppData() || FALLBACK_APPDATA);
+      setIsLoaderFinished(true);
+    }, 2500);
 
-    signInAnonymously(auth).catch((error) => { console.error("Firebase Auth Error:", error); });
+    if (navigator.onLine) {
+      signInAnonymously(auth).catch((error) => { console.warn("Firebase Auth Warning:", error); });
+    }
 
     const initData = async () => {
+      if (!navigator.onLine) {
+        setAppData((prev) => prev || getInitialAppData() || FALLBACK_APPDATA);
+        setIsLoaderFinished(true);
+        return;
+      }
+
       try {
         const [settingsSnap, therapistsSnap] = await Promise.all([
             getDoc(doc(db, 'settings', 'appData')).catch(err => { console.warn(err); return null; }),
             getDocs(query(collection(db, 'therapists'), orderBy('order', 'asc'))).catch(err => { console.warn(err); return null; })
         ]);
 
-        let loadedData: Partial<AppData> = {}; let loadedTherapists: TherapistProfile[] = [];
-        if (settingsSnap && settingsSnap.exists()) { loadedData = settingsSnap.data() || {}; } else if (!settingsSnap) { setDbError(true); }
-        if (therapistsSnap && !therapistsSnap.empty) { therapistsSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); }
+        let loadedData: Partial<AppData> = {}; 
+        let loadedTherapists: TherapistProfile[] = [];
+        
+        if (settingsSnap && settingsSnap.exists()) { 
+          loadedData = settingsSnap.data() || {}; 
+        }
+        if (therapistsSnap && !therapistsSnap.empty) { 
+          therapistsSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); 
+        }
 
-        setAppData({ 
+        // Firebase မှ Data ရလာပါက အသစ်ဖြင့် Update လုပ်မည်၊ မရပါက Cache/Default ကိုသုံးမည် (Network Error လုံးဝ မပြတော့ပါ)
+        if ((settingsSnap && settingsSnap.exists()) || loadedTherapists.length > 0) {
+          const freshAppData: AppData = { 
             categories: Array.isArray(loadedData.categories) && loadedData.categories.length > 0 ? loadedData.categories : DEFAULT_CATEGORIES, 
             therapists: loadedTherapists.length > 0 ? loadedTherapists : DEFAULT_THERAPISTS, 
             branding: { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) }, 
             paymentMethods: Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS, 
             promotion: loadedData.promotion || DEFAULT_PROMOTION, 
             installSteps: loadedData.installSteps || DEFAULT_INSTALL_STEPS 
-        });
-      } catch (err) { setDbError(true); }
+          };
+          setAppData(freshAppData);
+        } else {
+          setAppData((prev) => prev || getInitialAppData() || FALLBACK_APPDATA);
+        }
+      } catch (err) {
+        console.warn("Using cached/fallback data due to offline/network:", err);
+        setAppData((prev) => prev || getInitialAppData() || FALLBACK_APPDATA);
+      }
     };
+
     initData();
+    return () => clearTimeout(safetyTimer);
   }, []);
 
   useEffect(() => {
@@ -177,24 +238,13 @@ function MainApp() {
     return () => clearInterval(interval);
   }, [loggedInAdmin]);
 
-  if (dbError) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
-           <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-red-100 animate-fade-in">
-              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100"><DatabaseBackup className="w-8 h-8" /></div>
-              <h2 className="text-xl font-bold text-red-600 mb-2">Network Error</h2>
-              <p className="text-sm text-gray-600 mb-6 font-semibold leading-relaxed">အင်တာနက်ချိတ်ဆက်မှု အားနည်းနေသဖြင့် Database ကို ဆွဲယူ၍မရပါ။</p>
-              <button onClick={() => window.location.reload()} className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-lg font-bold shadow-md hover:bg-opacity-90 transition">Refresh App</button>
-           </div>
-        </div>
-      );
-  }
-
-  if (!isLoaderFinished) { 
+  // POS Mode မဟုတ်မှသာ Loading Screen ပြသမည်
+  if (!isLoaderFinished && appMode !== 'pos') { 
       return <PremiumLoadingScreen isDataReady={!!appData} onFinish={() => setIsLoaderFinished(true)} />; 
   }
 
-  const stepsToShow = appData?.installSteps && appData.installSteps.length > 0 ? appData.installSteps : DEFAULT_INSTALL_STEPS;
+  const safeAppData = appData || FALLBACK_APPDATA;
+  const stepsToShow = safeAppData.installSteps && safeAppData.installSteps.length > 0 ? safeAppData.installSteps : DEFAULT_INSTALL_STEPS;
 
   // 🌟 Check if we are in full-screen modes (POS or Campaign)
   const isFullScreenMode = appMode === 'pos' || appMode === 'campaign';
@@ -203,7 +253,7 @@ function MainApp() {
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col relative">
       
       {/* 🌟 Promotion Popup (Customer Mode Only) 🌟 */}
-      {appMode === 'customer' && appData && <ThadingyutPopup appData={appData} />}
+      {appMode === 'customer' && safeAppData && <ThadingyutPopup appData={safeAppData} />}
 
       {showInstallModal && (
         <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
@@ -230,12 +280,12 @@ function MainApp() {
           }}
         >
           <div className="flex items-center justify-center mb-1 transition-all duration-300">
-            {appData?.branding?.logoUrl && (
+            {safeAppData.branding?.logoUrl && (
               <div className={`rounded-full overflow-hidden mr-2.5 sm:mr-3 border-2 shadow-sm flex-shrink-0 transition-all duration-300 ${isScrolled ? 'w-8 h-8 border-[1px]' : 'w-12 h-12 sm:w-14 sm:h-14 border-2'}`} style={{ borderColor: THEME.gold }}>
-                <img src={appData.branding.logoUrl} alt="Logo" className="w-full h-full object-cover bg-white" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                <img src={safeAppData.branding.logoUrl} alt="Logo" className="w-full h-full object-cover bg-white" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               </div>
             )}
-            <h1 className={`font-bold font-serif tracking-wide transition-all duration-300 ${isScrolled ? 'text-lg sm:text-xl' : 'text-2xl'}`} style={{ color: THEME.primary }}>{appData?.branding?.name || 'The Shangri-La'}</h1>
+            <h1 className={`font-bold font-serif tracking-wide transition-all duration-300 ${isScrolled ? 'text-lg sm:text-xl' : 'text-2xl'}`} style={{ color: THEME.primary }}>{safeAppData.branding?.name || 'The Shangri-La'}</h1>
           </div>
           
           <p className={`font-bold uppercase tracking-[0.2em] transition-all duration-300 overflow-hidden ${isScrolled ? 'h-0 opacity-0 m-0' : 'h-auto opacity-100 text-[10px] sm:text-[11px] mt-1.5'}`} style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
@@ -255,15 +305,15 @@ function MainApp() {
       <main className={`flex-1 w-full mx-auto ${isFullScreenMode ? 'max-w-full p-0' : 'max-w-4xl p-4 py-6'}`}>
         <Suspense fallback={<div className="text-center py-20 font-bold text-[#123524] flex flex-col items-center"><div className="w-10 h-10 border-4 border-[#123524] border-t-[#D4AF37] rounded-full animate-spin mb-4"></div>Loading App Module...</div>}>
             {appMode === 'admin' ? (
-              <AdminApp appData={appData!} onSettingsUpdated={setAppData} />
+              <AdminApp appData={safeAppData} onSettingsUpdated={setAppData} />
             ) : appMode === 'staff' ? (
-              <StaffApp appData={appData!} />
+              <StaffApp appData={safeAppData} />
             ) : appMode === 'pos' ? (
-              <POSScreen appData={appData!} />
+              <POSScreen appData={safeAppData} />
             ) : appMode === 'campaign' ? (
-              <ThadingyutCampaign appData={appData!} />
+              <ThadingyutCampaign appData={safeAppData} />
             ) : (
-              <CustomerApp appData={appData!} />
+              <CustomerApp appData={safeAppData} />
             )}
         </Suspense>
       </main>
@@ -271,10 +321,10 @@ function MainApp() {
       {/* 🌟 Hide Footer for Full Screen Modes (POS / Campaign) 🌟 */}
       {!isFullScreenMode && appMode !== 'admin' && (
         <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500 px-4">
-          <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{appData?.branding?.name || 'The Shangri-La'} Men's Retreat</h3>
-          <div className="mb-2 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto"><MapPin className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" /><span className="text-left sm:text-center leading-relaxed">{appData?.branding?.address}</span></div>
-          <div className="mb-4 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto"><Phone className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" /><span className="text-left sm:text-center leading-relaxed">{appData?.branding?.phone1} &nbsp;|&nbsp; {appData?.branding?.phone2}</span></div>
-          <p className="text-xs text-gray-400 mt-4">{appData?.branding?.copyright}</p>
+          <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{safeAppData.branding?.name || 'The Shangri-La'} Men's Retreat</h3>
+          <div className="mb-2 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto"><MapPin className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" /><span className="text-left sm:text-center leading-relaxed">{safeAppData.branding?.address}</span></div>
+          <div className="mb-4 flex items-start justify-center text-xs sm:text-sm max-w-xs sm:max-w-md mx-auto"><Phone className="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" /><span className="text-left sm:text-center leading-relaxed">{safeAppData.branding?.phone1} &nbsp;|&nbsp; {safeAppData.branding?.phone2}</span></div>
+          <p className="text-xs text-gray-400 mt-4">{safeAppData.branding?.copyright}</p>
         </footer>
       )}
     </div>
