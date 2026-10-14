@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, getDoc, updateDoc, doc, query, onSnapshot,
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert } from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert, PartyPopper} from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 import { useAppStore } from '../AppDataContext';
@@ -2157,9 +2157,6 @@ const renderServiceSelection = (currentStep: number) => {
       }, 300); 
   };
 
-  // 👇 renderServiceSelection ထဲတွင် ၎င်းတို့ မရှိတော့ဘဲ တန်းပြီး return ပြန်ပါမည် 👇
-  const renderServiceSelection = (currentStep: number) => (
-    <div className="animate-fade-in -mx-1.5 sm:mx-0">
       {/* 🌟 အသစ်: Ripple Animation & Falling Box Lanterns CSS 🌟 */}
       <style>{`
           .ripple-effect {
