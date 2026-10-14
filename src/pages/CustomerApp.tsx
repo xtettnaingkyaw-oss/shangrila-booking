@@ -2118,9 +2118,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
     </div>
   );
 
-const renderServiceSelection = (currentStep: number) => {
-    // 🌟 အသစ်: Pop-up Box အတွက် Mini Lanterns State 🌟
-    const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number, duration: number, size: number}[]>([]);
+const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number, duration: number, size: number}[]>([]);
     
   useEffect(() => {
       if (boxPromoActive && !userPastPromo) {
@@ -2157,6 +2155,9 @@ const renderServiceSelection = (currentStep: number) => {
       }, 300); 
   };
 
+  const renderServiceSelection = (currentStep: number) => (
+    <div className="animate-fade-in -mx-1.5 sm:mx-0">
+      
       {/* 🌟 အသစ်: Ripple Animation & Falling Box Lanterns CSS 🌟 */}
       <style>{`
           .ripple-effect {
