@@ -2838,12 +2838,14 @@ const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number
                                 <input
                                     key={idx}
                                     id={`txId-${idx}`}
-                                    type="text"
-                                    inputMode="text"
+                                    type="tel"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    autoComplete="one-time-code"
                                     maxLength={1}
-                                    value={val}
+                                    value={val.trim()}
                                     onChange={(e) => {
-                                        const inputVal = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(-1).toUpperCase();
+                                        const inputVal = e.target.value.replace(/[^0-9]/g, '').slice(-1);
                                         let str = formData.txId || '';
                                         str = str.padEnd(6, ' ');
                                         const newStr = str.substring(0, idx) + (inputVal || ' ') + str.substring(idx + 1);
@@ -2854,18 +2856,18 @@ const [miniBoxLanterns, setMiniBoxLanterns] = useState<{id: number, left: number
                                         }
                                     }}
                                     onKeyDown={(e) => {
-                                        if (e.key === 'Backspace' && !val && idx > 0) {
+                                        if (e.key === 'Backspace' && !val.trim() && idx > 0) {
                                             document.getElementById(`txId-${idx - 1}`)?.focus();
                                         }
                                     }}
-                                    onClick={(e) => {
-                                        const currentLength = (formData.txId || '').length;
+                                    onClick={() => {
+                                        const currentLength = (formData.txId || '').trim().length;
                                         if (idx > currentLength && currentLength < 6) {
                                             document.getElementById(`txId-${currentLength}`)?.focus();
                                         }
                                     }}
                                     className={`w-10 h-12 sm:w-12 sm:h-14 bg-white border-2 rounded-xl text-center text-lg sm:text-xl font-black text-[#123524] shadow-sm transition-all uppercase outline-none
-                                        ${val ? 'border-[#D4AF37] ring-2 ring-[#D4AF37]/20' : 'border-gray-200 focus:border-gray-400'}
+                                        ${val.trim() ? 'border-[#D4AF37] ring-2 ring-[#D4AF37]/20' : 'border-gray-200 focus:border-[#123524]'}
                                     `}
                                 />
                             );
