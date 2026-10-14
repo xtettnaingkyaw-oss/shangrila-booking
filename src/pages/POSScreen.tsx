@@ -557,8 +557,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
       {/* 🌟 Print-Only Thermal Receipt CSS 🌟 */}
-      <style>{`
+     <style>{`
         @media print {
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -573,7 +577,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           body * { visibility: hidden !important; }
           #pos-printable-receipt, #pos-printable-receipt * { visibility: visible !important; }
           #pos-printable-receipt {
-            position: absolute !important;
+            position: fixed !important;
             left: 0 !important;
             top: 0 !important;
             width: 72mm !important;
