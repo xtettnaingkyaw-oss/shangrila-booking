@@ -15,7 +15,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   const [timeLeft, setTimeLeft] = useState(15);
   const [lanterns, setLanterns] = useState<Lantern[]>([]);
   
-  // 🌟 အသစ်: Pop-up Box အပေါ်ပိုင်းအတွက် မီးပုံးငယ်များ 🌟
+  // 🌟 Start Screen Box အပေါ်ပိုင်းအတွက် မီးပုံးငယ်များ 🌟
   const [miniLanterns, setMiniLanterns] = useState<Lantern[]>([]);
 
   const [prize, setPrize] = useState<number>(0);
@@ -101,14 +101,20 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     let lanternInterval: any; let timerInterval: any; let miniLanternInterval: any;
 
     if (gameState === 'start') {
-        // 🌟 အသစ်: Pop-up Box အပေါ်ပိုင်းမှာ ပြုတ်ကျလာမယ့် မီးပုံးလေးများ 🌟
+        // စစချင်း မီးပုံးလေးများ တန်းပေါ်နေစေရန်
+        setMiniLanterns(Array.from({ length: 6 }).map((_, i) => ({
+            id: Date.now() + i,
+            left: 10 + Math.random() * 80,
+            duration: 2 + Math.random() * 2,
+            size: 1.2 + Math.random() * 1.2
+        })));
+
         miniLanternInterval = setInterval(() => {
             setMiniLanterns(prev => {
-                if (prev.length > 8) return prev.slice(1);
-                // Box ရဲ့ အကျယ် (0% မှ 100%) အတွင်း ကျပန်းနေရာကနေ ကျလာမည်
-                return [...prev, { id: Date.now() + Math.random(), left: Math.random() * 90, duration: 2 + Math.random() * 3, size: 1 + Math.random() * 1.5 }];
+                if (prev.length > 12) return prev.slice(1);
+                return [...prev, { id: Date.now() + Math.random(), left: 10 + Math.random() * 80, duration: 2 + Math.random() * 2.5, size: 1.2 + Math.random() * 1.2 }];
             });
-        }, 400);
+        }, 350);
     } else if (gameState === 'playing') {
       lanternInterval = setInterval(() => {
         setLanterns(prev => [...prev, { id: Date.now() + Math.random(), left: Math.random() * 90, duration: 1.5 + Math.random() * 2.5, size: 2.5 + Math.random() * 2 }]);
@@ -176,6 +182,30 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       }
   };
 
+  // 🌟 အသစ်: ခလုတ်နှိပ်လိုက်သည့်အခါ Ripple Click Effect ပေါ်စေရန် Function 🌟
+  const handleButtonClickWithEffect = (e: React.MouseEvent<HTMLButtonElement>, callback: () => void) => {
+      const button = e.currentTarget;
+      button.style.transform = 'scale(0.95)';
+      
+      const circle = document.createElement('span');
+      const diameter = Math.max(button.clientWidth, button.clientHeight);
+      const radius = diameter / 2;
+      
+      const rect = button.getBoundingClientRect();
+      circle.style.width = circle.style.height = `${diameter}px`;
+      circle.style.left = `${e.clientX - rect.left - radius}px`;
+      circle.style.top = `${e.clientY - rect.top - radius}px`;
+      circle.classList.add('campaign-ripple-effect');
+      
+      button.appendChild(circle);
+      
+      setTimeout(() => {
+          button.style.transform = 'scale(1)';
+          circle.remove();
+          callback();
+      }, 280);
+  };
+
   return (
     <div className="min-h-screen bg-[#1a0f14] text-white flex flex-col relative overflow-hidden font-sans">
       <style>{`
@@ -183,19 +213,36 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         .lantern-anim { position: absolute; animation-name: fall; animation-timing-function: linear; cursor: pointer; filter: drop-shadow(0 0 12px rgba(255, 165, 0, 0.8)); transition: transform 0.1s; }
         .lantern-anim:active { transform: scale(1.5); }
         
-        /* 🌟 အသစ်: Pop-up Box အပေါ်ပိုင်းအတွက် Mini Falling Lanterns CSS 🌟 */
+        /* 🌟 Start Box အပေါ်ပိုင်းအတွက် Mini Falling Lanterns CSS 🌟 */
         @keyframes miniFall { 
-            0% { transform: translateY(-20px) rotate(-10deg); opacity: 0; } 
+            0% { transform: translateY(-25px) rotate(-10deg); opacity: 0; } 
             20% { opacity: 1; } 
-            100% { transform: translateY(120px) rotate(15deg); opacity: 0; } 
+            85% { opacity: 1; }
+            100% { transform: translateY(130px) rotate(15deg); opacity: 0; } 
         }
         .mini-lantern-anim { 
             position: absolute; 
             animation-name: miniFall; 
-            animation-timing-function: ease-in-out; 
+            animation-timing-function: linear; 
             pointer-events: none; 
-            filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.6));
+            filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.7));
             z-index: 10;
+        }
+
+        /* 🌟 ခလုတ်နှိပ်သည့်အခါ ပေါ်မည့် Ripple Effect CSS 🌟 */
+        .campaign-ripple-effect {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.5);
+            transform: scale(0);
+            animation: campaignRipple 0.55s ease-out;
+            pointer-events: none;
+        }
+        @keyframes campaignRipple {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
         }
 
         @keyframes flyToCenter { 
@@ -215,7 +262,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
       {/* Header Bar */}
       <div className="p-4 z-50 flex items-center justify-between bg-black/40 backdrop-blur-sm border-b border-yellow-900/50">
-        <button onClick={() => window.location.href = '/'} className="flex items-center text-yellow-500 hover:text-yellow-400 font-bold"><ArrowLeft className="w-5 h-5 mr-1" /> နောက်သို့</button>
+        <button onClick={() => window.location.href = '/'} className="flex items-center text-yellow-500 hover:text-yellow-400 font-bold active:scale-95 transition"><ArrowLeft className="w-5 h-5 mr-1" /> နောက်သို့</button>
         <h1 className="font-bold text-yellow-500 tracking-wider truncate px-2 text-sm">{campaignTitle}</h1>
         <div className="w-20"></div>
       </div>
@@ -225,15 +272,12 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         {gameState === 'start' && (
           <div className="text-center z-10 p-6 bg-black/70 border border-yellow-600/50 rounded-2xl backdrop-blur-md max-w-sm w-full mx-4 shadow-[0_0_30px_rgba(255,215,0,0.1)] relative overflow-hidden">
             
-            {/* 🌟 အသစ်: Pop-up Box ရဲ့ အပေါ်ပိုင်းနေရာလေးမှာ မီးပုံးလေးတွေ ပြုတ်ကျလာမည့် အပိုင်း 🌟 */}
-            <div className="absolute top-0 left-0 w-full h-32 overflow-hidden pointer-events-none rounded-t-2xl">
+            {/* 🌟 Box ရဲ့ အပေါ်ပိုင်းနေရာမှာ မီးပုံးလေးတွေ အများကြီး ပြုတ်ကျလာမည့် အပိုင်း 🌟 */}
+            <div className="relative w-full h-28 mb-2 overflow-hidden pointer-events-none rounded-t-xl bg-gradient-to-b from-orange-950/40 to-transparent">
                  {miniLanterns.map((lantern) => (
                     <div key={lantern.id} className="mini-lantern-anim" style={{ left: `${lantern.left}%`, animationDuration: `${lantern.duration}s`, fontSize: `${lantern.size}rem`, top: '0px' }}>🏮</div>
                  ))}
             </div>
-
-            {/* မူလ Animation အစား Static Icon လေးတစ်ခုသာ ပြထားပြီး အနောက်မှာ Falling Lanterns များ ပေါ်နေမည် */}
-            <div className="flex justify-center mb-4 pt-6 relative z-20"><span className="text-5xl drop-shadow-md">🏮</span></div>
             
             <h2 className="text-2xl font-bold text-yellow-400 mb-2 relative z-20">{campaignTitle}</h2>
             <p className="text-gray-300 text-xs mb-6 leading-relaxed relative z-20">မီးပုံးလေးတွေကို ဖမ်းပြီး ၅၀% အထိ Discount ရယူပါ။ (တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</p>
@@ -250,13 +294,13 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                                     လူကြီးမင်းသည် ယနေ့အတွက် ကံစမ်းခွင့် ပြည့်သွားပါပြီ။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။
                                  </p>
                              </div>
-                             <button onClick={viewPreviousResult} className="w-full py-4 bg-yellow-500/20 border border-yellow-500 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:bg-yellow-500/40 transition-colors text-yellow-500 flex items-center justify-center relative overflow-hidden group">
+                             <button onClick={(e) => handleButtonClickWithEffect(e, viewPreviousResult)} className="w-full py-4 bg-yellow-500/20 border border-yellow-500 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:bg-yellow-500/40 transition-all duration-200 text-yellow-500 flex items-center justify-center relative overflow-hidden group">
                                 <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></span>
                                 <AlertCircle className="w-4 h-4 mr-2 relative z-10" /> <span className="relative z-10">ရရှိထားသော Discount အား ကြည့်မည်</span>
                              </button>
                          </div>
                       ) : (
-                         <button onClick={startGame} disabled={checkingUser} className="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-500 rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,165,0,0.5)] hover:scale-105 transition-transform text-white flex items-center justify-center disabled:opacity-50 relative overflow-hidden group">
+                         <button onClick={(e) => handleButtonClickWithEffect(e, startGame)} disabled={checkingUser} className="w-full py-4 bg-gradient-to-r from-yellow-600 to-orange-500 rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,165,0,0.5)] hover:scale-105 transition-all duration-200 text-white flex items-center justify-center disabled:opacity-50 relative overflow-hidden group">
                             <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></span>
                             {checkingUser ? <span className="relative z-10">စစ်ဆေးနေပါသည်...</span> : <><Sparkles className="w-5 h-5 mr-2 relative z-10" /> <span className="relative z-10">ကစားမည် (Play Now)</span></>}
                          </button>
@@ -265,7 +309,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                 ) : (
                    <div className="space-y-4">
                       <div className="bg-red-950/50 border border-red-900/50 rounded-xl p-4 text-xs text-red-200">ကံစမ်းမဲ ကစားရန်အတွက် အရင်ဆုံး အကောင့် ဝင်ရန် (Login) လိုအပ်ပါသည်။</div>
-                      <button onClick={goToLogin} className="w-full py-4 bg-white text-black rounded-xl font-bold text-sm shadow-md hover:bg-gray-200 transition flex items-center justify-center"><LogIn className="w-4 h-4 mr-2" /> Login အရင်ဝင်မည်</button>
+                      <button onClick={(e) => handleButtonClickWithEffect(e, goToLogin)} className="w-full py-4 bg-white text-black rounded-xl font-bold text-sm shadow-md hover:bg-gray-200 transition-all duration-200 flex items-center justify-center relative overflow-hidden"><LogIn className="w-4 h-4 mr-2 relative z-10" /> <span className="relative z-10">Login အရင်ဝင်မည်</span></button>
                    </div>
                 )}
             </div>
@@ -326,13 +370,13 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                      target="_blank" 
                      rel="noopener noreferrer"
                      onClick={markTelegramClicked}
-                     className="w-full py-3 bg-[#0088cc] text-white rounded-lg font-bold text-xs shadow-md hover:bg-[#0077b5] transition flex items-center justify-center relative z-20 cursor-pointer"
+                     className="w-full py-3 bg-[#0088cc] text-white rounded-lg font-bold text-xs shadow-md hover:bg-[#0077b5] transition flex items-center justify-center relative z-20 cursor-pointer active:scale-95"
                   >
                      <MessageCircle className="w-4 h-4 mr-2" /> Telegram Admin သို့ ပို့မည်
                   </a>
                 </div>
 
-                <button onClick={() => window.location.href = '/'} className="w-full py-4 bg-yellow-500 text-black rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,215,0,0.5)] hover:bg-yellow-400 transition relative z-10">App မှ Booking ပြန်တင်မည်</button>
+                <button onClick={(e) => handleButtonClickWithEffect(e, () => { window.location.href = '/'; })} className="w-full py-4 bg-yellow-500 text-black rounded-xl font-bold text-base shadow-[0_0_15px_rgba(255,215,0,0.5)] hover:bg-yellow-400 transition-all duration-200 relative overflow-hidden z-10">App မှ Booking ပြန်တင်မည်</button>
                 
                 {/* 🌟 Terms & Conditions 🌟 */}
                 <div className="mt-8 text-left border-t border-yellow-900/50 pt-6 relative z-10">
@@ -341,7 +385,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                         <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
                             <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>တစ်ရက်လျှင် တစ်ကြိမ်သာ ကံစမ်းခွင့်ရှိပါသည်။</span>
                         </li>
-                      <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
+                        <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
                             <span className="text-yellow-600 mr-2 font-bold text-xs mt-0.5">•</span> <span>ရရှိထားသော Discount ခံစားခွင့်အား ဆိုင်၏ ဝန်ဆောင်မှုအားလုံးအပေါ်တွင် အသုံးပြုနိုင်ပါသည်။</span>
                         </li>
                         <li className="text-[10px] text-gray-300 font-semibold leading-relaxed flex items-start">
