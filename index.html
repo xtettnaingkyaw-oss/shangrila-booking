@@ -60,5 +60,13 @@
 
     <!-- 🌟 App ရဲ့ Main Code သို့ ညွှန်းခြင်း 🌟 -->
     <script type="module" src="/src/main.tsx"></script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('SW error:', err));
+        });
+      }
+    </script>
   </body>
 </html>
