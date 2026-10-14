@@ -70,6 +70,17 @@ interface PosPrintSettings {
   savedPrinterName: string;
 }
 
+// 🌟 UI/UX Flying Animation Particle Interface 🌟
+interface FlyingBubble {
+  id: number;
+  name: string;
+  priceStr: string;
+  startX: number;
+  startY: number;
+  deltaX: number;
+  deltaY: number;
+}
+
 const OFFLINE_QUEUE_KEY = 'shangrila_pos_offline_queue_v1';
 const LOCAL_SALES_HISTORY_KEY = 'shangrila_pos_local_history_v1';
 const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
@@ -223,6 +234,13 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   };
 
   const printedLogoInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 🌟 UI/UX Animation Refs & States (Jump-to-Bill Effect) 🌟
+  const billCardRef = useRef<HTMLDivElement | null>(null);
+  const billListScrollRef = useRef<HTMLDivElement | null>(null);
+  const [flyingBubbles, setFlyingBubbles] = useState<FlyingBubble[]>([]);
+  const [isBillCardBouncing, setIsBillCardBouncing] = useState(false);
+  const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null);
 
   // 🌟 Direct Web Bluetooth Printer States 🌟
   const [bluetoothDevice, setBluetoothDevice] = useState<any>(null);
@@ -792,21 +810,85 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     } catch {}
   };
 
-  const addServiceToCart = (item: MenuItem) => {
+  // 🌟 UI/UX Parabolic Jump-to-Bill Animation Trigger 🌟
+  const triggerJumpToBillAnimation = (
+    e: React.MouseEvent<HTMLElement> | null,
+    itemName: string,
+    priceNum: number,
+    targetItemId: string
+  ) => {
+    setRecentlyAddedItemId(targetItemId);
+    setTimeout(() => {
+      setRecentlyAddedItemId((prev) => (prev === targetItemId ? null : prev));
+    }, 850);
+
+    // Auto-scroll the bill list to show the newly added/updated item
+    setTimeout(() => {
+      if (billListScrollRef.current) {
+        billListScrollRef.current.scrollTo({
+          top: billListScrollRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+    }, 120);
+
+    if (e && billCardRef.current) {
+      const btnRect = e.currentTarget.getBoundingClientRect();
+      const billRect = billCardRef.current.getBoundingClientRect();
+
+      const startX = btnRect.left + btnRect.width / 2;
+      const startY = btnRect.top + btnRect.height / 2;
+      // Target the header/top-center of the Current Walk-in Bill card
+      const endX = billRect.left + billRect.width / 2;
+      const endY = billRect.top + Math.min(90, billRect.height / 3);
+
+      const bubbleId = Date.now() + Math.random();
+      const newBubble: FlyingBubble = {
+        id: bubbleId,
+        name: itemName,
+        priceStr: formatPrice(priceNum),
+        startX,
+        startY,
+        deltaX: endX - startX,
+        deltaY: endY - startY
+      };
+
+      setFlyingBubbles((prev) => [...prev, newBubble]);
+
+      // Trigger impact bounce on the Bill Card right when the flying chip lands (440ms)
+      setTimeout(() => {
+        setIsBillCardBouncing(true);
+        setTimeout(() => setIsBillCardBouncing(false), 360);
+      }, 430);
+
+      // Clean up particle
+      setTimeout(() => {
+        setFlyingBubbles((prev) => prev.filter((b) => b.id !== bubbleId));
+      }, 560);
+    } else {
+      setIsBillCardBouncing(true);
+      setTimeout(() => setIsBillCardBouncing(false), 360);
+    }
+  };
+
+  const addServiceToCart = (item: MenuItem, e?: React.MouseEvent<HTMLElement>) => {
     const existingIdx = cart.findIndex((c) => c.id === item.id && !c.isCustomItem);
+    const basePrice = Number(item.price) || 0;
+
     if (existingIdx > -1) {
       const updated = [...cart];
       updated[existingIdx].qty += 1;
       setCart(updated);
+      triggerJumpToBillAnimation(e || null, item.name, basePrice, updated[existingIdx].cartId);
     } else {
-      const basePrice = Number(item.price) || 0;
       const vvipFull = Number(item.vvipPrice) || 0;
       const vvipExtra = vvipFull > basePrice ? vvipFull - basePrice : 0;
+      const newCartId = `${item.id}_${Date.now()}`;
 
       setCart([
         ...cart,
         {
-          cartId: `${item.id}_${Date.now()}`,
+          cartId: newCartId,
           id: item.id,
           name: item.name,
           duration: item.duration,
@@ -817,6 +899,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           qty: 1
         }
       ]);
+      triggerJumpToBillAnimation(e || null, item.name, basePrice, newCartId);
     }
   };
 
@@ -839,10 +922,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     const priceNum = parseInt(customItemPrice, 10);
     if (!customItemName.trim() || isNaN(priceNum) || priceNum <= 0) return;
 
+    const newCartId = `custom_${Date.now()}`;
     setCart([
       ...cart,
       {
-        cartId: `custom_${Date.now()}`,
+        cartId: newCartId,
         id: 'custom',
         name: customItemName.trim(),
         price: priceNum,
@@ -850,6 +934,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         qty: 1
       }
     ]);
+    triggerJumpToBillAnimation(null, customItemName.trim(), priceNum, newCartId);
     setCustomItemName('');
     setCustomItemPrice('');
     setShowCustomItemForm(false);
@@ -860,6 +945,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
       return sum + unitPrice * item.qty;
     }, 0);
+  }, [cart]);
+
+  const totalItemsCount = useMemo(() => {
+    return cart.reduce((sum, item) => sum + item.qty, 0);
   }, [cart]);
 
   const discountAmount = useMemo(() => {
@@ -1370,6 +1459,68 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
+      {/* 🌟 UI/UX Parabolic Jump-to-Bill Keyframes & Custom Scrollbar Styles 🌟 */}
+      <style>{`
+        @keyframes posFlyX {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(var(--fly-dx)); }
+        }
+        @keyframes posFlyY {
+          0% { transform: translateY(0) scale(1); opacity: 1; }
+          32% { transform: translateY(calc(var(--fly-dy) * 0.15 - 55px)) scale(1.12); opacity: 1; }
+          100% { transform: translateY(var(--fly-dy)) scale(0.45); opacity: 0.2; }
+        }
+        @keyframes posBillImpact {
+          0% { transform: scale(1); }
+          40% { transform: scale(1.028); box-shadow: 0 0 28px rgba(212, 175, 55, 0.55); }
+          100% { transform: scale(1); }
+        }
+        @keyframes posItemPopIn {
+          0% { transform: scale(0.95); background-color: rgba(212, 175, 55, 0.25); }
+          60% { transform: scale(1.015); background-color: rgba(212, 175, 55, 0.15); }
+          100% { transform: scale(1); background-color: transparent; }
+        }
+        .pos-fly-wrapper {
+          position: fixed;
+          z-index: 9999;
+          pointer-events: none;
+          animation: posFlyX 0.48s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+        }
+        .pos-fly-inner {
+          animation: posFlyY 0.48s cubic-bezier(0.32, 0.08, 0.68, 0.98) forwards;
+        }
+        .pos-bill-bounce {
+          animation: posBillImpact 0.36s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .pos-item-pop {
+          animation: posItemPopIn 0.8s ease-out forwards;
+        }
+      `}</style>
+
+      {/* 🌟 Floating Parabolic Chips (Service Jump-to-Bill Visual Feedback) 🌟 */}
+      {flyingBubbles.map((b) => (
+        <div
+          key={b.id}
+          className="pos-fly-wrapper"
+          style={
+            {
+              left: `${b.startX - 75}px`,
+              top: `${b.startY - 20}px`,
+              '--fly-dx': `${b.deltaX}px`,
+              '--fly-dy': `${b.deltaY}px`
+            } as React.CSSProperties
+          }
+        >
+          <div className="pos-fly-inner bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] border-2 border-[#D4AF37] px-3.5 py-1.5 rounded-full shadow-2xl flex items-center gap-2 whitespace-nowrap">
+            <Sparkles className="w-3.5 h-3.5 text-[#D4AF37] animate-spin" />
+            <span className="text-xs font-black tracking-wide">+ {b.name}</span>
+            <span className="text-[10px] font-extrabold bg-[#D4AF37] text-[#123524] px-1.5 py-0.5 rounded-full">
+              {b.priceStr}
+            </span>
+          </div>
+        </div>
+      ))}
+
       {/* ==========================================
           TOP POS HEADER BAR
          ========================================== */}
@@ -1616,8 +1767,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           VIEW 3: LOYVERSE-STYLE RECEIPT & PRINTER SETTINGS
          ========================================== */}
       {activePosView === 'settings' ? (
-        <div className="max-w-6xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
-          <div className="lg:col-span-7 space-y-5">
+        <div className="max-w-6xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 md:grid-cols-12 gap-5 animate-fade-in">
+          <div className="md:col-span-7 space-y-5">
             {/* 1. Loyverse-Style Receipt Settings Card */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6">
               <div className="flex items-center justify-between border-b border-gray-100 pb-4">
@@ -1921,7 +2072,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           </div>
 
           {/* Right Column: Exact Thermal Receipt Output Preview */}
-          <div className="lg:col-span-5">
+          <div className="md:col-span-5">
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 sticky top-20 space-y-4">
               <div className="text-center">
                 <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
@@ -2095,11 +2246,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         </div>
       ) : (
         /* ==========================================
-           VIEW 1: POS REGISTER
+           VIEW 1: POS REGISTER (TABLET & DESKTOP SPLIT-SCREEN UI/UX)
            ========================================== */
-        <div className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
-          <div className="lg:col-span-7 space-y-4">
-            <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-gray-200 grid grid-cols-4 gap-1.5">
+        <div className="flex-1 max-w-7xl w-full mx-auto p-2.5 sm:p-4 grid grid-cols-1 md:grid-cols-12 gap-3.5 lg:gap-5 items-start">
+          {/* LEFT PANEL: STEPS & SERVICES (7 Columns on Tablet & Desktop) */}
+          <div className="md:col-span-7 space-y-3.5">
+            <div className="bg-white p-2.5 sm:p-3 rounded-2xl shadow-sm border border-gray-200 grid grid-cols-4 gap-1.5">
               {[
                 { num: 1, label: '1. SERVICE', icon: Sparkles },
                 { num: 2, label: '2. THERAPIST', icon: User },
@@ -2113,7 +2265,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     key={s.num}
                     type="button"
                     onClick={() => setPosStep(s.num as any)}
-                    className={`py-2.5 px-2 rounded-xl font-extrabold text-[10px] sm:text-xs flex items-center justify-center transition-all ${
+                    className={`py-2.5 px-1.5 rounded-xl font-extrabold text-[10px] lg:text-xs flex items-center justify-center transition-all ${
                       active
                         ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-sm'
                         : done
@@ -2129,11 +2281,13 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             </div>
 
             {posStep === 1 && (
-              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in">
+              <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-3.5 animate-fade-in">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
                   <div>
-                    <h2 className="text-base sm:text-lg font-bold text-[#123524]">Select Services & Sale Items</h2>
-                    <p className="text-xs text-gray-500">ဘောင်ချာထဲသို့ ထည့်သွင်းလိုသော ဝန်ဆောင်မှုများကို နှိပ်ပါ</p>
+                    <h2 className="text-sm sm:text-base font-bold text-[#123524]">Select Services & Sale Items</h2>
+                    <p className="text-[11px] text-gray-500">
+                      ဝန်ဆောင်မှုကို နှိပ်လိုက်သည်နှင့် ညာဘက် Bill Card ထဲသို့ တိုက်ရိုက်ခုန်ဝင်သွားပါမည်
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -2149,7 +2303,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     onSubmit={handleAddCustomItem}
                     className="bg-gradient-to-r from-yellow-50 to-amber-50/40 p-3.5 rounded-xl border border-[#D4AF37]/40 flex flex-wrap gap-2 items-end animate-fade-in"
                   >
-                    <div className="flex-1 min-w-[150px]">
+                    <div className="flex-1 min-w-[140px]">
                       <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">
                         Item / Extra Service Name
                       </label>
@@ -2162,7 +2316,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#123524]"
                       />
                     </div>
-                    <div className="w-32">
+                    <div className="w-28">
                       <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">Price (Ks)</label>
                       <input
                         type="number"
@@ -2199,7 +2353,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   ))}
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[55vh] overflow-y-auto pr-1">
+                {/* Responsive Grid: 2 Columns on Tablet Portrait, 3 Columns on Wide Desktop */}
+                <div className="grid grid-cols-2 xl:grid-cols-3 gap-2.5 max-h-[62vh] overflow-y-auto pr-1">
                   {(localAppData?.categories || [])
                     .find((c) => c.id === activeCategory)
                     ?.items.map((item) => {
@@ -2211,15 +2366,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => addServiceToCart(item)}
-                          className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between relative group ${
+                          onClick={(e) => addServiceToCart(item, e)}
+                          className={`p-3 rounded-xl border text-left transition-all duration-150 active:scale-95 flex flex-col justify-between relative group ${
                             inCartQty > 0
-                              ? 'border-[#123524] bg-green-50/40 ring-1 ring-[#123524]/20'
-                              : 'border-gray-200 bg-white hover:border-[#D4AF37] hover:shadow-sm'
+                              ? 'border-[#123524] bg-green-50/50 ring-1 ring-[#123524]/30 shadow-sm'
+                              : 'border-gray-200 bg-white hover:border-[#D4AF37] hover:shadow-md'
                           }`}
                         >
                           {inCartQty > 0 && (
-                            <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[#123524] text-[#D4AF37] text-[10px] font-black flex items-center justify-center shadow">
+                            <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[#123524] text-[#D4AF37] text-[10px] font-black flex items-center justify-center shadow animate-bounce">
                               {inCartQty}
                             </span>
                           )}
@@ -2237,7 +2392,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                             <span className="font-black text-xs sm:text-sm text-[#123524]">
                               {formatPrice(item.price)}
                             </span>
-                            <span className="text-[10px] font-bold text-[#D4AF37] bg-[#123524] px-2 py-0.5 rounded">
+                            <span className="text-[10px] font-bold text-[#D4AF37] bg-[#123524] group-hover:bg-[#1a4a32] px-2.5 py-0.5 rounded-lg shadow-sm transition">
                               + Add
                             </span>
                           </div>
@@ -2246,12 +2401,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     })}
                 </div>
 
-                <div className="pt-3 flex justify-end">
+                <div className="pt-2 flex justify-end">
                   <button
                     type="button"
                     disabled={cart.length === 0}
                     onClick={() => setPosStep(2)}
-                    className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-md"
+                    className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-md hover:opacity-95 transition"
                   >
                     Continue to Therapist →
                   </button>
@@ -2280,7 +2435,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[55vh] overflow-y-auto">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[58vh] overflow-y-auto">
                   {(localAppData?.therapists || []).map((t) => {
                     const isSelected = therapist1?.id === t.id || therapist2?.id === t.id;
                     return (
@@ -2626,12 +2781,37 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             )}
           </div>
 
-          <div className="lg:col-span-5">
-            <div className="bg-white rounded-2xl shadow-md border border-[#D4AF37]/40 overflow-hidden sticky top-20">
-              <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-4 text-white flex items-center justify-between">
-                <div className="flex items-center">
-                  <ShoppingBag className="w-4 h-4 mr-2 text-[#D4AF37]" />
-                  <h3 className="font-bold text-sm text-[#D4AF37] tracking-wide">Current Walk-in Bill</h3>
+          {/* RIGHT PANEL: STICKY CURRENT WALK-IN BILL (5 Columns on Tablet & Desktop - Always Side-by-Side!) */}
+          <div className="md:col-span-5 sticky top-16">
+            <div
+              ref={billCardRef}
+              className={`bg-white rounded-2xl shadow-md border-2 transition-all duration-300 overflow-hidden ${
+                isBillCardBouncing
+                  ? 'pos-bill-bounce border-[#D4AF37] ring-4 ring-[#D4AF37]/30'
+                  : 'border-[#D4AF37]/40'
+              }`}
+            >
+              <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-3.5 sm:p-4 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <ShoppingBag
+                      className={`w-4 h-4 text-[#D4AF37] transition-transform duration-300 ${
+                        isBillCardBouncing ? 'scale-125' : ''
+                      }`}
+                    />
+                  </div>
+                  <h3 className="font-bold text-xs sm:text-sm text-[#D4AF37] tracking-wide">
+                    Current Walk-in Bill
+                  </h3>
+                  {totalItemsCount > 0 && (
+                    <span
+                      className={`bg-[#D4AF37] text-[#123524] text-[10px] font-black px-2 py-0.5 rounded-full shadow transition-transform duration-300 ${
+                        isBillCardBouncing ? 'scale-125' : ''
+                      }`}
+                    >
+                      {totalItemsCount}
+                    </span>
+                  )}
                 </div>
                 {cart.length > 0 && (
                   <button
@@ -2644,7 +2824,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 )}
               </div>
 
-              <div className="p-4 space-y-3 max-h-[45vh] overflow-y-auto divide-y divide-gray-100">
+              <div
+                ref={billListScrollRef}
+                className="p-3.5 sm:p-4 space-y-2.5 max-h-[42vh] overflow-y-auto divide-y divide-gray-100"
+              >
                 {cart.length === 0 ? (
                   <div className="py-10 text-center text-gray-400 text-xs font-bold">
                     ဝန်ဆောင်မှု သို့မဟုတ် Sale Item ရွေးချယ်ထားခြင်း မရှိသေးပါ။
@@ -2652,19 +2835,25 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 ) : (
                   cart.map((item) => {
                     const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
+                    const isJustAdded = recentlyAddedItemId === item.cartId;
                     return (
-                      <div key={item.cartId} className="pt-3 first:pt-0 flex flex-col gap-1.5">
-                        <div className="flex justify-between items-start">
+                      <div
+                        key={item.cartId}
+                        className={`pt-2.5 first:pt-0 rounded-lg px-1.5 py-1 flex flex-col gap-1.5 transition-colors ${
+                          isJustAdded ? 'pos-item-pop' : ''
+                        }`}
+                      >
+                        <div className="flex justify-between items-start gap-2">
                           <div>
-                            <div className="font-bold text-xs text-gray-800">{item.name}</div>
+                            <div className="font-bold text-xs text-gray-800 leading-snug">{item.name}</div>
                             {item.duration && <div className="text-[10px] text-gray-500">{item.duration}</div>}
                           </div>
-                          <div className="font-black text-xs text-[#123524]">
+                          <div className="font-black text-xs text-[#123524] whitespace-nowrap">
                             {formatPrice(unitPrice * item.qty)}
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between mt-1">
+                        <div className="flex items-center justify-between mt-0.5">
                           {!item.isCustomItem && item.vvipExtraPrice && item.vvipExtraPrice > 0 && !item.vvipIncluded ? (
                             <button
                               type="button"
@@ -2686,7 +2875,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                             <span />
                           )}
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => updateCartQty(item.cartId, -1)}
@@ -2710,10 +2899,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 )}
               </div>
 
-              <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs space-y-1">
+              <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 text-[11px] space-y-1">
                 <div className="flex justify-between">
                   <span className="text-gray-500 font-semibold">Therapist:</span>
-                  <span className="font-bold text-[#123524]">
+                  <span className="font-bold text-[#123524] truncate max-w-[160px]">
                     {therapist1 && therapist2
                       ? `${therapist1.name} & ${therapist2.name}`
                       : therapist1
@@ -2729,7 +2918,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </div>
               </div>
 
-              <div className="p-4 bg-gradient-to-b from-yellow-50/50 to-white border-t border-gray-200 space-y-2">
+              <div className="p-3.5 sm:p-4 bg-gradient-to-b from-yellow-50/50 to-white border-t border-gray-200 space-y-2">
                 <div className="flex justify-between text-xs text-gray-600 font-semibold">
                   <span>Subtotal</span>
                   <span className="font-bold">{formatPrice(subTotal)}</span>
@@ -2742,7 +2931,13 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 )}
                 <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                   <span className="font-extrabold text-sm text-[#123524]">Net Total</span>
-                  <span className="text-xl font-black text-[#123524]">{formatPrice(finalTotal)}</span>
+                  <span
+                    className={`text-lg sm:text-xl font-black text-[#123524] transition-transform duration-300 ${
+                      isBillCardBouncing ? 'scale-110 text-green-800' : ''
+                    }`}
+                  >
+                    {formatPrice(finalTotal)}
+                  </span>
                 </div>
                 {pointsEarned > 0 && (
                   <div className="text-[10px] text-right font-bold text-[#D4AF37]">
