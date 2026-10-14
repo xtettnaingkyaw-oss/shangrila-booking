@@ -515,6 +515,57 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setSavingSale(false);
   };
 
+  // 🌟 Direct Thermal Print Function (Fixes Android Chrome Letter Size issue) 🌟
+  const handleDirectPrint = () => {
+    const receiptEl = document.getElementById('pos-printable-receipt');
+    if (!receiptEl) {
+      window.print();
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Receipt - ${activeReceipt?.invoiceNo || 'POS'}</title>
+          <style>
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+            body {
+              width: 72mm;
+              margin: 0 auto;
+              padding: 2mm;
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 11px;
+              color: #000;
+              background: #fff;
+              line-height: 1.2;
+            }
+            img { max-width: 100%; }
+          </style>
+        </head>
+        <body>
+          ${receiptEl.innerHTML}
+          <script>
+            setTimeout(() => {
+              window.focus();
+              window.print();
+              window.close();
+            }, 300);
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const startNewSale = () => {
     setCart([]);
     setTherapist1(null);
@@ -538,20 +589,14 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
-      {/* 🌟 Thermal Printer CSS (72mm/80mm Fixed Width) 🌟 */}
-    <style>{`
+      <style>{`
         @media print {
           @page {
             size: 80mm auto;
             margin: 0mm;
           }
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
           body, html {
             width: 80mm !important;
-            min-height: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
@@ -570,7 +615,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             color: #000000 !important;
             font-family: 'Courier New', Courier, monospace !important;
             font-size: 11px !important;
-            line-height: 1.2 !important;
           }
           .no-print { display: none !important; }
         }
@@ -645,7 +689,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         <div className="fixed inset-0 z-[200] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-[#D4AF37]/40 my-auto animate-fade-in">
             
-            {/* Printable Voucher Area Wrapper */}
             <div className="w-full overflow-hidden flex justify-center bg-gray-100 p-2 rounded-xl">
               <div id="pos-printable-receipt" className="w-[72mm] bg-white p-3 text-gray-900 font-mono text-xs border border-gray-300 rounded-lg shadow-sm">
                 <div className="text-center border-b border-dashed border-gray-400 pb-2.5 mb-2.5">
@@ -685,7 +728,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   </div>
                 </div>
 
-                {/* Line Items */}
                 <div className="space-y-2 border-b border-dashed border-gray-300 pb-3 mb-3">
                   {activeReceipt.items.map((item, idx) => {
                     const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
@@ -707,7 +749,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   })}
                 </div>
 
-                {/* Totals */}
                 <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-3 mb-3">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Subtotal:</span>
@@ -751,10 +792,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </div>
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons (Using handleDirectPrint) */}
             <div className="no-print mt-4 flex flex-col gap-2.5">
               <button
-                onClick={() => window.print()}
+                onClick={handleDirectPrint}
                 className="w-full py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center shadow-md hover:opacity-95 transition"
               >
                 <Printer className="w-4 h-4 mr-2" /> ဘောင်ချာထုတ်မည် (Print Receipt)
