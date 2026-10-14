@@ -548,83 +548,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   };
 
   // 🌟 Robust ESC/POS Direct Print with Hidden Thermal Frame Fallback 🌟
-  const handleBluetoothEscPosPrint = async () => {
-    if (bluetoothDevice && bluetoothDevice.gatt.connected && activeReceipt) {
-      try {
-        const server = await bluetoothDevice.gatt.connected;
-        const serviceUuids = [
-          '000018f0-0000-1000-8000-00805f9b34fb',
-          '49535343-fe7d-4ae5-8fa9-9fafd205e455',
-          '0000ff00-0000-1000-8000-00805f9b34fb',
-          'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
-        ];
-        
-        let targetCharacteristic = null;
-        for (const uuid of serviceUuids) {
-          try {
-            const service = await server.getPrimaryService(uuid);
-            const chars = await service.getCharacteristics();
-            targetCharacteristic = chars.find((c: any) => c.properties.write || c.properties.writeWithoutResponse);
-            if (targetCharacteristic) break;
-          } catch {}
-        }
-
-        if (targetCharacteristic) {
-          const encoder = new TextEncoder();
-          const ESC = '\x1B';
-          const GS = '\x1D';
-          
-          let commands = ESC + '@' + ESC + 'a' + '\x01';
-          commands += `${localAppData?.branding?.name || 'THE SHANGRI-LA'}\n`;
-          commands += `MEN'S RETREAT\n`;
-          commands += `${localAppData?.branding?.address || ''}\n`;
-          commands += `Tel: ${localAppData?.branding?.phone1 || ''}\n`;
-          commands += `--------------------------------\n`;
-          commands += ESC + 'a' + '\x00';
-          commands += `Invoice : ${activeReceipt.invoiceNo}\n`;
-          commands += `Date    : ${activeReceipt.date} ${activeReceipt.time}\n`;
-          commands += `Customer: ${activeReceipt.customerName}\n`;
-          commands += `Therapist: ${activeReceipt.therapistName}\n`;
-          commands += `--------------------------------\n`;
-          
-          activeReceipt.items.forEach((item, idx) => {
-            const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
-            commands += `${idx + 1}. ${item.name} x${item.qty}\n`;
-            commands += `   ${formatPrice(unitPrice * item.qty)}\n`;
-          });
-
-          commands += `--------------------------------\n`;
-          commands += `Subtotal : ${formatPrice(activeReceipt.subTotal)}\n`;
-          if (activeReceipt.discountAmount > 0) {
-            commands += `Discount : -${formatPrice(activeReceipt.discountAmount)}\n`;
-          }
-          commands += ESC + 'E' + '\x01';
-          commands += `TOTAL    : ${formatPrice(activeReceipt.totalPrice)}\n`;
-          commands += ESC + 'E' + '\x00';
-          commands += `Payment  : ${activeReceipt.paymentMethod} (${formatPrice(activeReceipt.cashReceived)})\n`;
-          if (activeReceipt.pointsEarned > 0) {
-            commands += `VIP Pts  : +${activeReceipt.pointsEarned} Pts\n`;
-          }
-          commands += `--------------------------------\n`;
-          commands += ESC + 'a' + '\x01';
-          commands += `Thank You For Visiting Us!\n\n\n`;
-          commands += GS + 'V' + '\x41' + '\x03';
-
-          const data = encoder.encode(commands);
-          if (targetCharacteristic.properties.writeWithoutResponse) {
-            await targetCharacteristic.writeValueWithoutResponse(data);
-          } else {
-            await targetCharacteristic.writeValue(data);
-          }
-          alert("✅ Printed successfully via Bluetooth!");
-          return;
-        }
-      } catch (err) {
-        console.warn("BT ESC/POS write error, using hidden thermal frame:", err);
-      }
-    }
-
-    // 🌟 Hidden Thermal Print Frame Fallback (Guaranteed 80mm thermal paper size without Letter Size popup) 🌟
+  const handleBluetoothEscPosPrint = () => {
     const receiptElement = document.getElementById('pos-printable-receipt');
     if (!receiptElement) {
       window.print();
@@ -660,19 +584,14 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             body {
               width: 76mm;
               margin: 0 auto;
-              padding: 2mm;
+              padding: 1mm;
               font-family: 'Courier New', Courier, monospace;
               font-size: 11px;
               color: #000;
               background: #fff;
-              line-height: 1.2;
+              line-height: 1.15;
             }
             img { max-width: 32px; max-height: 32px; border-radius: 50%; }
-            .text-center { text-align: center; }
-            .flex { display: flex; }
-            .justify-between { justify-content: space-between; }
-            .font-bold { font-weight: bold; }
-            .border-b { border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
           </style>
         </head>
         <body>
@@ -683,7 +602,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 window.focus();
                 window.print();
                 document.body.removeChild(window.frameElement);
-              }, 250);
+              }, 200);
             };
           </script>
         </body>
@@ -719,7 +638,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         @media print {
           @page {
             size: 80mm auto;
-            margin: 0;
+            margin: 0 !important;
           }
           * {
             -webkit-print-color-adjust: exact !important;
@@ -736,13 +655,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           #pos-printable-receipt, #pos-printable-receipt * { visibility: visible !important; }
           #pos-printable-receipt {
             position: absolute !important;
-            left: 50% !important;
-            transform: translateX(-50%) !important;
+            left: 0 !important;
             top: 0 !important;
-            width: 76mm !important;
-            max-width: 76mm !important;
+            width: 78mm !important;
+            max-width: 78mm !important;
             margin: 0 !important;
-            padding: 2mm !important;
+            padding: 1mm !important;
             background: #ffffff !important;
             color: #000000 !important;
             box-shadow: none !important;
