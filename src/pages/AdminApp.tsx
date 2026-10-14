@@ -218,11 +218,17 @@ useEffect(() => {
         {hasAccess('admins') && (<button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>)}
         {hasAccess('penalties') && (<button onClick={() => setTab('penalties')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'penalties' ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Banknote className="w-4 h-4 mr-2" /> Penalty & Loans</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('roster')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ClipboardList className="w-4 h-4 mr-2" /> Duty Roster</button>)}
-        {hasAccess('settings') && (
-  <button onClick={() => setTab('campaigns')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'campaigns' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-    <Gift className="w-4 h-4 mr-2" /> Campaigns
-  </button>
-)}
+        {hasAccess('settings') && (<button onClick={() => setTab('campaigns')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'campaigns' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Gift className="w-4 h-4 mr-2" /> Campaigns</button>)}
+
+         {hasAccess('bookings') && (
+            <button 
+                onClick={() => setTab('pos_sales')} 
+                className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'pos_sales' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
+            >
+                <ShoppingBag className="w-4 h-4 mr-2 text-[#D4AF37]" /> POS Sales
+            </button>
+        )}
+         
          {hasAccess('settings') && (<button onClick={() => setTab('hr')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'hr' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
     <UserPlus className="w-4 h-4 mr-2" /> HR Management 
     {/* 🌟 Pending Request သို့မဟုတ် Update Request တစ်ခုခုရှိလျှင် အနီစက်ပြမည် 🌟 */}
@@ -245,7 +251,8 @@ useEffect(() => {
       {tab === 'roster' && hasAccess('settings') && <DutyRosterSystem therapists={appData.therapists} />}
       {tab === 'hr' && hasAccess('settings') && <AdminHRManagement />}
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
-       {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView />}
+      {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView />}
+      {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
     </div>
   );
 });
@@ -3110,6 +3117,112 @@ function AdminCampaignsView() {
                                 </td>
                             </tr>
                         ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
+    const posSales = useMemo(() => {
+        return bookings.filter(b => 
+            (b.paymentMethod && b.paymentMethod.includes('Shop POS')) || 
+            (b.txId && b.txId.startsWith('SL-'))
+        );
+    }, [bookings]);
+
+    const handleExportPOSExcel = () => {
+        const headers = ['Invoice No', 'Date & Time', 'Customer Name', 'Phone', 'Service Items', 'Therapist', 'Payment Method', 'Total Price (Ks)'];
+        const rows = posSales.map(s => [
+            `"${decryptText(s.txId) || s.txId || ''}"`,
+            `"${s.date || ''} ${s.time || ''}"`,
+            `"${decryptText(s.name) || s.name || ''}"`,
+            `"${decryptText(s.phone) || s.phone || ''}"`,
+            `"${s.service || ''}"`,
+            `"${s.therapist || ''}"`,
+            `"${s.paymentMethod || ''}"`,
+            s.totalPrice || 0
+        ]);
+        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `POS_WalkIn_Sales_${getLocalTodayStr()}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    return (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+                <div>
+                    <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
+                        <ShoppingBag className="mr-2 text-[#D4AF37]" /> Shop Walk-in POS Sales History
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-1">ဆိုင်အတွင်း POS စနစ်မှ တိုက်ရိုက်ရောင်းချခဲ့သော ဘောင်ချာများနှင့် အရောင်းစာရင်းများ</p>
+                </div>
+                <div className="flex items-center space-x-3 w-full sm:w-auto">
+                    <button onClick={handleExportPOSExcel} className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm">
+                        <Download className="w-4 h-4 mr-1.5" /> Export Excel
+                    </button>
+                    <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-bold border border-yellow-200">
+                        Total Sales: {posSales.length}
+                    </span>
+                </div>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[800px]">
+                    <thead>
+                        <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+                            <th className="p-3 pb-4">Invoice No / Date</th>
+                            <th className="p-3 pb-4">Customer</th>
+                            <th className="p-3 pb-4">Services & Items</th>
+                            <th className="p-3 pb-4">Therapist</th>
+                            <th className="p-3 pb-4">Payment</th>
+                            <th className="p-3 pb-4 text-right">Total Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {posSales.length === 0 && (
+                            <tr>
+                                <td colSpan={6} className="p-10 text-center text-gray-400 font-bold">
+                                    ယနေ့အတွက် Walk-in POS အရောင်းမှတ်တမ်း မရှိသေးပါ။
+                                </td>
+                            </tr>
+                        )}
+                        {posSales.map((sale, idx) => {
+                            const rawTx = decryptText(sale.txId) || sale.txId || `SL-${idx}`;
+                            const custName = decryptText(sale.name) || sale.name || 'Walk-in Guest';
+                            const custPhone = decryptText(sale.phone) || sale.phone || '';
+
+                            return (
+                                <tr key={sale.id || idx} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
+                                    <td className="p-3">
+                                        <div className="font-mono font-black text-[#123524]">{rawTx}</div>
+                                        <div className="text-[10px] text-gray-400 mt-0.5">{sale.date} {sale.time}</div>
+                                    </td>
+                                    <td className="p-3">
+                                        <div className="font-bold text-gray-800">{custName}</div>
+                                        {custPhone && <div className="text-xs text-gray-500 font-mono">{custPhone}</div>}
+                                    </td>
+                                    <td className="p-3 font-semibold text-gray-700 max-w-xs">{sale.service}</td>
+                                    <td className="p-3 text-gray-600 font-medium">{sale.therapist}</td>
+                                    <td className="p-3">
+                                        <span className="bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 rounded-full text-[10px] font-bold">
+                                            {sale.paymentMethod}
+                                        </span>
+                                    </td>
+                                    <td className="p-3 text-right font-black text-base text-[#123524]">
+                                        {formatPrice(sale.totalPrice)}
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
