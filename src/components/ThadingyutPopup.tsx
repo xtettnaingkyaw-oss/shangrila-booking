@@ -23,7 +23,11 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
       const dismissed = sessionStorage.getItem('shangrila_popup_dismissed');
       const searchParams = new URLSearchParams(window.location.search);
       if (!dismissed && searchParams.get('campaign') !== 'true') {
-        setIsVisible(true);
+        // 🌟 FIX: App ပွင့်ပြီး ၃ စက္ကန့် (3000ms) ကြာမှ Popup ပေါ်လာမည် 🌟
+        const timer = setTimeout(() => {
+          setIsVisible(true);
+        }, 3000);
+        return () => clearTimeout(timer);
       }
     }
   }, [appData]);
@@ -79,7 +83,8 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
   const campaignTitle = appData?.promotion?.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း';
 
   return (
-    <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-md flex items-center justify-center p-5 animate-fade-in">
+    /* 🌟 FIX: အောက်ခံ Screen ကို မြင်သာစေရန် bg-black/45 နှင့် backdrop-blur-[2px] သို့ လျှော့ချထားသည် 🌟 */
+    <div className="fixed inset-0 z-[999] bg-black/45 backdrop-blur-[2px] flex items-center justify-center p-5 animate-fade-in">
       <style>{`
         @keyframes ambientLanternDrift {
           0% { transform: translateY(-30px) translateX(0px) rotate(-6deg) scale(0.85); opacity: 0; }
@@ -127,18 +132,18 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
         }
       `}</style>
 
-      {/* 🌟 Main Luxury Modal Card (Seamless Unified Design) 🌟 */}
-      <div className="relative w-full max-w-[340px] rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37]/80 via-[#D4AF37]/25 to-[#D4AF37]/60 shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_40px_rgba(212,175,55,0.2)] animate-slide-up overflow-hidden">
+      {/* 🌟 Main Luxury Modal Card 🌟 */}
+      <div className="relative w-full max-w-[340px] rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37]/90 via-[#D4AF37]/30 to-[#D4AF37]/70 shadow-[0_20px_50px_rgba(0,0,0,0.75),0_0_35px_rgba(212,175,55,0.25)] animate-slide-up overflow-hidden">
         
         <div className="relative w-full h-full rounded-[calc(2rem-1.5px)] bg-gradient-to-b from-[#2a0e08] via-[#140705] to-[#0a0403] px-6 pt-7 pb-6 text-center overflow-hidden">
           
           {/* Inner Luxury Thin Gold Frame */}
           <div className="absolute inset-2.5 rounded-[1.5rem] border border-[#D4AF37]/15 pointer-events-none z-20"></div>
 
-          {/* Top Warm Ambient Spotlight (No harsh box line!) */}
+          {/* Top Warm Ambient Spotlight */}
           <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/35 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
 
-          {/* 🌟 Softly Falling Lanterns in Upper Sky (Fades smoothly into text) 🌟 */}
+          {/* 🌟 Softly Falling Lanterns in Upper Sky 🌟 */}
           <div 
             className="absolute top-0 left-0 right-0 h-44 overflow-hidden pointer-events-none z-0"
             style={{ WebkitMaskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)', maskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)' }}
@@ -171,7 +176,7 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
 
           {/* 🌟 Centerpiece Floating Lantern Emblem 🌟 */}
           <div className="relative z-10 mt-1 mb-4 flex flex-col items-center">
-            <div className=" inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] text-[9px] font-extrabold uppercase tracking-[0.2em] mb-3 shadow-sm">
+            <div className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] text-[9px] font-extrabold uppercase tracking-[0.2em] mb-3 shadow-sm">
               <Sparkles className="w-2.5 h-2.5" /> Exclusive Event
             </div>
 
