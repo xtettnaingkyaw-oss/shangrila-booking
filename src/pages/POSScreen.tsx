@@ -65,13 +65,10 @@ const generateInvoiceNo = () => {
   return `SL-${ymd}-${rand}`;
 };
 
-// 🌟 FIX: QuotaExceededError လုံးဝမတက်စေရန် ပုံအကြီးကြီးများ (Base64 Images) ကို ဖယ်ထုတ်ပြီးမှ LocalStorage တွင် သိမ်းမည့် Function 🌟
 const saveLiteAppDataToCache = (data: AppData) => {
   if (!data) return;
   try {
-    // အရင်က မှားသိမ်းမိထားသော key အဟောင်းကို ရှင်းထုတ်မည်
     localStorage.removeItem('shangrila_pos_cached_appdata_v1');
-
     const liteData: AppData = {
       ...data,
       branding: {
@@ -101,7 +98,6 @@ const saveLiteAppDataToCache = (data: AppData) => {
         logoUrl: ''
       }))
     };
-
     localStorage.setItem(CACHED_APPDATA_KEY, JSON.stringify(liteData));
   } catch (err) {
     console.warn('Storage quota warning (ignored safely):', err);
@@ -109,7 +105,6 @@ const saveLiteAppDataToCache = (data: AppData) => {
 };
 
 export default function POSScreen({ appData }: { appData: AppData }) {
-  // 🌟 1. Offline AppData Caching (Safe & Lightweight) 🌟
   const [localAppData, setLocalAppData] = useState<AppData>(() => {
     if (appData && appData.categories?.length > 0) {
       return appData;
@@ -129,7 +124,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   }, [appData]);
 
-  // 🌟 2. Network & Offline Sync Queue States 🌟
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [offlineQueue, setOfflineQueue] = useState<OfflineSaleRecord[]>(() => {
     try {
@@ -150,13 +144,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [activePosView, setActivePosView] = useState<'register' | 'history'>('register');
 
-  // 🌟 3. POS Wizard Steps (Matches Web App Booking Flow) 🌟
   const [posStep, setPosStep] = useState<1 | 2 | 3 | 4>(1);
   const [activeCategory, setActiveCategory] = useState<string | null>(
     localAppData?.categories?.[0]?.id || 'massage'
   );
 
-  // 🌟 4. Cart & Sale Form States 🌟
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customItemName, setCustomItemName] = useState('');
   const [customItemPrice, setCustomItemPrice] = useState('');
@@ -187,7 +179,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const [activeReceipt, setActiveReceipt] = useState<OfflineSaleRecord | null>(null);
   const [savingSale, setSavingSale] = useState(false);
 
-  // 🌟 Network Listener 🌟
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
@@ -203,7 +194,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     };
   }, [offlineQueue]);
 
-  // 🌟 Save Queue & History Safely to LocalStorage 🌟
   const updateOfflineQueue = (newQueue: OfflineSaleRecord[]) => {
     setOfflineQueue(newQueue);
     try {
@@ -223,7 +213,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Format 24h time to 12h AM/PM 🌟
   const format12Hour = (time24: string) => {
     if (!time24 || !time24.includes(':')) return '12:00 PM';
     const [hStr, mStr] = time24.split(':');
@@ -233,7 +222,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     return `${h}:${mStr} ${ampm}`;
   };
 
-  // 🌟 Upload Single Record to Firebase Backoffice 🌟
   const uploadSaleToFirebase = async (record: OfflineSaleRecord) => {
     const serviceSummary = record.items
       .map(
@@ -277,7 +265,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
     await addDoc(collection(db, 'bookings'), bookingPayload);
 
-    // 🌟 VIP Point Accumulation if Customer Phone is Provided 🌟
     if (record.customerPhone && record.customerPhone.trim().length >= 7 && record.pointsEarned > 0) {
       const cleanPhone = record.customerPhone.trim();
       const usersSnap = await getDocs(collection(db, 'users'));
@@ -324,7 +311,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Sync All Pending Offline Records to Backoffice 🌟
   const syncOfflineRecords = async () => {
     if (!navigator.onLine || offlineQueue.length === 0 || isSyncing) return;
     setIsSyncing(true);
@@ -356,7 +342,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setIsSyncing(false);
   };
 
-  // 🌟 Check Customer VIP Points on Phone Input 🌟
   const handleCheckCustomerPhone = async () => {
     if (!customerPhone.trim() || !isOnline) return;
     try {
@@ -379,7 +364,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     } catch {}
   };
 
-  // 🌟 Cart Operations 🌟
   const addServiceToCart = (item: MenuItem) => {
     const existingIdx = cart.findIndex((c) => c.id === item.id && !c.isCustomItem);
     if (existingIdx > -1) {
@@ -443,7 +427,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setShowCustomItemForm(false);
   };
 
-  // 🌟 Calculations 🌟
   const subTotal = useMemo(() => {
     return cart.reduce((sum, item) => {
       const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
@@ -464,7 +447,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const cashReceivedNum = parseInt(cashReceived, 10) || 0;
   const changeDue = Math.max(0, cashReceivedNum - finalTotal);
 
-  // 🌟 Complete Sale (Works Offline & Online) 🌟
   const handleCompleteSale = async () => {
     if (cart.length === 0) return;
     setSavingSale(true);
@@ -556,8 +538,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
-      {/* 🌟 Print-Only Thermal Receipt CSS 🌟 */}
-     <style>{`
+      {/* 🌟 Thermal Printer CSS (72mm/80mm Fixed Width) 🌟 */}
+      <style>{`
         @media print {
           @page {
             size: 80mm auto;
@@ -577,7 +559,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           body * { visibility: hidden !important; }
           #pos-printable-receipt, #pos-printable-receipt * { visibility: visible !important; }
           #pos-printable-receipt {
-            position: fixed !important;
+            position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: 72mm !important;
@@ -593,9 +575,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           .no-print { display: none !important; }
         }
       `}</style>
-      
+
       {/* ==========================================
-          TOP POS HEADER BAR (With Offline Sync Status)
+          TOP POS HEADER BAR
          ========================================== */}
       <header className="no-print sticky top-0 z-50 bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-4 py-3 shadow-md border-b border-[#D4AF37]/40 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
@@ -613,7 +595,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           </div>
         </div>
 
-        {/* Network & Offline Queue Indicator */}
         <div className="flex items-center gap-2">
           {isOnline ? (
             <span className="bg-green-500/20 text-green-300 border border-green-400/40 px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center">
@@ -685,89 +666,88 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   <p className="text-[9px] text-gray-600">Tel: {localAppData?.branding?.phone1}</p>
                 </div>
 
-              <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Invoice:</span>
-                  <span className="font-bold">{activeReceipt.invoiceNo}</span>
+                <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Invoice:</span>
+                    <span className="font-bold">{activeReceipt.invoiceNo}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Date/Time:</span>
+                    <span className="font-bold">{activeReceipt.date} {activeReceipt.time}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Customer:</span>
+                    <span className="font-bold">{activeReceipt.customerName} {activeReceipt.customerPhone ? `(${activeReceipt.customerPhone})` : ''}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Therapist:</span>
+                    <span className="font-bold text-right">{activeReceipt.therapistName}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Date/Time:</span>
-                  <span className="font-bold">{activeReceipt.date} {activeReceipt.time}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Customer:</span>
-                  <span className="font-bold">{activeReceipt.customerName} {activeReceipt.customerPhone ? `(${activeReceipt.customerPhone})` : ''}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Therapist:</span>
-                  <span className="font-bold text-right">{activeReceipt.therapistName}</span>
-                </div>
-              </div>
 
-              {/* Line Items */}
-              <div className="space-y-2 border-b border-dashed border-gray-300 pb-3 mb-3">
-                {activeReceipt.items.map((item, idx) => {
-                  const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
-                  return (
-                    <div key={idx} className="text-[11px]">
-                      <div className="flex justify-between font-bold">
-                        <span>
-                          {idx + 1}. {item.name} {item.qty > 1 ? `x${item.qty}` : ''}
-                        </span>
-                        <span>{formatPrice(unitPrice * item.qty)}</span>
+                {/* Line Items */}
+                <div className="space-y-2 border-b border-dashed border-gray-300 pb-3 mb-3">
+                  {activeReceipt.items.map((item, idx) => {
+                    const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
+                    return (
+                      <div key={idx} className="text-[11px]">
+                        <div className="flex justify-between font-bold">
+                          <span>
+                            {idx + 1}. {item.name} {item.qty > 1 ? `x${item.qty}` : ''}
+                          </span>
+                          <span>{formatPrice(unitPrice * item.qty)}</span>
+                        </div>
+                        <div className="text-[10px] text-gray-500 pl-3">
+                          {item.duration && <span>{item.duration} </span>}
+                          {item.isVvipUpgrade && <span className="text-amber-700 font-bold">(+VVIP Room)</span>}
+                          {item.vvipIncluded && <span className="text-green-700 font-bold">(VVIP Free)</span>}
+                        </div>
                       </div>
-                      <div className="text-[10px] text-gray-500 pl-3">
-                        {item.duration && <span>{item.duration} </span>}
-                        {item.isVvipUpgrade && <span className="text-amber-700 font-bold">(+VVIP Room)</span>}
-                        {item.vvipIncluded && <span className="text-green-700 font-bold">(VVIP Free)</span>}
-                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Totals */}
+                <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-3 mb-3">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal:</span>
+                    <span className="font-bold">{formatPrice(activeReceipt.subTotal)}</span>
+                  </div>
+                  {activeReceipt.discountAmount > 0 && (
+                    <div className="flex justify-between text-green-700">
+                      <span>Discount ({activeReceipt.discountReason}):</span>
+                      <span className="font-bold">-{formatPrice(activeReceipt.discountAmount)}</span>
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                  <div className="flex justify-between text-sm font-black pt-1 border-t border-gray-200 text-[#123524]">
+                    <span>TOTAL:</span>
+                    <span>{formatPrice(activeReceipt.totalPrice)}</span>
+                  </div>
+                  <div className="flex justify-between text-[11px] pt-1">
+                    <span className="text-gray-500">Payment ({activeReceipt.paymentMethod}):</span>
+                    <span className="font-bold">{formatPrice(activeReceipt.cashReceived)}</span>
+                  </div>
+                  {activeReceipt.paymentMethod === 'Cash' && activeReceipt.changeDue > 0 && (
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-gray-500">Change Due:</span>
+                      <span className="font-bold">{formatPrice(activeReceipt.changeDue)}</span>
+                    </div>
+                  )}
+                  {activeReceipt.pointsEarned > 0 && (
+                    <div className="flex justify-between text-[10px] bg-yellow-50 p-1.5 rounded border border-yellow-200 mt-1">
+                      <span className="font-bold text-yellow-800">VIP Points Earned:</span>
+                      <span className="font-black text-[#123524]">+{activeReceipt.pointsEarned} Pts</span>
+                    </div>
+                  )}
+                </div>
 
-              {/* Totals */}
-              <div className="space-y-1 text-xs border-b border-dashed border-gray-300 pb-3 mb-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal:</span>
-                  <span className="font-bold">{formatPrice(activeReceipt.subTotal)}</span>
+                <div className="text-center text-[10px] text-gray-500 space-y-0.5">
+                  <p className="font-bold text-gray-700">Thank You For Visiting Us!</p>
+                  <p>We hope to see you again soon.</p>
+                  {!activeReceipt.synced && (
+                    <p className="text-[9px] text-amber-600 font-bold mt-1">[Saved Offline - Pending Sync]</p>
+                  )}
                 </div>
-                {activeReceipt.discountAmount > 0 && (
-                  <div className="flex justify-between text-green-700">
-                    <span>
-                      Discount ({activeReceipt.discountReason}):
-                    </span>
-                    <span className="font-bold">-{formatPrice(activeReceipt.discountAmount)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm font-black pt-1 border-t border-gray-200 text-[#123524]">
-                  <span>TOTAL:</span>
-                  <span>{formatPrice(activeReceipt.totalPrice)}</span>
-                </div>
-                <div className="flex justify-between text-[11px] pt-1">
-                  <span className="text-gray-500">Payment ({activeReceipt.paymentMethod}):</span>
-                  <span className="font-bold">{formatPrice(activeReceipt.cashReceived)}</span>
-                </div>
-                {activeReceipt.paymentMethod === 'Cash' && activeReceipt.changeDue > 0 && (
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-gray-500">Change Due:</span>
-                    <span className="font-bold">{formatPrice(activeReceipt.changeDue)}</span>
-                  </div>
-                )}
-                {activeReceipt.pointsEarned > 0 && (
-                  <div className="flex justify-between text-[10px] bg-yellow-50 p-1.5 rounded border border-yellow-200 mt-1">
-                    <span className="font-bold text-yellow-800">VIP Points Earned:</span>
-                    <span className="font-black text-[#123524]">+{activeReceipt.pointsEarned} Pts</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="text-center text-[10px] text-gray-500 space-y-0.5">
-                <p className="font-bold text-gray-700">Thank You For Visiting Us!</p>
-                <p>We hope to see you again soon.</p>
-                {!activeReceipt.synced && (
-                  <p className="text-[9px] text-amber-600 font-bold mt-1">[Saved Offline - Pending Sync]</p>
-                )}
               </div>
             </div>
 
@@ -868,15 +848,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           )}
         </div>
       ) : (
-        /* ==========================================
-           VIEW 1: MAIN WALK-IN POS REGISTER (4-STEP WIZARD + LIVE BILLING CART)
-          ========================================== */
         <div className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
           
-          {/* LEFT / MAIN PANEL: 4-Step Booking Flow (7 Cols on Desktop) */}
           <div className="lg:col-span-7 space-y-4">
-            
-            {/* Stepper Navigation */}
             <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-gray-200 grid grid-cols-4 gap-1.5">
               {[
                 { num: 1, label: '1. SERVICE', icon: Sparkles },
@@ -906,9 +880,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               })}
             </div>
 
-            {/* ------------------------------------------
-                STEP 1: CHOOSE SERVICES & ADD CUSTOM ITEMS
-               ------------------------------------------ */}
             {posStep === 1 && (
               <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
@@ -925,7 +896,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   </button>
                 </div>
 
-                {/* Add Custom Sale Item Box */}
                 {showCustomItemForm && (
                   <form
                     onSubmit={handleAddCustomItem}
@@ -964,7 +934,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   </form>
                 )}
 
-                {/* Category Tabs */}
                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                   {(localAppData?.categories || []).map((cat) => (
                     <button
@@ -982,7 +951,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   ))}
                 </div>
 
-                {/* Service Items Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[55vh] overflow-y-auto pr-1">
                   {(localAppData?.categories || [])
                     .find((c) => c.id === activeCategory)
@@ -1043,9 +1011,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </div>
             )}
 
-            {/* ------------------------------------------
-                STEP 2: CHOOSE THERAPIST(S)
-               ------------------------------------------ */}
             {posStep === 2 && (
               <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3">
@@ -1118,9 +1083,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </div>
             )}
 
-            {/* ------------------------------------------
-                STEP 3: PICK DATE, START TIME & SERVICE STATUS
-               ------------------------------------------ */}
             {posStep === 3 && (
               <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-5 animate-fade-in">
                 <div className="border-b border-gray-100 pb-3">
@@ -1211,13 +1173,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </div>
             )}
 
-            {/* ------------------------------------------
-                STEP 4: CUSTOMER, DISCOUNT & CASH PAYMENT
-               ------------------------------------------ */}
             {posStep === 4 && (
               <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-5 animate-fade-in">
                 
-                {/* Customer Info & Auto VIP Point Check */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
                     <User className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Customer & VIP Points (Optional)
@@ -1265,7 +1223,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   </div>
                 </div>
 
-                {/* Flexible Discount Section */}
                 <div className="pt-3 border-t border-gray-100 space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
@@ -1299,7 +1256,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     </div>
                   </div>
 
-                  {/* Quick Discount Presets */}
                   {discountType === 'percent' && (
                     <div className="flex flex-wrap gap-1.5">
                       {[0, 10, 15, 20, 30, 50].map((pct) => (
@@ -1346,7 +1302,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   </div>
                 </div>
 
-                {/* Payment Method (Cash + Digital) */}
                 <div className="pt-3 border-t border-gray-100 space-y-3">
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
                     <Banknote className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Payment Method (ငွေပေးချေမှု စနစ်)
@@ -1369,7 +1324,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     ))}
                   </div>
 
-                  {/* Cash Received & Change Calculator */}
                   {paymentMethod === 'Cash' && (
                     <div className="bg-green-50/70 p-3.5 rounded-xl border border-green-200 grid grid-cols-2 gap-3 items-center">
                       <div>
@@ -1425,9 +1379,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             )}
           </div>
 
-          {/* ==========================================
-              RIGHT PANEL: LIVE BILLING TICKET / CART SUMMARY (5 Cols on Desktop)
-             ========================================== */}
           <div className="lg:col-span-5">
             <div className="bg-white rounded-2xl shadow-md border border-[#D4AF37]/40 overflow-hidden sticky top-20">
               <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-4 text-white flex items-center justify-between">
@@ -1467,7 +1418,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         </div>
 
                         <div className="flex items-center justify-between mt-1">
-                          {/* VVIP Room Toggle per item */}
                           {!item.isCustomItem && item.vvipExtraPrice && item.vvipExtraPrice > 0 && !item.vvipIncluded ? (
                             <button
                               type="button"
@@ -1489,7 +1439,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                             <span />
                           )}
 
-                          {/* Quantity Controls */}
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -1514,7 +1463,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 )}
               </div>
 
-              {/* Assignment Info */}
               <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs space-y-1">
                 <div className="flex justify-between">
                   <span className="text-gray-500 font-semibold">Therapist:</span>
@@ -1534,7 +1482,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </div>
               </div>
 
-              {/* Bill Totals */}
               <div className="p-4 bg-gradient-to-b from-yellow-50/50 to-white border-t border-gray-200 space-y-2">
                 <div className="flex justify-between text-xs text-gray-600 font-semibold">
                   <span>Subtotal</span>
