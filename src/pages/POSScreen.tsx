@@ -1459,8 +1459,27 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
-      {/* 🌟 UI/UX Parabolic Jump-to-Bill Keyframes & Custom Scrollbar Styles 🌟 */}
+      {/* 🌟 UI/UX Guaranteed Tablet Split-Screen Grid & Parabolic Jump-to-Bill Keyframes 🌟 */}
       <style>{`
+        .pos-split-layout {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 12px;
+          align-items: start;
+        }
+        /* Tablet Portrait (520px+) & Landscape & Desktop -> Always 2 Columns Side-by-Side! */
+        @media (min-width: 520px) {
+          .pos-split-layout {
+            grid-template-columns: minmax(0, 58%) minmax(0, 42%);
+            gap: 14px;
+          }
+        }
+        @media (min-width: 1024px) {
+          .pos-split-layout {
+            grid-template-columns: minmax(0, 60%) minmax(0, 40%);
+            gap: 20px;
+          }
+        }
         @keyframes posFlyX {
           0% { transform: translateX(0); }
           100% { transform: translateX(var(--fly-dx)); }
@@ -1476,7 +1495,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           100% { transform: scale(1); }
         }
         @keyframes posItemPopIn {
-          0% { transform: scale(0.95); background-color: rgba(212, 175, 55, 0.25); }
+          0% { transform: scale(0.95); background-color: rgba(212, 175, 55, 0.28); }
           60% { transform: scale(1.015); background-color: rgba(212, 175, 55, 0.15); }
           100% { transform: scale(1); background-color: transparent; }
         }
@@ -1524,13 +1543,13 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       {/* ==========================================
           TOP POS HEADER BAR
          ========================================== */}
-      <header className="no-print sticky top-0 z-50 bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-4 py-3 shadow-md border-b border-[#D4AF37]/40 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
+      <header className="no-print sticky top-0 z-50 bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-3.5 py-2.5 shadow-md border-b border-[#D4AF37]/40 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => (window.location.href = '/?mode=admin')}
-            className="bg-white/10 hover:bg-white/20 text-[#D4AF37] px-3 py-1.5 rounded-xl text-xs font-bold flex items-center border border-[#D4AF37]/30 transition"
+            className="bg-white/10 hover:bg-white/20 text-[#D4AF37] px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center border border-[#D4AF37]/30 transition"
           >
-            <ArrowLeft className="w-4 h-4 mr-1" /> Backoffice
+            <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Backoffice
           </button>
           <div>
             <h1 className="font-serif font-extrabold text-sm sm:text-base text-[#D4AF37] tracking-wide flex items-center">
@@ -1767,14 +1786,14 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           VIEW 3: LOYVERSE-STYLE RECEIPT & PRINTER SETTINGS
          ========================================== */}
       {activePosView === 'settings' ? (
-        <div className="max-w-6xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 md:grid-cols-12 gap-5 animate-fade-in">
-          <div className="md:col-span-7 space-y-5">
+        <div className="max-w-7xl w-full mx-auto p-3 sm:p-5 pos-split-layout animate-fade-in">
+          <div className="space-y-4 min-w-0">
             {/* 1. Loyverse-Style Receipt Settings Card */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-800">Receipt settings</h2>
-                  <p className="text-xs text-gray-500">
+                  <h2 className="text-base font-bold text-gray-800">Receipt settings</h2>
+                  <p className="text-[11px] text-gray-500">
                     Loyverse ပုံစံအတိုင်း Digital Logo နှင့် Thermal Printed Logo တို့ကို သီးသန့်စီ စိတ်ကြိုက်ချိန်ညှိနိုင်ပါသည်
                   </p>
                 </div>
@@ -1794,7 +1813,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               {/* Loyverse Dual Logo Section: Digital vs Printed Receipt */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <label className="text-sm font-bold text-gray-700">Logo</label>
+                  <label className="text-xs font-bold text-gray-700">Logo</label>
                   <label className="flex items-center gap-2 text-xs font-bold text-[#123524] cursor-pointer">
                     <input
                       type="checkbox"
@@ -1806,11 +1825,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   </label>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-2 gap-6 max-w-md">
+                <div className="grid grid-cols-2 gap-4 max-w-sm">
                   {/* Left Box: Digital / App Receipt Logo */}
                   <div>
-                    <div className="text-xs text-gray-500 mb-2 font-medium">Digital / App receipt</div>
-                    <div className="w-36 h-36 rounded-lg border border-gray-200 bg-[#123524] overflow-hidden flex items-center justify-center shadow-sm">
+                    <div className="text-[11px] text-gray-500 mb-1.5 font-medium">Digital / App receipt</div>
+                    <div className="w-32 h-32 rounded-lg border border-gray-200 bg-[#123524] overflow-hidden flex items-center justify-center shadow-sm">
                       {digitalLogoUrl ? (
                         <img src={digitalLogoUrl} alt="Digital Logo" className="w-full h-full object-contain" />
                       ) : (
@@ -1821,8 +1840,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
                   {/* Right Box: Printed Receipt Logo (Monochrome Line Art + Upload Button) */}
                   <div>
-                    <div className="text-xs text-gray-500 mb-2 font-medium">Printed receipt</div>
-                    <div className="relative w-36 h-36 rounded-lg border border-gray-300 bg-white overflow-hidden flex flex-col justify-between shadow-sm">
+                    <div className="text-[11px] text-gray-500 mb-1.5 font-medium">Printed receipt</div>
+                    <div className="relative w-32 h-32 rounded-lg border border-gray-300 bg-white overflow-hidden flex flex-col justify-between shadow-sm">
                       {printSettings.customPrintedLogoDataUrl && (
                         <button
                           type="button"
@@ -1838,7 +1857,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           <img
                             src={processedLogoPreview}
                             alt="Printed Receipt Monochrome"
-                            className="max-w-full max-h-24 object-contain"
+                            className="max-w-full max-h-20 object-contain"
                           />
                         ) : (
                           <span className="text-xs text-gray-400">No Logo</span>
@@ -1854,9 +1873,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                       <button
                         type="button"
                         onClick={() => printedLogoInputRef.current?.click()}
-                        className="w-full py-2 bg-[#8bc34a] hover:bg-[#7cb342] text-white font-bold text-xs uppercase tracking-wider transition flex items-center justify-center"
+                        className="w-full py-1.5 bg-[#8bc34a] hover:bg-[#7cb342] text-white font-bold text-[11px] uppercase tracking-wider transition flex items-center justify-center"
                       >
-                        <Upload className="w-3.5 h-3.5 mr-1" /> Upload
+                        <Upload className="w-3 h-3 mr-1" /> Upload
                       </button>
                     </div>
                   </div>
@@ -1864,39 +1883,39 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
                 {/* Smart Thermal Filter & Contrast Controls */}
                 {printSettings.showLogo && (
-                  <div className="mt-4 p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
+                  <div className="mt-4 p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-gray-700">Thermal Logo Conversion Mode:</span>
+                      <span className="text-[11px] font-bold text-gray-700">Thermal Logo Conversion Mode:</span>
                       <div className="flex gap-1.5">
                         <button
                           type="button"
                           onClick={() => updatePrintSettings({ logoFilterMode: 'auto_gold_extract', logoThreshold: 12 })}
-                          className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition ${
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
                             printSettings.logoFilterMode === 'auto_gold_extract'
                               ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
                               : 'bg-white text-gray-600 border-gray-200'
                           }`}
                         >
-                          Auto Extract Gold Logo (အစိမ်းရင့်နောက်ခံဖျောက်)
+                          Auto Extract Gold
                         </button>
                         <button
                           type="button"
                           onClick={() => updatePrintSettings({ logoFilterMode: 'bw_threshold', logoThreshold: 0 })}
-                          className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition ${
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
                             printSettings.logoFilterMode === 'bw_threshold'
                               ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
                               : 'bg-white text-gray-600 border-gray-200'
                           }`}
                         >
-                          Standard B&W Image
+                          Standard B&W
                         </button>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[11px] font-bold text-gray-600 mb-1">
-                          Logo Sharpness / Contrast ({printSettings.logoThreshold})
+                        <label className="block text-[10px] font-bold text-gray-600 mb-1">
+                          Logo Sharpness ({printSettings.logoThreshold})
                         </label>
                         <input
                           type="range"
@@ -1909,8 +1928,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-gray-600 mb-1">
-                          Printed Logo Width ({printSettings.logoSize} px)
+                        <label className="block text-[10px] font-bold text-gray-600 mb-1">
+                          Logo Width ({printSettings.logoSize} px)
                         </label>
                         <input
                           type="range"
@@ -1928,116 +1947,109 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               </div>
 
               {/* Loyverse-Style Text Fields */}
-              <div className="space-y-4 pt-2">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 font-semibold mb-1">Store Title</label>
+                    <label className="block text-[11px] text-gray-500 font-semibold mb-1">Store Title</label>
                     <input
                       type="text"
                       value={printSettings.shopName}
                       onChange={(e) => updatePrintSettings({ shopName: e.target.value })}
-                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm font-bold outline-none bg-transparent"
+                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1 text-xs font-bold outline-none bg-transparent"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 font-semibold mb-1">Subtitle</label>
+                    <label className="block text-[11px] text-gray-500 font-semibold mb-1">Subtitle</label>
                     <input
                       type="text"
                       value={printSettings.subtitle}
                       onChange={(e) => updatePrintSettings({ subtitle: e.target.value })}
-                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm font-bold outline-none bg-transparent"
+                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1 text-xs font-bold outline-none bg-transparent"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-500 font-semibold mb-1">Header</label>
+                  <label className="block text-[11px] text-gray-500 font-semibold mb-1">Header</label>
                   <input
                     type="text"
                     maxLength={500}
                     value={printSettings.headerText}
                     onChange={(e) => updatePrintSettings({ headerText: e.target.value })}
                     placeholder="e.g. Beyond Relaxation"
-                    className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm outline-none bg-transparent"
+                    className="w-full border-b border-gray-300 focus:border-[#123524] py-1 text-xs outline-none bg-transparent"
                   />
-                  <div className="text-right text-[10px] text-gray-400 mt-0.5">
-                    {printSettings.headerText.length} / 500
-                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs text-gray-500 font-semibold mb-1">Footer (Address)</label>
+                  <label className="block text-[11px] text-gray-500 font-semibold mb-1">Footer (Address)</label>
                   <input
                     type="text"
                     maxLength={500}
                     value={printSettings.footerText}
                     onChange={(e) => updatePrintSettings({ footerText: e.target.value })}
-                    placeholder="33th(B), Between 65th & 65(A)th Streets, Chan Aye Tharzan Township, Mandalay."
-                    className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm outline-none bg-transparent"
+                    className="w-full border-b border-gray-300 focus:border-[#123524] py-1 text-xs outline-none bg-transparent"
                   />
-                  <div className="text-right text-[10px] text-gray-400 mt-0.5">
-                    {printSettings.footerText.length} / 500
-                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 font-semibold mb-1">Phone Number</label>
+                    <label className="block text-[11px] text-gray-500 font-semibold mb-1">Phone Number</label>
                     <input
                       type="text"
                       value={printSettings.phone}
                       onChange={(e) => updatePrintSettings({ phone: e.target.value })}
-                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm outline-none bg-transparent"
+                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1 text-xs outline-none bg-transparent"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 font-semibold mb-1">Closing Note</label>
+                    <label className="block text-[11px] text-gray-500 font-semibold mb-1">Closing Note</label>
                     <input
                       type="text"
                       value={printSettings.thankYouText}
                       onChange={(e) => updatePrintSettings({ thankYouText: e.target.value })}
-                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1.5 text-sm outline-none bg-transparent"
+                      className="w-full border-b border-gray-300 focus:border-[#123524] py-1 text-xs outline-none bg-transparent"
                     />
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                  <span className="text-sm font-medium text-gray-800">Show customer info</span>
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <span className="text-xs font-medium text-gray-800">Show customer info</span>
                   <input
                     type="checkbox"
                     checked={printSettings.showCustomerInfo}
                     onChange={(e) => updatePrintSettings({ showCustomerInfo: e.target.checked })}
-                    className="w-5 h-5 accent-[#123524]"
+                    className="w-4 h-4 accent-[#123524]"
                   />
                 </div>
               </div>
             </div>
 
             {/* 2. Bluetooth Hardware & Paper Width Card */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                 <div>
-                  <h3 className="text-base font-bold text-[#123524] flex items-center">
+                  <h3 className="text-sm font-bold text-[#123524] flex items-center">
                     <Bluetooth className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Bluetooth Printer & Paper Size
                   </h3>
-                  <p className="text-xs text-gray-500">ချိတ်ဆက်ထားသော Printer ကို အလိုအလျောက် မှတ်သားပေးထားပါသည်</p>
+                  <p className="text-[11px] text-gray-500">ချိတ်ဆက်ထားသော Printer ကို အလိုအလျောက် မှတ်သားပေးထားပါသည်</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleForceRefreshApp}
-                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold flex items-center"
+                  className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[11px] font-bold flex items-center"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 mr-1" /> Force Update App
+                  <RefreshCw className="w-3 h-3 mr-1" /> Force Update App
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <button
                   type="button"
                   onClick={() => handleConnectBluetoothPrinter(true)}
-                  className="py-3 px-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center shadow-sm hover:bg-[#1a4a32] transition"
+                  className="py-2.5 px-3 bg-[#123524] text-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center shadow-sm hover:bg-[#1a4a32] transition"
                 >
-                  <Bluetooth className="w-4 h-4 mr-2" />
+                  <Bluetooth className="w-4 h-4 mr-1.5" />
                   {bluetoothDevice ? `Connected (${bluetoothDevice.name || 'Change'})` : 'Pair Bluetooth Printer'}
                 </button>
 
@@ -2045,20 +2057,20 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   type="button"
                   disabled={isPrintingBt}
                   onClick={() => handleBluetoothEscPosPrint(samplePreviewReceipt)}
-                  className="py-3 px-4 bg-yellow-50 text-[#123524] border border-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center hover:bg-yellow-100 transition disabled:opacity-50"
+                  className="py-2.5 px-3 bg-yellow-50 text-[#123524] border border-[#D4AF37] rounded-xl font-bold text-xs flex items-center justify-center hover:bg-yellow-100 transition disabled:opacity-50"
                 >
-                  <Printer className="w-4 h-4 mr-2" />
-                  {isPrintingBt ? 'Printing...' : 'စမ်းသပ် ဘောင်ချာထုတ်ကြည့်မည် (Test Print)'}
+                  <Printer className="w-4 h-4 mr-1.5" />
+                  {isPrintingBt ? 'Printing...' : 'Test Print ထုတ်ကြည့်မည်'}
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
                 {(['58mm', '80mm'] as const).map((w) => (
                   <button
                     key={w}
                     type="button"
                     onClick={() => updatePrintSettings({ paperWidth: w })}
-                    className={`py-2.5 rounded-xl font-black text-xs border-2 transition ${
+                    className={`py-2 rounded-xl font-black text-xs border-2 transition ${
                       printSettings.paperWidth === w
                         ? 'border-[#123524] bg-[#123524] text-[#D4AF37]'
                         : 'border-gray-200 bg-gray-50 text-gray-600'
@@ -2072,43 +2084,43 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           </div>
 
           {/* Right Column: Exact Thermal Receipt Output Preview */}
-          <div className="md:col-span-5">
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 sticky top-20 space-y-4">
+          <div className="min-w-0 sticky top-16">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3">
               <div className="text-center">
-                <h3 className="text-sm font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
-                <p className="text-[11px] text-gray-500">
+                <h3 className="text-xs font-extrabold text-[#123524]">Printed Receipt Live Preview</h3>
+                <p className="text-[10px] text-gray-500">
                   စာရွက်လုံးဝမထစ်ဘဲ တစ်ဆက်တည်းထွက်မည့် Professional UI/UX Typography Hierarchy
                 </p>
               </div>
 
-              <div className="bg-gray-100 p-4 rounded-xl flex justify-center">
-                <div className="w-[72mm] bg-white p-4 text-gray-900 font-mono text-xs border border-gray-300 rounded shadow-sm">
-                  <div className="text-center border-b border-dashed border-gray-400 pb-2.5 mb-2.5">
+              <div className="bg-gray-100 p-3 rounded-xl flex justify-center overflow-x-auto">
+                <div className="w-[68mm] bg-white p-3 text-gray-900 font-mono text-xs border border-gray-300 rounded shadow-sm">
+                  <div className="text-center border-b border-dashed border-gray-400 pb-2 mb-2">
                     {printSettings.showLogo && processedLogoPreview && (
                       <img
                         src={processedLogoPreview}
                         alt="Thermal Monochrome Preview"
-                        style={{ width: `${Math.round(printSettings.logoSize * 0.55)}px` }}
-                        className="mx-auto mb-2 object-contain"
+                        style={{ width: `${Math.round(printSettings.logoSize * 0.5)}px` }}
+                        className="mx-auto mb-1.5 object-contain"
                       />
                     )}
                     {printSettings.shopName && (
-                      <h2 className="font-serif font-black text-sm uppercase tracking-wider">
+                      <h2 className="font-serif font-black text-xs uppercase tracking-wider">
                         {printSettings.shopName}
                       </h2>
                     )}
                     {printSettings.subtitle && (
-                      <p className="text-[9px] text-gray-600 uppercase tracking-widest">
+                      <p className="text-[8px] text-gray-600 uppercase tracking-widest">
                         {printSettings.subtitle}
                       </p>
                     )}
                     {printSettings.headerText && (
-                      <p className="text-[10px] text-gray-700 mt-0.5">{printSettings.headerText}</p>
+                      <p className="text-[9px] text-gray-700 mt-0.5">{printSettings.headerText}</p>
                     )}
                     {printSettings.footerText && (
-                      <p className="text-[9px] text-gray-600 mt-0.5">{printSettings.footerText}</p>
+                      <p className="text-[8px] text-gray-600 mt-0.5">{printSettings.footerText}</p>
                     )}
-                    {printSettings.phone && <p className="text-[9px] text-gray-600">Tel: {printSettings.phone}</p>}
+                    {printSettings.phone && <p className="text-[8px] text-gray-600">Tel: {printSettings.phone}</p>}
                   </div>
 
                   <div className="space-y-1 text-[10px] border-b border-dashed border-gray-300 pb-2 mb-2">
@@ -2123,7 +2135,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     {printSettings.showCustomerInfo && (
                       <div className="flex justify-between">
                         <span className="text-gray-500">Customer:</span>
-                        <span className="text-gray-800">Walk-in Guest (09458884517)</span>
+                        <span className="text-gray-800">Walk-in Guest</span>
                       </div>
                     )}
                     <div className="flex justify-between">
@@ -2140,12 +2152,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     <div className="text-[9px] text-gray-500 pl-3">60 Mins</div>
                   </div>
 
-                  <div className="space-y-1 border-b border-dashed border-gray-300 pb-2.5 mb-2.5">
+                  <div className="space-y-1 border-b border-dashed border-gray-300 pb-2 mb-2">
                     <div className="flex justify-between text-[10px]">
                       <span className="text-gray-500">Subtotal:</span>
                       <span className="text-gray-700">25,000 Ks</span>
                     </div>
-                    <div className="flex justify-between text-sm font-black py-1.5 my-1 border-t border-dashed border-gray-300">
+                    <div className="flex justify-between text-xs font-black py-1 my-1 border-t border-dashed border-gray-300">
                       <span>TOTAL:</span>
                       <span>25,000 Ks</span>
                     </div>
@@ -2153,13 +2165,13 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                       <span className="text-gray-500">Payment (Cash):</span>
                       <span className="text-gray-700">25,000 Ks</span>
                     </div>
-                    <div className="flex justify-between text-[10px] p-1.5 rounded border border-gray-500 mt-1.5">
+                    <div className="flex justify-between text-[9px] p-1 rounded border border-gray-500 mt-1">
                       <span>VIP Points Earned:</span>
                       <span className="font-black">+1 Pts</span>
                     </div>
                   </div>
 
-                  <div className="text-center text-[10px] text-gray-600 whitespace-pre-line">
+                  <div className="text-center text-[9px] text-gray-600 whitespace-pre-line">
                     {printSettings.thankYouText}
                   </div>
                 </div>
@@ -2246,12 +2258,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         </div>
       ) : (
         /* ==========================================
-           VIEW 1: POS REGISTER (TABLET & DESKTOP SPLIT-SCREEN UI/UX)
+           VIEW 1: POS REGISTER (GUARANTEED 2-COLUMN SPLIT SCREEN ON TABLET & DESKTOP)
            ========================================== */
-        <div className="flex-1 max-w-7xl w-full mx-auto p-2.5 sm:p-4 grid grid-cols-1 md:grid-cols-12 gap-3.5 lg:gap-5 items-start">
-          {/* LEFT PANEL: STEPS & SERVICES (7 Columns on Tablet & Desktop) */}
-          <div className="md:col-span-7 space-y-3.5">
-            <div className="bg-white p-2.5 sm:p-3 rounded-2xl shadow-sm border border-gray-200 grid grid-cols-4 gap-1.5">
+        <div className="flex-1 max-w-7xl w-full mx-auto p-2.5 sm:p-4 pos-split-layout">
+          {/* LEFT PANEL: STEPS & SERVICES (58% Width on Tablet) */}
+          <div className="space-y-3 min-w-0">
+            <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-200 grid grid-cols-4 gap-1">
               {[
                 { num: 1, label: '1. SERVICE', icon: Sparkles },
                 { num: 2, label: '2. THERAPIST', icon: User },
@@ -2265,7 +2277,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     key={s.num}
                     type="button"
                     onClick={() => setPosStep(s.num as any)}
-                    className={`py-2.5 px-1.5 rounded-xl font-extrabold text-[10px] lg:text-xs flex items-center justify-center transition-all ${
+                    className={`py-2 px-1 rounded-xl font-extrabold text-[10px] sm:text-[11px] flex items-center justify-center transition-all ${
                       active
                         ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-sm'
                         : done
@@ -2273,7 +2285,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
                     }`}
                   >
-                    <s.icon className="w-3.5 h-3.5 mr-1 flex-shrink-0" />
+                    <s.icon className="w-3 h-3 mr-1 flex-shrink-0" />
                     <span className="truncate">{s.label}</span>
                   </button>
                 );
@@ -2281,18 +2293,18 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             </div>
 
             {posStep === 1 && (
-              <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-3.5 animate-fade-in">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+              <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3 animate-fade-in">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-[#123524]">Select Services & Sale Items</h2>
-                    <p className="text-[11px] text-gray-500">
+                    <p className="text-[10px] text-gray-500">
                       ဝန်ဆောင်မှုကို နှိပ်လိုက်သည်နှင့် ညာဘက် Bill Card ထဲသို့ တိုက်ရိုက်ခုန်ဝင်သွားပါမည်
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowCustomItemForm(!showCustomItemForm)}
-                    className="bg-yellow-50 hover:bg-yellow-100 text-[#123524] border border-[#D4AF37]/50 px-3 py-2 rounded-xl text-xs font-bold flex items-center shadow-sm transition"
+                    className="bg-yellow-50 hover:bg-yellow-100 text-[#123524] border border-[#D4AF37]/50 px-2.5 py-1.5 rounded-xl text-[11px] font-bold flex items-center shadow-sm transition"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1 text-[#D4AF37]" /> အပိုပစ္စည်း/Sale Item ထည့်ရန်
                   </button>
@@ -2301,22 +2313,22 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 {showCustomItemForm && (
                   <form
                     onSubmit={handleAddCustomItem}
-                    className="bg-gradient-to-r from-yellow-50 to-amber-50/40 p-3.5 rounded-xl border border-[#D4AF37]/40 flex flex-wrap gap-2 items-end animate-fade-in"
+                    className="bg-gradient-to-r from-yellow-50 to-amber-50/40 p-3 rounded-xl border border-[#D4AF37]/40 flex flex-wrap gap-2 items-end animate-fade-in"
                   >
-                    <div className="flex-1 min-w-[140px]">
+                    <div className="flex-1 min-w-[130px]">
                       <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">
                         Item / Extra Service Name
                       </label>
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Carebeau Oil / Extra 30 Mins / Drink"
+                        placeholder="e.g. Carebeau Oil / Drink"
                         value={customItemName}
                         onChange={(e) => setCustomItemName(e.target.value)}
-                        className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#123524]"
+                        className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#123524]"
                       />
                     </div>
-                    <div className="w-28">
+                    <div className="w-24">
                       <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">Price (Ks)</label>
                       <input
                         type="number"
@@ -2324,25 +2336,25 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         placeholder="10000"
                         value={customItemPrice}
                         onChange={(e) => setCustomItemPrice(e.target.value)}
-                        className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#123524]"
+                        className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#123524]"
                       />
                     </div>
                     <button
                       type="submit"
-                      className="px-4 py-2.5 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold shadow-sm hover:bg-[#1a4a32]"
+                      className="px-3.5 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-xs font-bold shadow-sm hover:bg-[#1a4a32]"
                     >
                       + ထည့်မည်
                     </button>
                   </form>
                 )}
 
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
                   {(localAppData?.categories || []).map((cat) => (
                     <button
                       key={cat.id}
                       type="button"
                       onClick={() => setActiveCategory(cat.id)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap border transition ${
+                      className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap border transition ${
                         activeCategory === cat.id
                           ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm'
                           : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
@@ -2353,8 +2365,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   ))}
                 </div>
 
-                {/* Responsive Grid: 2 Columns on Tablet Portrait, 3 Columns on Wide Desktop */}
-                <div className="grid grid-cols-2 xl:grid-cols-3 gap-2.5 max-h-[62vh] overflow-y-auto pr-1">
+                {/* Service Cards Grid: 2 Columns on Tablet so both Left & Right panels fit comfortably! */}
+                <div className="grid grid-cols-2 gap-2 max-h-[64vh] overflow-y-auto pr-1">
                   {(localAppData?.categories || [])
                     .find((c) => c.id === activeCategory)
                     ?.items.map((item) => {
@@ -2367,32 +2379,32 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           key={item.id}
                           type="button"
                           onClick={(e) => addServiceToCart(item, e)}
-                          className={`p-3 rounded-xl border text-left transition-all duration-150 active:scale-95 flex flex-col justify-between relative group ${
+                          className={`p-2.5 rounded-xl border text-left transition-all duration-150 active:scale-95 flex flex-col justify-between relative group ${
                             inCartQty > 0
                               ? 'border-[#123524] bg-green-50/50 ring-1 ring-[#123524]/30 shadow-sm'
                               : 'border-gray-200 bg-white hover:border-[#D4AF37] hover:shadow-md'
                           }`}
                         >
                           {inCartQty > 0 && (
-                            <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[#123524] text-[#D4AF37] text-[10px] font-black flex items-center justify-center shadow animate-bounce">
+                            <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-[#123524] text-[#D4AF37] text-[10px] font-black flex items-center justify-center shadow">
                               {inCartQty}
                             </span>
                           )}
                           <div>
-                            <div className="font-bold text-xs text-gray-800 line-clamp-2 pr-5 leading-snug">
+                            <div className="font-bold text-[11px] sm:text-xs text-gray-800 line-clamp-2 pr-5 leading-snug">
                               {item.name}
                             </div>
                             {item.duration && (
-                              <span className="inline-flex items-center text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded mt-1.5">
+                              <span className="inline-flex items-center text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded mt-1">
                                 <Clock className="w-2.5 h-2.5 mr-1 text-[#D4AF37]" /> {item.duration}
                               </span>
                             )}
                           </div>
-                          <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
-                            <span className="font-black text-xs sm:text-sm text-[#123524]">
+                          <div className="mt-2.5 pt-1.5 border-t border-gray-100 flex items-center justify-between">
+                            <span className="font-black text-xs text-[#123524]">
                               {formatPrice(item.price)}
                             </span>
-                            <span className="text-[10px] font-bold text-[#D4AF37] bg-[#123524] group-hover:bg-[#1a4a32] px-2.5 py-0.5 rounded-lg shadow-sm transition">
+                            <span className="text-[9px] font-bold text-[#D4AF37] bg-[#123524] group-hover:bg-[#1a4a32] px-2 py-0.5 rounded-md shadow-sm transition">
                               + Add
                             </span>
                           </div>
@@ -2401,12 +2413,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     })}
                 </div>
 
-                <div className="pt-2 flex justify-end">
+                <div className="pt-1 flex justify-end">
                   <button
                     type="button"
                     disabled={cart.length === 0}
                     onClick={() => setPosStep(2)}
-                    className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-md hover:opacity-95 transition"
+                    className="w-full py-3 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-md hover:opacity-95 transition"
                   >
                     Continue to Therapist →
                   </button>
@@ -2415,11 +2427,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             )}
 
             {posStep === 2 && (
-              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in">
+              <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                   <div>
-                    <h2 className="text-base sm:text-lg font-bold text-[#123524]">Assign Therapist</h2>
-                    <p className="text-xs text-gray-500">ဝန်ဆောင်မှုပေးမည့် Therapist (၁ ဦး သို့မဟုတ် ၂ ဦး) ရွေးချယ်ပါ</p>
+                    <h2 className="text-sm sm:text-base font-bold text-[#123524]">Assign Therapist</h2>
+                    <p className="text-[11px] text-gray-500">ဝန်ဆောင်မှုပေးမည့် Therapist (၁ ဦး သို့မဟုတ် ၂ ဦး) ရွေးချယ်ပါ</p>
                   </div>
                   {(therapist1 || therapist2) && (
                     <button
@@ -2435,7 +2447,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[58vh] overflow-y-auto">
+                <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto">
                   {(localAppData?.therapists || []).map((t) => {
                     const isSelected = therapist1?.id === t.id || therapist2?.id === t.id;
                     return (
@@ -2448,70 +2460,70 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           else if (!therapist1) setTherapist1(t);
                           else setTherapist2(t);
                         }}
-                        className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center relative ${
+                        className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center relative ${
                           isSelected
                             ? 'border-[#123524] bg-[#123524] text-[#D4AF37] shadow-md scale-[1.02]'
                             : 'border-gray-200 bg-gray-50/60 text-gray-800 hover:border-[#D4AF37]'
                         }`}
                       >
-                        <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 mb-2 border border-[#D4AF37] flex items-center justify-center">
+                        <div className="w-11 h-11 rounded-full overflow-hidden bg-gray-200 mb-1.5 border border-[#D4AF37] flex items-center justify-center">
                           {t.images?.[0] || t.imageUrl ? (
                             <img src={t.images?.[0] || t.imageUrl} alt={t.name} className="w-full h-full object-cover" />
                           ) : (
-                            <User className="w-6 h-6 text-gray-400" />
+                            <User className="w-5 h-5 text-gray-400" />
                           )}
                         </div>
-                        <span className="font-bold text-xs truncate w-full">{t.name}</span>
+                        <span className="font-bold text-[11px] truncate w-full">{t.name}</span>
                       </button>
                     );
                   })}
                 </div>
 
-                <div className="pt-4 flex justify-between gap-3">
+                <div className="pt-3 flex justify-between gap-2.5">
                   <button
                     type="button"
                     onClick={() => setPosStep(1)}
-                    className="px-6 py-3.5 rounded-xl font-bold text-xs bg-gray-100 text-gray-600"
+                    className="px-5 py-3 rounded-xl font-bold text-xs bg-gray-100 text-gray-600"
                   >
                     ← Back
                   </button>
                   <button
                     type="button"
                     onClick={() => setPosStep(3)}
-                    className="flex-1 py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest shadow-md"
+                    className="flex-1 py-3 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest shadow-md"
                   >
-                    Continue to Time & Status →
+                    Continue to Time →
                   </button>
                 </div>
               </div>
             )}
 
             {posStep === 3 && (
-              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-5 animate-fade-in">
-                <div className="border-b border-gray-100 pb-3">
-                  <h2 className="text-base sm:text-lg font-bold text-[#123524]">Walk-in Time & Room Status</h2>
-                  <p className="text-xs text-gray-500">ဧည့်သည် ဝင်ရောက်သည့်အချိန်နှင့် ဝန်ဆောင်မှု အခြေအနေ သတ်မှတ်ပါ</p>
+              <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in">
+                <div className="border-b border-gray-100 pb-2.5">
+                  <h2 className="text-sm sm:text-base font-bold text-[#123524]">Walk-in Time & Room Status</h2>
+                  <p className="text-[11px] text-gray-500">ဧည့်သည် ဝင်ရောက်သည့်အချိန်နှင့် ဝန်ဆောင်မှု အခြေအနေ သတ်မှတ်ပါ</p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-gray-600 mb-1.5">Sale Date (နေ့ရက်)</label>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">Sale Date (နေ့ရက်)</label>
                     <input
                       type="date"
                       value={saleDate}
                       onChange={(e) => setSaleDate(e.target.value)}
-                      className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm text-[#123524]"
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-xs text-[#123524]"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                    <label className="block text-xs font-bold text-gray-600 mb-1">
                       Start Time (စတင်ချိန်)
                     </label>
                     <input
                       type="time"
                       value={saleTime}
                       onChange={(e) => setSaleTime(e.target.value)}
-                      className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl font-black text-base text-[#123524]"
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-black text-sm text-[#123524]"
                     />
                   </div>
                 </div>
@@ -2520,69 +2532,69 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   <label className="block text-xs font-bold text-gray-600 mb-2">
                     Booking / Service Status (Dashboard တွင် ပြသမည့် ပုံစံ)
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={() => setServiceStatus('in_progress')}
-                      className={`p-4 rounded-xl border-2 text-left transition ${
+                      className={`p-3 rounded-xl border-2 text-left transition ${
                         serviceStatus === 'in_progress'
                           ? 'border-[#123524] bg-green-50/60'
                           : 'border-gray-200 bg-white'
                       }`}
                     >
-                      <div className="font-black text-xs sm:text-sm text-[#123524] flex items-center">
-                        <Clock className="w-4 h-4 mr-1.5 text-orange-500" /> Start Service Now
+                      <div className="font-black text-xs text-[#123524] flex items-center">
+                        <Clock className="w-3.5 h-3.5 mr-1 text-orange-500" /> Start Service Now
                       </div>
                       <p className="text-[10px] text-gray-500 mt-1 font-semibold">
-                        ဧည့်သည် ယခု စဝင်နေသည် (Dashboard တွင် In Progress နှင့် အခန်း Busy ပြပေးမည်)
+                        ဧည့်သည် ယခု စဝင်နေသည် (In Progress)
                       </p>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setServiceStatus('completed')}
-                      className={`p-4 rounded-xl border-2 text-left transition ${
+                      className={`p-3 rounded-xl border-2 text-left transition ${
                         serviceStatus === 'completed'
                           ? 'border-[#123524] bg-green-50/60'
                           : 'border-gray-200 bg-white'
                       }`}
                     >
-                      <div className="font-black text-xs sm:text-sm text-[#123524] flex items-center">
-                        <CheckCircle className="w-4 h-4 mr-1.5 text-green-600" /> Completed Sale
+                      <div className="font-black text-xs text-[#123524] flex items-center">
+                        <CheckCircle className="w-3.5 h-3.5 mr-1 text-green-600" /> Completed Sale
                       </div>
                       <p className="text-[10px] text-gray-500 mt-1 font-semibold">
-                        ဝန်ဆောင်မှု ပြီးဆုံးပြီး ငွေရှင်းဘောင်ချာသာ ထုတ်မည်
+                        ဝန်ဆောင်မှု ပြီးဆုံးပြီး ဘောင်ချာထုတ်မည်
                       </p>
                     </button>
                   </div>
                 </div>
 
-                <div className="pt-4 flex justify-between gap-3">
+                <div className="pt-3 flex justify-between gap-2.5">
                   <button
                     type="button"
                     onClick={() => setPosStep(2)}
-                    className="px-6 py-3.5 rounded-xl font-bold text-xs bg-gray-100 text-gray-600"
+                    className="px-5 py-3 rounded-xl font-bold text-xs bg-gray-100 text-gray-600"
                   >
                     ← Back
                   </button>
                   <button
                     type="button"
                     onClick={() => setPosStep(4)}
-                    className="flex-1 py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest shadow-md"
+                    className="flex-1 py-3 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest shadow-md"
                   >
-                    Continue to Payment & Discount →
+                    Continue to Payment →
                   </button>
                 </div>
               </div>
             )}
 
             {posStep === 4 && (
-              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-5 animate-fade-in">
-                <div className="space-y-3">
+              <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in">
+                <div className="space-y-2.5">
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
                     <User className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Customer & VIP Points (Optional)
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 mb-1">Customer Name</label>
                       <input
@@ -2590,7 +2602,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
                         placeholder="Walk-in Guest"
-                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
                       />
                     </div>
                     <div>
@@ -2604,31 +2616,31 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           onChange={(e) => setCustomerPhone(e.target.value)}
                           onBlur={handleCheckCustomerPhone}
                           placeholder="09xxxxxxxxx"
-                          className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                          className="flex-1 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
                         />
                         {isOnline && (
                           <button
                             type="button"
                             onClick={handleCheckCustomerPhone}
-                            className="px-3 bg-yellow-50 border border-[#D4AF37]/50 rounded-xl text-[#123524] text-xs font-bold"
+                            className="px-2.5 bg-yellow-50 border border-[#D4AF37]/50 rounded-xl text-[#123524] text-xs font-bold"
                           >
-                            <Search className="w-4 h-4" />
+                            <Search className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
                       {foundCustomerPts !== null && (
                         <span className="text-[10px] font-bold text-green-700 mt-1 block">
-                          ★ လက်ရှိစုဆောင်းထားသော ပွိုင့်: {foundCustomerPts} Pts (+{pointsEarned} Pts ထပ်တိုးမည်)
+                          ★ လက်ရှိပွိုင့်: {foundCustomerPts} Pts (+{pointsEarned} Pts ထပ်တိုးမည်)
                         </span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-gray-100 space-y-3">
+                <div className="pt-2.5 border-t border-gray-100 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
-                      <Percent className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Add Discount (လျှော့ဈေး သတ်မှတ်ရန်)
+                      <Percent className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Add Discount (လျှော့ဈေး)
                     </h3>
                     <div className="flex bg-gray-100 p-0.5 rounded-lg">
                       <button
@@ -2637,7 +2649,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           setDiscountType('percent');
                           setDiscountValue(0);
                         }}
-                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold ${
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold ${
                           discountType === 'percent' ? 'bg-[#123524] text-[#D4AF37]' : 'text-gray-600'
                         }`}
                       >
@@ -2649,7 +2661,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           setDiscountType('fixed');
                           setDiscountValue(0);
                         }}
-                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold ${
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold ${
                           discountType === 'fixed' ? 'bg-[#123524] text-[#D4AF37]' : 'text-gray-600'
                         }`}
                       >
@@ -2665,7 +2677,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           key={pct}
                           type="button"
                           onClick={() => setDiscountValue(pct)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
                             discountValue === pct
                               ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
                               : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-[#D4AF37]'
@@ -2677,7 +2689,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2.5">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 mb-1">
                         Discount ({discountType === 'percent' ? '%' : 'Ks'})
@@ -2688,61 +2700,60 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         value={discountValue || ''}
                         onChange={(e) => setDiscountValue(Math.max(0, parseInt(e.target.value, 10) || 0))}
                         placeholder="0"
-                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-black text-[#123524]"
+                        className="w-full p-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-black text-[#123524]"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Discount Label / Reason</label>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Reason</label>
                       <input
                         type="text"
                         value={discountReason}
                         onChange={(e) => setDiscountReason(e.target.value)}
-                        placeholder="e.g. VIP / Early Bird / Thadingyut"
-                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                        placeholder="e.g. VIP / Promo"
+                        className="w-full p-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-gray-100 space-y-3">
+                <div className="pt-2.5 border-t border-gray-100 space-y-2.5">
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
-                    <Banknote className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Payment Method (ငွေပေးချေမှု စနစ်)
+                    <Banknote className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Payment Method
                   </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {paymentOptions.map((pm) => (
                       <button
                         key={pm}
                         type="button"
                         onClick={() => setPaymentMethod(pm)}
-                        className={`py-3 px-2 rounded-xl font-black text-xs border transition flex items-center justify-center ${
+                        className={`py-2.5 px-2 rounded-xl font-black text-[11px] border transition flex items-center justify-center ${
                           paymentMethod === pm
                             ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] border-[#D4AF37] shadow-sm'
                             : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
                         }`}
                       >
-                        {pm === 'Cash' && <Banknote className="w-4 h-4 mr-1.5 text-[#D4AF37]" />}
                         {pm}
                       </button>
                     ))}
                   </div>
 
                   {paymentMethod === 'Cash' && (
-                    <div className="bg-green-50/70 p-3.5 rounded-xl border border-green-200 grid grid-cols-2 gap-3 items-center">
+                    <div className="bg-green-50/70 p-3 rounded-xl border border-green-200 grid grid-cols-2 gap-2.5 items-center">
                       <div>
                         <label className="block text-[10px] font-bold text-green-800 mb-1">
-                          ပေးငွေ (Cash Received - Optional)
+                          ပေးငွေ (Cash Received)
                         </label>
                         <input
                           type="number"
                           value={cashReceived}
                           onChange={(e) => setCashReceived(e.target.value)}
                           placeholder={finalTotal.toString()}
-                          className="w-full p-2.5 bg-white border border-green-300 rounded-lg text-sm font-black text-[#123524]"
+                          className="w-full p-2 bg-white border border-green-300 rounded-lg text-xs font-black text-[#123524]"
                         />
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] font-bold text-green-700 block">ပြန်အမ်းငွေ (Change Due)</span>
-                        <span className="text-lg font-black text-green-800">{formatPrice(changeDue)}</span>
+                        <span className="text-base font-black text-green-800">{formatPrice(changeDue)}</span>
                       </div>
                     </div>
                   )}
@@ -2754,16 +2765,16 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                       value={specialNote}
                       onChange={(e) => setSpecialNote(e.target.value)}
                       placeholder="အခြား မှတ်ချက်..."
-                      className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold"
+                      className="w-full p-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold"
                     />
                   </div>
                 </div>
 
-                <div className="pt-2 flex justify-between gap-3">
+                <div className="pt-2 flex justify-between gap-2.5">
                   <button
                     type="button"
                     onClick={() => setPosStep(3)}
-                    className="px-5 py-3.5 rounded-xl font-bold text-xs bg-gray-100 text-gray-600"
+                    className="px-4 py-3 rounded-xl font-bold text-xs bg-gray-100 text-gray-600"
                   >
                     ← Back
                   </button>
@@ -2771,18 +2782,18 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     type="button"
                     disabled={cart.length === 0 || savingSale}
                     onClick={handleCompleteSale}
-                    className="flex-1 py-4 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-sm uppercase tracking-wider shadow-lg hover:opacity-95 transition flex items-center justify-center"
+                    className="flex-1 py-3.5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-xs uppercase tracking-wider shadow-lg hover:opacity-95 transition flex items-center justify-center"
                   >
-                    <Printer className="w-4 h-4 mr-2" />
-                    {savingSale ? 'Saving...' : `Complete Sale & Print (${formatPrice(finalTotal)})`}
+                    <Printer className="w-4 h-4 mr-1.5" />
+                    {savingSale ? 'Saving...' : `Complete & Print (${formatPrice(finalTotal)})`}
                   </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* RIGHT PANEL: STICKY CURRENT WALK-IN BILL (5 Columns on Tablet & Desktop - Always Side-by-Side!) */}
-          <div className="md:col-span-5 sticky top-16">
+          {/* RIGHT PANEL: STICKY CURRENT WALK-IN BILL (42% Width on Tablet - Always Visible Side-by-Side!) */}
+          <div className="min-w-0 sticky top-14">
             <div
               ref={billCardRef}
               className={`bg-white rounded-2xl shadow-md border-2 transition-all duration-300 overflow-hidden ${
@@ -2791,15 +2802,13 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   : 'border-[#D4AF37]/40'
               }`}
             >
-              <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-3.5 sm:p-4 text-white flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <ShoppingBag
-                      className={`w-4 h-4 text-[#D4AF37] transition-transform duration-300 ${
-                        isBillCardBouncing ? 'scale-125' : ''
-                      }`}
-                    />
-                  </div>
+              <div className="bg-gradient-to-r from-[#123524] to-[#1a4a32] p-3 text-white flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <ShoppingBag
+                    className={`w-4 h-4 text-[#D4AF37] transition-transform duration-300 ${
+                      isBillCardBouncing ? 'scale-125' : ''
+                    }`}
+                  />
                   <h3 className="font-bold text-xs sm:text-sm text-[#D4AF37] tracking-wide">
                     Current Walk-in Bill
                   </h3>
@@ -2826,10 +2835,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
               <div
                 ref={billListScrollRef}
-                className="p-3.5 sm:p-4 space-y-2.5 max-h-[42vh] overflow-y-auto divide-y divide-gray-100"
+                className="p-3 space-y-2 max-h-[45vh] overflow-y-auto divide-y divide-gray-100"
               >
                 {cart.length === 0 ? (
-                  <div className="py-10 text-center text-gray-400 text-xs font-bold">
+                  <div className="py-10 text-center text-gray-400 text-[11px] font-bold leading-relaxed px-2">
                     ဝန်ဆောင်မှု သို့မဟုတ် Sale Item ရွေးချယ်ထားခြင်း မရှိသေးပါ။
                   </div>
                 ) : (
@@ -2839,16 +2848,18 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     return (
                       <div
                         key={item.cartId}
-                        className={`pt-2.5 first:pt-0 rounded-lg px-1.5 py-1 flex flex-col gap-1.5 transition-colors ${
+                        className={`pt-2 first:pt-0 rounded-lg px-1.5 py-1 flex flex-col gap-1 transition-colors ${
                           isJustAdded ? 'pos-item-pop' : ''
                         }`}
                       >
-                        <div className="flex justify-between items-start gap-2">
+                        <div className="flex justify-between items-start gap-1.5">
                           <div>
-                            <div className="font-bold text-xs text-gray-800 leading-snug">{item.name}</div>
-                            {item.duration && <div className="text-[10px] text-gray-500">{item.duration}</div>}
+                            <div className="font-bold text-[11px] sm:text-xs text-gray-800 leading-snug">
+                              {item.name}
+                            </div>
+                            {item.duration && <div className="text-[9px] text-gray-500">{item.duration}</div>}
                           </div>
-                          <div className="font-black text-xs text-[#123524] whitespace-nowrap">
+                          <div className="font-black text-[11px] sm:text-xs text-[#123524] whitespace-nowrap">
                             {formatPrice(unitPrice * item.qty)}
                           </div>
                         </div>
@@ -2858,17 +2869,17 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                             <button
                               type="button"
                               onClick={() => toggleCartItemVvip(item.cartId)}
-                              className={`px-2 py-1 rounded text-[9px] font-bold border flex items-center transition ${
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-bold border flex items-center transition ${
                                 item.isVvipUpgrade
                                   ? 'bg-yellow-100 text-yellow-900 border-[#D4AF37]'
                                   : 'bg-gray-50 text-gray-500 border-gray-200'
                               }`}
                             >
-                              <Crown className="w-3 h-3 mr-1 text-[#D4AF37]" />
+                              <Crown className="w-2.5 h-2.5 mr-1 text-[#D4AF37]" />
                               VVIP (+{formatPrice(item.vvipExtraPrice)})
                             </button>
                           ) : item.vvipIncluded ? (
-                            <span className="text-[9px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded">
+                            <span className="text-[9px] font-bold text-green-700 bg-green-50 px-1.5 py-0.5 rounded">
                               VVIP Included
                             </span>
                           ) : (
@@ -2879,15 +2890,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                             <button
                               type="button"
                               onClick={() => updateCartQty(item.cartId, -1)}
-                              className="w-6 h-6 rounded bg-gray-100 text-gray-700 font-black text-xs flex items-center justify-center hover:bg-red-100 hover:text-red-600"
+                              className="w-5 h-5 rounded bg-gray-100 text-gray-700 font-black text-xs flex items-center justify-center hover:bg-red-100 hover:text-red-600"
                             >
                               -
                             </button>
-                            <span className="text-xs font-black w-4 text-center">{item.qty}</span>
+                            <span className="text-[11px] font-black w-4 text-center">{item.qty}</span>
                             <button
                               type="button"
                               onClick={() => updateCartQty(item.cartId, 1)}
-                              className="w-6 h-6 rounded bg-gray-100 text-gray-700 font-black text-xs flex items-center justify-center hover:bg-green-100 hover:text-green-700"
+                              className="w-5 h-5 rounded bg-gray-100 text-gray-700 font-black text-xs flex items-center justify-center hover:bg-green-100 hover:text-green-700"
                             >
                               +
                             </button>
@@ -2899,10 +2910,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 )}
               </div>
 
-              <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 text-[11px] space-y-1">
+              <div className="px-3 py-2 bg-gray-50 border-t border-gray-100 text-[10px] space-y-1">
                 <div className="flex justify-between">
                   <span className="text-gray-500 font-semibold">Therapist:</span>
-                  <span className="font-bold text-[#123524] truncate max-w-[160px]">
+                  <span className="font-bold text-[#123524] truncate max-w-[140px]">
                     {therapist1 && therapist2
                       ? `${therapist1.name} & ${therapist2.name}`
                       : therapist1
@@ -2918,21 +2929,21 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 </div>
               </div>
 
-              <div className="p-3.5 sm:p-4 bg-gradient-to-b from-yellow-50/50 to-white border-t border-gray-200 space-y-2">
-                <div className="flex justify-between text-xs text-gray-600 font-semibold">
+              <div className="p-3 bg-gradient-to-b from-yellow-50/50 to-white border-t border-gray-200 space-y-1.5">
+                <div className="flex justify-between text-[11px] text-gray-600 font-semibold">
                   <span>Subtotal</span>
                   <span className="font-bold">{formatPrice(subTotal)}</span>
                 </div>
                 {discountAmount > 0 && (
-                  <div className="flex justify-between text-xs text-green-700 font-bold">
+                  <div className="flex justify-between text-[11px] text-green-700 font-bold">
                     <span>Discount ({discountReason})</span>
                     <span>-{formatPrice(discountAmount)}</span>
                   </div>
                 )}
-                <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-                  <span className="font-extrabold text-sm text-[#123524]">Net Total</span>
+                <div className="flex justify-between items-center pt-1.5 border-t border-gray-200">
+                  <span className="font-extrabold text-xs text-[#123524]">Net Total</span>
                   <span
-                    className={`text-lg sm:text-xl font-black text-[#123524] transition-transform duration-300 ${
+                    className={`text-base sm:text-lg font-black text-[#123524] transition-transform duration-300 ${
                       isBillCardBouncing ? 'scale-110 text-green-800' : ''
                     }`}
                   >
@@ -2940,8 +2951,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   </span>
                 </div>
                 {pointsEarned > 0 && (
-                  <div className="text-[10px] text-right font-bold text-[#D4AF37]">
-                    ★ ဤဘောင်ချာအတွက် +{pointsEarned} VIP Points ရရှိမည်
+                  <div className="text-[9px] text-right font-bold text-[#D4AF37]">
+                    ★ +{pointsEarned} VIP Points ရရှိမည်
                   </div>
                 )}
 
@@ -2952,9 +2963,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     if (posStep < 4) setPosStep(4);
                     else handleCompleteSale();
                   }}
-                  className="w-full mt-2 py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-widest shadow-md disabled:opacity-50 hover:opacity-95 transition flex items-center justify-center"
+                  className="w-full mt-1.5 py-3 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-[11px] uppercase tracking-wider shadow-md disabled:opacity-50 hover:opacity-95 transition flex items-center justify-center"
                 >
-                  {posStep < 4 ? 'Proceed to Checkout →' : `Confirm & Print Receipt (${formatPrice(finalTotal)})`}
+                  {posStep < 4 ? 'Proceed to Checkout →' : `Confirm & Print (${formatPrice(finalTotal)})`}
                 </button>
               </div>
             </div>
