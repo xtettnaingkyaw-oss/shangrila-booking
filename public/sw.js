@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shangrila-pos-offline-v1';
+const CACHE_NAME = 'shangrila-pos-offline-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -6,53 +6,51 @@ const ASSETS_TO_CACHE = [
   '/manifest.json'
 ];
 
-// Install Event
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
   );
   self.skipWaiting();
 });
 
-// Activate Event
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      );
-    })
+    caches.keys().then((keys) =>
+      Promise.all(keys.map((key) => (key !== CACHE_NAME ? caches.delete(key) : null)))
+    )
   );
   self.clientsClaim();
 });
 
-// Fetch Event (Offline First Strategy)
+// ၃ စက္ကန့်အတွင်း လိုင်းမကောင်းပါက Offline Cache ကို တန်းဖွင့်ပေးမည့် Function
+const fetchWithTimeout = (request, timeout = 3000) => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Network timeout')), timeout);
+    fetch(request)
+      .then((response) => {
+        clearTimeout(timer);
+        resolve(response);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+};
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  
+
   event.respondWith(
-    fetch(event.request)
+    fetchWithTimeout(event.request, 3000)
       .then((response) => {
-        // Network ကနေ ရလာပါက Cache ထဲသို့ အသစ်တင်ပေးမည်
         const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, clone);
-        });
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         return response;
       })
       .catch(() => {
-        // အင်တာနက် လုံးဝမရှိပါက Cache ထဲမှ အဟောင်းကို ပြန်ထုတ်ပြမည် (Offline Mode)
         return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          // Fallback to index.html for SPA routing
+          if (cachedResponse) return cachedResponse;
           if (event.request.mode === 'navigate') {
             return caches.match('/index.html');
           }
