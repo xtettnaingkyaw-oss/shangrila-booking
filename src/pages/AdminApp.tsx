@@ -666,158 +666,516 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 });
 
 function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
- const handleStatusChange = async (b: Booking, newStatus: string) => {
+  const [filterPayMode, setFilterPayMode] = useState<'all' | 'deposit_only' | 'paid_in_full'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [depositModalBooking, setDepositModalBooking] = useState<Booking | null>(null);
+  const [customDepositInput, setCustomDepositInput] = useState<string>('');
+
+  // 🌟 Walk-in POS ဘောင်ချာများကို ဖယ်ထုတ်ပြီး Online Booking အစစ်များကိုသာ ပြသမည် 🌟
+  const onlineOnlyBookings = useMemo(() => {
+    return bookings.filter((b: any) => {
+      const rawTx = String(b.txId || '').trim();
+      const isWalkInPos =
+        rawTx.startsWith('SL-') ||
+        (b.paymentMethod && b.paymentMethod.includes('Shop POS')) ||
+        (b.discountLabel && String(b.discountLabel).includes('[Shop Walk-in'));
+      return !isWalkInPos;
+    });
+  }, [bookings]);
+
+  const filteredBookings = useMemo(() => {
+    return onlineOnlyBookings.filter((b: any) => {
+      const q = searchQuery.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        (b.name || '').toLowerCase().includes(q) ||
+        (b.phone || '').toLowerCase().includes(q) ||
+        (b.txId || '').toLowerCase().includes(q) ||
+        (b.service || '').toLowerCase().includes(q) ||
+        (b.therapist || '').toLowerCase().includes(q);
+      if (!matchSearch) return false;
+
+      const isDepositDue = b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
+      if (filterPayMode === 'deposit_only') return isDepositDue;
+      if (filterPayMode === 'paid_in_full') return !isDepositDue;
+      return true;
+    });
+  }, [onlineOnlyBookings, filterPayMode, searchQuery]);
+
+  const onlineDepositDueCount = useMemo(() => {
+    return onlineOnlyBookings.filter((b: any) => b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0).length;
+  }, [onlineOnlyBookings]);
+
+  const handleStatusChange = async (b: Booking, newStatus: string) => {
     let reason = '';
     if (newStatus === 'cancelled') {
       const input = window.prompt("Reason for cancellation:");
-      if (input === null) return; reason = input;
-    } else { if (!window.confirm('Are you sure you want to change this status?')) return; }
-    
+      if (input === null) return;
+      reason = input;
+    } else {
+      if (!window.confirm('Are you sure you want to change this status?')) return;
+    }
+
     let updateData: any = { status: newStatus, cancelReason: reason };
 
     if (newStatus === 'approved' && !(b as any).pointsAdded && b.totalPrice >= 35000) {
-        const earnedPts = Math.floor(b.totalPrice / 35000);
-        try {
-            const usersSnap = await getDocs(collection(db, 'users'));
-            let targetDocRef = null;
-            
-            usersSnap.forEach(d => {
-                const uData = d.data(); const decPhone = decryptText(uData.phone) || d.id;
-                if (decPhone === b.phone) { targetDocRef = doc(db, 'users', d.id); }
+      const earnedPts = Math.floor(b.totalPrice / 35000);
+      try {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        let targetDocRef: any = null;
+
+        usersSnap.forEach(d => {
+          const uData = d.data();
+          const decPhone = decryptText(uData.phone) || d.id;
+          if (decPhone === b.phone) {
+            targetDocRef = doc(db, 'users', d.id);
+          }
+        });
+
+        if (targetDocRef) {
+          await runTransaction(db, async (transaction) => {
+            const userDoc = await transaction.get(targetDocRef);
+            if (!userDoc.exists()) throw new Error("User does not exist!");
+
+            const uData = userDoc.data() as any;
+            const currentPts = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10);
+            const newTotal = currentPts + earnedPts;
+
+            transaction.update(targetDocRef, { points: encryptText(newTotal.toString()) });
+
+            const newHistoryRef = doc(collection(db, 'point_history'));
+            transaction.set(newHistoryRef, {
+              phone: encryptText(b.phone),
+              amount: encryptText(b.totalPrice.toString()),
+              pointsEarned: encryptText(earnedPts.toString()),
+              invoiceNo: encryptText(b.txId || 'Online'),
+              type: encryptText('Online Booking'),
+              date: getLocalTodayStr(),
+              createdAt: Date.now()
             });
 
-            if (targetDocRef) {
-                // 🌟 Transaction အသုံးပြု၍ Data ၃ ခုလုံးကို တပြိုင်နက် သိမ်းမည်
-                await runTransaction(db, async (transaction) => {
-                    const userDoc = await transaction.get(targetDocRef);
-                    if (!userDoc.exists()) throw new Error("User does not exist!");
-                    
-                    const uData = userDoc.data();
-                    const currentPts = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10);
-                    const newTotal = currentPts + earnedPts;
+            const bookingRef = doc(db, 'bookings', b.id!);
+            transaction.update(bookingRef, { ...updateData, pointsAdded: true });
+          });
 
-                    // ၁။ User Point ကို Update လုပ်မည်
-                    transaction.update(targetDocRef, { points: encryptText(newTotal.toString()) });
-                    
-                    // ၂။ Point History သို့ မှတ်တမ်းအသစ်ထည့်မည်
-                    const newHistoryRef = doc(collection(db, 'point_history'));
-                    transaction.set(newHistoryRef, { 
-                        phone: encryptText(b.phone), amount: encryptText(b.totalPrice.toString()), 
-                        pointsEarned: encryptText(earnedPts.toString()), invoiceNo: encryptText(b.txId || 'Online'), 
-                        type: encryptText('Online Booking'), date: getLocalTodayStr(), createdAt: Date.now() 
-                    });
-
-                    // ၃။ Booking Status ကိုပါ Update လုပ်မည်
-                    const bookingRef = doc(db, 'bookings', b.id!);
-                    transaction.update(bookingRef, { ...updateData, pointsAdded: true });
-                });
-                
-                alert(`✅ Booking Confirmed! Customer ထံသို့ Point (${earnedPts} Pts) အလိုအလျောက် ပေါင်းထည့်ပေးလိုက်ပါပြီ။`);
-                return; // Transaction အောင်မြင်ပါက အောက်ဆုံးက updateDoc ကို ထပ်မ run တော့ပါ
-            }
-        } catch (e) { 
-            console.error("Transaction Error:", e);
-            alert("Error Update! Booking Status နှင့် Point ပေါင်းခြင်း မအောင်မြင်ပါ။"); 
-            return;
+          alert(`✅ Booking Confirmed! Customer ထံသို့ Point (${earnedPts} Pts) အလိုအလျောက် ပေါင်းထည့်ပေးလိုက်ပါပြီ။`);
+          return;
         }
+      } catch (e) {
+        console.error("Transaction Error:", e);
+        alert("Error Update! Booking Status နှင့် Point ပေါင်းခြင်း မအောင်မြင်ပါ။");
+        return;
+      }
     }
-    try { await updateDoc(doc(db, 'bookings', b.id!), updateData); } catch (e) { alert("Error Update"); }
+    try {
+      await updateDoc(doc(db, 'bookings', b.id!), updateData);
+    } catch (e) {
+      alert("Error Update");
+    }
   };
 
-  const handleDelete = async (id: string) => { 
-      if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; }
-      if (window.confirm('Are you sure you want to delete this booking?')) { await deleteDoc(doc(db, 'bookings', id)); } 
+  // 🌟 Online Booking အား စရံတစ်ဝက် (50%) သို့မဟုတ် စိတ်ကြိုက်စရံ သတ်မှတ်ပေးမည့် Function 🌟
+  const handleSetOnlineDeposit = async (b: Booking, depositAmt: number) => {
+    const total = Number(b.totalPrice) || 0;
+    const validDep = Math.max(0, Math.min(total, Math.round(depositAmt)));
+    const balDue = Math.max(0, total - validDep);
+    const cleanMethod = (b.paymentMethod || 'Online Pay').split('(')[0].trim();
+
+    try {
+      if (balDue === 0) {
+        await updateDoc(doc(db, 'bookings', b.id!), {
+          paymentStatus: 'paid_in_full',
+          depositPaid: total,
+          balanceDue: 0,
+          paymentMethod: `${cleanMethod} (Full Paid)`
+        });
+      } else {
+        await updateDoc(doc(db, 'bookings', b.id!), {
+          paymentStatus: 'deposit_only',
+          depositPaid: validDep,
+          balanceDue: balDue,
+          paymentMethod: `${cleanMethod} (စရံ: ${formatPrice(validDep)} | ကျန်ငွေ: ${formatPrice(balDue)})`
+        });
+      }
+      setDepositModalBooking(null);
+      setCustomDepositInput('');
+    } catch (e) {
+      alert('စရံငွေ သတ်မှတ်ရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (adminRole !== 'super_admin') {
+      alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။');
+      return;
+    }
+    if (window.confirm('Are you sure you want to delete this booking?')) {
+      await deleteDoc(doc(db, 'bookings', id));
+    }
   };
 
   const handleExportExcel = () => {
-      const headers = ['Booking ID', 'Customer Name', 'Phone', 'Service', 'Therapist', 'Date', 'Time', 'Total Price (Ks)', 'Original Price (Ks)', 'Discount Percent (%)', 'Discount Label', 'Payment Method', 'Transaction ID', 'Status', 'Special Request', 'Booking Date'];
-      const rows = bookings.map(b => [ b.id || '', `"${b.name || ''}"`, `"${b.phone || ''}"`, `"${b.service || ''}"`, `"${b.therapist || ''}"`, b.date || '', b.time || '', b.totalPrice || 0, b.originalPrice || '', b.discountPercent || '', b.discountLabel ? `"${b.discountLabel}"` : '', b.paymentMethod || '', b.txId || '', b.status || '', `"${b.specialRequest || ''}"`, new Date(b.createdAt).toLocaleString() ]);
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url); link.setAttribute('download', `Bookings_Report_${getLocalTodayStr()}.csv`); link.style.visibility = 'hidden';
-      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    const headers = ['Booking ID', 'Customer Name', 'Phone', 'Service', 'Therapist', 'Date', 'Time', 'Total Price (Ks)', 'Original Price (Ks)', 'Discount Percent (%)', 'Discount Label', 'Payment Method', 'Payment Status', 'Deposit Paid (Ks)', 'Balance Due (Ks)', 'Transaction ID', 'Status', 'Special Request', 'Booking Date'];
+    const rows = filteredBookings.map((b: any) => {
+      const isDep = b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
+      const depPaid = isDep ? Number(b.depositPaid) || 0 : Number(b.totalPrice) || 0;
+      const balDue = isDep ? Number(b.balanceDue) || 0 : 0;
+      return [
+        b.id || '',
+        `"${b.name || ''}"`,
+        `"${b.phone || ''}"`,
+        `"${b.service || ''}"`,
+        `"${b.therapist || ''}"`,
+        b.date || '',
+        b.time || '',
+        b.totalPrice || 0,
+        b.originalPrice || '',
+        b.discountPercent || '',
+        b.discountLabel ? `"${b.discountLabel}"` : '',
+        `"${b.paymentMethod || ''}"`,
+        isDep ? 'Deposit Only' : 'Paid in Full',
+        depPaid,
+        balDue,
+        `"${b.txId || ''}"`,
+        b.status || '',
+        `"${b.specialRequest || ''}"`,
+        new Date(b.createdAt).toLocaleString()
+      ];
+    });
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Online_Bookings_Report_${getLocalTodayStr()}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
-          <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><CalendarPlus className="mr-2 text-yellow-500" /> Booking Requests</h2>
-          <div className="flex items-center space-x-3 w-full sm:w-auto">
-              <button onClick={handleExportExcel} className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm"><Download className="w-4 h-4 mr-1.5" /> Export Excel</button>
-              <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-bold border border-yellow-200">Total: {bookings.length}</span>
-          </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[800px]">
-          <thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Customer</th><th className="p-3 pb-4">Service & Therapist</th><th className="p-3 pb-4">Date & Time</th><th className="p-3 pb-4">TxID & Total</th><th className="p-3 pb-4">Status & Action</th><th className="p-3 pb-4 text-right">Delete</th></tr></thead>
-          <tbody>
-            {bookings.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No pending bookings.</td></tr>)}
-            {bookings.map((b) => (
-              <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                <td className="p-3">
-                    <div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div><div className="text-xs text-gray-500">{b.phone || '-'}</div>
-                    {b.vipTierName ? (<div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-sm"><Crown className="w-3 h-3 mr-1 text-yellow-600" /> {b.vipTierName}</div>) : (b.discountPercent && b.discountPercent > 0) ? (<div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-sm"><Sparkles className="w-3 h-3 mr-1 text-green-600" /> Promo Active</div>) : null}
-                </td>
-                <td className="p-3"><div className="font-bold text-sm text-gray-800">{b.service || '-'}</div><div className="text-xs text-gray-500 mt-1 flex items-center"><User className="w-3 h-3 mr-1" />{b.therapist || '-'}</div>{b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}</td>
-               <td className="p-3 text-sm text-gray-700">
-    <div className="font-semibold text-[#123524]">{b.date || '-'}</div>
-    <div className="text-gray-600 text-xs mt-1 mb-2">{b.time || '-'}</div>
-    {b.createdAt && (
-        <div className="text-[9px] font-bold text-gray-400 flex flex-col gap-0.5 border-t border-gray-100 pt-1.5 mt-1.5 w-max">
-            <span className="uppercase text-[8px] tracking-wider text-blue-400">Submitted At:</span>
-            <span>{new Date(b.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-        </div>
-    )}
-</td>
-               <td className="p-3">
-                    <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div>
-                    <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-1">{b.paymentMethod || 'Unknown'}</div>
-                    {b.originalPrice && b.originalPrice > b.totalPrice ? (
-                        <div className="mt-2 p-1.5 bg-green-50 border border-green-100 rounded-md w-max">
-                           <div className="flex items-center space-x-2 mb-0.5"><span className="text-[10px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span><span className="text-[9px] font-bold text-red-500 bg-red-100 px-1 py-0.5 rounded">-{b.discountPercent}%</span></div>
-                           <div className="font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
-                           {b.discountLabel && <div className="text-[8.5px] text-green-700 font-semibold mt-1 uppercase tracking-wider">{b.discountLabel.replace(/ \(\d+\%\)/, '')}</div>}
-                        </div>
-                    ) : (<div className="mt-1.5 font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>)}
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+      {/* 🌟 Deposit / Full Paid Configuration Modal for Online Bookings 🌟 */}
+      {depositModalBooking && (
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-[#D4AF37]/40 space-y-4 animate-fade-in">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div>
+                <h3 className="text-sm font-black text-[#123524]">Online ငွေလွှဲပမာဏ စစ်ဆေးသတ်မှတ်ရန်</h3>
+                <p className="text-[11px] text-gray-500">
+                  {depositModalBooking.name} • စုစုပေါင်း: <strong className="text-[#123524]">{formatPrice(depositModalBooking.totalPrice)}</strong>
+                </p>
+              </div>
+              <button onClick={() => setDepositModalBooking(null)} className="text-gray-400 hover:text-red-500">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-                    {/* 🌟 စရံငွေ နှင့် ကျန်ငွေ ခွဲပြခြင်း + Approve ခလုတ် 🌟 */}
-                    {(b as any).paymentStatus === 'deposit_only' && Number((b as any).balanceDue) > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold text-gray-600">အမြန်ရွေးချယ်ရန် (Quick Presets):</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSetOnlineDeposit(depositModalBooking, Math.round(depositModalBooking.totalPrice / 2))}
+                  className="p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-black transition text-center"
+                >
+                  50% စရံတစ်ဝက်
+                  <span className="block text-[10px] font-bold text-amber-700 mt-0.5">
+                    ({formatPrice(Math.round(depositModalBooking.totalPrice / 2))})
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetOnlineDeposit(depositModalBooking, depositModalBooking.totalPrice)}
+                  className="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-black transition text-center"
+                >
+                  100% အပြည့်ချေပြီး
+                  <span className="block text-[10px] font-bold text-emerald-700 mt-0.5">
+                    ({formatPrice(depositModalBooking.totalPrice)})
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-gray-100 space-y-2">
+              <label className="block text-[11px] font-bold text-gray-600">
+                သို့မဟုတ် လွှဲထားသည့် စရံငွေပမာဏ ရိုက်ထည့်ရန် (Ks):
+              </label>
+              <input
+                type="number"
+                value={customDepositInput}
+                onChange={(e) => setCustomDepositInput(e.target.value)}
+                placeholder="ဥပမာ - 15000"
+                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-black text-[#123524] outline-none focus:border-[#123524]"
+              />
+              {customDepositInput && (
+                <div className="flex justify-between text-xs font-bold px-1">
+                  <span className="text-amber-800">စရံ: {formatPrice(Number(customDepositInput) || 0)}</span>
+                  <span className="text-red-600">
+                    ကျန်ငွေ: {formatPrice(Math.max(0, depositModalBooking.totalPrice - (Number(customDepositInput) || 0)))}
+                  </span>
+                </div>
+              )}
+              <button
+                type="button"
+                disabled={!customDepositInput}
+                onClick={() => handleSetOnlineDeposit(depositModalBooking, Number(customDepositInput) || 0)}
+                className="w-full py-2.5 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black uppercase tracking-wider disabled:opacity-40 shadow-sm"
+              >
+                Save Deposit Amount
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-4 gap-4">
+        <div>
+          <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
+            <CalendarPlus className="mr-2 text-yellow-500" /> Online Booking Requests
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Web App မှ တက်လာသော Online Booking များ၊ ငွေလွှဲစရံ (Deposit) နှင့် ကျန်ငွေများ စစ်ဆေးအတည်ပြုရန်
+          </p>
+        </div>
+        <div className="flex items-center space-x-3 w-full sm:w-auto">
+          <button onClick={handleExportExcel} className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm">
+            <Download className="w-4 h-4 mr-1.5" /> Export Excel
+          </button>
+          <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-bold border border-yellow-200">
+            Total: {filteredBookings.length}
+          </span>
+        </div>
+      </div>
+
+      {/* Filter Pills & Search */}
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+        <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setFilterPayMode('all')}
+            className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+              filterPayMode === 'all' ? 'bg-[#123524] text-[#D4AF37] shadow-sm' : 'text-gray-600'
+            }`}
+          >
+            အားလုံး ({onlineOnlyBookings.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterPayMode('deposit_only')}
+            className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+              filterPayMode === 'deposit_only' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600'
+            }`}
+          >
+            စရံသာလွှဲ / ကျန်ငွေရှိ ({onlineDepositDueCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterPayMode('paid_in_full')}
+            className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+              filterPayMode === 'paid_in_full' ? 'bg-emerald-700 text-white shadow-sm' : 'text-gray-600'
+            }`}
+          >
+            အပြည့်ချေပြီး ({onlineOnlyBookings.length - onlineDepositDueCount})
+          </button>
+        </div>
+
+        <div className="relative w-full sm:w-72">
+          <input
+            type="text"
+            placeholder="အမည်၊ ဖုန်း သို့မဟုတ် TxID ရှာရန်..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold"
+          />
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[880px]">
+          <thead>
+            <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+              <th className="p-3 pb-4">Customer</th>
+              <th className="p-3 pb-4">Service & Therapist</th>
+              <th className="p-3 pb-4">Date & Time</th>
+              <th className="p-3 pb-4">TxID, Deposit & Total</th>
+              <th className="p-3 pb-4">Status & Action</th>
+              <th className="p-3 pb-4 text-right">Delete</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredBookings.length === 0 && (
+              <tr>
+                <td colSpan={6} className="p-10 text-center text-gray-400 font-bold">
+                  No pending online bookings.
+                </td>
+              </tr>
+            )}
+            {filteredBookings.map((b) => {
+              const isDepositDue = (b as any).paymentStatus === 'deposit_only' && Number((b as any).balanceDue) > 0;
+              return (
+                <tr key={b.id} className={`border-b transition ${isDepositDue ? 'bg-amber-50/30 border-amber-200 hover:bg-amber-50/60' : 'border-gray-50 hover:bg-gray-50'}`}>
+                  <td className="p-3">
+                    <div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div>
+                    <div className="text-xs text-gray-500 font-mono">{b.phone || '-'}</div>
+                    {b.vipTierName ? (
+                      <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-sm">
+                        <Crown className="w-3 h-3 mr-1 text-yellow-600" /> {b.vipTierName}
+                      </div>
+                    ) : b.discountPercent && b.discountPercent > 0 ? (
+                      <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-sm">
+                        <Sparkles className="w-3 h-3 mr-1 text-green-600" /> Promo Active
+                      </div>
+                    ) : null}
+                  </td>
+
+                  <td className="p-3">
+                    <div className="font-bold text-sm text-gray-800">{b.service || '-'}</div>
+                    <div className="text-xs text-gray-500 mt-1 flex items-center">
+                      <User className="w-3 h-3 mr-1" />
+                      {b.therapist || '-'}
+                    </div>
+                    {b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}
+                  </td>
+
+                  <td className="p-3 text-sm text-gray-700">
+                    <div className="font-semibold text-[#123524]">{b.date || '-'}</div>
+                    <div className="text-gray-600 text-xs mt-1 mb-2">{b.time || '-'}</div>
+                    {b.createdAt && (
+                      <div className="text-[9px] font-bold text-gray-400 flex flex-col gap-0.5 border-t border-gray-100 pt-1.5 mt-1.5 w-max">
+                        <span className="uppercase text-[8px] tracking-wider text-blue-400">Submitted At:</span>
+                        <span>{new Date(b.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    )}
+                  </td>
+
+                  <td className="p-3">
+                    <div className="font-mono font-bold text-gray-800 text-sm">TxID: {b.txId || '-'}</div>
+                    <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-0.5">
+                      {(b.paymentMethod || 'Unknown').split('(')[0].trim()}
+                    </div>
+
+                    {b.originalPrice && b.originalPrice > b.totalPrice ? (
+                      <div className="mt-1.5 p-1.5 bg-green-50 border border-green-100 rounded-md w-max">
+                        <div className="flex items-center space-x-2 mb-0.5">
+                          <span className="text-[10px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span>
+                          <span className="text-[9px] font-bold text-red-500 bg-red-100 px-1 py-0.5 rounded">-{b.discountPercent}%</span>
+                        </div>
+                        <div className="font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
+                        {b.discountLabel && <div className="text-[8.5px] text-green-700 font-semibold mt-1 uppercase tracking-wider">{b.discountLabel.replace(/ \(\d+\%\)/, '')}</div>}
+                      </div>
+                    ) : (
+                      <div className="mt-1 font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
+                    )}
+
+                    {/* 🌟 Online ငွေလွှဲ စရံ (Deposit) vs အပြည့်ချေ (Full Paid) စစ်ဆေးချက်နှင့် Approve ခလုတ် 🌟 */}
+                    {isDepositDue ? (
                       <div className="mt-2 p-2 bg-amber-50 border border-amber-300 rounded-lg space-y-1 w-max">
                         <div className="text-[10px] font-bold text-amber-900">
-                          စရံငွေ: {formatPrice(Number((b as any).depositPaid) || 0)}
+                          စရံလွှဲငွေ: {formatPrice(Number((b as any).depositPaid) || 0)}
                         </div>
                         <div className="text-[10px] font-black text-red-600">
-                          ကျန်ငွေ: {formatPrice(Number((b as any).balanceDue) || 0)}
+                          ကျန်ငွေရရန်: {formatPrice(Number((b as any).balanceDue) || 0)}
                         </div>
+                        <div className="flex gap-1 pt-1">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!window.confirm(`ကျန်ငွေ ${formatPrice(Number((b as any).balanceDue))} အပြည့်အဝ လက်ခံရရှိပြီးကြောင်း Approve လုပ်မည်မှာ သေချာပါသလား?`)) return;
+                              const cleanMethod = (b.paymentMethod || '').split('(')[0].trim();
+                              await updateDoc(doc(db, 'bookings', b.id!), {
+                                paymentStatus: 'paid_in_full',
+                                balanceDue: 0,
+                                depositPaid: b.totalPrice,
+                                paymentMethod: `${cleanMethod} (Full Paid - Approved)`
+                              });
+                            }}
+                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[9px] font-black flex items-center shadow-sm transition"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" /> ကျန်ငွေ Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDepositModalBooking(b);
+                              setCustomDepositInput(String((b as any).depositPaid || ''));
+                            }}
+                            className="px-2 py-1 bg-white border border-gray-300 text-gray-600 rounded text-[9px] font-bold hover:bg-gray-100"
+                          >
+                            ပြင်ရန်
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center">
+                          <CheckCircle className="w-2.5 h-2.5 mr-1" /> Full Paid
+                        </span>
                         <button
                           type="button"
-                          onClick={async () => {
-                            if (!window.confirm(`ကျန်ငွေ ${formatPrice(Number((b as any).balanceDue))} အပြည့်အဝ လက်ခံရရှိပြီးကြောင်း Approve လုပ်မည်မှာ သေချာပါသလား?`)) return;
-                            const cleanMethod = (b.paymentMethod || '').split('(')[0].trim();
-                            await updateDoc(doc(db, 'bookings', b.id!), {
-                              paymentStatus: 'paid_in_full',
-                              balanceDue: 0,
-                              depositPaid: b.totalPrice,
-                              paymentMethod: `${cleanMethod} (Full Paid - Approved)`
-                            });
+                          onClick={() => {
+                            setDepositModalBooking(b);
+                            setCustomDepositInput(String(Math.round((b.totalPrice || 0) / 2)));
                           }}
-                          className="w-full mt-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[9px] font-black flex items-center justify-center shadow-sm transition"
+                          className="text-[9px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded transition"
+                          title="စရံတစ်ဝက် သို့မဟုတ် စရံငွေသာ လွှဲထားပါက သတ်မှတ်ရန်"
                         >
-                          <CheckCircle className="w-3 h-3 mr-1" /> ကျန်ငွေ Approve လုပ်မည်
+                          စရံသတ်မှတ်ရန်
                         </button>
                       </div>
                     )}
-                </td>
-                <td className="p-3">
-                  <select value={b.status} onChange={(e) => handleStatusChange(b, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
-                    <option value="pending">Pending</option><option value="payment_checking">Confirming</option><option value="approved">Approve</option><option value="cancelled">Cancel</option>
-                  </select>
-                  {b.status === 'cancelled' && b.cancelReason && <div className="text-[9px] text-red-500 mt-1 max-w-[120px] truncate" title={b.cancelReason}>Reason: {b.cancelReason}</div>}
-                  {(b as any).pointsAdded && <div className="text-[8px] text-green-600 font-bold mt-1 uppercase"><Award className="w-2.5 h-2.5 inline mr-0.5"/>Pts Added</div>}
-                </td>
-                <td className="p-3 text-right"><button onClick={() => handleDelete(b.id!)} disabled={adminRole !== 'super_admin'} title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete Booking'} className={`p-2 rounded-lg transition ${adminRole === 'super_admin' ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`}><Trash2 className="w-4 h-4" /></button></td>
-              </tr>
-            ))}
+                  </td>
+
+                  <td className="p-3">
+                    <select
+                      value={b.status}
+                      onChange={(e) => handleStatusChange(b, e.target.value)}
+                      className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${
+                        b.status === 'approved'
+                          ? 'bg-green-50 text-green-700 border-green-200'
+                          : b.status === 'payment_checking'
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : b.status === 'cancelled'
+                          ? 'bg-red-50 text-red-700 border-red-200'
+                          : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                      }`}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="payment_checking">Confirming</option>
+                      <option value="approved">Approve</option>
+                      <option value="cancelled">Cancel</option>
+                    </select>
+                    {b.status === 'cancelled' && b.cancelReason && (
+                      <div className="text-[9px] text-red-500 mt-1 max-w-[120px] truncate" title={b.cancelReason}>
+                        Reason: {b.cancelReason}
+                      </div>
+                    )}
+                    {(b as any).pointsAdded && (
+                      <div className="text-[8px] text-green-600 font-bold mt-1 uppercase">
+                        <Award className="w-2.5 h-2.5 inline mr-0.5" />Pts Added
+                      </div>
+                    )}
+                  </td>
+
+                  <td className="p-3 text-right">
+                    <button
+                      onClick={() => handleDelete(b.id!)}
+                      disabled={adminRole !== 'super_admin'}
+                      title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete Booking'}
+                      className={`p-2 rounded-lg transition ${
+                        adminRole === 'super_admin'
+                          ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                          : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
