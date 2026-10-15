@@ -23,6 +23,7 @@ interface CartItem {
   vvipExtraPrice?: number;
   vvipIncluded?: boolean;
   isCustomItem?: boolean;
+  discountEligible?: boolean;
   qty: number;
 }
 
@@ -1426,6 +1427,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           isVvipUpgrade: false,
           vvipExtraPrice: vvipExtra,
           vvipIncluded: !!item.vvipIncluded,
+          discountEligible: true, // 🌟 Main Service များကို Default အားဖြင့် Discount ပေးမည်
           qty: 1
         }
       ]);
@@ -1433,7 +1435,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  // 🌟 Add Selected Extra Item from Dropdown to Cart (With Jump Animation!) 🌟
+  // 🌟 Add Selected Extra Item from Dropdown to Cart (Default: No Discount!) 🌟
   const handleAddSelectedExtraItemToCart = (
     extraItemId: string,
     sourceEl?: HTMLElement | null
@@ -1462,6 +1464,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           name: found.name,
           price: found.price,
           isCustomItem: true,
+          discountEligible: false, // 🌟 Extra Item (Towel/Oil/Drink) များကို Default အားဖြင့် Discount မပေးပါ (လိုအပ်ပါက ပြန်ဖွင့်နိုင်သည်)
           qty: 1
         }
       ]);
@@ -1480,6 +1483,17 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     );
   };
 
+  // 🌟 Item တစ်ခုချင်းစီအလိုက် Discount ပေး/မပေး ပြောင်းလဲသည့် Function 🌟
+  const toggleCartItemDiscountEligible = (cartId: string) => {
+    setCart(
+      cart.map((c) => {
+        if (c.cartId !== cartId) return c;
+        const currentEligible = c.discountEligible !== undefined ? c.discountEligible : !c.isCustomItem;
+        return { ...c, discountEligible: !currentEligible };
+      })
+    );
+  };
+
   const updateCartQty = (cartId: string, delta: number) => {
     setCart(
       cart
@@ -1495,17 +1509,30 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }, 0);
   }, [cart]);
 
+  // 🌟 Discount ပေးရန် ရွေးချယ်ထားသော Item များ၏ စုစုပေါင်းတန်ဖိုးကိုသာ သီးသန့်တွက်ချက်ခြင်း 🌟
+  const discountableSubTotal = useMemo(() => {
+    return cart.reduce((sum, item) => {
+      const isEligible = item.discountEligible !== undefined ? item.discountEligible : !item.isCustomItem;
+      if (!isEligible) return sum;
+      const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
+      return sum + unitPrice * item.qty;
+    }, 0);
+  }, [cart]);
+
   const totalItemsCount = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.qty, 0);
   }, [cart]);
 
   const discountAmount = useMemo(() => {
-    if (discountValue <= 0) return 0;
+    if (discountValue <= 0 || discountableSubTotal <= 0) return 0;
     if (discountType === 'percent') {
-      return Math.min(subTotal, Math.round((subTotal * Math.min(100, discountValue)) / 100));
+      return Math.min(
+        discountableSubTotal,
+        Math.round((discountableSubTotal * Math.min(100, discountValue)) / 100)
+      );
     }
-    return Math.min(subTotal, discountValue);
-  }, [subTotal, discountType, discountValue]);
+    return Math.min(discountableSubTotal, discountValue);
+  }, [discountableSubTotal, discountType, discountValue]);
 
   const finalTotal = Math.max(0, subTotal - discountAmount);
   const pointsEarned = Math.floor(finalTotal / 35000);
@@ -3997,7 +4024,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   )}
                 </div>
 
-                {/* 2. Clean Dropdown Discount Selector (Strictly Contained Inside Card Width!) */}
+                {/* 2. Clean Dropdown Discount Selector + Per-Item Discount Eligibility Selector */}
                 <div className="pt-3 border-t border-gray-100 space-y-2.5 min-w-0 overflow-hidden">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center truncate">
@@ -4012,7 +4039,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     </button>
                   </div>
 
-                  {/* Contained Select Wrapper so it NEVER overflows the card! */}
+                  {/* Contained Select Wrapper */}
                   <div className="w-full min-w-0 overflow-hidden">
                     <select
                       value={selectedDiscountPresetId}
@@ -4029,6 +4056,70 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     </select>
                   </div>
 
+                  {/* 🌟 Item တစ်ခုချင်းစီအလိုက် လျှော့ဈေး ပေး/မပေး စိတ်ကြိုက် ရွေးချယ်နိုင်သည့် စာရင်း 🌟 */}
+                  {discountValue > 0 && cart.length > 0 && (
+                    <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-200 space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] font-extrabold text-gray-600">
+                        <span>လျှော့ဈေးပေးမည့် Item များကို ရွေးချယ်ပါ:</span>
+                        <span className="text-[#123524]">
+                          Discount တွက်မည့်ငွေ: {formatPrice(discountableSubTotal)}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {cart.map((cItem) => {
+                          const isEligible =
+                            cItem.discountEligible !== undefined ? cItem.discountEligible : !cItem.isCustomItem;
+                          const itemTotal =
+                            (cItem.price +
+                              (cItem.isVvipUpgrade && cItem.vvipExtraPrice ? cItem.vvipExtraPrice : 0)) *
+                            cItem.qty;
+                          const itemDiscAmt =
+                            isEligible && discountType === 'percent'
+                              ? Math.round((itemTotal * Math.min(100, discountValue)) / 100)
+                              : 0;
+
+                          return (
+                            <button
+                              key={cItem.cartId}
+                              type="button"
+                              onClick={() => toggleCartItemDiscountEligible(cItem.cartId)}
+                              className={`w-full px-2.5 py-1.5 rounded-lg border text-left flex items-center justify-between gap-2 transition ${
+                                isEligible
+                                  ? 'bg-green-50/80 border-green-300 text-[#123524]'
+                                  : 'bg-white border-gray-200 text-gray-400'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  readOnly
+                                  checked={isEligible}
+                                  className="w-3.5 h-3.5 accent-[#123524] pointer-events-none"
+                                />
+                                <span className="text-[11px] font-bold truncate">
+                                  {cItem.name} {cItem.qty > 1 ? `x${cItem.qty}` : ''} ({formatPrice(itemTotal)})
+                                </span>
+                              </div>
+                              <span
+                                className={`text-[10px] font-black whitespace-nowrap px-1.5 py-0.5 rounded ${
+                                  isEligible
+                                    ? 'bg-green-600 text-white'
+                                    : 'bg-gray-100 text-gray-500'
+                                }`}
+                              >
+                                {isEligible
+                                  ? discountType === 'percent'
+                                    ? `-${formatPrice(itemDiscAmt)} (${discountValue}%)`
+                                    : 'Discount ပါမည်'
+                                  : 'No Discount'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Summary pill showing auto-filled Discount & Reason */}
                   {discountValue > 0 && !showCustomDiscountInputs && (
                     <div className="px-3 py-2 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between gap-2 text-xs min-w-0 overflow-hidden">
@@ -4041,7 +4132,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     </div>
                   )}
 
-                  {/* Custom Discount Inputs (Only shown if '+ Custom Discount' is selected) */}
+                  {/* Custom Discount Inputs */}
                   {showCustomDiscountInputs && (
                     <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 grid grid-cols-12 gap-2 items-end animate-fade-in">
                       <div className="col-span-3">
@@ -4280,6 +4371,9 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   cart.map((item) => {
                     const unitPrice = item.price + (item.isVvipUpgrade && item.vvipExtraPrice ? item.vvipExtraPrice : 0);
                     const isJustAdded = recentlyAddedItemId === item.cartId;
+                    const isEligible =
+                      item.discountEligible !== undefined ? item.discountEligible : !item.isCustomItem;
+
                     return (
                       <div
                         key={item.cartId}
@@ -4299,29 +4393,44 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between mt-0.5">
-                          {!item.isCustomItem && item.vvipExtraPrice && item.vvipExtraPrice > 0 && !item.vvipIncluded ? (
+                        <div className="flex items-center justify-between gap-1 mt-0.5 flex-wrap">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {!item.isCustomItem && item.vvipExtraPrice && item.vvipExtraPrice > 0 && !item.vvipIncluded ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleCartItemVvip(item.cartId)}
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-bold border flex items-center transition ${
+                                  item.isVvipUpgrade
+                                    ? 'bg-yellow-100 text-yellow-900 border-[#D4AF37]'
+                                    : 'bg-gray-50 text-gray-500 border-gray-200'
+                                }`}
+                              >
+                                <Crown className="w-2.5 h-2.5 mr-1 text-[#D4AF37]" />
+                                VVIP (+{formatPrice(item.vvipExtraPrice)})
+                              </button>
+                            ) : item.vvipIncluded ? (
+                              <span className="text-[9px] font-bold text-green-700 bg-green-50 px-1.5 py-0.5 rounded">
+                                VVIP Included
+                              </span>
+                            ) : null}
+
+                            {/* 🌟 Per-Item Discount Toggle Badge 🌟 */}
                             <button
                               type="button"
-                              onClick={() => toggleCartItemVvip(item.cartId)}
+                              onClick={() => toggleCartItemDiscountEligible(item.cartId)}
+                              title="Click to include or exclude this item from discount"
                               className={`px-1.5 py-0.5 rounded text-[9px] font-bold border flex items-center transition ${
-                                item.isVvipUpgrade
-                                  ? 'bg-yellow-100 text-yellow-900 border-[#D4AF37]'
-                                  : 'bg-gray-50 text-gray-500 border-gray-200'
+                                isEligible
+                                  ? 'bg-green-50 text-green-700 border-green-300'
+                                  : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
                               }`}
                             >
-                              <Crown className="w-2.5 h-2.5 mr-1 text-[#D4AF37]" />
-                              VVIP (+{formatPrice(item.vvipExtraPrice)})
+                              <Percent className="w-2.5 h-2.5 mr-0.5" />
+                              {isEligible ? 'Disc ပါမည်' : 'No Disc'}
                             </button>
-                          ) : item.vvipIncluded ? (
-                            <span className="text-[9px] font-bold text-green-700 bg-green-50 px-1.5 py-0.5 rounded">
-                              VVIP Included
-                            </span>
-                          ) : (
-                            <span />
-                          )}
+                          </div>
 
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 ml-auto">
                             <button
                               type="button"
                               onClick={() => updateCartQty(item.cartId, -1)}
