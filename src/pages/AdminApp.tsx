@@ -10,6 +10,7 @@ import { AdminHRManagement } from './OnboardingSystem';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
 import { useAppStore } from '../AppDataContext';
 import { AdminPenaltyManager } from './PenaltySystem';
+import AdminSalesSummaryView from './AdminSalesSummaryView';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -95,7 +96,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
 const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
- const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales'>('bookings');
+  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -220,7 +221,18 @@ useEffect(() => {
         {hasAccess('penalties') && (<button onClick={() => setTab('penalties')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'penalties' ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Banknote className="w-4 h-4 mr-2" /> Penalty & Loans</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('roster')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ClipboardList className="w-4 h-4 mr-2" /> Duty Roster</button>)}
         {hasAccess('settings') && (<button onClick={() => setTab('campaigns')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'campaigns' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Gift className="w-4 h-4 mr-2" /> Campaigns</button>)}
-
+        {hasAccess('bookings') && (
+            <button
+                onClick={() => setTab('sales_summary')}
+                className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
+                    tab === 'sales_summary'
+                        ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-md border border-[#D4AF37]/40'
+                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                }`}
+            >
+                <TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]" /> Sale Summary
+            </button>
+         )}
          {hasAccess('bookings') && (
             <button 
                 onClick={() => setTab('pos_sales')} 
@@ -259,6 +271,7 @@ useEffect(() => {
       {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
       {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView />}
       {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
+      {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
     </div>
   );
 });
