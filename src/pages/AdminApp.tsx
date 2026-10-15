@@ -3921,8 +3921,34 @@ function AdminCampaignsView() {
 
 function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
     const [filterStatus, setFilterStatus] = useState<'all' | 'deposit_only' | 'paid_in_full'>('all');
+    const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'custom'>('all');
+    const [customDate, setCustomDate] = useState<string>(getLocalTodayStr());
     const [searchQuery, setSearchQuery] = useState('');
     const [approvingId, setApprovingId] = useState<string | null>(null);
+
+    const getYesterdayStr = () => {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+
+    const formatReadableDateHeader = (dateStr: string) => {
+        if (!dateStr) return 'Unknown Date';
+        const today = getLocalTodayStr();
+        const yesterday = getYesterdayStr();
+        const [y, m, d] = dateStr.split('-').map(Number);
+        if (!y || !m || !d) return dateStr;
+        const dt = new Date(y, m - 1, d);
+        const formatted = dt.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+        if (dateStr === today) return `ယနေ့ (Today) — ${formatted}`;
+        if (dateStr === yesterday) return `မနေ့က (Yesterday) — ${formatted}`;
+        return formatted;
+    };
 
     // 🌟 Helper: Decrypt ပြီးသား Number သို့မဟုတ် Encrypted String နှစ်မျိုးလုံးကို အမှားမရှိ ဖတ်ယူပေးမည့် Function 🌟
     const safeParseNumber = (val: any): number => {
@@ -3954,32 +3980,47 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         });
     }, [bookings]);
 
-    const filteredPosSales = useMemo(() => {
+    // 🌟 1. ရက်စွဲ (Date Filter) နှင့် Search Query အရင်စစ်ထုတ်ခြင်း 🌟
+    const dateAndSearchFilteredSales = useMemo(() => {
+        const today = getLocalTodayStr();
+        const yesterday = getYesterdayStr();
+        const q = searchQuery.trim().toLowerCase();
+
         return posSales.filter((s: any) => {
-            const rawTx = safeParseText(s.txId).toLowerCase();
-            const custName = safeParseText(s.name).toLowerCase();
-            const custPhone = safeParseText(s.phone).toLowerCase();
-            const discLabel = safeParseText(s.discountLabel).toLowerCase();
-            const q = searchQuery.trim().toLowerCase();
+            const saleDate = s.date || today;
+            if (dateFilterMode === 'today' && saleDate !== today) return false;
+            if (dateFilterMode === 'yesterday' && saleDate !== yesterday) return false;
+            if (dateFilterMode === 'custom' && customDate && saleDate !== customDate) return false;
 
-            const matchesSearch =
-                !q ||
-                rawTx.includes(q) ||
-                custName.includes(q) ||
-                custPhone.includes(q) ||
-                discLabel.includes(q) ||
-                (s.service || '').toLowerCase().includes(q) ||
-                (s.therapist || '').toLowerCase().includes(q);
-            if (!matchesSearch) return false;
+            if (q) {
+                const rawTx = safeParseText(s.txId).toLowerCase();
+                const custName = safeParseText(s.name).toLowerCase();
+                const custPhone = safeParseText(s.phone).toLowerCase();
+                const discLabel = safeParseText(s.discountLabel).toLowerCase();
+                const matchesSearch =
+                    rawTx.includes(q) ||
+                    custName.includes(q) ||
+                    custPhone.includes(q) ||
+                    discLabel.includes(q) ||
+                    (s.service || '').toLowerCase().includes(q) ||
+                    (s.therapist || '').toLowerCase().includes(q);
+                if (!matchesSearch) return false;
+            }
+            return true;
+        });
+    }, [posSales, dateFilterMode, customDate, searchQuery]);
 
+    // 🌟 2. Payment Status Filter (အားလုံး / ကျန်ငွေရရန်ကျန် / အပြည့်ချေပြီး) ထပ်စစ်ခြင်း 🌟
+    const filteredPosSales = useMemo(() => {
+        return dateAndSearchFilteredSales.filter((s: any) => {
             const isDepositDue = s.paymentStatus === 'deposit_only' && safeParseNumber(s.balanceDue) > 0;
             if (filterStatus === 'deposit_only') return isDepositDue;
             if (filterStatus === 'paid_in_full') return !isDepositDue;
             return true;
         });
-    }, [posSales, filterStatus, searchQuery]);
+    }, [dateAndSearchFilteredSales, filterStatus]);
 
-    // စုစုပေါင်း ရောင်းရငွေ၊ လျှော့ဈေးပေးခဲ့သည့် ပမာဏ၊ လက်ခံရရှိပြီးငွေ နှင့် ကောက်ခံရန်ကျန်ငွေ တွက်ချက်ခြင်း
+    // 🌟 3. ရွေးချယ်ထားသော ရက်စွဲအလိုက် Summary Cards (4 Cards) တွက်ချက်ခြင်း 🌟
     const summaryStats = useMemo(() => {
         let totalSalesAmt = 0;
         let totalDiscountGivenAmt = 0;
@@ -3987,7 +4028,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         let totalPendingBalanceAmt = 0;
         let pendingBalanceCount = 0;
 
-        posSales.forEach((s: any) => {
+        dateAndSearchFilteredSales.forEach((s: any) => {
             const total = safeParseNumber(s.totalPrice);
             const orig = safeParseNumber(s.originalPrice) || total;
             const discAmt = orig > total ? orig - total : 0;
@@ -4010,7 +4051,61 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
             totalPendingBalanceAmt,
             pendingBalanceCount
         };
-    }, [posSales]);
+    }, [dateAndSearchFilteredSales]);
+
+    // 🌟 4. POS App အတိုင်း ရက်စွဲတစ်ရက်ချင်းစီအလိုက် အုပ်စုဖွဲ့ပြီး Daily Total တွက်ချက်ခြင်း 🌟
+    const groupedSalesByDate = useMemo(() => {
+        const today = getLocalTodayStr();
+        const groupsMap = new Map<
+            string,
+            {
+                date: string;
+                sales: any[];
+                dailyTotalAmount: number;
+                dailyDiscountAmount: number;
+                dailyCashTotal: number;
+                dailyOnlineTotal: number;
+                dailyPendingBalance: number;
+            }
+        >();
+
+        filteredPosSales.forEach((sale: any) => {
+            const dKey = sale.date || today;
+            if (!groupsMap.has(dKey)) {
+                groupsMap.set(dKey, {
+                    date: dKey,
+                    sales: [],
+                    dailyTotalAmount: 0,
+                    dailyDiscountAmount: 0,
+                    dailyCashTotal: 0,
+                    dailyOnlineTotal: 0,
+                    dailyPendingBalance: 0
+                });
+            }
+            const grp = groupsMap.get(dKey)!;
+            grp.sales.push(sale);
+
+            const total = safeParseNumber(sale.totalPrice);
+            const orig = safeParseNumber(sale.originalPrice) || total;
+            const discAmt = orig > total ? orig - total : 0;
+            const isDepositDue = sale.paymentStatus === 'deposit_only' && safeParseNumber(sale.balanceDue) > 0;
+            const due = isDepositDue ? safeParseNumber(sale.balanceDue) : 0;
+            const paidNow = isDepositDue ? (safeParseNumber(sale.depositPaid) || Math.max(0, total - due)) : total;
+
+            grp.dailyTotalAmount += total;
+            grp.dailyDiscountAmount += discAmt;
+            grp.dailyPendingBalance += due;
+
+            const cleanMethod = (sale.paymentMethod || 'Cash').toLowerCase();
+            if (cleanMethod.includes('cash')) {
+                grp.dailyCashTotal += paidNow;
+            } else {
+                grp.dailyOnlineTotal += paidNow;
+            }
+        });
+
+        return Array.from(groupsMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+    }, [filteredPosSales]);
 
     // 🌟 Admin Sale List မှ ကျန်ငွေ (Balance Due) ရရှိကြောင်း Approve ပြုလုပ်ပေးမည့် Function 🌟
     const handleApproveBalanceInAdmin = async (sale: any) => {
@@ -4056,7 +4151,6 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         }
     };
 
-    // 🌟 Booking Report အတိုင်း Original Price, Discount %, Discount Amount, Discount Label အပြည့်အစုံ ပါဝင်သော Excel Export 🌟
     const handleExportPOSExcel = () => {
         const headers = [
             'Invoice No',
@@ -4117,7 +4211,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
-        link.setAttribute('download', `POS_WalkIn_Sales_Report_${getLocalTodayStr()}.csv`);
+        link.setAttribute('download', `POS_WalkIn_Sales_Report_${dateFilterMode === 'custom' ? customDate : getLocalTodayStr()}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -4126,13 +4220,14 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in space-y-6">
+            {/* 1. Title & Export Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-4 gap-4">
                 <div>
                     <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
                         <ShoppingBag className="mr-2 text-[#D4AF37]" /> Shop Walk-in POS Sales & Balance Approval
                     </h2>
                     <p className="text-xs text-gray-500 mt-1">
-                        POS မှ ရောင်းချထားသော ဘောင်ချာများ၊ မူရင်းဈေးနှုန်း၊ လျှော့ဈေး (Discount)၊ စရံငွေ နှင့် ကျန်ငွေများကို အသေးစိတ် စစ်ဆေးရန်
+                        ရက်စွဲအလိုက် POS ဘောင်ချာများ၊ တစ်ရက်စာ ရောင်းရငွေချုပ် (Daily Total)၊ လျှော့ဈေး၊ စရံငွေ နှင့် ကျန်ငွေများကို စစ်ဆေးရန်
                     </p>
                 </div>
                 <div className="flex items-center space-x-3 w-full sm:w-auto">
@@ -4145,7 +4240,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 </div>
             </div>
 
-            {/* Summary Financial Cards (4 Cards including Total Discounts) */}
+            {/* 2. Summary Financial Cards (4 Cards - Dynamically updates with Date Filter!) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">စုစုပေါင်း ရောင်းရငွေ (Net POS Sales)</div>
@@ -4172,252 +4267,386 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 </div>
             </div>
 
-            {/* Filter Tabs & Search Bar */}
-            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-                <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 w-full sm:w-auto">
-                    <button
-                        type="button"
-                        onClick={() => setFilterStatus('all')}
-                        className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-                            filterStatus === 'all' ? 'bg-[#123524] text-[#D4AF37] shadow-sm' : 'text-gray-600'
-                        }`}
-                    >
-                        အားလုံး ({posSales.length})
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setFilterStatus('deposit_only')}
-                        className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center ${
-                            filterStatus === 'deposit_only' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600'
-                        }`}
-                    >
-                        ကျန်ငွေရရန်ကျန် ({summaryStats.pendingBalanceCount})
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setFilterStatus('paid_in_full')}
-                        className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-                            filterStatus === 'paid_in_full' ? 'bg-emerald-700 text-white shadow-sm' : 'text-gray-600'
-                        }`}
-                    >
-                        အပြည့်ချေပြီး ({posSales.length - summaryStats.pendingBalanceCount})
-                    </button>
+            {/* 3. 🌟 Date Filter Bar (ရက်အားလုံး / ယနေ့ / မနေ့က / Custom Date Picker) + Status Filter + Search 🌟 */}
+            <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3 bg-gray-50/70 p-3 rounded-2xl border border-gray-200/80">
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Date Filter Pills */}
+                    <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+                        <button
+                            type="button"
+                            onClick={() => setDateFilterMode('all')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                dateFilterMode === 'all'
+                                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                                    : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            ရက်အားလုံး (All)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setDateFilterMode('today')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                dateFilterMode === 'today'
+                                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                                    : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            ယနေ့ (Today)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setDateFilterMode('yesterday')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                dateFilterMode === 'yesterday'
+                                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                                    : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            မနေ့က (Yesterday)
+                        </button>
+
+                        {/* Custom Calendar Date Picker */}
+                        <div
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
+                                dateFilterMode === 'custom'
+                                    ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
+                                    : 'bg-gray-50 text-gray-700 border-gray-200'
+                            }`}
+                        >
+                            <Calendar className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
+                            <input
+                                type="date"
+                                value={customDate}
+                                onChange={(e) => {
+                                    setCustomDate(e.target.value);
+                                    setDateFilterMode('custom');
+                                }}
+                                className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                                    dateFilterMode === 'custom' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                                }`}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Payment Status Filter Pills */}
+                    <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+                        <button
+                            type="button"
+                            onClick={() => setFilterStatus('all')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                filterStatus === 'all' ? 'bg-[#123524] text-white shadow-xs' : 'text-gray-600'
+                            }`}
+                        >
+                            အားလုံး ({dateAndSearchFilteredSales.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilterStatus('deposit_only')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                filterStatus === 'deposit_only' ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600'
+                            }`}
+                        >
+                            ကျန်ငွေရရန်ကျန် ({summaryStats.pendingBalanceCount})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilterStatus('paid_in_full')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                filterStatus === 'paid_in_full' ? 'bg-emerald-700 text-white shadow-xs' : 'text-gray-600'
+                            }`}
+                        >
+                            အပြည့်ချေပြီး ({dateAndSearchFilteredSales.length - summaryStats.pendingBalanceCount})
+                        </button>
+                    </div>
                 </div>
 
-                <div className="relative w-full sm:w-72">
+                {/* Search Input */}
+                <div className="relative w-full xl:w-72">
                     <input
                         type="text"
                         placeholder="ဘောင်ချာနံပါတ်၊ အမည် သို့မဟုတ် ဖုန်း ရှာရန်..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold"
+                        className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold shadow-2xs"
                     />
                     <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                    {searchQuery && (
+                        <button
+                            type="button"
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* POS Sales Table (Matching Booking Report Details!) */}
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[950px]">
-                    <thead>
-                        <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
-                            <th className="p-3 pb-4">Customer</th>
-                            <th className="p-3 pb-4">Service & Therapist</th>
-                            <th className="p-3 pb-4">Date & Time</th>
-                            <th className="p-3 pb-4">Invoice, Discount & Total</th>
-                            <th className="p-3 pb-4">Payment & Balance Status</th>
-                            <th className="p-3 pb-4 text-right">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredPosSales.length === 0 && (
-                            <tr>
-                                <td colSpan={6} className="p-10 text-center text-gray-400 font-bold">
-                                    ရွေးချယ်ထားသော စာရင်းအတွက် POS အရောင်းမှတ်တမ်း မရှိပါ။
-                                </td>
-                            </tr>
-                        )}
-                        {filteredPosSales.map((sale: any, idx: number) => {
-                            const rawTx = safeParseText(sale.txId) || `SL-${idx}`;
-                            const custName = safeParseText(sale.name) || 'Walk-in Guest';
-                            const custPhone = safeParseText(sale.phone) || '';
-                            const specialReq = safeParseText(sale.specialRequest);
-
-                            const totalPrice = safeParseNumber(sale.totalPrice);
-                            const origPrice = safeParseNumber(sale.originalPrice) || totalPrice;
-                            const hasDiscount = origPrice > totalPrice;
-                            const discountAmt = hasDiscount ? origPrice - totalPrice : 0;
-                            const discountPct =
-                                safeParseNumber(sale.discountPercent) ||
-                                (hasDiscount && origPrice > 0 ? Math.round((discountAmt / origPrice) * 100) : 0);
-
-                            const rawDiscLabel = safeParseText(sale.discountLabel);
-                            const cleanDiscLabel = rawDiscLabel
-                                .replace('[Shop Walk-in Sale]', '')
-                                .replace('[Shop Walk-in]', '')
-                                .trim();
-
-                            const isVipDiscount =
-                                cleanDiscLabel.toLowerCase().includes('vip') ||
-                                cleanDiscLabel.toLowerCase().includes('jade') ||
-                                cleanDiscLabel.toLowerCase().includes('gold') ||
-                                cleanDiscLabel.toLowerCase().includes('imperial') ||
-                                !!sale.vipTierName;
-
-                            const isDepositDue = sale.paymentStatus === 'deposit_only' && safeParseNumber(sale.balanceDue) > 0;
-                            const depositAmt = safeParseNumber(sale.depositPaid);
-                            const balanceAmt = safeParseNumber(sale.balanceDue);
-
-                            return (
-                                <tr
-                                    key={sale.id || idx}
-                                    className={`border-b transition text-sm ${
-                                        isDepositDue
-                                            ? 'bg-amber-50/40 border-amber-200 hover:bg-amber-50/70'
-                                            : 'border-gray-50 hover:bg-gray-50'
-                                    }`}
-                                >
-                                    {/* 1. Customer & VIP / Promo Badge (Same as Booking Report) */}
-                                    <td className="p-3">
-                                        <div className="font-bold text-gray-800 text-sm">{custName}</div>
-                                        <div className="text-xs text-gray-500 font-mono">{custPhone && custPhone !== 'Walk-in' ? custPhone : '-'}</div>
-                                        {sale.vipTierName || (hasDiscount && isVipDiscount) ? (
-                                            <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-2xs">
-                                                <Crown className="w-3 h-3 mr-1 text-yellow-600" />
-                                                {sale.vipTierName || cleanDiscLabel.replace(/ \(\d+\%.*?\)/, '') || 'VIP Member'}
-                                            </div>
-                                        ) : hasDiscount ? (
-                                            <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-2xs">
-                                                <Sparkles className="w-3 h-3 mr-1 text-green-600" />
-                                                Promo / Discount Applied
-                                            </div>
-                                        ) : null}
-                                    </td>
-
-                                    {/* 2. Service, Therapist & Note */}
-                                    <td className="p-3 max-w-xs">
-                                        <div className="font-bold text-sm text-gray-800 leading-snug">{sale.service || '-'}</div>
-                                        <div className="text-xs text-gray-500 mt-1 flex items-center font-semibold">
-                                            <User className="w-3 h-3 mr-1 text-[#D4AF37]" />
-                                            {sale.therapist || '-'}
+            {/* 4. 🌟 Date-Grouped POS Sales Sections with Daily Totals Banner 🌟 */}
+            {groupedSalesByDate.length === 0 ? (
+                <div className="p-12 text-center text-gray-400 font-bold border border-dashed border-gray-200 rounded-2xl space-y-2">
+                    <div>ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် POS အရောင်းမှတ်တမ်း မရှိပါ။</div>
+                    {dateFilterMode !== 'all' && (
+                        <button
+                            type="button"
+                            onClick={() => setDateFilterMode('all')}
+                            className="text-xs font-black text-[#123524] underline"
+                        >
+                            ရက်အားလုံး ပြန်ကြည့်မည် (Show All Dates)
+                        </button>
+                    )}
+                </div>
+            ) : (
+                <div className="space-y-6">
+                    {groupedSalesByDate.map((group) => (
+                        <div
+                            key={group.date}
+                            className="rounded-2xl border border-gray-200 shadow-xs overflow-hidden bg-white"
+                        >
+                            {/* 🌟 Daily Header Banner with Daily Total Amount & Breakdown 🌟 */}
+                            <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 sm:px-5 py-3.5 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] shadow-inner">
+                                        <Calendar className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="font-extrabold text-xs sm:text-sm text-[#D4AF37] tracking-wide">
+                                            {formatReadableDateHeader(group.date)}
                                         </div>
-                                        {specialReq && specialReq !== 'Shop Walk-in POS Sale' && (
-                                            <div className="text-[11px] text-red-500 mt-1 italic leading-snug">
-                                                {specialReq}
-                                            </div>
-                                        )}
-                                    </td>
-
-                                    {/* 3. Date, Time & Submitted At */}
-                                    <td className="p-3 text-sm text-gray-700">
-                                        <div className="font-semibold text-[#123524]">{sale.date || '-'}</div>
-                                        <div className="text-gray-600 text-xs mt-0.5 mb-1.5">{sale.time || '-'}</div>
-                                        {sale.createdAt && (
-                                            <div className="text-[9px] font-bold text-gray-400 flex flex-col gap-0.5 border-t border-gray-100 pt-1.5 mt-1 w-max">
-                                                <span className="uppercase text-[8px] tracking-wider text-blue-400">POS Billed At:</span>
-                                                <span>
-                                                    {new Date(sale.createdAt).toLocaleString('en-US', {
-                                                        month: 'short',
-                                                        day: 'numeric',
-                                                        hour: '2-digit',
-                                                        minute: '2-digit'
-                                                    })}
+                                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-200 font-semibold mt-0.5">
+                                            <span>ဘောင်ချာ: <strong>{group.sales.length} စောင်</strong></span>
+                                            <span>•</span>
+                                            <span>Cash: <strong>{formatPrice(group.dailyCashTotal)}</strong></span>
+                                            <span>•</span>
+                                            <span>Online Pay: <strong>{formatPrice(group.dailyOnlineTotal)}</strong></span>
+                                            {group.dailyDiscountAmount > 0 && (
+                                                <>
+                                                    <span>•</span>
+                                                    <span className="text-green-300">
+                                                        Discount: -{formatPrice(group.dailyDiscountAmount)}
+                                                    </span>
+                                                </>
+                                            )}
+                                            {group.dailyPendingBalance > 0 && (
+                                                <span className="bg-red-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black animate-pulse">
+                                                    ကျန်ငွေရရန်: {formatPrice(group.dailyPendingBalance)}
                                                 </span>
-                                            </div>
-                                        )}
-                                    </td>
-
-                                    {/* 4. 🌟 Invoice No, Original Price, Discount %, Discount Label & Net Total (Booking Report Style!) 🌟 */}
-                                    <td className="p-3">
-                                        <div className="font-mono font-black text-gray-800 text-sm">{rawTx}</div>
-                                        <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-0.5">
-                                            {sale.paymentMethod || 'Cash (Shop POS)'}
+                                            )}
                                         </div>
+                                    </div>
+                                </div>
 
-                                        {hasDiscount ? (
-                                            <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg w-max space-y-0.5 shadow-2xs">
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="text-[11px] text-gray-400 line-through font-semibold">
-                                                        {formatPrice(origPrice)}
-                                                    </span>
-                                                    <span className="text-[9px] font-black text-red-600 bg-red-100 border border-red-200 px-1.5 py-0.5 rounded">
-                                                        -{discountPct}% (-{formatPrice(discountAmt)})
-                                                    </span>
-                                                </div>
-                                                <div className="font-black text-[#123524] text-sm pt-0.5">
-                                                    {formatPrice(totalPrice)}
-                                                </div>
-                                                {cleanDiscLabel && (
-                                                    <div className="text-[9px] text-green-800 font-bold uppercase tracking-wider pt-0.5">
-                                                        {cleanDiscLabel}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="mt-1.5">
-                                                <div className="font-black text-[#123524] text-base">
-                                                    {formatPrice(totalPrice)}
-                                                </div>
-                                                <div className="text-[9px] text-gray-400 font-semibold">Regular Price (No Discount)</div>
-                                            </div>
-                                        )}
-                                    </td>
+                                {/* Daily Total Amount Highlight Box */}
+                                <div className="bg-black/30 px-4 py-2 rounded-xl border border-[#D4AF37]/40 text-right ml-auto">
+                                    <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wider block">
+                                        Daily Total Amount (တစ်ရက်စာ ရောင်းရငွေ)
+                                    </span>
+                                    <span className="text-base sm:text-lg font-black text-[#D4AF37]">
+                                        {formatPrice(group.dailyTotalAmount)}
+                                    </span>
+                                </div>
+                            </div>
 
-                                    {/* 5. Payment & Deposit / Balance Due Status */}
-                                    <td className="p-3">
-                                        {isDepositDue ? (
-                                            <div className="p-2.5 rounded-xl bg-white border border-amber-300 shadow-2xs space-y-1 w-max">
-                                                <div className="text-[10px] font-bold text-amber-800">
-                                                    စရံငွေ (Deposit): <span className="font-black">{formatPrice(depositAmt)}</span>
-                                                </div>
-                                                <div className="text-[11px] font-black text-red-600 flex items-center">
-                                                    <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                                                    ကျန်ငွေ (Due): {formatPrice(balanceAmt)}
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    disabled={approvingId === sale.id}
-                                                    onClick={() => handleApproveBalanceInAdmin(sale)}
-                                                    className="w-full mt-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-black flex items-center justify-center shadow-sm transition disabled:opacity-50"
+                            {/* Table for this Date Group */}
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse min-w-[950px]">
+                                    <thead>
+                                        <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
+                                            <th className="p-3">Customer</th>
+                                            <th className="p-3">Service & Therapist</th>
+                                            <th className="p-3">Date & Time</th>
+                                            <th className="p-3">Invoice, Discount & Total</th>
+                                            <th className="p-3">Payment & Balance Status</th>
+                                            <th className="p-3 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {group.sales.map((sale: any, idx: number) => {
+                                            const rawTx = safeParseText(sale.txId) || `SL-${idx}`;
+                                            const custName = safeParseText(sale.name) || 'Walk-in Guest';
+                                            const custPhone = safeParseText(sale.phone) || '';
+                                            const specialReq = safeParseText(sale.specialRequest);
+
+                                            const totalPrice = safeParseNumber(sale.totalPrice);
+                                            const origPrice = safeParseNumber(sale.originalPrice) || totalPrice;
+                                            const hasDiscount = origPrice > totalPrice;
+                                            const discountAmt = hasDiscount ? origPrice - totalPrice : 0;
+                                            const discountPct =
+                                                safeParseNumber(sale.discountPercent) ||
+                                                (hasDiscount && origPrice > 0 ? Math.round((discountAmt / origPrice) * 100) : 0);
+
+                                            const rawDiscLabel = safeParseText(sale.discountLabel);
+                                            const cleanDiscLabel = rawDiscLabel
+                                                .replace('[Shop Walk-in Sale]', '')
+                                                .replace('[Shop Walk-in]', '')
+                                                .trim();
+
+                                            const isVipDiscount =
+                                                cleanDiscLabel.toLowerCase().includes('vip') ||
+                                                cleanDiscLabel.toLowerCase().includes('jade') ||
+                                                cleanDiscLabel.toLowerCase().includes('gold') ||
+                                                cleanDiscLabel.toLowerCase().includes('imperial') ||
+                                                !!sale.vipTierName;
+
+                                            const isDepositDue = sale.paymentStatus === 'deposit_only' && safeParseNumber(sale.balanceDue) > 0;
+                                            const depositAmt = safeParseNumber(sale.depositPaid);
+                                            const balanceAmt = safeParseNumber(sale.balanceDue);
+
+                                            return (
+                                                <tr
+                                                    key={sale.id || idx}
+                                                    className={`border-b last:border-b-0 transition text-sm ${
+                                                        isDepositDue
+                                                            ? 'bg-amber-50/40 border-amber-200 hover:bg-amber-50/70'
+                                                            : 'border-gray-50 hover:bg-gray-50'
+                                                    }`}
                                                 >
-                                                    <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                                                    {approvingId === sale.id ? 'Approving...' : 'ကျန်ငွေ Approve လုပ်မည်'}
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-1">
-                                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center">
-                                                    <CheckCircle className="w-3 h-3 mr-1" /> Paid in Full
-                                                </span>
-                                                <div className="text-[10px] font-bold text-gray-500 pl-1">
-                                                    Received: {formatPrice(totalPrice)}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </td>
+                                                    {/* 1. Customer & VIP / Promo Badge */}
+                                                    <td className="p-3">
+                                                        <div className="font-bold text-gray-800 text-sm">{custName}</div>
+                                                        <div className="text-xs text-gray-500 font-mono">{custPhone && custPhone !== 'Walk-in' ? custPhone : '-'}</div>
+                                                        {sale.vipTierName || (hasDiscount && isVipDiscount) ? (
+                                                            <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-2xs">
+                                                                <Crown className="w-3 h-3 mr-1 text-yellow-600" />
+                                                                {sale.vipTierName || cleanDiscLabel.replace(/ \(\d+\%.*?\)/, '') || 'VIP Member'}
+                                                            </div>
+                                                        ) : hasDiscount ? (
+                                                            <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-2xs">
+                                                                <Sparkles className="w-3 h-3 mr-1 text-green-600" />
+                                                                Promo / Discount Applied
+                                                            </div>
+                                                        ) : null}
+                                                    </td>
 
-                                    {/* 6. Delete Action */}
-                                    <td className="p-3 text-right">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDeleteSale(sale.id, rawTx)}
-                                            disabled={adminRole !== 'super_admin'}
-                                            title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete POS Record'}
-                                            className={`p-2 rounded-lg transition ${
-                                                adminRole === 'super_admin'
-                                                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                                                    : 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                                            }`}
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
+                                                    {/* 2. Service, Therapist & Note */}
+                                                    <td className="p-3 max-w-xs">
+                                                        <div className="font-bold text-sm text-gray-800 leading-snug">{sale.service || '-'}</div>
+                                                        <div className="text-xs text-gray-500 mt-1 flex items-center font-semibold">
+                                                            <User className="w-3 h-3 mr-1 text-[#D4AF37]" />
+                                                            {sale.therapist || '-'}
+                                                        </div>
+                                                        {specialReq && specialReq !== 'Shop Walk-in POS Sale' && (
+                                                            <div className="text-[11px] text-red-500 mt-1 italic leading-snug">
+                                                                {specialReq}
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* 3. Date, Time & Submitted At */}
+                                                    <td className="p-3 text-sm text-gray-700">
+                                                        <div className="font-semibold text-[#123524]">{sale.date || '-'}</div>
+                                                        <div className="text-gray-600 text-xs mt-0.5 mb-1.5">{sale.time || '-'}</div>
+                                                        {sale.createdAt && (
+                                                            <div className="text-[9px] font-bold text-gray-400 flex flex-col gap-0.5 border-t border-gray-100 pt-1.5 mt-1 w-max">
+                                                                <span className="uppercase text-[8px] tracking-wider text-blue-400">POS Billed At:</span>
+                                                                <span>
+                                                                    {new Date(sale.createdAt).toLocaleString('en-US', {
+                                                                        month: 'short',
+                                                                        day: 'numeric',
+                                                                        hour: '2-digit',
+                                                                        minute: '2-digit'
+                                                                    })}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* 4. Invoice No, Original Price, Discount %, Discount Label & Net Total */}
+                                                    <td className="p-3">
+                                                        <div className="font-mono font-black text-gray-800 text-sm">{rawTx}</div>
+                                                        <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-0.5">
+                                                            {sale.paymentMethod || 'Cash (Shop POS)'}
+                                                        </div>
+
+                                                        {hasDiscount ? (
+                                                            <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg w-max space-y-0.5 shadow-2xs">
+                                                                <div className="flex items-center space-x-2">
+                                                                    <span className="text-[11px] text-gray-400 line-through font-semibold">
+                                                                        {formatPrice(origPrice)}
+                                                                    </span>
+                                                                    <span className="text-[9px] font-black text-red-600 bg-red-100 border border-red-200 px-1.5 py-0.5 rounded">
+                                                                        -{discountPct}% (-{formatPrice(discountAmt)})
+                                                                    </span>
+                                                                </div>
+                                                                <div className="font-black text-[#123524] text-sm pt-0.5">
+                                                                    {formatPrice(totalPrice)}
+                                                                </div>
+                                                                {cleanDiscLabel && (
+                                                                    <div className="text-[9px] text-green-800 font-bold uppercase tracking-wider pt-0.5">
+                                                                        {cleanDiscLabel}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="mt-1.5">
+                                                                <div className="font-black text-[#123524] text-base">
+                                                                    {formatPrice(totalPrice)}
+                                                                </div>
+                                                                <div className="text-[9px] text-gray-400 font-semibold">Regular Price (No Discount)</div>
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* 5. Payment & Deposit / Balance Due Status */}
+                                                    <td className="p-3">
+                                                        {isDepositDue ? (
+                                                            <div className="p-2.5 rounded-xl bg-white border border-amber-300 shadow-2xs space-y-1 w-max">
+                                                                <div className="text-[10px] font-bold text-amber-800">
+                                                                    စရံငွေ (Deposit): <span className="font-black">{formatPrice(depositAmt)}</span>
+                                                                </div>
+                                                                <div className="text-[11px] font-black text-red-600 flex items-center">
+                                                                    <AlertCircle className="w-3.5 h-3.5 mr-1" />
+                                                                    ကျန်ငွေ (Due): {formatPrice(balanceAmt)}
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={approvingId === sale.id}
+                                                                    onClick={() => handleApproveBalanceInAdmin(sale)}
+                                                                    className="w-full mt-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-black flex items-center justify-center shadow-sm transition disabled:opacity-50"
+                                                                >
+                                                                    <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                                                                    {approvingId === sale.id ? 'Approving...' : 'ကျန်ငွေ Approve လုပ်မည်'}
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-1">
+                                                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center">
+                                                                    <CheckCircle className="w-3 h-3 mr-1" /> Paid in Full
+                                                                </span>
+                                                                <div className="text-[10px] font-bold text-gray-500 pl-1">
+                                                                    Received: {formatPrice(totalPrice)}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* 6. Delete Action */}
+                                                    <td className="p-3 text-right">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteSale(sale.id, rawTx)}
+                                                            disabled={adminRole !== 'super_admin'}
+                                                            title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete POS Record'}
+                                                            className={`p-2 rounded-lg transition ${
+                                                                adminRole === 'super_admin'
+                                                                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                                                    : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                                                            }`}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
