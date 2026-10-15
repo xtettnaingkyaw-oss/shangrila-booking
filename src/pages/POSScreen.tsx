@@ -7,7 +7,7 @@ import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
   ArrowLeft, History, Search, Banknote, Bluetooth, Settings, Upload, X,
-  Menu, PackagePlus, Trash2, ChevronRight, Tag, AlertCircle
+  Menu, PackagePlus, Trash2, ChevronRight, Tag, AlertCircle, Calendar
 } from 'lucide-react';
 
 // Project ထဲရှိ THE SHANGRI LA - LOGO.png ကို Build Error မတက်စေဘဲ လှမ်းယူခြင်း
@@ -489,6 +489,106 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const [activeReceipt, setActiveReceipt] = useState<OfflineSaleRecord | null>(null);
   const [savingSale, setSavingSale] = useState(false);
   const [approvingBalanceId, setApprovingBalanceId] = useState<string | null>(null);
+
+  // 🌟 Receipts History Date Filter & Search States 🌟
+  const [historyDateFilterMode, setHistoryDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'custom'>('all');
+  const [historyCustomDate, setHistoryCustomDate] = useState<string>(getLocalTodayStr());
+  const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
+
+  const getYesterdayStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+
+  const formatReadableDateHeader = (dateStr: string) => {
+    if (!dateStr) return 'Unknown Date';
+    const today = getLocalTodayStr();
+    const yesterday = getYesterdayStr();
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return dateStr;
+    const dt = new Date(y, m - 1, d);
+    const formatted = dt.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+    if (dateStr === today) return `ယနေ့ (Today) — ${formatted}`;
+    if (dateStr === yesterday) return `မနေ့က (Yesterday) — ${formatted}`;
+    return formatted;
+  };
+
+  // 🌟 Filter & Group Receipts by Date with Daily Totals 🌟
+  const groupedHistoryByDate = useMemo(() => {
+    const today = getLocalTodayStr();
+    const yesterday = getYesterdayStr();
+    const q = historySearchQuery.trim().toLowerCase();
+
+    const filtered = salesHistory.filter((sale) => {
+      if (historyDateFilterMode === 'today' && sale.date !== today) return false;
+      if (historyDateFilterMode === 'yesterday' && sale.date !== yesterday) return false;
+      if (historyDateFilterMode === 'custom' && historyCustomDate && sale.date !== historyCustomDate) return false;
+
+      if (q) {
+        const matchInvoice = (sale.invoiceNo || '').toLowerCase().includes(q);
+        const matchCust = (sale.customerName || '').toLowerCase().includes(q);
+        const matchPhone = (sale.customerPhone || '').toLowerCase().includes(q);
+        const matchTherapist = (sale.therapistName || '').toLowerCase().includes(q);
+        const matchItems = sale.items.some((i) => i.name.toLowerCase().includes(q));
+        if (!matchInvoice && !matchCust && !matchPhone && !matchTherapist && !matchItems) return false;
+      }
+      return true;
+    });
+
+    const groupsMap = new Map<
+      string,
+      {
+        date: string;
+        sales: OfflineSaleRecord[];
+        dailyTotalAmount: number;
+        dailyDiscountAmount: number;
+        dailyCashTotal: number;
+        dailyOnlineTotal: number;
+        dailyPendingBalance: number;
+      }
+    >();
+
+    filtered.forEach((sale) => {
+      const dKey = sale.date || today;
+      if (!groupsMap.has(dKey)) {
+        groupsMap.set(dKey, {
+          date: dKey,
+          sales: [],
+          dailyTotalAmount: 0,
+          dailyDiscountAmount: 0,
+          dailyCashTotal: 0,
+          dailyOnlineTotal: 0,
+          dailyPendingBalance: 0
+        });
+      }
+      const grp = groupsMap.get(dKey)!;
+      grp.sales.push(sale);
+
+      const total = Number(sale.totalPrice) || 0;
+      const disc = Number(sale.discountAmount) || 0;
+      const isDepositDue = sale.paymentStatus === 'deposit_only' && Number(sale.balanceDue) > 0;
+      const due = isDepositDue ? Number(sale.balanceDue) || 0 : 0;
+      const paidNow = isDepositDue ? Number(sale.depositPaid) || 0 : total;
+
+      grp.dailyTotalAmount += total;
+      grp.dailyDiscountAmount += disc;
+      grp.dailyPendingBalance += due;
+
+      if (sale.paymentMethod === 'Cash') {
+        grp.dailyCashTotal += paidNow;
+      } else {
+        grp.dailyOnlineTotal += paidNow;
+      }
+    });
+
+    return Array.from(groupsMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [salesHistory, historyDateFilterMode, historyCustomDate, historySearchQuery]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -3043,108 +3143,275 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         </div>
       ) : activePosView === 'history' ? (
         /* ==========================================
-           VIEW 2: LOCAL & OFFLINE RECEIPTS HISTORY (WITH BALANCE DUE APPROVAL)
+           VIEW 2: DATE-GROUPED RECEIPTS HISTORY WITH FILTER & DAILY TOTALS
            ========================================== */
-        <div className="max-w-4xl w-full mx-auto p-4 space-y-4">
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-[#123524]">Walk-in POS Receipts History</h2>
-              <p className="text-xs text-gray-500">
-                Offline/Online ဘောင်ချာမှတ်တမ်းများ နှင့် စရံချေထားသော ကျန်ငွေများကို Approve ပြုလုပ်ရန်
-              </p>
+        <div className="max-w-4xl w-full mx-auto p-3.5 sm:p-5 space-y-4 animate-fade-in">
+          {/* 1. Top Title & Offline Sync Card */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3.5">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-[#123524] flex items-center">
+                  <History className="w-5 h-5 mr-2 text-[#D4AF37]" />
+                  Walk-in POS Receipts History
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  ရက်စွဲအလိုက် ဘောင်ချာမှတ်တမ်းများ၊ တစ်ရက်စာ ရောင်းရငွေချုပ် နှင့် ကျန်ငွေ Approve ပြုလုပ်ရန်
+                </p>
+              </div>
+
+              {offlineQueue.length > 0 && (
+                <button
+                  onClick={syncOfflineRecords}
+                  disabled={!isOnline || isSyncing}
+                  className="px-4 py-2.5 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-bold flex items-center shadow-sm disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                  Sync {offlineQueue.length} Offline Sales
+                </button>
+              )}
             </div>
-            {offlineQueue.length > 0 && (
-              <button
-                onClick={syncOfflineRecords}
-                disabled={!isOnline || isSyncing}
-                className="px-4 py-2.5 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-bold flex items-center shadow-sm disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-                Sync {offlineQueue.length} Offline Sales to Backoffice
-              </button>
-            )}
+
+            {/* 2. Clean Date Filter Pills, Custom Date Picker & Search Bar */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
+              {/* Quick Date Filter Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setHistoryDateFilterMode('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    historyDateFilterMode === 'all'
+                      ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  အားလုံး (All)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryDateFilterMode('today')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    historyDateFilterMode === 'today'
+                      ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  ယနေ့ (Today)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryDateFilterMode('yesterday')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    historyDateFilterMode === 'yesterday'
+                      ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  မနေ့က (Yesterday)
+                </button>
+
+                {/* Custom Date Picker Input */}
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
+                    historyDateFilterMode === 'custom'
+                      ? 'bg-[#123524] text-[#D4AF37] border-[#D4AF37]'
+                      : 'bg-white text-gray-700 border-gray-200'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
+                  <input
+                    type="date"
+                    value={historyCustomDate}
+                    onChange={(e) => {
+                      setHistoryCustomDate(e.target.value);
+                      setHistoryDateFilterMode('custom');
+                    }}
+                    className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                      historyDateFilterMode === 'custom' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Search Input */}
+              <div className="relative flex-1 md:max-w-xs">
+                <input
+                  type="text"
+                  value={historySearchQuery}
+                  onChange={(e) => setHistorySearchQuery(e.target.value)}
+                  placeholder="ဘောင်ချာနံပါတ် / အမည် / ဖုန်း ရှာရန်..."
+                  className="w-full pl-8 pr-7 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                />
+                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+                {historySearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setHistorySearchQuery('')}
+                    className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
-          {salesHistory.length === 0 ? (
-            <div className="bg-white p-12 rounded-2xl text-center text-gray-400 font-bold border border-gray-200">
-              ယနေ့အတွက် Walk-in POS အရောင်းမှတ်တမ်း မရှိသေးပါ။
+          {/* 3. Date-Grouped Receipt Sections */}
+          {groupedHistoryByDate.length === 0 ? (
+            <div className="bg-white p-12 rounded-2xl text-center text-gray-400 font-bold border border-gray-200 space-y-2">
+              <div>ရွေးချယ်ထားသော ရက်စွဲအတွက် Walk-in POS အရောင်းမှတ်တမ်း မရှိသေးပါ။</div>
+              {historyDateFilterMode !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setHistoryDateFilterMode('all')}
+                  className="text-xs font-black text-[#123524] underline"
+                >
+                  ရက်အားလုံး ပြန်ကြည့်မည် (Show All Dates)
+                </button>
+              )}
             </div>
           ) : (
-            <div className="space-y-3">
-              {salesHistory.map((sale) => {
-                const hasBalanceDue = sale.paymentStatus === 'deposit_only' && sale.balanceDue > 0;
-                return (
-                  <div
-                    key={sale.localId}
-                    className={`bg-white p-4 rounded-2xl shadow-sm border flex flex-wrap items-center justify-between gap-3 transition ${
-                      hasBalanceDue ? 'border-amber-400 bg-amber-50/20' : 'border-gray-200 hover:border-[#D4AF37]'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-black text-sm text-[#123524]">{sale.invoiceNo}</span>
-                        {sale.synced ? (
-                          <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center">
-                            <CheckCircle className="w-2.5 h-2.5 mr-1" /> Synced
-                          </span>
-                        ) : (
-                          <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                            Pending Sync
-                          </span>
-                        )}
-                        <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[9px] font-bold">
-                          {sale.paymentMethod}
-                        </span>
-                        {hasBalanceDue ? (
-                          <span className="bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center">
-                            <AlertCircle className="w-2.5 h-2.5 mr-1" /> စရံ: {formatPrice(sale.depositPaid)} | ကျန်ငွေ: {formatPrice(sale.balanceDue)}
-                          </span>
-                        ) : (
-                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                            Paid in Full
-                          </span>
-                        )}
+            <div className="space-y-5">
+              {groupedHistoryByDate.map((group) => (
+                <div
+                  key={group.date}
+                  className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden"
+                >
+                  {/* 🌟 Daily Header Banner with Total Amount & Breakdown 🌟 */}
+                  <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 py-3 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37]">
+                        <Calendar className="w-4 h-4" />
                       </div>
-                      <div className="text-xs font-bold text-gray-800 mt-1">
-                        {sale.items.map((i) => `${i.name} (x${i.qty})`).join(', ')}
-                      </div>
-                      <div className="text-[11px] text-gray-500 mt-0.5">
-                        Customer: {sale.customerName} | Therapist: {sale.therapistName} | {sale.date} {sale.time}
+                      <div>
+                        <div className="font-extrabold text-xs sm:text-sm text-[#D4AF37] tracking-wide">
+                          {formatReadableDateHeader(group.date)}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] text-gray-200 font-semibold mt-0.5">
+                          <span>ဘောင်ချာ: {group.sales.length} စောင်</span>
+                          <span>•</span>
+                          <span>Cash: {formatPrice(group.dailyCashTotal)}</span>
+                          <span>•</span>
+                          <span>Online: {formatPrice(group.dailyOnlineTotal)}</span>
+                          {group.dailyPendingBalance > 0 && (
+                            <span className="bg-red-500/90 text-white px-2 py-0.5 rounded-full text-[9px] font-black">
+                              ကျန်ငွေရရန်: {formatPrice(group.dailyPendingBalance)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5">
-                      <div className="text-right">
-                        <div className="text-base font-black text-[#123524]">{formatPrice(sale.totalPrice)}</div>
-                        {sale.discountAmount > 0 && (
-                          <div className="text-[10px] text-green-600 font-bold">
-                            Discount: -{formatPrice(sale.discountAmount)}
-                          </div>
-                        )}
-                      </div>
-
-                      {hasBalanceDue && (
-                        <button
-                          type="button"
-                          disabled={approvingBalanceId === sale.localId}
-                          onClick={() => handleApproveBalancePaid(sale)}
-                          className="px-3 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-[11px] flex items-center shadow-sm transition"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                          {approvingBalanceId === sale.localId ? '...' : 'ကျန်ငွေ Approve'}
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => setActiveReceipt(sale)}
-                        className="p-2.5 bg-yellow-50 text-[#123524] border border-[#D4AF37]/40 rounded-xl hover:bg-yellow-100 transition font-bold text-xs flex items-center"
-                      >
-                        <Printer className="w-4 h-4 mr-1" /> ဘောင်ချာ
-                      </button>
+                    {/* Daily Total Amount Highlight Box */}
+                    <div className="bg-black/25 px-3.5 py-1.5 rounded-xl border border-[#D4AF37]/40 text-right">
+                      <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wider block">
+                        Daily Total Amount
+                      </span>
+                      <span className="text-sm sm:text-base font-black text-[#D4AF37]">
+                        {formatPrice(group.dailyTotalAmount)}
+                      </span>
                     </div>
                   </div>
-                );
-              })}
+
+                  {/* Individual Receipts inside this Date Group */}
+                  <div className="divide-y divide-gray-100">
+                    {group.sales.map((sale) => {
+                      const hasBalanceDue =
+                        sale.paymentStatus === 'deposit_only' && sale.balanceDue > 0;
+                      return (
+                        <div
+                          key={sale.localId}
+                          className={`p-4 flex flex-wrap items-center justify-between gap-3 transition ${
+                            hasBalanceDue
+                              ? 'bg-amber-50/30 hover:bg-amber-50/50'
+                              : 'hover:bg-gray-50/80'
+                          }`}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-black text-sm text-[#123524]">
+                                {sale.invoiceNo}
+                              </span>
+                              <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                {sale.time}
+                              </span>
+                              {sale.synced ? (
+                                <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full text-[9px] font-bold flex items-center">
+                                  <CheckCircle className="w-2.5 h-2.5 mr-1" /> Synced
+                                </span>
+                              ) : (
+                                <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
+                                  Pending Sync
+                                </span>
+                              )}
+                              <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[9px] font-bold">
+                                {sale.paymentMethod}
+                              </span>
+                              {hasBalanceDue ? (
+                                <span className="bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center">
+                                  <AlertCircle className="w-2.5 h-2.5 mr-1" /> စရံ:{' '}
+                                  {formatPrice(sale.depositPaid)} | ကျန်ငွေ:{' '}
+                                  {formatPrice(sale.balanceDue)}
+                                </span>
+                              ) : (
+                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
+                                  Paid in Full
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="text-xs font-bold text-gray-800">
+                              {sale.items.map((i) => `${i.name} (x${i.qty})`).join(', ')}
+                            </div>
+
+                            <div className="text-[11px] text-gray-500">
+                              Customer: <span className="font-semibold text-gray-700">{sale.customerName}</span>
+                              {sale.customerPhone ? ` (${sale.customerPhone})` : ''} | Therapist:{' '}
+                              <span className="font-semibold text-[#123524]">{sale.therapistName}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2.5 ml-auto">
+                            <div className="text-right">
+                              {sale.discountAmount > 0 && (
+                                <div className="text-[10px] text-gray-400 line-through font-semibold">
+                                  {formatPrice(sale.subTotal)}
+                                </div>
+                              )}
+                              <div className="text-base font-black text-[#123524]">
+                                {formatPrice(sale.totalPrice)}
+                              </div>
+                              {sale.discountAmount > 0 && (
+                                <div className="text-[10px] text-green-600 font-bold">
+                                  Discount: -{formatPrice(sale.discountAmount)}
+                                </div>
+                              )}
+                            </div>
+
+                            {hasBalanceDue && (
+                              <button
+                                type="button"
+                                disabled={approvingBalanceId === sale.localId}
+                                onClick={() => handleApproveBalancePaid(sale)}
+                                className="px-3 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-[11px] flex items-center shadow-sm transition"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                                {approvingBalanceId === sale.localId ? '...' : 'ကျန်ငွေ Approve'}
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => setActiveReceipt(sale)}
+                              className="p-2.5 bg-yellow-50 text-[#123524] border border-[#D4AF37]/40 rounded-xl hover:bg-yellow-100 transition font-bold text-xs flex items-center"
+                            >
+                              <Printer className="w-4 h-4 mr-1" /> ဘောင်ချာ
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
