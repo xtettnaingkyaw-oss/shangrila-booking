@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, addDoc, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, doc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security';
 import { AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
@@ -273,9 +273,175 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   // 🌟 Navigation Views & Slide-Out Side Menu State 🌟
   const [activePosView, setActivePosView] = useState<
-    'register' | 'history' | 'extra_items' | 'discounts' | 'settings'
+    'register' | 'online_bookings' | 'history' | 'extra_items' | 'discounts' | 'settings'
   >('register');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
+
+  // 🌟 Live Online Bookings State inside POS (For Instant Receipt Printing & Deposit Approval) 🌟
+  const [liveOnlineBookings, setLiveOnlineBookings] = useState<any[]>([]);
+  const [onlineSearchQuery, setOnlineSearchQuery] = useState('');
+  const [onlineFilterTab, setOnlineFilterTab] = useState<'all' | 'today' | 'deposit_due'>('all');
+  const [posDepositModalBooking, setPosDepositModalBooking] = useState<any | null>(null);
+  const [posCustomDepositStr, setPosCustomDepositStr] = useState('');
+
+  useEffect(() => {
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(120));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list: any[] = [];
+        snap.forEach((d) => {
+          const raw = d.data();
+          const decTx = decryptText(raw.txId) || raw.txId || '';
+          const decDiscLabel = raw.discountLabel ? decryptText(raw.discountLabel) || raw.discountLabel : '';
+          const isWalkInPos =
+            String(decTx).startsWith('SL-') ||
+            (raw.paymentMethod && String(raw.paymentMethod).includes('Shop POS')) ||
+            String(decDiscLabel).includes('[Shop Walk-in');
+
+          if (!isWalkInPos && String(decTx) !== 'ADMIN') {
+            const total = Number(raw.totalPrice) || 0;
+            const orig = raw.originalPrice ? Number(decryptText(raw.originalPrice) || raw.originalPrice) || total : total;
+            const discPct = raw.discountPercent ? Number(decryptText(raw.discountPercent) || raw.discountPercent) || 0 : 0;
+            list.push({
+              id: d.id,
+              ...raw,
+              name: decryptText(raw.name) || raw.name || 'Online Guest',
+              phone: decryptText(raw.phone) || raw.phone || '',
+              txId: decTx,
+              specialRequest: decryptText(raw.specialRequest) || raw.specialRequest || '',
+              originalPrice: orig,
+              discountPercent: discPct,
+              discountLabel: decDiscLabel,
+              vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
+            });
+          }
+        });
+        setLiveOnlineBookings(list);
+      },
+      (err) => console.warn('Online bookings listener warning:', err)
+    );
+    return () => unsub();
+  }, []);
+
+  const pendingOnlineCount = useMemo(
+    () => liveOnlineBookings.filter((b) => b.status === 'pending' || b.status === 'payment_checking').length,
+    [liveOnlineBookings]
+  );
+
+  // 🌟 Convert Online Booking into POS Printable Receipt Format 🌟
+  const convertOnlineBookingToReceipt = (b: any): OfflineSaleRecord => {
+    const total = Number(b.totalPrice) || 0;
+    const subTotal = Number(b.originalPrice) > total ? Number(b.originalPrice) : total;
+    const discAmt = Math.max(0, subTotal - total);
+    const isDepDue = b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
+    const depPaid = isDepDue ? Number(b.depositPaid) || 0 : total;
+    const balDue = isDepDue ? Number(b.balanceDue) || 0 : 0;
+    const cleanPayMethod = (b.paymentMethod || 'Online Pay').split('(')[0].trim();
+
+    const serviceParts = String(b.service || 'Spa Service')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const parsedItems: CartItem[] = serviceParts.map((part, idx) => {
+      const isVvip = part.toLowerCase().includes('vvip');
+      const durMatch = part.match(/\(([^)]+)\)/);
+      const cleanName = part.replace(/\s*\([^)]*\)/g, '').replace('+ VVIP Upgrade', '').replace('+ VVIP', '').trim();
+      return {
+        cartId: `ob_${b.id}_${idx}`,
+        id: `ob_${idx}`,
+        name: cleanName || part,
+        duration: durMatch ? durMatch[1] : undefined,
+        price: serviceParts.length === 1 ? subTotal : Math.round(subTotal / serviceParts.length),
+        isVvipUpgrade: isVvip,
+        qty: 1
+      };
+    });
+
+    return {
+      localId: `online_${b.id}`,
+      firestoreDocId: b.id,
+      invoiceNo: b.txId ? `OB-${b.txId}` : `OB-${String(b.id).slice(-4).toUpperCase()}`,
+      createdAt: b.createdAt || Date.now(),
+      date: b.date || getLocalTodayStr(),
+      time: b.time || 'Online',
+      customerName: b.name || 'Online Guest',
+      customerPhone: b.phone || '',
+      customerVipTier: b.vipTierName,
+      therapistName: b.therapist || 'Assigned Therapist',
+      items: parsedItems,
+      subTotal,
+      discountType: 'percent',
+      discountValue: Number(b.discountPercent) || 0,
+      discountAmount: discAmt,
+      discountReason: b.discountLabel || (discAmt > 0 ? 'Online Promo' : ''),
+      totalPrice: total,
+      paymentMethod: cleanPayMethod,
+      paymentStatus: isDepDue ? 'deposit_only' : 'paid_in_full',
+      depositPaid: depPaid,
+      balanceDue: balDue,
+      cashReceived: depPaid,
+      changeDue: 0,
+      serviceStatus: b.status === 'completed' ? 'completed' : 'in_progress',
+      pointsEarned: Math.floor(total / 35000),
+      note: b.specialRequest || 'Online Booking',
+      synced: true
+    };
+  };
+
+  // 🌟 Load Online Booking into POS Register Cart (To add Extra Items / VVIP Upgrade at Shop) 🌟
+  const handleLoadOnlineBookingToPosCart = (b: any) => {
+    const rec = convertOnlineBookingToReceipt(b);
+    setCart(rec.items);
+    setCustomerName(b.name || 'Online Guest');
+    setCustomerPhone(b.phone || '');
+    if (b.discountPercent && b.discountPercent > 0) {
+      setDiscountType('percent');
+      setDiscountValue(Number(b.discountPercent));
+      setDiscountReason(b.discountLabel || `Online Promo (${b.discountPercent}% OFF)`);
+    }
+    const cleanMethod = (b.paymentMethod || 'KBZ PAY').split('(')[0].trim();
+    setPaymentMethod(cleanMethod);
+    if (b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0) {
+      setOnlinePayMode('deposit');
+      setDepositAmountStr(String(b.depositPaid || ''));
+    } else {
+      setOnlinePayMode('full');
+    }
+    setSpecialNote(`Online Booking TxID: ${b.txId || '-'}`);
+    setActivePosView('register');
+    setPosStep(1);
+  };
+
+  // 🌟 Set 50% Deposit or Custom Deposit for Online Booking directly from POS 🌟
+  const handlePosSetOnlineDeposit = async (b: any, depAmount: number) => {
+    const total = Number(b.totalPrice) || 0;
+    const validDep = Math.max(0, Math.min(total, Math.round(depAmount)));
+    const balDue = Math.max(0, total - validDep);
+    const cleanMethod = (b.paymentMethod || 'Online Pay').split('(')[0].trim();
+    try {
+      if (balDue === 0) {
+        await updateDoc(doc(db, 'bookings', b.id), {
+          paymentStatus: 'paid_in_full',
+          depositPaid: total,
+          balanceDue: 0,
+          paymentMethod: `${cleanMethod} (Full Paid)`
+        });
+      } else {
+        await updateDoc(doc(db, 'bookings', b.id), {
+          paymentStatus: 'deposit_only',
+          depositPaid: validDep,
+          balanceDue: balDue,
+          paymentMethod: `${cleanMethod} (စရံ: ${formatPrice(validDep)} | ကျန်ငွေ: ${formatPrice(balDue)})`
+        });
+      }
+      setPosDepositModalBooking(null);
+      setPosCustomDepositStr('');
+    } catch (e) {
+      alert('စရံသတ်မှတ်ရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    }
+  };
 
   // 🌟 Saved Extra / Sale Items State (Persisted in LocalStorage) 🌟
   const [savedExtraItems, setSavedExtraItems] = useState<SavedExtraItem[]>(() => {
@@ -2277,6 +2443,30 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 <button
                   type="button"
                   onClick={() => {
+                    setActivePosView('online_bookings');
+                    setIsSideMenuOpen(false);
+                  }}
+                  className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                    activePosView === 'online_bookings'
+                      ? 'bg-[#D4AF37] text-[#123524] shadow-md font-black'
+                      : 'text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Calendar className="w-4 h-4" /> Online Bookings ({liveOnlineBookings.length})
+                  </span>
+                  {pendingOnlineCount > 0 ? (
+                    <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                      {pendingOnlineCount} New
+                    </span>
+                  ) : (
+                    <ChevronRight className="w-4 h-4 opacity-70" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
                     setActivePosView('history');
                     setIsSideMenuOpen(false);
                   }}
@@ -2429,6 +2619,24 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 ? `Reconnect`
                 : 'BT Printer'}
             </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePosView(activePosView === 'online_bookings' ? 'register' : 'online_bookings')}
+            className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black flex items-center border transition relative ${
+              activePosView === 'online_bookings'
+                ? 'bg-[#D4AF37] text-[#123524] border-[#D4AF37]'
+                : 'bg-white/10 text-white border-[#D4AF37]/40 hover:bg-white/20'
+            }`}
+          >
+            <Calendar className="w-3 h-3 mr-1 text-[#D4AF37]" />
+            <span>Online Bookings</span>
+            {pendingOnlineCount > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[9px] font-black animate-pulse">
+                {pendingOnlineCount}
+              </span>
+            )}
           </button>
 
           {isOnline ? (
@@ -2638,10 +2846,271 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         </div>
       )}
 
+      
+
       {/* ==========================================
           VIEW 5: DISCOUNTS & PROMOTIONS SETTING TAB
          ========================================== */}
-      {activePosView === 'discounts' ? (
+      {activePosView === 'online_bookings' ? (
+        /* ==========================================
+           VIEW: ONLINE BOOKINGS IN POS (Print Receipt, Deposit Check & Approve Balance)
+           ========================================== */
+        <div className="max-w-5xl w-full mx-auto p-3.5 sm:p-5 space-y-4 animate-fade-in">
+          {/* Deposit Configuration Modal inside POS */}
+          {posDepositModalBooking && (
+            <div className="fixed inset-0 z-[250] bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-[#D4AF37]/40 space-y-4 animate-fade-in">
+                <div className="flex justify-between items-center border-b pb-3">
+                  <div>
+                    <h3 className="text-sm font-black text-[#123524]">Online စရံ / အပြည့်ချေ သတ်မှတ်ရန်</h3>
+                    <p className="text-[11px] text-gray-500">
+                      {posDepositModalBooking.name} • စုစုပေါင်း: <strong>{formatPrice(posDepositModalBooking.totalPrice)}</strong>
+                    </p>
+                  </div>
+                  <button onClick={() => setPosDepositModalBooking(null)} className="text-gray-400 hover:text-red-500">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handlePosSetOnlineDeposit(posDepositModalBooking, Math.round(posDepositModalBooking.totalPrice / 2))}
+                    className="p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-black"
+                  >
+                    50% စရံတစ်ဝက်
+                    <span className="block text-[10px] font-bold text-amber-700 mt-0.5">
+                      ({formatPrice(Math.round(posDepositModalBooking.totalPrice / 2))})
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePosSetOnlineDeposit(posDepositModalBooking, posDepositModalBooking.totalPrice)}
+                    className="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-black"
+                  >
+                    100% အပြည့်ချေပြီး
+                    <span className="block text-[10px] font-bold text-emerald-700 mt-0.5">
+                      ({formatPrice(posDepositModalBooking.totalPrice)})
+                    </span>
+                  </button>
+                </div>
+
+                <div className="pt-2 border-t border-gray-100 space-y-2">
+                  <label className="block text-[11px] font-bold text-gray-600">စိတ်ကြိုက် စရံငွေပမာဏ ရိုက်ထည့်ရန် (Ks):</label>
+                  <input
+                    type="number"
+                    value={posCustomDepositStr}
+                    onChange={(e) => setPosCustomDepositStr(e.target.value)}
+                    placeholder="ဥပမာ - 15000"
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-[#123524]"
+                  />
+                  <button
+                    type="button"
+                    disabled={!posCustomDepositStr}
+                    onClick={() => handlePosSetOnlineDeposit(posDepositModalBooking, Number(posCustomDepositStr) || 0)}
+                    className="w-full py-2.5 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black uppercase"
+                  >
+                    Save Deposit Amount
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3.5">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-[#123524] flex items-center">
+                  <Calendar className="w-5 h-5 mr-2 text-[#D4AF37]" />
+                  Online Bookings — ဘောင်ချာထုတ်ရန် နှင့် ငွေလွှဲစစ်ဆေးရန်
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Web App မှ တက်လာသော Online Booking များအား POS မှ တိုက်ရိုက် ဘောင်ချာထုတ်ပေးနိုင်ပြီး စရံ/ကျန်ငွေ အတည်ပြုနိုင်ပါသည်
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActivePosView('register')}
+                className="px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-bold shadow-sm"
+              >
+                ← Back to POS Register
+              </button>
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5">
+              <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setOnlineFilterTab('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    onlineFilterTab === 'all' ? 'bg-[#123524] text-[#D4AF37]' : 'text-gray-600'
+                  }`}
+                >
+                  အားလုံး ({liveOnlineBookings.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOnlineFilterTab('today')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    onlineFilterTab === 'today' ? 'bg-[#123524] text-[#D4AF37]' : 'text-gray-600'
+                  }`}
+                >
+                  ယနေ့ရက်ချိန်း (Today)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOnlineFilterTab('deposit_due')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    onlineFilterTab === 'deposit_due' ? 'bg-amber-500 text-white' : 'text-gray-600'
+                  }`}
+                >
+                  စရံ / ကျန်ငွေရရန်ကျန်
+                </button>
+              </div>
+
+              <div className="relative flex-1 sm:max-w-xs">
+                <input
+                  type="text"
+                  value={onlineSearchQuery}
+                  onChange={(e) => setOnlineSearchQuery(e.target.value)}
+                  placeholder="အမည် / ဖုန်း / TxID ရှာရန်..."
+                  className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                />
+                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {liveOnlineBookings
+              .filter((b) => {
+                if (onlineFilterTab === 'today' && b.date !== getLocalTodayStr()) return false;
+                if (onlineFilterTab === 'deposit_due' && !(b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0)) return false;
+                const q = onlineSearchQuery.trim().toLowerCase();
+                if (!q) return true;
+                return (
+                  (b.name || '').toLowerCase().includes(q) ||
+                  (b.phone || '').toLowerCase().includes(q) ||
+                  (b.txId || '').toLowerCase().includes(q) ||
+                  (b.service || '').toLowerCase().includes(q)
+                );
+              })
+              .map((b) => {
+                const isDepDue = b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
+                const receiptObj = convertOnlineBookingToReceipt(b);
+
+                return (
+                  <div
+                    key={b.id}
+                    className={`bg-white p-4 rounded-2xl shadow-xs border transition flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
+                      isDepDue ? 'border-amber-300 bg-amber-50/20' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-black text-xs bg-[#123524] text-[#D4AF37] px-2.5 py-1 rounded-lg">
+                          TxID: {b.txId || '-'}
+                        </span>
+                        <span className="text-xs font-extrabold text-[#123524]">
+                          {b.date} • {b.time}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                            b.status === 'approved'
+                              ? 'bg-green-100 text-green-800'
+                              : b.status === 'in_progress'
+                              ? 'bg-orange-100 text-orange-800'
+                              : b.status === 'completed'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-yellow-100 text-yellow-800 animate-pulse'
+                          }`}
+                        >
+                          {b.status}
+                        </span>
+                        <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold">
+                          {(b.paymentMethod || 'Online Pay').split('(')[0].trim()}
+                        </span>
+                      </div>
+
+                      <div className="text-sm font-black text-gray-900">
+                        {b.name} <span className="font-mono text-xs text-gray-500">({b.phone})</span>
+                      </div>
+
+                      <div className="text-xs font-bold text-gray-700">
+                        Service: <span className="text-[#123524]">{b.service}</span> | Therapist:{' '}
+                        <span className="text-[#123524]">{b.therapist}</span>
+                      </div>
+                      {b.specialRequest && (
+                        <div className="text-[11px] text-red-500 italic">Note: {b.specialRequest}</div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end border-t md:border-t-0 pt-3 md:pt-0">
+                      <div className="text-right mr-2">
+                        {b.originalPrice > b.totalPrice && (
+                          <div className="text-[10px] text-gray-400 line-through">
+                            {formatPrice(b.originalPrice)} (-{b.discountPercent}%)
+                          </div>
+                        )}
+                        <div className="text-base font-black text-[#123524]">
+                          {formatPrice(b.totalPrice)}
+                        </div>
+                        {isDepDue ? (
+                          <div className="text-[10px] font-black text-red-600">
+                            စရံ: {formatPrice(b.depositPaid)} | ကျန်ငွေ: {formatPrice(b.balanceDue)}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] font-bold text-emerald-700">Paid in Full</div>
+                        )}
+                      </div>
+
+                      {/* Deposit vs Full Paid Toggle / Approve Balance Button */}
+                      {isDepDue ? (
+                        <button
+                          type="button"
+                          onClick={() => handleApproveBalancePaid(receiptObj)}
+                          className="px-3 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[11px] font-black flex items-center shadow-sm transition"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 mr-1" /> ကျန်ငွေ Approve
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPosDepositModalBooking(b);
+                            setPosCustomDepositStr(String(Math.round((Number(b.totalPrice) || 0) / 2)));
+                          }}
+                          className="px-2.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-[10px] font-black transition"
+                        >
+                          စရံသတ်မှတ်ရန်
+                        </button>
+                      )}
+
+                      {/* Load to POS Register Cart (To add extra items) */}
+                      <button
+                        type="button"
+                        onClick={() => handleLoadOnlineBookingToPosCart(b)}
+                        className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-[11px] font-bold transition"
+                        title="အပိုပစ္စည်း သို့မဟုတ် VVIP ထပ်ပေါင်းရန် POS Cart ထဲသို့ ပို့မည်"
+                      >
+                        + အပိုထပ်ပေါင်း
+                      </button>
+
+                      {/* Print Thermal Receipt Button */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveReceipt(receiptObj)}
+                        className="px-3.5 py-2.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black flex items-center shadow-md hover:opacity-95 transition"
+                      >
+                        <Printer className="w-4 h-4 mr-1.5" /> ဘောင်ချာထုတ်မည်
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      ) : activePosView === 'discounts' ? (
         <div className="max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-5 animate-fade-in">
           <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-4">
