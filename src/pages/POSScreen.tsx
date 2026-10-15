@@ -285,21 +285,40 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const [posCustomDepositStr, setPosCustomDepositStr] = useState('');
 
   useEffect(() => {
-    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(120));
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(300));
     const unsub = onSnapshot(
       q,
       (snap) => {
         const list: any[] = [];
+        const activePosInvoiceSet = new Set<string>();
+        const cancelledPosInvoiceSet = new Set<string>();
+        const paidInFullPosInvoiceSet = new Set<string>();
+        let oldestLoadedMillis = Infinity;
+
         snap.forEach((d) => {
           const raw = d.data();
-          const decTx = decryptText(raw.txId) || raw.txId || '';
+          const cAt = Number(raw.createdAt) || 0;
+          if (cAt > 0 && cAt < oldestLoadedMillis) {
+            oldestLoadedMillis = cAt;
+          }
+
+          const decTx = String(decryptText(raw.txId) || raw.txId || '').trim();
           const decDiscLabel = raw.discountLabel ? decryptText(raw.discountLabel) || raw.discountLabel : '';
           const isWalkInPos =
-            String(decTx).startsWith('SL-') ||
+            decTx.startsWith('SL-') ||
             (raw.paymentMethod && String(raw.paymentMethod).includes('Shop POS')) ||
             String(decDiscLabel).includes('[Shop Walk-in');
 
-          if (!isWalkInPos && String(decTx) !== 'ADMIN') {
+          if (isWalkInPos) {
+            if (raw.status === 'cancelled') {
+              cancelledPosInvoiceSet.add(decTx);
+            } else {
+              activePosInvoiceSet.add(decTx);
+              if (raw.paymentStatus === 'paid_in_full' || Number(raw.balanceDue) === 0) {
+                paidInFullPosInvoiceSet.add(decTx);
+              }
+            }
+          } else if (decTx !== 'ADMIN') {
             const total = Number(raw.totalPrice) || 0;
             const orig = raw.originalPrice ? Number(decryptText(raw.originalPrice) || raw.originalPrice) || total : total;
             const discPct = raw.discountPercent ? Number(decryptText(raw.discountPercent) || raw.discountPercent) || 0 : 0;
@@ -317,9 +336,59 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             });
           }
         });
+
         setLiveOnlineBookings(list);
+
+        // 🌟 Real-Time Sync: Admin မှ Cancel သို့မဟုတ် Delete လုပ်ထားသော ဘောင်ချာများကို Shop POS မှ အလိုအလျောက် ဖယ်ရှားပေးခြင်း 🌟
+        setSalesHistory((prevHistory) => {
+          let changed = false;
+          const syncedHistory = prevHistory
+            .filter((item) => {
+              // Offline ဖြစ်နေစဉ် ရိုက်ထားပြီး မSync ရသေးသော ဘောင်ချာများကို မဖျက်ပါ
+              if (!item.synced) return true;
+              // Admin မှ Cancel လုပ်ထားလျှင် Shop POS မှ ချက်ချင်းဖယ်ရှားမည်
+              if (cancelledPosInvoiceSet.has(item.invoiceNo)) {
+                changed = true;
+                return false;
+              }
+              // Admin မှ အပြီးတိုင် Delete လုပ်ထားခဲ့သော ဘောင်ချာအဟောင်းများကိုလည်း Shop POS မှ ဖယ်ရှားမည်
+              if (
+                snap.size > 0 &&
+                item.createdAt >= oldestLoadedMillis &&
+                !activePosInvoiceSet.has(item.invoiceNo)
+              ) {
+                changed = true;
+                return false;
+              }
+              return true;
+            })
+            .map((item) => {
+              // Admin ဘက်မှ ကျန်ငွေ Approve လုပ်လိုက်ပါက Shop POS တွင်လည်း Paid in Full အလိုအလျောက် ပြောင်းပေးမည်
+              if (
+                item.paymentStatus === 'deposit_only' &&
+                paidInFullPosInvoiceSet.has(item.invoiceNo)
+              ) {
+                changed = true;
+                return {
+                  ...item,
+                  paymentStatus: 'paid_in_full' as const,
+                  depositPaid: item.totalPrice,
+                  balanceDue: 0
+                };
+              }
+              return item;
+            });
+
+          if (changed) {
+            try {
+              localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(syncedHistory));
+            } catch {}
+            return syncedHistory;
+          }
+          return prevHistory;
+        });
       },
-      (err) => console.warn('Online bookings listener warning:', err)
+      (err) => console.warn('POS real-time sync warning:', err)
     );
     return () => unsub();
   }, []);
