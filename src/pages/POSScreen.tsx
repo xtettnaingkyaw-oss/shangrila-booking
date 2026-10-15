@@ -376,21 +376,35 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   // Combine Web App Active Promotion Discounts + Saved Presets for the Dropdown
   const allAvailableDiscounts = useMemo(() => {
     const dynamicWebPromos: SavedDiscountPreset[] = [];
-    const promo = localAppData?.promotion;
-    if (promo?.isActive) {
-      if (promo.otherDiscountPercent && promo.otherDiscountPercent > 0) {
+    const promo = localAppData?.promotion as any;
+    const campTitle = promo?.campaignTitle || 'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း';
+
+    if (promo?.isPopupActive) {
+      [5, 10, 15, 20, 25, 30].forEach((pct) => {
+        dynamicWebPromos.push({
+          id: `lantern_game_${pct}`,
+          label: `${campTitle} (${pct}% OFF)`,
+          type: 'percent',
+          value: pct,
+          category: 'campaign'
+        });
+      });
+    }
+
+    if (promo?.isBoxActive || promo?.isActive) {
+      if (promo?.otherDiscountPercent && promo.otherDiscountPercent > 0) {
         dynamicWebPromos.push({
           id: 'webapp_active_promo_other',
-          label: `Active Web Promo - In-Spa (${promo.otherDiscountPercent}% OFF)`,
+          label: `${promo.boxTitle || 'In-App Promo'} - In-Spa (${promo.otherDiscountPercent}% OFF)`,
           type: 'percent',
           value: promo.otherDiscountPercent,
           category: 'campaign'
         });
       }
-      if (promo.hotelDiscountPercent && promo.hotelDiscountPercent > 0) {
+      if (promo?.hotelDiscountPercent && promo.hotelDiscountPercent > 0) {
         dynamicWebPromos.push({
           id: 'webapp_active_promo_hotel',
-          label: `Active Web Promo - Hotel/Outcall (${promo.hotelDiscountPercent}% OFF)`,
+          label: `${promo.boxTitle || 'In-App Promo'} - Outcall (${promo.hotelDiscountPercent}% OFF)`,
           type: 'percent',
           value: promo.hotelDiscountPercent,
           category: 'campaign'
@@ -471,6 +485,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     discountPercent: number;
   } | null>(null);
   const [benefitChoiceMode, setBenefitChoiceMode] = useState<'vip' | 'promo'>('vip');
+  const [isSearchingCustomer, setIsSearchingCustomer] = useState<boolean>(false);
+  const [detectedCampaignWin, setDetectedCampaignWin] = useState<{
+    campaignName: string;
+    discountPercent: number;
+    date?: string;
+  } | null>(null);
 
   // 🌟 Discount States 🌟
   const [selectedDiscountPresetId, setSelectedDiscountPresetId] = useState<string>('none');
@@ -1179,48 +1199,75 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   // 🌟 Apply Either VIP Member Benefit OR Active Promotion Benefit 🌟
   const applyVipOrPromoChoice = (
     choice: 'vip' | 'promo',
-    vipData: { tierName: string; discountPercent: number } | null
+    vipData: { tierName: string; discountPercent: number } | null,
+    campaignWinData?: { campaignName: string; discountPercent: number; date?: string } | null
   ) => {
     setBenefitChoiceMode(choice);
-    const promo = localAppData?.promotion;
+    const promo = localAppData?.promotion as any;
+    const activeWin = campaignWinData !== undefined ? campaignWinData : detectedCampaignWin;
 
     if (choice === 'vip' && vipData) {
       setDiscountType('percent');
       setDiscountValue(vipData.discountPercent);
       setDiscountReason(`${vipData.tierName} (${vipData.discountPercent}% OFF)`);
       const matchingPreset = allAvailableDiscounts.find(
-        (d) => d.type === 'percent' && d.value === vipData.discountPercent
+        (d) => d.type === 'percent' && d.value === vipData.discountPercent && d.category === 'vip'
       );
       setSelectedDiscountPresetId(matchingPreset ? matchingPreset.id : 'custom');
-    } else if (choice === 'promo' && promo?.isActive) {
-      const promoPct = promo.otherDiscountPercent || promo.hotelDiscountPercent || 10;
-      setDiscountType('percent');
-      setDiscountValue(promoPct);
-      setDiscountReason(`Active Store Promotion (${promoPct}% OFF)`);
-      setSelectedDiscountPresetId('webapp_active_promo_other');
+    } else if (choice === 'promo') {
+      if (activeWin && activeWin.discountPercent > 0) {
+        setDiscountType('percent');
+        setDiscountValue(activeWin.discountPercent);
+        setDiscountReason(`${activeWin.campaignName} (${activeWin.discountPercent}% OFF)`);
+        const matchingLantern = allAvailableDiscounts.find(
+          (d) => d.id === `lantern_game_${activeWin.discountPercent}`
+        );
+        setSelectedDiscountPresetId(matchingLantern ? matchingLantern.id : 'custom');
+      } else {
+        const promoPct = promo?.otherDiscountPercent || promo?.hotelDiscountPercent || 15;
+        const campTitle = promo?.campaignTitle || promo?.boxTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း';
+        setDiscountType('percent');
+        setDiscountValue(promoPct);
+        setDiscountReason(`${campTitle} (${promoPct}% OFF)`);
+        const matchingCamp = allAvailableDiscounts.find(
+          (d) => d.type === 'percent' && d.value === promoPct
+        );
+        setSelectedDiscountPresetId(matchingCamp ? matchingCamp.id : 'custom');
+      }
     }
   };
 
-  // 🌟 Customer Phone Lookup -> Auto-Detect VIP Member Card & Apply Discount Automatically! 🌟
+  // 🌟 Customer Phone Lookup -> Checks BOTH VIP Member Card AND Thadingyut Lantern Game (`campaign_records`)! 🌟
   const handleCheckCustomerPhone = async () => {
     const cleanInput = customerPhone.trim();
     if (!cleanInput) {
       setFoundCustomerPts(null);
       setDetectedVipBenefit(null);
+      setDetectedCampaignWin(null);
       return;
     }
     if (!isOnline) return;
 
+    setIsSearchingCustomer(true);
     try {
-      const snap = await getDocs(collection(db, 'users'));
-      let found = false;
+      const normalizePhone = (p: string) => p.replace(/[^0-9]/g, '').replace(/^959/, '09');
+      const targetNorm = normalizePhone(cleanInput);
 
-      snap.forEach((d) => {
+      const [usersSnap, campaignSnap] = await Promise.all([
+        getDocs(collection(db, 'users')),
+        getDocs(collection(db, 'campaign_records')).catch(() => null)
+      ]);
+
+      // 1. Check Users Collection for VIP Member & Points
+      let foundUser = false;
+      let vipBenefit: { tierName: string; discountPercent: number } | null = null;
+
+      usersSnap.forEach((d) => {
         try {
           const data = d.data();
           const decPhone = decryptText(data.phone) || d.id;
-          if (decPhone === cleanInput || d.id === cleanInput) {
-            found = true;
+          if (decPhone === cleanInput || d.id === cleanInput || normalizePhone(decPhone) === targetNorm) {
+            foundUser = true;
             const decName = decryptText(data.name) || data.name;
             const decPts = parseInt(decryptText(data.points) || data.points || '0', 10);
             const decTier = decryptText(data.vipTier || data.tier || '') || data.vipTier || data.tier || '';
@@ -1236,26 +1283,65 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             const ptsNum = isNaN(decPts) ? 0 : decPts;
             setFoundCustomerPts(ptsNum);
 
-            const vipBenefit = detectCustomerVipBenefit(
+            vipBenefit = detectCustomerVipBenefit(
               ptsNum,
               decTier,
               isNaN(decVipDisc) ? 0 : decVipDisc
             );
-            setDetectedVipBenefit(vipBenefit);
-
-            if (vipBenefit) {
-              // Automatically apply the member's VIP discount!
-              applyVipOrPromoChoice('vip', vipBenefit);
-            }
           }
         } catch {}
       });
 
-      if (!found) {
+      if (!foundUser) {
         setFoundCustomerPts(0);
-        setDetectedVipBenefit(null);
       }
-    } catch {}
+      setDetectedVipBenefit(vipBenefit);
+
+      // 2. Check `campaign_records` Collection for Thadingyut Lantern Game Winner!
+      let latestCampaignWin: { campaignName: string; discountPercent: number; date?: string; createdAt: number } | null = null;
+      const campTitle = (localAppData?.promotion as any)?.campaignTitle || 'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း';
+
+      if (campaignSnap) {
+        campaignSnap.forEach((docSnap) => {
+          try {
+            const cData = docSnap.data();
+            const rawPhone = String(cData.phone || '').trim();
+            if (rawPhone === cleanInput || (targetNorm.length >= 7 && normalizePhone(rawPhone) === targetNorm)) {
+              const wonPct = Number(cData.discountPercent) || 0;
+              const cTime = Number(cData.createdAt) || 0;
+              if (wonPct > 0 && (!latestCampaignWin || cTime >= latestCampaignWin.createdAt)) {
+                latestCampaignWin = {
+                  campaignName: campTitle,
+                  discountPercent: wonPct,
+                  date: cData.date || '',
+                  createdAt: cTime
+                };
+              }
+            }
+          } catch {}
+        });
+      }
+
+      setDetectedCampaignWin(latestCampaignWin);
+
+      // 3. Auto-Apply Discount Logic
+      if (vipBenefit && latestCampaignWin) {
+        // Both VIP and Lantern Game Win exist -> Default to whichever gives higher discount, and show switcher!
+        if (latestCampaignWin.discountPercent > vipBenefit.discountPercent) {
+          applyVipOrPromoChoice('promo', vipBenefit, latestCampaignWin);
+        } else {
+          applyVipOrPromoChoice('vip', vipBenefit, latestCampaignWin);
+        }
+      } else if (vipBenefit) {
+        applyVipOrPromoChoice('vip', vipBenefit, null);
+      } else if (latestCampaignWin) {
+        applyVipOrPromoChoice('promo', null, latestCampaignWin);
+      }
+    } catch (e) {
+      console.warn('Customer lookup error:', e);
+    } finally {
+      setTimeout(() => setIsSearchingCustomer(false), 300);
+    }
   };
 
   // 🌟 UI/UX Parabolic Jump-to-Bill Animation Trigger 🌟
@@ -2000,11 +2086,23 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       ? 'Discounts Setting'
       : 'Receipt Settings';
 
-  const isStorePromoActive = !!localAppData?.promotion?.isActive;
+  const promoObj = localAppData?.promotion as any;
+  const isStorePromoActive = !!(
+    promoObj?.isPopupActive ||
+    promoObj?.isBoxActive ||
+    promoObj?.isActive ||
+    detectedCampaignWin
+  );
+  const activeStorePromoTitle =
+    detectedCampaignWin?.campaignName ||
+    promoObj?.campaignTitle ||
+    promoObj?.boxTitle ||
+    'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း';
   const activeStorePromoPct =
-    localAppData?.promotion?.otherDiscountPercent ||
-    localAppData?.promotion?.hotelDiscountPercent ||
-    10;
+    detectedCampaignWin?.discountPercent ||
+    promoObj?.otherDiscountPercent ||
+    promoObj?.hotelDiscountPercent ||
+    15;
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
@@ -3757,16 +3855,15 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 STEP 4: CLEAN & STREAMLINED CUSTOMER, DISCOUNT & PAYMENT UI
                ========================================== */}
             {posStep === 4 && (
-              <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in">
-                {/* 1. Customer & Auto VIP Detection */}
+              {/* 1. Customer, VIP Member & Thadingyut Lantern Game Lookup */}
                 <div className="space-y-2.5">
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
-                    <User className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Customer & VIP Member Lookup
+                    <User className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Customer & VIP / Campaign Lookup
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-500 mb-1">
-                        Phone Number (VIP Card / Point စစ်ရန်)
+                        Phone Number (VIP Card / မီးပုံးဖမ်းဂိမ်း စစ်ရန်)
                       </label>
                       <div className="flex gap-1.5">
                         <input
@@ -3774,16 +3871,34 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                           value={customerPhone}
                           onChange={(e) => setCustomerPhone(e.target.value)}
                           onBlur={handleCheckCustomerPhone}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleCheckCustomerPhone();
+                            }
+                          }}
                           placeholder="09xxxxxxxxx"
-                          className="flex-1 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                          className="flex-1 min-w-0 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
                         />
                         {isOnline && (
                           <button
                             type="button"
+                            disabled={isSearchingCustomer || !customerPhone.trim()}
                             onClick={handleCheckCustomerPhone}
-                            className="px-3 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-bold shadow-sm hover:bg-[#1a4a32] transition"
+                            className={`px-3.5 rounded-xl text-xs font-black shadow-sm flex items-center justify-center gap-1.5 transition active:scale-95 ${
+                              isSearchingCustomer
+                                ? 'bg-[#D4AF37] text-[#123524] ring-2 ring-[#123524]/30'
+                                : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] disabled:opacity-50'
+                            }`}
                           >
-                            <Search className="w-3.5 h-3.5" />
+                            {isSearchingCustomer ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                <span className="text-[10px]">ရှာနေသည်...</span>
+                              </>
+                            ) : (
+                              <Search className="w-3.5 h-3.5" />
+                            )}
                           </button>
                         )}
                       </div>
@@ -3796,37 +3911,64 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
                         placeholder="Walk-in Guest"
-                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                        className="w-full min-w-0 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
                       />
                     </div>
                   </div>
 
-                  {/* VIP Member Auto-Detected Banner & Promo vs VIP Switcher */}
-                  {foundCustomerPts !== null && (
-                    <div className="p-2.5 rounded-xl bg-gradient-to-r from-yellow-50 to-amber-50/60 border border-[#D4AF37]/50 space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-1">
+                  {/* Searching Skeleton Pulse Indicator */}
+                  {isSearchingCustomer && (
+                    <div className="p-2.5 rounded-xl bg-yellow-50 border border-[#D4AF37]/50 flex items-center gap-2 text-xs font-bold text-[#123524] animate-pulse">
+                      <RefreshCw className="w-4 h-4 animate-spin text-[#D4AF37]" />
+                      <span>VIP Member စာရင်း နှင့် သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း မှတ်တမ်း စစ်ဆေးနေပါသည်...</span>
+                    </div>
+                  )}
+
+                  {/* VIP Member & Thadingyut Lantern Game Result Banner */}
+                  {!isSearchingCustomer && (foundCustomerPts !== null || detectedCampaignWin) && (
+                    <div className="p-2.5 rounded-xl bg-gradient-to-r from-yellow-50 to-amber-50/60 border border-[#D4AF37]/50 space-y-2 animate-fade-in">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
                         <span className="text-[11px] font-bold text-[#123524] flex items-center">
-                          <Crown className="w-3.5 h-3.5 mr-1 text-[#D4AF37]" />
+                          <Crown className="w-3.5 h-3.5 mr-1 text-[#D4AF37] flex-shrink-0" />
                           {detectedVipBenefit
                             ? `${detectedVipBenefit.tierName} (${detectedVipBenefit.discountPercent}% OFF)`
-                            : 'Registered Member'}
+                            : foundCustomerPts && foundCustomerPts > 0
+                            ? 'Registered Member'
+                            : 'Walk-in / New Phone'}
                         </span>
-                        <span className="text-[10px] font-black bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded-full">
-                          လက်ရှိပွိုင့်: {foundCustomerPts} Pts (+{pointsEarned} Pts တိုးမည်)
-                        </span>
+                        {foundCustomerPts !== null && (
+                          <span className="text-[10px] font-black bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded-full">
+                            လက်ရှိပွိုင့်: {foundCustomerPts} Pts (+{pointsEarned} Pts တိုးမည်)
+                          </span>
+                        )}
                       </div>
 
-                      {/* If BOTH VIP Member Benefit AND Store Promotion are active -> Let user choose! */}
+                      {/* Show Thadingyut Lantern Game Won Badge if found in `campaign_records` */}
+                      {detectedCampaignWin && (
+                        <div className="px-2.5 py-1.5 rounded-lg bg-orange-100/80 border border-orange-300 flex items-center justify-between text-[11px] font-black text-orange-900">
+                          <span className="flex items-center">
+                            <Sparkles className="w-3.5 h-3.5 mr-1 text-orange-600" />
+                            {detectedCampaignWin.campaignName} ပေါက်ထားသည်!
+                          </span>
+                          <span className="bg-orange-600 text-white px-2 py-0.5 rounded text-[10px]">
+                            {detectedCampaignWin.discountPercent}% OFF
+                          </span>
+                        </div>
+                      )}
+
+                      {/* If Customer has VIP Benefit AND (Lantern Game Win OR Active Campaign) -> Let staff choose! */}
                       {detectedVipBenefit && isStorePromoActive && (
                         <div className="pt-1.5 border-t border-[#D4AF37]/30 space-y-1.5">
                           <span className="block text-[10px] font-extrabold text-amber-900">
-                            ★ Promotion ဖွင့်ထားချိန်ဖြစ်ပါသည် — မည်သည့်ခံစားခွင့်ကို အသုံးပြုမည်နည်း?
+                            ★ ခံစားခွင့် (၂) မျိုး ရှိနေပါသည် — မည်သည့်ခံစားခွင့်ကို အသုံးပြုမည်နည်း?
                           </span>
-                          <div className="grid grid-cols-2 gap-1.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                             <button
                               type="button"
-                              onClick={() => applyVipOrPromoChoice('vip', detectedVipBenefit)}
-                              className={`py-1.5 px-2 rounded-lg text-[10px] font-black border transition ${
+                              onClick={() =>
+                                applyVipOrPromoChoice('vip', detectedVipBenefit, detectedCampaignWin)
+                              }
+                              className={`py-2 px-2.5 rounded-lg text-[10px] font-black border transition truncate ${
                                 benefitChoiceMode === 'vip'
                                   ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm'
                                   : 'bg-white text-gray-700 border-gray-200'
@@ -3836,14 +3978,16 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                             </button>
                             <button
                               type="button"
-                              onClick={() => applyVipOrPromoChoice('promo', detectedVipBenefit)}
-                              className={`py-1.5 px-2 rounded-lg text-[10px] font-black border transition ${
+                              onClick={() =>
+                                applyVipOrPromoChoice('promo', detectedVipBenefit, detectedCampaignWin)
+                              }
+                              className={`py-2 px-2.5 rounded-lg text-[10px] font-black border transition truncate ${
                                 benefitChoiceMode === 'promo'
-                                  ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm'
+                                  ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
                                   : 'bg-white text-gray-700 border-gray-200'
                               }`}
                             >
-                              Active Promo ({activeStorePromoPct}% OFF) သုံးမည်
+                              {activeStorePromoTitle} ({activeStorePromoPct}% OFF) သုံးမည်
                             </button>
                           </div>
                         </div>
@@ -3852,26 +3996,27 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                   )}
                 </div>
 
-                {/* 2. Clean Dropdown Discount Selector (Auto-fills % & Reason!) */}
-                <div className="pt-3 border-t border-gray-100 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
-                      <Percent className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Discount / Promotion (လျှော့ဈေး)
+                {/* 2. Clean Dropdown Discount Selector (Strictly Contained Inside Card Width!) */}
+                <div className="pt-3 border-t border-gray-100 space-y-2.5 min-w-0 overflow-hidden">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center truncate">
+                      <Percent className="w-4 h-4 mr-1.5 text-[#D4AF37] flex-shrink-0" /> Discount / Promotion (လျှော့ဈေး)
                     </h3>
                     <button
                       type="button"
                       onClick={() => setActivePosView('discounts')}
-                      className="text-[10px] font-bold text-[#123524] hover:underline flex items-center"
+                      className="text-[10px] font-bold text-[#123524] bg-gray-100 hover:bg-gray-200 px-2.5 py-1 rounded-lg flex items-center flex-shrink-0 whitespace-nowrap transition"
                     >
                       <Settings className="w-3 h-3 mr-1 text-[#D4AF37]" /> Manage Discounts
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  {/* Contained Select Wrapper so it NEVER overflows the card! */}
+                  <div className="w-full min-w-0 overflow-hidden">
                     <select
                       value={selectedDiscountPresetId}
                       onChange={(e) => handleSelectDiscountDropdown(e.target.value)}
-                      className="flex-1 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-[#123524] outline-none focus:border-[#123524]"
+                      className="w-full max-w-full min-w-0 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-[#123524] outline-none focus:border-[#123524] truncate block"
                     >
                       <option value="none">No Discount (လျှော့ဈေး မရှိပါ)</option>
                       {allAvailableDiscounts.map((d) => (
@@ -3885,11 +4030,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
                   {/* Summary pill showing auto-filled Discount & Reason */}
                   {discountValue > 0 && !showCustomDiscountInputs && (
-                    <div className="px-3 py-2 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between text-xs">
-                      <span className="font-bold text-green-800 truncate pr-2">
+                    <div className="px-3 py-2 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between gap-2 text-xs min-w-0 overflow-hidden">
+                      <span className="font-bold text-green-800 truncate min-w-0 flex-1">
                         Reason: {discountReason}
                       </span>
-                      <span className="font-black text-green-700 whitespace-nowrap">
+                      <span className="font-black text-green-700 whitespace-nowrap flex-shrink-0">
                         -{formatPrice(discountAmount)} ({discountType === 'percent' ? `${discountValue}%` : 'Fixed'})
                       </span>
                     </div>
@@ -3937,7 +4082,6 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                     </div>
                   )}
                 </div>
-
                 {/* 3. Clean Payment Method Dropdown + Online Deposit / Balance Due Split */}
                 <div className="pt-3 border-t border-gray-100 space-y-2.5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-end">
