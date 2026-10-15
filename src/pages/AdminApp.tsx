@@ -3164,11 +3164,31 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
     const [searchQuery, setSearchQuery] = useState('');
     const [approvingId, setApprovingId] = useState<string | null>(null);
 
+    // 🌟 Helper: Decrypt ပြီးသား Number သို့မဟုတ် Encrypted String နှစ်မျိုးလုံးကို အမှားမရှိ ဖတ်ယူပေးမည့် Function 🌟
+    const safeParseNumber = (val: any): number => {
+        if (val === undefined || val === null || val === '') return 0;
+        if (typeof val === 'number') return isNaN(val) ? 0 : val;
+        const strVal = String(val).trim();
+        const dec = decryptText(strVal);
+        const parsed = Number(dec || strVal);
+        return isNaN(parsed) ? 0 : parsed;
+    };
+
+    const safeParseText = (val: any): string => {
+        if (!val) return '';
+        if (typeof val !== 'string') return String(val);
+        return decryptText(val) || val;
+    };
+
     const posSales = useMemo(() => {
         return bookings.filter((b: any) => {
-            const rawTx = decryptText(b.txId) || b.txId || '';
+            const rawTx = safeParseText(b.txId);
             const isPosRecord =
-                (b.paymentMethod && (b.paymentMethod.includes('Shop POS') || b.paymentMethod.includes('စရံ:') || b.paymentMethod.includes('Full Paid - Approved'))) ||
+                (b.paymentMethod && (
+                    b.paymentMethod.includes('Shop POS') ||
+                    b.paymentMethod.includes('စရံ:') ||
+                    b.paymentMethod.includes('Full Paid - Approved')
+                )) ||
                 rawTx.startsWith('SL-');
             return isPosRecord;
         });
@@ -3176,47 +3196,66 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
 
     const filteredPosSales = useMemo(() => {
         return posSales.filter((s: any) => {
-            const rawTx = (decryptText(s.txId) || s.txId || '').toLowerCase();
-            const custName = (decryptText(s.name) || s.name || '').toLowerCase();
-            const custPhone = (decryptText(s.phone) || s.phone || '').toLowerCase();
+            const rawTx = safeParseText(s.txId).toLowerCase();
+            const custName = safeParseText(s.name).toLowerCase();
+            const custPhone = safeParseText(s.phone).toLowerCase();
+            const discLabel = safeParseText(s.discountLabel).toLowerCase();
             const q = searchQuery.trim().toLowerCase();
 
-            const matchesSearch = !q || rawTx.includes(q) || custName.includes(q) || custPhone.includes(q) || (s.service || '').toLowerCase().includes(q);
+            const matchesSearch =
+                !q ||
+                rawTx.includes(q) ||
+                custName.includes(q) ||
+                custPhone.includes(q) ||
+                discLabel.includes(q) ||
+                (s.service || '').toLowerCase().includes(q) ||
+                (s.therapist || '').toLowerCase().includes(q);
             if (!matchesSearch) return false;
 
-            const isDepositDue = s.paymentStatus === 'deposit_only' && Number(s.balanceDue) > 0;
+            const isDepositDue = s.paymentStatus === 'deposit_only' && safeParseNumber(s.balanceDue) > 0;
             if (filterStatus === 'deposit_only') return isDepositDue;
             if (filterStatus === 'paid_in_full') return !isDepositDue;
             return true;
         });
     }, [posSales, filterStatus, searchQuery]);
 
-    // စုစုပေါင်း ရောင်းရငွေ၊ လက်ခံရရှိပြီးငွေ နှင့် ကောက်ခံရန်ကျန်ငွေ တွက်ချက်ခြင်း
+    // စုစုပေါင်း ရောင်းရငွေ၊ လျှော့ဈေးပေးခဲ့သည့် ပမာဏ၊ လက်ခံရရှိပြီးငွေ နှင့် ကောက်ခံရန်ကျန်ငွေ တွက်ချက်ခြင်း
     const summaryStats = useMemo(() => {
         let totalSalesAmt = 0;
+        let totalDiscountGivenAmt = 0;
         let totalCollectedAmt = 0;
         let totalPendingBalanceAmt = 0;
         let pendingBalanceCount = 0;
 
         posSales.forEach((s: any) => {
-            const total = Number(s.totalPrice) || 0;
-            const isDepositDue = s.paymentStatus === 'deposit_only' && Number(s.balanceDue) > 0;
-            const due = isDepositDue ? Number(s.balanceDue) || 0 : 0;
-            const paid = isDepositDue ? (Number(s.depositPaid) || Math.max(0, total - due)) : total;
+            const total = safeParseNumber(s.totalPrice);
+            const orig = safeParseNumber(s.originalPrice) || total;
+            const discAmt = orig > total ? orig - total : 0;
+
+            const isDepositDue = s.paymentStatus === 'deposit_only' && safeParseNumber(s.balanceDue) > 0;
+            const due = isDepositDue ? safeParseNumber(s.balanceDue) : 0;
+            const paid = isDepositDue ? (safeParseNumber(s.depositPaid) || Math.max(0, total - due)) : total;
 
             totalSalesAmt += total;
+            totalDiscountGivenAmt += discAmt;
             totalCollectedAmt += paid;
             totalPendingBalanceAmt += due;
             if (isDepositDue) pendingBalanceCount++;
         });
 
-        return { totalSalesAmt, totalCollectedAmt, totalPendingBalanceAmt, pendingBalanceCount };
+        return {
+            totalSalesAmt,
+            totalDiscountGivenAmt,
+            totalCollectedAmt,
+            totalPendingBalanceAmt,
+            pendingBalanceCount
+        };
     }, [posSales]);
 
     // 🌟 Admin Sale List မှ ကျန်ငွေ (Balance Due) ရရှိကြောင်း Approve ပြုလုပ်ပေးမည့် Function 🌟
     const handleApproveBalanceInAdmin = async (sale: any) => {
-        const rawTx = decryptText(sale.txId) || sale.txId || '';
-        const balanceAmt = Number(sale.balanceDue) || 0;
+        const rawTx = safeParseText(sale.txId);
+        const balanceAmt = safeParseNumber(sale.balanceDue);
         if (!window.confirm(`ဘောင်ချာ [${rawTx}] ၏ ကျန်ငွေ (${formatPrice(balanceAmt)}) အား အပြည့်အဝ လက်ခံရရှိပြီးကြောင်း Approve လုပ်မည်မှာ သေချာပါသလား?`)) {
             return;
         }
@@ -3224,13 +3263,13 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         setApprovingId(sale.id);
         try {
             const cleanMethod = (sale.paymentMethod || 'Online Pay').split('(')[0].trim();
-            const prevNote = decryptText(sale.specialRequest) || sale.specialRequest || '';
+            const prevNote = safeParseText(sale.specialRequest);
             const cleanNote = prevNote.split('| [PENDING BALANCE]')[0].trim();
 
             await updateDoc(doc(db, 'bookings', sale.id), {
                 paymentStatus: 'paid_in_full',
                 balanceDue: 0,
-                depositPaid: Number(sale.totalPrice) || 0,
+                depositPaid: safeParseNumber(sale.totalPrice),
                 paymentMethod: `${cleanMethod} (Full Paid - Approved)`,
                 specialRequest: encryptText(`${cleanNote} | [BALANCE APPROVED]: ကျန်ငွေ ${formatPrice(balanceAmt)} အပြည့်အဝ လက်ခံရရှိပြီး`)
             });
@@ -3257,38 +3296,68 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         }
     };
 
+    // 🌟 Booking Report အတိုင်း Original Price, Discount %, Discount Amount, Discount Label အပြည့်အစုံ ပါဝင်သော Excel Export 🌟
     const handleExportPOSExcel = () => {
         const headers = [
-            'Invoice No', 'Date & Time', 'Customer Name', 'Phone',
-            'Service Items', 'Therapist', 'Payment Method',
-            'Payment Status', 'Deposit Paid (Ks)', 'Balance Due (Ks)', 'Total Price (Ks)'
+            'Invoice No',
+            'Date',
+            'Time',
+            'Customer Name',
+            'Phone',
+            'Service Items',
+            'Therapist',
+            'Original Price (Ks)',
+            'Discount Percent (%)',
+            'Discount Amount (Ks)',
+            'Discount Label / Reason',
+            'Net Total Price (Ks)',
+            'Payment Method',
+            'Payment Status',
+            'Deposit Paid (Ks)',
+            'Balance Due (Ks)',
+            'Special Note',
+            'Submitted At'
         ];
+
         const rows = filteredPosSales.map((s: any) => {
-            const isDepositDue = s.paymentStatus === 'deposit_only' && Number(s.balanceDue) > 0;
-            const total = Number(s.totalPrice) || 0;
-            const due = isDepositDue ? Number(s.balanceDue) || 0 : 0;
-            const paid = isDepositDue ? (Number(s.depositPaid) || Math.max(0, total - due)) : total;
+            const total = safeParseNumber(s.totalPrice);
+            const orig = safeParseNumber(s.originalPrice) || total;
+            const discAmt = orig > total ? orig - total : 0;
+            const discPct = safeParseNumber(s.discountPercent) || (orig > 0 && discAmt > 0 ? Math.round((discAmt / orig) * 100) : 0);
+            const discLabel = safeParseText(s.discountLabel).replace('[Shop Walk-in Sale]', '').replace('[Shop Walk-in]', '').trim();
+
+            const isDepositDue = s.paymentStatus === 'deposit_only' && safeParseNumber(s.balanceDue) > 0;
+            const due = isDepositDue ? safeParseNumber(s.balanceDue) : 0;
+            const paid = isDepositDue ? (safeParseNumber(s.depositPaid) || Math.max(0, total - due)) : total;
 
             return [
-                `"${decryptText(s.txId) || s.txId || ''}"`,
-                `"${s.date || ''} ${s.time || ''}"`,
-                `"${decryptText(s.name) || s.name || ''}"`,
-                `"${decryptText(s.phone) || s.phone || ''}"`,
+                `"${safeParseText(s.txId)}"`,
+                `"${s.date || ''}"`,
+                `"${s.time || ''}"`,
+                `"${safeParseText(s.name)}"`,
+                `"${safeParseText(s.phone)}"`,
                 `"${s.service || ''}"`,
                 `"${s.therapist || ''}"`,
+                orig,
+                discPct,
+                discAmt,
+                `"${discLabel || 'No Discount'}"`,
+                total,
                 `"${s.paymentMethod || ''}"`,
                 `"${isDepositDue ? 'Deposit Only (Balance Pending)' : 'Paid in Full'}"`,
                 paid,
                 due,
-                total
+                `"${safeParseText(s.specialRequest)}"`,
+                `"${s.createdAt ? new Date(s.createdAt).toLocaleString() : ''}"`
             ];
         });
+
         const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
-        link.setAttribute('download', `POS_WalkIn_Sales_${getLocalTodayStr()}.csv`);
+        link.setAttribute('download', `POS_WalkIn_Sales_Report_${getLocalTodayStr()}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -3303,7 +3372,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                         <ShoppingBag className="mr-2 text-[#D4AF37]" /> Shop Walk-in POS Sales & Balance Approval
                     </h2>
                     <p className="text-xs text-gray-500 mt-1">
-                        POS မှ ရောင်းချထားသော ဘောင်ချာများ၊ စရံငွေ (Deposit) နှင့် ကောက်ခံရန်ကျန်ငွေ (Balance Due) များကို စစ်ဆေးအတည်ပြုရန်
+                        POS မှ ရောင်းချထားသော ဘောင်ချာများ၊ မူရင်းဈေးနှုန်း၊ လျှော့ဈေး (Discount)၊ စရံငွေ နှင့် ကျန်ငွေများကို အသေးစိတ် စစ်ဆေးရန်
                     </p>
                 </div>
                 <div className="flex items-center space-x-3 w-full sm:w-auto">
@@ -3316,11 +3385,15 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 </div>
             </div>
 
-            {/* Summary Financial Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            {/* Summary Financial Cards (4 Cards including Total Discounts) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">စုစုပေါင်း ရောင်းရငွေ (Total POS Sales)</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">စုစုပေါင်း ရောင်းရငွေ (Net POS Sales)</div>
                     <div className="text-lg font-black text-[#123524] mt-1">{formatPrice(summaryStats.totalSalesAmt)}</div>
+                </div>
+                <div className="p-4 rounded-xl bg-green-50/60 border border-green-200">
+                    <div className="text-[10px] font-bold text-green-700 uppercase tracking-wider">စုစုပေါင်း လျှော့ပေးငွေ (Total Discounts)</div>
+                    <div className="text-lg font-black text-green-700 mt-1">-{formatPrice(summaryStats.totalDiscountGivenAmt)}</div>
                 </div>
                 <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
                     <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">လက်ခံရရှိပြီးငွေ (Collected / Deposit + Full)</div>
@@ -3383,17 +3456,17 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 </div>
             </div>
 
-            {/* POS Sales Table */}
+            {/* POS Sales Table (Matching Booking Report Details!) */}
             <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[900px]">
+                <table className="w-full text-left border-collapse min-w-[950px]">
                     <thead>
                         <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
-                            <th className="p-3 pb-4">Invoice No / Date</th>
                             <th className="p-3 pb-4">Customer</th>
-                            <th className="p-3 pb-4">Services & Discount</th>
-                            <th className="p-3 pb-4">Therapist</th>
+                            <th className="p-3 pb-4">Service & Therapist</th>
+                            <th className="p-3 pb-4">Date & Time</th>
+                            <th className="p-3 pb-4">Invoice, Discount & Total</th>
                             <th className="p-3 pb-4">Payment & Balance Status</th>
-                            <th className="p-3 pb-4 text-right">Total & Action</th>
+                            <th className="p-3 pb-4 text-right">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -3405,96 +3478,179 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                             </tr>
                         )}
                         {filteredPosSales.map((sale: any, idx: number) => {
-                            const rawTx = decryptText(sale.txId) || sale.txId || `SL-${idx}`;
-                            const custName = decryptText(sale.name) || sale.name || 'Walk-in Guest';
-                            const custPhone = decryptText(sale.phone) || sale.phone || '';
-                            const discLabel = sale.discountLabel ? (decryptText(sale.discountLabel) || sale.discountLabel) : '';
-                            const origPrice = sale.originalPrice ? Number(decryptText(sale.originalPrice) || sale.originalPrice) : 0;
+                            const rawTx = safeParseText(sale.txId) || `SL-${idx}`;
+                            const custName = safeParseText(sale.name) || 'Walk-in Guest';
+                            const custPhone = safeParseText(sale.phone) || '';
+                            const specialReq = safeParseText(sale.specialRequest);
 
-                            const isDepositDue = sale.paymentStatus === 'deposit_only' && Number(sale.balanceDue) > 0;
-                            const depositAmt = Number(sale.depositPaid) || 0;
-                            const balanceAmt = Number(sale.balanceDue) || 0;
+                            const totalPrice = safeParseNumber(sale.totalPrice);
+                            const origPrice = safeParseNumber(sale.originalPrice) || totalPrice;
+                            const hasDiscount = origPrice > totalPrice;
+                            const discountAmt = hasDiscount ? origPrice - totalPrice : 0;
+                            const discountPct =
+                                safeParseNumber(sale.discountPercent) ||
+                                (hasDiscount && origPrice > 0 ? Math.round((discountAmt / origPrice) * 100) : 0);
+
+                            const rawDiscLabel = safeParseText(sale.discountLabel);
+                            const cleanDiscLabel = rawDiscLabel
+                                .replace('[Shop Walk-in Sale]', '')
+                                .replace('[Shop Walk-in]', '')
+                                .trim();
+
+                            const isVipDiscount =
+                                cleanDiscLabel.toLowerCase().includes('vip') ||
+                                cleanDiscLabel.toLowerCase().includes('jade') ||
+                                cleanDiscLabel.toLowerCase().includes('gold') ||
+                                cleanDiscLabel.toLowerCase().includes('imperial') ||
+                                !!sale.vipTierName;
+
+                            const isDepositDue = sale.paymentStatus === 'deposit_only' && safeParseNumber(sale.balanceDue) > 0;
+                            const depositAmt = safeParseNumber(sale.depositPaid);
+                            const balanceAmt = safeParseNumber(sale.balanceDue);
 
                             return (
                                 <tr
                                     key={sale.id || idx}
                                     className={`border-b transition text-sm ${
-                                        isDepositDue ? 'bg-amber-50/40 border-amber-200 hover:bg-amber-50/70' : 'border-gray-50 hover:bg-gray-50'
+                                        isDepositDue
+                                            ? 'bg-amber-50/40 border-amber-200 hover:bg-amber-50/70'
+                                            : 'border-gray-50 hover:bg-gray-50'
                                     }`}
                                 >
+                                    {/* 1. Customer & VIP / Promo Badge (Same as Booking Report) */}
                                     <td className="p-3">
-                                        <div className="font-mono font-black text-[#123524]">{rawTx}</div>
-                                        <div className="text-[10px] text-gray-500 font-semibold mt-0.5">{sale.date} {sale.time}</div>
+                                        <div className="font-bold text-gray-800 text-sm">{custName}</div>
+                                        <div className="text-xs text-gray-500 font-mono">{custPhone && custPhone !== 'Walk-in' ? custPhone : '-'}</div>
+                                        {sale.vipTierName || (hasDiscount && isVipDiscount) ? (
+                                            <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-2xs">
+                                                <Crown className="w-3 h-3 mr-1 text-yellow-600" />
+                                                {sale.vipTierName || cleanDiscLabel.replace(/ \(\d+\%.*?\)/, '') || 'VIP Member'}
+                                            </div>
+                                        ) : hasDiscount ? (
+                                            <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-2xs">
+                                                <Sparkles className="w-3 h-3 mr-1 text-green-600" />
+                                                Promo / Discount Applied
+                                            </div>
+                                        ) : null}
                                     </td>
-                                    <td className="p-3">
-                                        <div className="font-bold text-gray-800">{custName}</div>
-                                        {custPhone && custPhone !== 'Walk-in' && (
-                                            <div className="text-xs text-gray-500 font-mono">{custPhone}</div>
-                                        )}
-                                    </td>
+
+                                    {/* 2. Service, Therapist & Note */}
                                     <td className="p-3 max-w-xs">
-                                        <div className="font-semibold text-gray-800 text-xs leading-snug">{sale.service}</div>
-                                        {discLabel && discLabel !== '[Shop Walk-in Sale]' && (
-                                            <div className="text-[10px] text-green-700 font-bold mt-1 bg-green-50 px-2 py-0.5 rounded border border-green-200 w-fit">
-                                                {discLabel}
+                                        <div className="font-bold text-sm text-gray-800 leading-snug">{sale.service || '-'}</div>
+                                        <div className="text-xs text-gray-500 mt-1 flex items-center font-semibold">
+                                            <User className="w-3 h-3 mr-1 text-[#D4AF37]" />
+                                            {sale.therapist || '-'}
+                                        </div>
+                                        {specialReq && specialReq !== 'Shop Walk-in POS Sale' && (
+                                            <div className="text-[11px] text-red-500 mt-1 italic leading-snug">
+                                                {specialReq}
                                             </div>
                                         )}
                                     </td>
-                                    <td className="p-3 text-gray-700 font-bold text-xs">{sale.therapist}</td>
+
+                                    {/* 3. Date, Time & Submitted At */}
+                                    <td className="p-3 text-sm text-gray-700">
+                                        <div className="font-semibold text-[#123524]">{sale.date || '-'}</div>
+                                        <div className="text-gray-600 text-xs mt-0.5 mb-1.5">{sale.time || '-'}</div>
+                                        {sale.createdAt && (
+                                            <div className="text-[9px] font-bold text-gray-400 flex flex-col gap-0.5 border-t border-gray-100 pt-1.5 mt-1 w-max">
+                                                <span className="uppercase text-[8px] tracking-wider text-blue-400">POS Billed At:</span>
+                                                <span>
+                                                    {new Date(sale.createdAt).toLocaleString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </td>
+
+                                    {/* 4. 🌟 Invoice No, Original Price, Discount %, Discount Label & Net Total (Booking Report Style!) 🌟 */}
                                     <td className="p-3">
-                                        <div className="text-[10px] font-bold text-gray-700 mb-1">
-                                            {(sale.paymentMethod || '').split('(')[0].trim()}
+                                        <div className="font-mono font-black text-gray-800 text-sm">{rawTx}</div>
+                                        <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-0.5">
+                                            {sale.paymentMethod || 'Cash (Shop POS)'}
                                         </div>
+
+                                        {hasDiscount ? (
+                                            <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg w-max space-y-0.5 shadow-2xs">
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-[11px] text-gray-400 line-through font-semibold">
+                                                        {formatPrice(origPrice)}
+                                                    </span>
+                                                    <span className="text-[9px] font-black text-red-600 bg-red-100 border border-red-200 px-1.5 py-0.5 rounded">
+                                                        -{discountPct}% (-{formatPrice(discountAmt)})
+                                                    </span>
+                                                </div>
+                                                <div className="font-black text-[#123524] text-sm pt-0.5">
+                                                    {formatPrice(totalPrice)}
+                                                </div>
+                                                {cleanDiscLabel && (
+                                                    <div className="text-[9px] text-green-800 font-bold uppercase tracking-wider pt-0.5">
+                                                        {cleanDiscLabel}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="mt-1.5">
+                                                <div className="font-black text-[#123524] text-base">
+                                                    {formatPrice(totalPrice)}
+                                                </div>
+                                                <div className="text-[9px] text-gray-400 font-semibold">Regular Price (No Discount)</div>
+                                            </div>
+                                        )}
+                                    </td>
+
+                                    {/* 5. Payment & Deposit / Balance Due Status */}
+                                    <td className="p-3">
                                         {isDepositDue ? (
-                                            <div className="p-2 rounded-lg bg-white border border-amber-300 shadow-2xs space-y-0.5 w-max">
+                                            <div className="p-2.5 rounded-xl bg-white border border-amber-300 shadow-2xs space-y-1 w-max">
                                                 <div className="text-[10px] font-bold text-amber-800">
                                                     စရံငွေ (Deposit): <span className="font-black">{formatPrice(depositAmt)}</span>
                                                 </div>
                                                 <div className="text-[11px] font-black text-red-600 flex items-center">
-                                                    <AlertCircle className="w-3 h-3 mr-1" />
+                                                    <AlertCircle className="w-3.5 h-3.5 mr-1" />
                                                     ကျန်ငွေ (Due): {formatPrice(balanceAmt)}
                                                 </div>
-                                            </div>
-                                        ) : (
-                                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center">
-                                                <CheckCircle className="w-3 h-3 mr-1" /> Paid in Full
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="p-3 text-right">
-                                        {origPrice > sale.totalPrice && (
-                                            <div className="text-[10px] text-gray-400 line-through">
-                                                {formatPrice(origPrice)}
-                                            </div>
-                                        )}
-                                        <div className="font-black text-base text-[#123524]">
-                                            {formatPrice(sale.totalPrice)}
-                                        </div>
-
-                                        <div className="mt-2 flex items-center justify-end gap-1.5">
-                                            {isDepositDue && (
                                                 <button
                                                     type="button"
                                                     disabled={approvingId === sale.id}
                                                     onClick={() => handleApproveBalanceInAdmin(sale)}
-                                                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-black flex items-center shadow-sm transition disabled:opacity-50"
+                                                    className="w-full mt-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-black flex items-center justify-center shadow-sm transition disabled:opacity-50"
                                                 >
                                                     <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                                                    {approvingId === sale.id ? 'Approving...' : 'ကျန်ငွေ Approve'}
+                                                    {approvingId === sale.id ? 'Approving...' : 'ကျန်ငွေ Approve လုပ်မည်'}
                                                 </button>
-                                            )}
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-1">
+                                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center">
+                                                    <CheckCircle className="w-3 h-3 mr-1" /> Paid in Full
+                                                </span>
+                                                <div className="text-[10px] font-bold text-gray-500 pl-1">
+                                                    Received: {formatPrice(totalPrice)}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </td>
 
-                                            {adminRole === 'super_admin' && sale.id && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDeleteSale(sale.id, rawTx)}
-                                                    title="Delete POS Record"
-                                                    className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            )}
-                                        </div>
+                                    {/* 6. Delete Action */}
+                                    <td className="p-3 text-right">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteSale(sale.id, rawTx)}
+                                            disabled={adminRole !== 'super_admin'}
+                                            title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete POS Record'}
+                                            className={`p-2 rounded-lg transition ${
+                                                adminRole === 'super_admin'
+                                                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                                    : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
                                     </td>
                                 </tr>
                             );
