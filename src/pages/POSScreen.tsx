@@ -3855,7 +3855,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 STEP 4: CLEAN & STREAMLINED CUSTOMER, DISCOUNT & PAYMENT UI
                ========================================== */}
             {posStep === 4 && (
-              {/* 1. Customer, VIP Member & Thadingyut Lantern Game Lookup */}
+              <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4 animate-fade-in min-w-0 overflow-hidden">
+                {/* 1. Customer, VIP Member & Thadingyut Lantern Game Lookup */}
                 <div className="space-y-2.5">
                   <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#123524] flex items-center">
                     <User className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> Customer & VIP / Campaign Lookup
