@@ -110,15 +110,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
 
-  // Logo fallback
-  const defaultLogoUrl = useMemo(() => {
-    try {
-      return new URL('../THE SHANGRI LA - LOGO.png', import.meta.url).href;
-    } catch {
-      return '';
-    }
-  }, []);
-  const activeLogoUrl = appData?.branding?.logoUrl || defaultLogoUrl;
+  const activeLogoUrl = appData?.branding?.logoUrl || '';
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -420,7 +412,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-[120] bg-[#0B2419] text-white flex flex-col justify-between border-r border-[#C8A951]/25 shadow-2xl transition-all duration-300 ease-in-out ${
           isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'
-        } ${isDesktopSidebarCollapsed ? 'lg:w-20' : 'lg:w-68'}`}
+        } ${isDesktopSidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}`}
       >
         {/* 1. Brand Header inside Sidebar */}
         <div className="h-16 px-4 bg-gradient-to-r from-[#123524] to-[#0B2419] border-b border-[#C8A951]/25 flex items-center justify-between flex-shrink-0">
