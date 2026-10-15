@@ -239,7 +239,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   const pendingBookings = useMemo(() => bookings.filter(b => b.status !== 'in_progress' && b.status !== 'completed'), [bookings]);
   const historyBookings = useMemo(() => bookings.filter(b => b.status === 'in_progress' || b.status === 'completed'), [bookings]);
   const posUnpaidBalanceCount = useMemo(() => {
-    return bookings.filter((b: any) => b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0).length;
+    return bookings.filter((b: any) => b.status !== 'cancelled' && b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0).length;
   }, [bookings]);
 
   const handleForceRefreshApp = async () => {
@@ -3920,11 +3920,17 @@ function AdminCampaignsView() {
 }
 
 function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
-    const [filterStatus, setFilterStatus] = useState<'all' | 'deposit_only' | 'paid_in_full'>('all');
+    const [filterStatus, setFilterStatus] = useState<'all' | 'deposit_only' | 'paid_in_full' | 'cancelled'>('all');
     const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'custom'>('all');
     const [customDate, setCustomDate] = useState<string>(getLocalTodayStr());
     const [searchQuery, setSearchQuery] = useState('');
     const [approvingId, setApprovingId] = useState<string | null>(null);
+
+    // 🌟 View Receipt Modal & Cancel Receipt Modal States 🌟
+    const [viewingSale, setViewingSale] = useState<any | null>(null);
+    const [cancellingSale, setCancellingSale] = useState<any | null>(null);
+    const [cancelReasonInput, setCancelReasonInput] = useState<string>('');
+    const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
 
     const getYesterdayStr = () => {
         const d = new Date();
@@ -3950,7 +3956,6 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         return formatted;
     };
 
-    // 🌟 Helper: Decrypt ပြီးသား Number သို့မဟုတ် Encrypted String နှစ်မျိုးလုံးကို အမှားမရှိ ဖတ်ယူပေးမည့် Function 🌟
     const safeParseNumber = (val: any): number => {
         if (val === undefined || val === null || val === '') return 0;
         if (typeof val === 'number') return isNaN(val) ? 0 : val;
@@ -3980,7 +3985,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         });
     }, [bookings]);
 
-    // 🌟 1. ရက်စွဲ (Date Filter) နှင့် Search Query အရင်စစ်ထုတ်ခြင်း 🌟
+    // 🌟 1. ရက်စွဲ (Date Filter) နှင့် Search Query စစ်ထုတ်ခြင်း 🌟
     const dateAndSearchFilteredSales = useMemo(() => {
         const today = getLocalTodayStr();
         const yesterday = getYesterdayStr();
@@ -3997,11 +4002,13 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 const custName = safeParseText(s.name).toLowerCase();
                 const custPhone = safeParseText(s.phone).toLowerCase();
                 const discLabel = safeParseText(s.discountLabel).toLowerCase();
+                const cancelReason = safeParseText(s.cancelReason).toLowerCase();
                 const matchesSearch =
                     rawTx.includes(q) ||
                     custName.includes(q) ||
                     custPhone.includes(q) ||
                     discLabel.includes(q) ||
+                    cancelReason.includes(q) ||
                     (s.service || '').toLowerCase().includes(q) ||
                     (s.therapist || '').toLowerCase().includes(q);
                 if (!matchesSearch) return false;
@@ -4010,25 +4017,39 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         });
     }, [posSales, dateFilterMode, customDate, searchQuery]);
 
-    // 🌟 2. Payment Status Filter (အားလုံး / ကျန်ငွေရရန်ကျန် / အပြည့်ချေပြီး) ထပ်စစ်ခြင်း 🌟
+    // 🌟 2. Payment / Cancelled Status Filter ထပ်စစ်ခြင်း 🌟
     const filteredPosSales = useMemo(() => {
         return dateAndSearchFilteredSales.filter((s: any) => {
-            const isDepositDue = s.paymentStatus === 'deposit_only' && safeParseNumber(s.balanceDue) > 0;
-            if (filterStatus === 'deposit_only') return isDepositDue;
-            if (filterStatus === 'paid_in_full') return !isDepositDue;
-            return true;
+            const isCancelled = s.status === 'cancelled';
+            if (filterStatus === 'cancelled') return isCancelled;
+
+            // ကျန်ငွေရရန်ကျန် နှင့် အပြည့်ချေပြီး Filter များတွင် Cancelled ဖြစ်ပြီးသားများကို မပြပါ
+            if (filterStatus === 'deposit_only') {
+                return !isCancelled && s.paymentStatus === 'deposit_only' && safeParseNumber(s.balanceDue) > 0;
+            }
+            if (filterStatus === 'paid_in_full') {
+                return !isCancelled && !(s.paymentStatus === 'deposit_only' && safeParseNumber(s.balanceDue) > 0);
+            }
+            return true; // 'all' တွင် Active ရော Cancelled Record ပါ အားလုံးပြပေးမည်
         });
     }, [dateAndSearchFilteredSales, filterStatus]);
 
-    // 🌟 3. ရွေးချယ်ထားသော ရက်စွဲအလိုက် Summary Cards (4 Cards) တွက်ချက်ခြင်း 🌟
+    // 🌟 3. Summary Cards (4 Cards) တွက်ချက်ခြင်း (Cancelled ဘောင်ချာများကို အရောင်းစာရင်းမှ အလိုအလျောက် နှုတ်ထားပါသည်!) 🌟
     const summaryStats = useMemo(() => {
         let totalSalesAmt = 0;
         let totalDiscountGivenAmt = 0;
         let totalCollectedAmt = 0;
         let totalPendingBalanceAmt = 0;
         let pendingBalanceCount = 0;
+        let activeBillsCount = 0;
+        let cancelledBillsCount = 0;
 
         dateAndSearchFilteredSales.forEach((s: any) => {
+            if (s.status === 'cancelled') {
+                cancelledBillsCount++;
+                return; // Cancelled ဘောင်ချာများကို ငွေစာရင်းပေါင်းချုပ်ထဲ လုံးဝမထည့်ပါ
+            }
+            activeBillsCount++;
             const total = safeParseNumber(s.totalPrice);
             const orig = safeParseNumber(s.originalPrice) || total;
             const discAmt = orig > total ? orig - total : 0;
@@ -4049,11 +4070,13 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
             totalDiscountGivenAmt,
             totalCollectedAmt,
             totalPendingBalanceAmt,
-            pendingBalanceCount
+            pendingBalanceCount,
+            activeBillsCount,
+            cancelledBillsCount
         };
     }, [dateAndSearchFilteredSales]);
 
-    // 🌟 4. POS App အတိုင်း ရက်စွဲတစ်ရက်ချင်းစီအလိုက် အုပ်စုဖွဲ့ပြီး Daily Total တွက်ချက်ခြင်း 🌟
+    // 🌟 4. ရက်စွဲတစ်ရက်ချင်းစီအလိုက် အုပ်စုဖွဲ့ပြီး Daily Total တွက်ချက်ခြင်း (Cancelled များကို နှုတ်ပြီး တွက်သည်) 🌟
     const groupedSalesByDate = useMemo(() => {
         const today = getLocalTodayStr();
         const groupsMap = new Map<
@@ -4061,6 +4084,8 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
             {
                 date: string;
                 sales: any[];
+                activeCount: number;
+                cancelledCount: number;
                 dailyTotalAmount: number;
                 dailyDiscountAmount: number;
                 dailyCashTotal: number;
@@ -4075,6 +4100,8 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 groupsMap.set(dKey, {
                     date: dKey,
                     sales: [],
+                    activeCount: 0,
+                    cancelledCount: 0,
                     dailyTotalAmount: 0,
                     dailyDiscountAmount: 0,
                     dailyCashTotal: 0,
@@ -4085,6 +4112,12 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
             const grp = groupsMap.get(dKey)!;
             grp.sales.push(sale);
 
+            if (sale.status === 'cancelled') {
+                grp.cancelledCount += 1;
+                return; // Cancelled ဘောင်ချာကို Daily Total ထဲ မပေါင်းပါ
+            }
+
+            grp.activeCount += 1;
             const total = safeParseNumber(sale.totalPrice);
             const orig = safeParseNumber(sale.originalPrice) || total;
             const discAmt = orig > total ? orig - total : 0;
@@ -4107,7 +4140,6 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         return Array.from(groupsMap.values()).sort((a, b) => b.date.localeCompare(a.date));
     }, [filteredPosSales]);
 
-    // 🌟 Admin Sale List မှ ကျန်ငွေ (Balance Due) ရရှိကြောင်း Approve ပြုလုပ်ပေးမည့် Function 🌟
     const handleApproveBalanceInAdmin = async (sale: any) => {
         const rawTx = safeParseText(sale.txId);
         const balanceAmt = safeParseNumber(sale.balanceDue);
@@ -4138,22 +4170,41 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         }
     };
 
-    const handleDeleteSale = async (id: string, invoiceNo: string) => {
-        if (adminRole !== 'super_admin') {
-            alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။');
+    // 🌟 Cancel Receipt Function (Shop POS မှ ဖျက်ပေးပြီး Admin တွင် Cancel Reason မှတ်တမ်းကျန်စေကာ အရောင်းစာရင်းမှ နှုတ်ပေးမည်) 🌟
+    const handleConfirmCancelReceipt = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!cancellingSale) return;
+        const reason = cancelReasonInput.trim();
+        if (!reason) {
+            alert('ကျေးဇူးပြု၍ ဘောင်ချာ ပယ်ဖျက်ရသည့် အကြောင်းရင်း (Cancel Reason) ရေးပေးပါ။');
             return;
         }
-        if (!window.confirm(`POS ဘောင်ချာ [${invoiceNo}] ကို အပြီးတိုင် ဖျက်မည်မှာ သေချာပါသလား?`)) return;
+
+        setIsSubmittingCancel(true);
         try {
-            await deleteDoc(doc(db, 'bookings', id));
+            const rawTx = safeParseText(cancellingSale.txId);
+            await updateDoc(doc(db, 'bookings', cancellingSale.id), {
+                status: 'cancelled',
+                cancelReason: reason,
+                cancelledAt: Date.now()
+            });
+
+            alert(`✅ ဘောင်ချာ [${rawTx}] အား ပယ်ဖျက်ပြီး မှတ်တမ်းတင်လိုက်ပါပြီ။\nShop POS မှ အလိုအလျောက် ပျက်သွားပြီး အရောင်းစာရင်းချုပ်မှ နှုတ်ပေးထားပါသည်။`);
+            setCancellingSale(null);
+            setCancelReasonInput('');
         } catch (err) {
-            alert('Error deleting POS sale.');
+            console.error('Cancel receipt error:', err);
+            alert('ဘောင်ချာ ပယ်ဖျက်ရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+        } finally {
+            setIsSubmittingCancel(false);
         }
     };
 
     const handleExportPOSExcel = () => {
         const headers = [
             'Invoice No',
+            'Receipt Status',
+            'Cancel Reason',
             'Date',
             'Time',
             'Customer Name',
@@ -4174,18 +4225,21 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         ];
 
         const rows = filteredPosSales.map((s: any) => {
+            const isCancelled = s.status === 'cancelled';
             const total = safeParseNumber(s.totalPrice);
             const orig = safeParseNumber(s.originalPrice) || total;
             const discAmt = orig > total ? orig - total : 0;
             const discPct = safeParseNumber(s.discountPercent) || (orig > 0 && discAmt > 0 ? Math.round((discAmt / orig) * 100) : 0);
             const discLabel = safeParseText(s.discountLabel).replace('[Shop Walk-in Sale]', '').replace('[Shop Walk-in]', '').trim();
 
-            const isDepositDue = s.paymentStatus === 'deposit_only' && safeParseNumber(s.balanceDue) > 0;
+            const isDepositDue = !isCancelled && s.paymentStatus === 'deposit_only' && safeParseNumber(s.balanceDue) > 0;
             const due = isDepositDue ? safeParseNumber(s.balanceDue) : 0;
-            const paid = isDepositDue ? (safeParseNumber(s.depositPaid) || Math.max(0, total - due)) : total;
+            const paid = isCancelled ? 0 : isDepositDue ? (safeParseNumber(s.depositPaid) || Math.max(0, total - due)) : total;
 
             return [
                 `"${safeParseText(s.txId)}"`,
+                `"${isCancelled ? 'CANCELLED' : 'VALID'}"`,
+                `"${isCancelled ? safeParseText(s.cancelReason) : ''}"`,
                 `"${s.date || ''}"`,
                 `"${s.time || ''}"`,
                 `"${safeParseText(s.name)}"`,
@@ -4196,9 +4250,9 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 discPct,
                 discAmt,
                 `"${discLabel || 'No Discount'}"`,
-                total,
+                isCancelled ? 0 : total,
                 `"${s.paymentMethod || ''}"`,
-                `"${isDepositDue ? 'Deposit Only (Balance Pending)' : 'Paid in Full'}"`,
+                `"${isCancelled ? 'Cancelled' : isDepositDue ? 'Deposit Only (Balance Pending)' : 'Paid in Full'}"`,
                 paid,
                 due,
                 `"${safeParseText(s.specialRequest)}"`,
@@ -4220,6 +4274,248 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in space-y-6">
+            {/* ==========================================
+                MODAL 1: VIEW RECEIPT DETAILS (ဘောင်ချာ အသေးစိတ် ကြည့်ရန်)
+               ========================================== */}
+            {viewingSale && (() => {
+                const rawTx = safeParseText(viewingSale.txId);
+                const custName = safeParseText(viewingSale.name) || 'Walk-in Guest';
+                const custPhone = safeParseText(viewingSale.phone) || '-';
+                const totalPrice = safeParseNumber(viewingSale.totalPrice);
+                const origPrice = safeParseNumber(viewingSale.originalPrice) || totalPrice;
+                const discAmt = origPrice > totalPrice ? origPrice - totalPrice : 0;
+                const cleanDiscLabel = safeParseText(viewingSale.discountLabel)
+                    .replace('[Shop Walk-in Sale]', '')
+                    .replace('[Shop Walk-in]', '')
+                    .trim();
+                const isCancelled = viewingSale.status === 'cancelled';
+                const isDepDue = !isCancelled && viewingSale.paymentStatus === 'deposit_only' && safeParseNumber(viewingSale.balanceDue) > 0;
+                const depAmt = safeParseNumber(viewingSale.depositPaid);
+                const balAmt = safeParseNumber(viewingSale.balanceDue);
+                const serviceList = String(viewingSale.service || '').split(',').map(s => s.trim()).filter(Boolean);
+
+                return (
+                    <div className="fixed inset-0 z-[250] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+                        <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-[#D4AF37]/40 my-auto animate-fade-in space-y-4">
+                            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                                <h3 className="text-sm font-black text-[#123524] flex items-center">
+                                    <ClipboardList className="w-4 h-4 mr-1.5 text-[#D4AF37]" />
+                                    POS Receipt Details (ဘောင်ချာအသေးစိတ်)
+                                </h3>
+                                <button onClick={() => setViewingSale(null)} className="p-1 rounded-full bg-gray-100 text-gray-500 hover:text-red-600">
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Thermal Receipt Visual Card */}
+                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 font-mono text-xs space-y-3 relative overflow-hidden">
+                                {isCancelled && (
+                                    <div className="bg-red-600 text-white text-center py-1.5 px-3 rounded-lg font-sans font-black text-xs uppercase tracking-widest shadow-sm">
+                                        🚫 CANCELLED RECEIPT (ပယ်ဖျက်ထားသည်)
+                                    </div>
+                                )}
+
+                                <div className="text-center border-b border-dashed border-gray-300 pb-2.5">
+                                    <div className="font-serif font-black text-sm text-[#123524]">THE SHANGRI-LA</div>
+                                    <div className="text-[9px] text-gray-500 uppercase tracking-widest">MEN'S RETREAT • POS RECEIPT</div>
+                                </div>
+
+                                <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2.5">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Invoice No:</span>
+                                        <span className="font-black text-[#123524]">{rawTx}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Date & Time:</span>
+                                        <span className="font-bold">{viewingSale.date} {viewingSale.time}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Customer:</span>
+                                        <span className="font-bold text-right">{custName} ({custPhone})</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Therapist:</span>
+                                        <span className="font-bold text-[#123524] text-right">{viewingSale.therapist || '-'}</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1.5 border-b border-dashed border-gray-300 pb-2.5">
+                                    <div className="text-[10px] font-bold text-gray-400 uppercase">Services & Sale Items:</div>
+                                    {serviceList.map((svc, i) => (
+                                        <div key={i} className="text-[11px] font-bold text-gray-800 pl-1">
+                                            {i + 1}. {svc}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="space-y-1 text-xs">
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-gray-500">Subtotal (မူရင်းကျသင့်ငွေ):</span>
+                                        <span className="font-bold">{formatPrice(origPrice)}</span>
+                                    </div>
+                                    {discAmt > 0 && (
+                                        <div className="flex justify-between text-[11px] text-green-700 font-bold">
+                                            <span>Discount ({cleanDiscLabel || 'Promo'}):</span>
+                                            <span>-{formatPrice(discAmt)}</span>
+                                        </div>
+                                    )}
+                                    <div className={`flex justify-between text-sm font-black py-1.5 border-t border-dashed border-gray-300 ${isCancelled ? 'line-through text-gray-400' : 'text-[#123524]'}`}>
+                                        <span>NET TOTAL:</span>
+                                        <span>{formatPrice(totalPrice)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-gray-500">Payment Method:</span>
+                                        <span className="font-bold">{viewingSale.paymentMethod || 'Cash'}</span>
+                                    </div>
+                                    {isDepDue && (
+                                        <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 mt-1 space-y-0.5 font-sans">
+                                            <div className="flex justify-between text-[10px] font-bold text-amber-900">
+                                                <span>စရံပေးချေပြီး:</span>
+                                                <span>{formatPrice(depAmt)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-[11px] font-black text-red-600">
+                                                <span>ကျန်ငွေ (Balance Due):</span>
+                                                <span>{formatPrice(balAmt)}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {isCancelled && viewingSale.cancelReason && (
+                                    <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 font-sans text-xs space-y-1">
+                                        <div className="text-[10px] font-black text-red-700 uppercase">ပယ်ဖျက်ရသည့် အကြောင်းရင်း (Cancel Reason):</div>
+                                        <div className="font-bold text-red-900">{safeParseText(viewingSale.cancelReason)}</div>
+                                        {(viewingSale as any).cancelledAt && (
+                                            <div className="text-[9px] text-red-500 font-semibold">
+                                                Cancelled At: {new Date((viewingSale as any).cancelledAt).toLocaleString()}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex gap-2">
+                                {!isCancelled && adminRole === 'super_admin' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setCancellingSale(viewingSale);
+                                            setViewingSale(null);
+                                        }}
+                                        className="flex-1 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl font-black text-xs transition"
+                                    >
+                                        🚫 Cancel Receipt
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setViewingSale(null)}
+                                    className="flex-1 py-2.5 bg-[#123524] text-[#D4AF37] rounded-xl font-black text-xs transition"
+                                >
+                                    ပိတ်မည် (Close)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* ==========================================
+                MODAL 2: CANCEL RECEIPT WITH REASON (ဘောင်ချာပယ်ဖျက်ရန် နှင့် အကြောင်းပြချက်မှတ်တမ်းတင်ရန်)
+               ========================================== */}
+            {cancellingSale && (
+                <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+                    <form
+                        onSubmit={handleConfirmCancelReceipt}
+                        className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-red-200 space-y-4 animate-fade-in"
+                    >
+                        <div className="flex justify-between items-start border-b border-gray-100 pb-3">
+                            <div>
+                                <h3 className="text-base font-black text-red-600 flex items-center">
+                                    <AlertCircle className="w-5 h-5 mr-1.5" />
+                                    Cancel POS Receipt (ဘောင်ချာ ပယ်ဖျက်ရန်)
+                                </h3>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    Invoice: <strong className="font-mono text-gray-800">{safeParseText(cancellingSale.txId)}</strong> • ပမာဏ:{' '}
+                                    <strong className="text-[#123524]">{formatPrice(safeParseNumber(cancellingSale.totalPrice))}</strong>
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setCancellingSale(null);
+                                    setCancelReasonInput('');
+                                }}
+                                className="text-gray-400 hover:text-gray-700"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-[11px] text-amber-900 font-semibold leading-relaxed">
+                            ⚠️ <strong>Cancel Receipt</strong> ပြုလုပ်လိုက်ပါက—
+                            <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                                <li>ဆိုင်ရှိ <strong>Shop POS (Receipts History)</strong> ထဲမှ ဤဘောင်ချာ အလိုအလျောက် ပျက်သွားပါမည်။</li>
+                                <li>အရောင်းစာရင်းချုပ် (Daily Total & Sale Summary) မှ ချက်ချင်း နှုတ်ပေးသွားပါမည်။</li>
+                                <li>Admin တွင်မူ မည်သည့်အကြောင်းကြောင့် ပယ်ဖျက်ခဲ့သည်ဆိုသော <strong>Cancelled Record</strong> အဖြစ် ကျန်ရှိနေပါမည်။</li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-extrabold text-gray-700 mb-1.5">
+                                ဘောင်ချာ ပယ်ဖျက်ရသည့် အကြောင်းရင်း (Cancel Reason) *
+                            </label>
+                            <textarea
+                                required
+                                rows={3}
+                                value={cancelReasonInput}
+                                onChange={(e) => setCancelReasonInput(e.target.value)}
+                                placeholder="ဥပမာ - ဘောင်ချာ ၂ ခါ မှားရိုက်မိသောကြောင့် / ဝန်ဆောင်မှု ပြန်လည်ပယ်ဖျက်သောကြောင့်..."
+                                className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-red-500"
+                            />
+                            {/* Quick Reason Chips */}
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                                {[
+                                    'ဘောင်ချာ ၂ စောင် ထပ်နေသောကြောင့် (Duplicate)',
+                                    'စမ်းသပ်ရိုက်ထားသော ဘောင်ချာ (Test Bill)',
+                                    'ဈေးနှုန်း/Service မှားရိုက်မိ၍ အသစ်ပြန်ရိုက်',
+                                    'Customer မှ ပြန်လည်ပယ်ဖျက် (Customer Cancelled)'
+                                ].map((preset, i) => (
+                                    <button
+                                        key={i}
+                                        type="button"
+                                        onClick={() => setCancelReasonInput(preset)}
+                                        className="text-[10px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-lg transition"
+                                    >
+                                        + {preset}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2.5 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setCancellingSale(null);
+                                    setCancelReasonInput('');
+                                }}
+                                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs transition"
+                            >
+                                မလုပ်တော့ပါ
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSubmittingCancel || !cancelReasonInput.trim()}
+                                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs shadow-md transition disabled:opacity-50"
+                            >
+                                {isSubmittingCancel ? 'Cancelling...' : '🚫 Confirm Cancel Receipt'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
             {/* 1. Title & Export Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-4 gap-4">
                 <div>
@@ -4227,7 +4523,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                         <ShoppingBag className="mr-2 text-[#D4AF37]" /> Shop Walk-in POS Sales & Balance Approval
                     </h2>
                     <p className="text-xs text-gray-500 mt-1">
-                        ရက်စွဲအလိုက် POS ဘောင်ချာများ၊ တစ်ရက်စာ ရောင်းရငွေချုပ် (Daily Total)၊ လျှော့ဈေး၊ စရံငွေ နှင့် ကျန်ငွေများကို စစ်ဆေးရန်
+                        ရက်စွဲအလိုက် POS ဘောင်ချာများ၊ တစ်ရက်စာ ရောင်းရငွေချုပ် (Daily Total)၊ ဘောင်ချာအသေးစိတ် နှင့် ပယ်ဖျက်မှတ်တမ်းများ စစ်ဆေးရန်
                     </p>
                 </div>
                 <div className="flex items-center space-x-3 w-full sm:w-auto">
@@ -4235,12 +4531,12 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                         <Download className="w-4 h-4 mr-1.5" /> Export Excel
                     </button>
                     <span className="bg-yellow-100 text-yellow-800 px-4 py-2 rounded-lg text-xs font-black border border-yellow-200">
-                        Total Bills: {filteredPosSales.length}
+                        Valid Bills: {summaryStats.activeBillsCount}
                     </span>
                 </div>
             </div>
 
-            {/* 2. Summary Financial Cards (4 Cards - Dynamically updates with Date Filter!) */}
+            {/* 2. Summary Financial Cards (4 Cards - Excludes Cancelled Receipts Automatically!) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                 <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">စုစုပေါင်း ရောင်းရငွေ (Net POS Sales)</div>
@@ -4267,10 +4563,9 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 </div>
             </div>
 
-            {/* 3. 🌟 Date Filter Bar (ရက်အားလုံး / ယနေ့ / မနေ့က / Custom Date Picker) + Status Filter + Search 🌟 */}
+            {/* 3. Date Filter Bar + Status Filter + Search */}
             <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3 bg-gray-50/70 p-3 rounded-2xl border border-gray-200/80">
                 <div className="flex flex-wrap items-center gap-2">
-                    {/* Date Filter Pills */}
                     <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
                         <button
                             type="button"
@@ -4306,7 +4601,6 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                             မနေ့က (Yesterday)
                         </button>
 
-                        {/* Custom Calendar Date Picker */}
                         <div
                             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
                                 dateFilterMode === 'custom'
@@ -4329,8 +4623,8 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                         </div>
                     </div>
 
-                    {/* Payment Status Filter Pills */}
-                    <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+                    {/* Payment & Cancelled Status Filter Pills */}
+                    <div className="flex flex-wrap bg-white p-1 rounded-xl border border-gray-200 shadow-2xs gap-0.5">
                         <button
                             type="button"
                             onClick={() => setFilterStatus('all')}
@@ -4356,12 +4650,20 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                 filterStatus === 'paid_in_full' ? 'bg-emerald-700 text-white shadow-xs' : 'text-gray-600'
                             }`}
                         >
-                            အပြည့်ချေပြီး ({dateAndSearchFilteredSales.length - summaryStats.pendingBalanceCount})
+                            အပြည့်ချေပြီး ({summaryStats.activeBillsCount - summaryStats.pendingBalanceCount})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilterStatus('cancelled')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                filterStatus === 'cancelled' ? 'bg-red-600 text-white shadow-xs' : 'text-red-600 hover:bg-red-50'
+                            }`}
+                        >
+                            ပယ်ဖျက်ထားသော ({summaryStats.cancelledBillsCount})
                         </button>
                     </div>
                 </div>
 
-                {/* Search Input */}
                 <div className="relative w-full xl:w-72">
                     <input
                         type="text"
@@ -4383,7 +4685,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 </div>
             </div>
 
-            {/* 4. 🌟 Date-Grouped POS Sales Sections with Daily Totals Banner 🌟 */}
+            {/* 4. Date-Grouped POS Sales Sections */}
             {groupedSalesByDate.length === 0 ? (
                 <div className="p-12 text-center text-gray-400 font-bold border border-dashed border-gray-200 rounded-2xl space-y-2">
                     <div>ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် POS အရောင်းမှတ်တမ်း မရှိပါ။</div>
@@ -4404,7 +4706,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                             key={group.date}
                             className="rounded-2xl border border-gray-200 shadow-xs overflow-hidden bg-white"
                         >
-                            {/* 🌟 Daily Header Banner with Daily Total Amount & Breakdown 🌟 */}
+                            {/* Daily Header Banner */}
                             <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 sm:px-5 py-3.5 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
                                 <div className="flex items-center gap-3">
                                     <div className="w-9 h-9 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] shadow-inner">
@@ -4415,19 +4717,16 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                             {formatReadableDateHeader(group.date)}
                                         </div>
                                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-200 font-semibold mt-0.5">
-                                            <span>ဘောင်ချာ: <strong>{group.sales.length} စောင်</strong></span>
+                                            <span>အတည်ပြုဘောင်ချာ: <strong>{group.activeCount} စောင်</strong></span>
+                                            {group.cancelledCount > 0 && (
+                                                <span className="bg-red-500/30 border border-red-400/50 text-red-200 px-2 py-0.2 rounded text-[10px] font-bold">
+                                                    ပယ်ဖျက်: {group.cancelledCount} စောင်
+                                                </span>
+                                            )}
                                             <span>•</span>
                                             <span>Cash: <strong>{formatPrice(group.dailyCashTotal)}</strong></span>
                                             <span>•</span>
                                             <span>Online Pay: <strong>{formatPrice(group.dailyOnlineTotal)}</strong></span>
-                                            {group.dailyDiscountAmount > 0 && (
-                                                <>
-                                                    <span>•</span>
-                                                    <span className="text-green-300">
-                                                        Discount: -{formatPrice(group.dailyDiscountAmount)}
-                                                    </span>
-                                                </>
-                                            )}
                                             {group.dailyPendingBalance > 0 && (
                                                 <span className="bg-red-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black animate-pulse">
                                                     ကျန်ငွေရရန်: {formatPrice(group.dailyPendingBalance)}
@@ -4437,7 +4736,6 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                     </div>
                                 </div>
 
-                                {/* Daily Total Amount Highlight Box */}
                                 <div className="bg-black/30 px-4 py-2 rounded-xl border border-[#D4AF37]/40 text-right ml-auto">
                                     <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wider block">
                                         Daily Total Amount (တစ်ရက်စာ ရောင်းရငွေ)
@@ -4448,25 +4746,26 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                 </div>
                             </div>
 
-                            {/* Table for this Date Group */}
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse min-w-[950px]">
+                                <table className="w-full text-left border-collapse min-w-[980px]">
                                     <thead>
                                         <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
                                             <th className="p-3">Customer</th>
                                             <th className="p-3">Service & Therapist</th>
                                             <th className="p-3">Date & Time</th>
                                             <th className="p-3">Invoice, Discount & Total</th>
-                                            <th className="p-3">Payment & Balance Status</th>
-                                            <th className="p-3 text-right">Action</th>
+                                            <th className="p-3">Payment / Cancel Status</th>
+                                            <th className="p-3 text-right">Receipt Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {group.sales.map((sale: any, idx: number) => {
+                                            const isCancelled = sale.status === 'cancelled';
                                             const rawTx = safeParseText(sale.txId) || `SL-${idx}`;
                                             const custName = safeParseText(sale.name) || 'Walk-in Guest';
                                             const custPhone = safeParseText(sale.phone) || '';
                                             const specialReq = safeParseText(sale.specialRequest);
+                                            const cancelReason = safeParseText(sale.cancelReason);
 
                                             const totalPrice = safeParseNumber(sale.totalPrice);
                                             const origPrice = safeParseNumber(sale.originalPrice) || totalPrice;
@@ -4489,7 +4788,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                                 cleanDiscLabel.toLowerCase().includes('imperial') ||
                                                 !!sale.vipTierName;
 
-                                            const isDepositDue = sale.paymentStatus === 'deposit_only' && safeParseNumber(sale.balanceDue) > 0;
+                                            const isDepositDue = !isCancelled && sale.paymentStatus === 'deposit_only' && safeParseNumber(sale.balanceDue) > 0;
                                             const depositAmt = safeParseNumber(sale.depositPaid);
                                             const balanceAmt = safeParseNumber(sale.balanceDue);
 
@@ -4497,16 +4796,24 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                                 <tr
                                                     key={sale.id || idx}
                                                     className={`border-b last:border-b-0 transition text-sm ${
-                                                        isDepositDue
+                                                        isCancelled
+                                                            ? 'bg-red-50/35 hover:bg-red-50/60'
+                                                            : isDepositDue
                                                             ? 'bg-amber-50/40 border-amber-200 hover:bg-amber-50/70'
                                                             : 'border-gray-50 hover:bg-gray-50'
                                                     }`}
                                                 >
-                                                    {/* 1. Customer & VIP / Promo Badge */}
+                                                    {/* 1. Customer */}
                                                     <td className="p-3">
-                                                        <div className="font-bold text-gray-800 text-sm">{custName}</div>
+                                                        <div className={`font-bold text-sm ${isCancelled ? 'line-through text-gray-500' : 'text-gray-800'}`}>
+                                                            {custName}
+                                                        </div>
                                                         <div className="text-xs text-gray-500 font-mono">{custPhone && custPhone !== 'Walk-in' ? custPhone : '-'}</div>
-                                                        {sale.vipTierName || (hasDiscount && isVipDiscount) ? (
+                                                        {isCancelled ? (
+                                                            <span className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black bg-red-600 text-white uppercase tracking-wider">
+                                                                🚫 Cancelled Bill
+                                                            </span>
+                                                        ) : sale.vipTierName || (hasDiscount && isVipDiscount) ? (
                                                             <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-2xs">
                                                                 <Crown className="w-3 h-3 mr-1 text-yellow-600" />
                                                                 {sale.vipTierName || cleanDiscLabel.replace(/ \(\d+\%.*?\)/, '') || 'VIP Member'}
@@ -4521,19 +4828,21 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
 
                                                     {/* 2. Service, Therapist & Note */}
                                                     <td className="p-3 max-w-xs">
-                                                        <div className="font-bold text-sm text-gray-800 leading-snug">{sale.service || '-'}</div>
+                                                        <div className={`font-bold text-sm leading-snug ${isCancelled ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                                                            {sale.service || '-'}
+                                                        </div>
                                                         <div className="text-xs text-gray-500 mt-1 flex items-center font-semibold">
                                                             <User className="w-3 h-3 mr-1 text-[#D4AF37]" />
                                                             {sale.therapist || '-'}
                                                         </div>
                                                         {specialReq && specialReq !== 'Shop Walk-in POS Sale' && (
-                                                            <div className="text-[11px] text-red-500 mt-1 italic leading-snug">
+                                                            <div className="text-[11px] text-gray-500 mt-1 italic leading-snug">
                                                                 {specialReq}
                                                             </div>
                                                         )}
                                                     </td>
 
-                                                    {/* 3. Date, Time & Submitted At */}
+                                                    {/* 3. Date & Time */}
                                                     <td className="p-3 text-sm text-gray-700">
                                                         <div className="font-semibold text-[#123524]">{sale.date || '-'}</div>
                                                         <div className="text-gray-600 text-xs mt-0.5 mb-1.5">{sale.time || '-'}</div>
@@ -4552,15 +4861,17 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                                         )}
                                                     </td>
 
-                                                    {/* 4. Invoice No, Original Price, Discount %, Discount Label & Net Total */}
+                                                    {/* 4. Invoice, Discount & Total */}
                                                     <td className="p-3">
-                                                        <div className="font-mono font-black text-gray-800 text-sm">{rawTx}</div>
+                                                        <div className={`font-mono font-black text-sm ${isCancelled ? 'line-through text-red-700' : 'text-gray-800'}`}>
+                                                            {rawTx}
+                                                        </div>
                                                         <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-0.5">
                                                             {sale.paymentMethod || 'Cash (Shop POS)'}
                                                         </div>
 
                                                         {hasDiscount ? (
-                                                            <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg w-max space-y-0.5 shadow-2xs">
+                                                            <div className={`mt-2 p-2 rounded-lg w-max space-y-0.5 border ${isCancelled ? 'bg-gray-100 border-gray-200 opacity-60' : 'bg-green-50 border-green-200'}`}>
                                                                 <div className="flex items-center space-x-2">
                                                                     <span className="text-[11px] text-gray-400 line-through font-semibold">
                                                                         {formatPrice(origPrice)}
@@ -4569,28 +4880,35 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                                                         -{discountPct}% (-{formatPrice(discountAmt)})
                                                                     </span>
                                                                 </div>
-                                                                <div className="font-black text-[#123524] text-sm pt-0.5">
+                                                                <div className={`font-black text-sm pt-0.5 ${isCancelled ? 'line-through text-gray-500' : 'text-[#123524]'}`}>
                                                                     {formatPrice(totalPrice)}
                                                                 </div>
-                                                                {cleanDiscLabel && (
-                                                                    <div className="text-[9px] text-green-800 font-bold uppercase tracking-wider pt-0.5">
-                                                                        {cleanDiscLabel}
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                         ) : (
                                                             <div className="mt-1.5">
-                                                                <div className="font-black text-[#123524] text-base">
+                                                                <div className={`font-black text-base ${isCancelled ? 'line-through text-gray-400' : 'text-[#123524]'}`}>
                                                                     {formatPrice(totalPrice)}
                                                                 </div>
-                                                                <div className="text-[9px] text-gray-400 font-semibold">Regular Price (No Discount)</div>
+                                                                <div className="text-[9px] text-gray-400 font-semibold">
+                                                                    {isCancelled ? 'Excluded from Total (0 Ks)' : 'Regular Price'}
+                                                                </div>
                                                             </div>
                                                         )}
                                                     </td>
 
-                                                    {/* 5. Payment & Deposit / Balance Due Status */}
+                                                    {/* 5. Payment Status OR Cancelled Audit Reason */}
                                                     <td className="p-3">
-                                                        {isDepositDue ? (
+                                                        {isCancelled ? (
+                                                            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 max-w-[230px] space-y-1">
+                                                                <div className="text-[10px] font-black text-red-700 uppercase flex items-center">
+                                                                    <AlertCircle className="w-3 h-3 mr-1 flex-shrink-0" />
+                                                                    ပယ်ဖျက်ထားသည် (Cancelled)
+                                                                </div>
+                                                                <div className="text-[11px] font-bold text-red-900 leading-snug">
+                                                                    အကြောင်းရင်း: {cancelReason || 'No reason specified'}
+                                                                </div>
+                                                            </div>
+                                                        ) : isDepositDue ? (
                                                             <div className="p-2.5 rounded-xl bg-white border border-amber-300 shadow-2xs space-y-1 w-max">
                                                                 <div className="text-[10px] font-bold text-amber-800">
                                                                     စရံငွေ (Deposit): <span className="font-black">{formatPrice(depositAmt)}</span>
@@ -4621,21 +4939,36 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                                         )}
                                                     </td>
 
-                                                    {/* 6. Delete Action */}
+                                                    {/* 6. 🌟 View Receipt & Cancel Receipt Buttons (Replaces Delete!) 🌟 */}
                                                     <td className="p-3 text-right">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteSale(sale.id, rawTx)}
-                                                            disabled={adminRole !== 'super_admin'}
-                                                            title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete POS Record'}
-                                                            className={`p-2 rounded-lg transition ${
-                                                                adminRole === 'super_admin'
-                                                                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                                                                    : 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                                                            }`}
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
+                                                        <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setViewingSale(sale)}
+                                                                className="px-3 py-1.5 rounded-lg bg-[#123524]/10 hover:bg-[#123524] text-[#123524] hover:text-[#D4AF37] font-black text-[11px] transition flex items-center whitespace-nowrap"
+                                                            >
+                                                                🧾 View Receipt
+                                                            </button>
+
+                                                            {!isCancelled && (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={adminRole !== 'super_admin'}
+                                                                    onClick={() => {
+                                                                        setCancellingSale(sale);
+                                                                        setCancelReasonInput('');
+                                                                    }}
+                                                                    title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Cancel Receipt with Reason'}
+                                                                    className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition flex items-center whitespace-nowrap ${
+                                                                        adminRole === 'super_admin'
+                                                                            ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white'
+                                                                            : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                                                    }`}
+                                                                >
+                                                                    🚫 Cancel Receipt
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
