@@ -95,7 +95,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
 const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
- const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns'>('bookings');
+ const [tab, setTab] = useState<'bookings' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -204,6 +204,7 @@ useEffect(() => {
   const hasAccess = useCallback((tabId: string) => { if (adminRole === 'super_admin') return true; return adminPermissions.includes(tabId); }, [adminRole, adminPermissions]);
   const pendingBookings = useMemo(() => bookings.filter(b => b.status !== 'in_progress' && b.status !== 'completed'), [bookings]);
   const historyBookings = useMemo(() => bookings.filter(b => b.status === 'in_progress' || b.status === 'completed'), [bookings]);
+  const posUnpaidBalanceCount = useMemo(() => {return bookings.filter((b: any) => b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0).length;}, [bookings]);
 
   if (!roleLoaded) return <div className="p-10 text-center text-gray-500 font-bold mt-10">Loading Admin Privileges...</div>;
 
@@ -223,9 +224,14 @@ useEffect(() => {
          {hasAccess('bookings') && (
             <button 
                 onClick={() => setTab('pos_sales')} 
-                className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'pos_sales' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
+                className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'pos_sales' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
             >
                 <ShoppingBag className="w-4 h-4 mr-2 text-[#D4AF37]" /> POS Sales
+                {posUnpaidBalanceCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
+                    {posUnpaidBalanceCount}
+                  </span>
+                )}
             </button>
         )}
          
@@ -361,15 +367,44 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         </div>
     )}
 </td>
-                <td className="p-3">
-                    <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div><div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-1">{b.paymentMethod || 'Unknown'}</div>
+               <td className="p-3">
+                    <div className="font-mono font-bold text-gray-800 text-sm">{b.txId || '-'}</div>
+                    <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-1">{b.paymentMethod || 'Unknown'}</div>
                     {b.originalPrice && b.originalPrice > b.totalPrice ? (
                         <div className="mt-2 p-1.5 bg-green-50 border border-green-100 rounded-md w-max">
                            <div className="flex items-center space-x-2 mb-0.5"><span className="text-[10px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span><span className="text-[9px] font-bold text-red-500 bg-red-100 px-1 py-0.5 rounded">-{b.discountPercent}%</span></div>
                            <div className="font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
-                           {b.discountLabel && <div className="text-[8.5px] text-green-700 font-semibold mt-1 uppercase tracking-wider">{b.discountLabel.replace(/ \(\d+%\)/, '')}</div>}
+                           {b.discountLabel && <div className="text-[8.5px] text-green-700 font-semibold mt-1 uppercase tracking-wider">{b.discountLabel.replace(/ \(\d+\%\)/, '')}</div>}
                         </div>
                     ) : (<div className="mt-1.5 font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>)}
+
+                    {/* 🌟 စရံငွေ နှင့် ကျန်ငွေ ခွဲပြခြင်း + Approve ခလုတ် 🌟 */}
+                    {(b as any).paymentStatus === 'deposit_only' && Number((b as any).balanceDue) > 0 && (
+                      <div className="mt-2 p-2 bg-amber-50 border border-amber-300 rounded-lg space-y-1 w-max">
+                        <div className="text-[10px] font-bold text-amber-900">
+                          စရံငွေ: {formatPrice(Number((b as any).depositPaid) || 0)}
+                        </div>
+                        <div className="text-[10px] font-black text-red-600">
+                          ကျန်ငွေ: {formatPrice(Number((b as any).balanceDue) || 0)}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!window.confirm(`ကျန်ငွေ ${formatPrice(Number((b as any).balanceDue))} အပြည့်အဝ လက်ခံရရှိပြီးကြောင်း Approve လုပ်မည်မှာ သေချာပါသလား?`)) return;
+                            const cleanMethod = (b.paymentMethod || '').split('(')[0].trim();
+                            await updateDoc(doc(db, 'bookings', b.id!), {
+                              paymentStatus: 'paid_in_full',
+                              balanceDue: 0,
+                              depositPaid: b.totalPrice,
+                              paymentMethod: `${cleanMethod} (Full Paid - Approved)`
+                            });
+                          }}
+                          className="w-full mt-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[9px] font-black flex items-center justify-center shadow-sm transition"
+                        >
+                          <CheckCircle className="w-3 h-3 mr-1" /> ကျန်ငွေ Approve လုပ်မည်
+                        </button>
+                      </div>
+                    )}
                 </td>
                 <td className="p-3">
                   <select value={b.status} onChange={(e) => handleStatusChange(b, e.target.value)} className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${b.status === 'approved' ? 'bg-green-50 text-green-700 border-green-200' : b.status === 'payment_checking' ? 'bg-blue-50 text-blue-700 border-blue-200' : b.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
@@ -3125,25 +3160,129 @@ function AdminCampaignsView() {
 }
 
 function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
+    const [filterStatus, setFilterStatus] = useState<'all' | 'deposit_only' | 'paid_in_full'>('all');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [approvingId, setApprovingId] = useState<string | null>(null);
+
     const posSales = useMemo(() => {
-        return bookings.filter(b => 
-            (b.paymentMethod && b.paymentMethod.includes('Shop POS')) || 
-            (b.txId && b.txId.startsWith('SL-'))
-        );
+        return bookings.filter((b: any) => {
+            const rawTx = decryptText(b.txId) || b.txId || '';
+            const isPosRecord =
+                (b.paymentMethod && (b.paymentMethod.includes('Shop POS') || b.paymentMethod.includes('စရံ:') || b.paymentMethod.includes('Full Paid - Approved'))) ||
+                rawTx.startsWith('SL-');
+            return isPosRecord;
+        });
     }, [bookings]);
 
+    const filteredPosSales = useMemo(() => {
+        return posSales.filter((s: any) => {
+            const rawTx = (decryptText(s.txId) || s.txId || '').toLowerCase();
+            const custName = (decryptText(s.name) || s.name || '').toLowerCase();
+            const custPhone = (decryptText(s.phone) || s.phone || '').toLowerCase();
+            const q = searchQuery.trim().toLowerCase();
+
+            const matchesSearch = !q || rawTx.includes(q) || custName.includes(q) || custPhone.includes(q) || (s.service || '').toLowerCase().includes(q);
+            if (!matchesSearch) return false;
+
+            const isDepositDue = s.paymentStatus === 'deposit_only' && Number(s.balanceDue) > 0;
+            if (filterStatus === 'deposit_only') return isDepositDue;
+            if (filterStatus === 'paid_in_full') return !isDepositDue;
+            return true;
+        });
+    }, [posSales, filterStatus, searchQuery]);
+
+    // စုစုပေါင်း ရောင်းရငွေ၊ လက်ခံရရှိပြီးငွေ နှင့် ကောက်ခံရန်ကျန်ငွေ တွက်ချက်ခြင်း
+    const summaryStats = useMemo(() => {
+        let totalSalesAmt = 0;
+        let totalCollectedAmt = 0;
+        let totalPendingBalanceAmt = 0;
+        let pendingBalanceCount = 0;
+
+        posSales.forEach((s: any) => {
+            const total = Number(s.totalPrice) || 0;
+            const isDepositDue = s.paymentStatus === 'deposit_only' && Number(s.balanceDue) > 0;
+            const due = isDepositDue ? Number(s.balanceDue) || 0 : 0;
+            const paid = isDepositDue ? (Number(s.depositPaid) || Math.max(0, total - due)) : total;
+
+            totalSalesAmt += total;
+            totalCollectedAmt += paid;
+            totalPendingBalanceAmt += due;
+            if (isDepositDue) pendingBalanceCount++;
+        });
+
+        return { totalSalesAmt, totalCollectedAmt, totalPendingBalanceAmt, pendingBalanceCount };
+    }, [posSales]);
+
+    // 🌟 Admin Sale List မှ ကျန်ငွေ (Balance Due) ရရှိကြောင်း Approve ပြုလုပ်ပေးမည့် Function 🌟
+    const handleApproveBalanceInAdmin = async (sale: any) => {
+        const rawTx = decryptText(sale.txId) || sale.txId || '';
+        const balanceAmt = Number(sale.balanceDue) || 0;
+        if (!window.confirm(`ဘောင်ချာ [${rawTx}] ၏ ကျန်ငွေ (${formatPrice(balanceAmt)}) အား အပြည့်အဝ လက်ခံရရှိပြီးကြောင်း Approve လုပ်မည်မှာ သေချာပါသလား?`)) {
+            return;
+        }
+
+        setApprovingId(sale.id);
+        try {
+            const cleanMethod = (sale.paymentMethod || 'Online Pay').split('(')[0].trim();
+            const prevNote = decryptText(sale.specialRequest) || sale.specialRequest || '';
+            const cleanNote = prevNote.split('| [PENDING BALANCE]')[0].trim();
+
+            await updateDoc(doc(db, 'bookings', sale.id), {
+                paymentStatus: 'paid_in_full',
+                balanceDue: 0,
+                depositPaid: Number(sale.totalPrice) || 0,
+                paymentMethod: `${cleanMethod} (Full Paid - Approved)`,
+                specialRequest: encryptText(`${cleanNote} | [BALANCE APPROVED]: ကျန်ငွေ ${formatPrice(balanceAmt)} အပြည့်အဝ လက်ခံရရှိပြီး`)
+            });
+
+            alert(`✅ ဘောင်ချာ [${rawTx}] ၏ ကျန်ငွေ ${formatPrice(balanceAmt)} အား အောင်မြင်စွာ Approve ပြုလုပ်ပြီးပါပြီ။`);
+        } catch (err) {
+            console.error('Approve balance failed:', err);
+            alert('ကျန်ငွေ Approve ပြုလုပ်ရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+        } finally {
+            setApprovingId(null);
+        }
+    };
+
+    const handleDeleteSale = async (id: string, invoiceNo: string) => {
+        if (adminRole !== 'super_admin') {
+            alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။');
+            return;
+        }
+        if (!window.confirm(`POS ဘောင်ချာ [${invoiceNo}] ကို အပြီးတိုင် ဖျက်မည်မှာ သေချာပါသလား?`)) return;
+        try {
+            await deleteDoc(doc(db, 'bookings', id));
+        } catch (err) {
+            alert('Error deleting POS sale.');
+        }
+    };
+
     const handleExportPOSExcel = () => {
-        const headers = ['Invoice No', 'Date & Time', 'Customer Name', 'Phone', 'Service Items', 'Therapist', 'Payment Method', 'Total Price (Ks)'];
-        const rows = posSales.map(s => [
-            `"${decryptText(s.txId) || s.txId || ''}"`,
-            `"${s.date || ''} ${s.time || ''}"`,
-            `"${decryptText(s.name) || s.name || ''}"`,
-            `"${decryptText(s.phone) || s.phone || ''}"`,
-            `"${s.service || ''}"`,
-            `"${s.therapist || ''}"`,
-            `"${s.paymentMethod || ''}"`,
-            s.totalPrice || 0
-        ]);
+        const headers = [
+            'Invoice No', 'Date & Time', 'Customer Name', 'Phone',
+            'Service Items', 'Therapist', 'Payment Method',
+            'Payment Status', 'Deposit Paid (Ks)', 'Balance Due (Ks)', 'Total Price (Ks)'
+        ];
+        const rows = filteredPosSales.map((s: any) => {
+            const isDepositDue = s.paymentStatus === 'deposit_only' && Number(s.balanceDue) > 0;
+            const total = Number(s.totalPrice) || 0;
+            const due = isDepositDue ? Number(s.balanceDue) || 0 : 0;
+            const paid = isDepositDue ? (Number(s.depositPaid) || Math.max(0, total - due)) : total;
+
+            return [
+                `"${decryptText(s.txId) || s.txId || ''}"`,
+                `"${s.date || ''} ${s.time || ''}"`,
+                `"${decryptText(s.name) || s.name || ''}"`,
+                `"${decryptText(s.phone) || s.phone || ''}"`,
+                `"${s.service || ''}"`,
+                `"${s.therapist || ''}"`,
+                `"${s.paymentMethod || ''}"`,
+                `"${isDepositDue ? 'Deposit Only (Balance Pending)' : 'Paid in Full'}"`,
+                paid,
+                due,
+                total
+            ];
+        });
         const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -3157,68 +3296,205 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
     };
 
     return (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-4 gap-4">
                 <div>
                     <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
-                        <ShoppingBag className="mr-2 text-[#D4AF37]" /> Shop Walk-in POS Sales History
+                        <ShoppingBag className="mr-2 text-[#D4AF37]" /> Shop Walk-in POS Sales & Balance Approval
                     </h2>
-                    <p className="text-xs text-gray-500 mt-1">ဆိုင်အတွင်း POS စနစ်မှ တိုက်ရိုက်ရောင်းချခဲ့သော ဘောင်ချာများနှင့် အရောင်းစာရင်းများ</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                        POS မှ ရောင်းချထားသော ဘောင်ချာများ၊ စရံငွေ (Deposit) နှင့် ကောက်ခံရန်ကျန်ငွေ (Balance Due) များကို စစ်ဆေးအတည်ပြုရန်
+                    </p>
                 </div>
                 <div className="flex items-center space-x-3 w-full sm:w-auto">
                     <button onClick={handleExportPOSExcel} className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm">
                         <Download className="w-4 h-4 mr-1.5" /> Export Excel
                     </button>
-                    <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-bold border border-yellow-200">
-                        Total Sales: {posSales.length}
+                    <span className="bg-yellow-100 text-yellow-800 px-4 py-2 rounded-lg text-xs font-black border border-yellow-200">
+                        Total Bills: {filteredPosSales.length}
                     </span>
                 </div>
             </div>
 
+            {/* Summary Financial Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">စုစုပေါင်း ရောင်းရငွေ (Total POS Sales)</div>
+                    <div className="text-lg font-black text-[#123524] mt-1">{formatPrice(summaryStats.totalSalesAmt)}</div>
+                </div>
+                <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                    <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">လက်ခံရရှိပြီးငွေ (Collected / Deposit + Full)</div>
+                    <div className="text-lg font-black text-emerald-800 mt-1">{formatPrice(summaryStats.totalCollectedAmt)}</div>
+                </div>
+                <div className={`p-4 rounded-xl border ${summaryStats.totalPendingBalanceAmt > 0 ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
+                    <div className="text-[10px] font-bold text-red-600 uppercase tracking-wider flex items-center justify-between">
+                        <span>ရရန်ကျန်ငွေ (Pending Balance Due)</span>
+                        {summaryStats.pendingBalanceCount > 0 && (
+                            <span className="bg-red-600 text-white text-[9px] px-2 py-0.5 rounded-full font-black">
+                                {summaryStats.pendingBalanceCount} Bills
+                            </span>
+                        )}
+                    </div>
+                    <div className="text-lg font-black text-red-600 mt-1">{formatPrice(summaryStats.totalPendingBalanceAmt)}</div>
+                </div>
+            </div>
+
+            {/* Filter Tabs & Search Bar */}
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 w-full sm:w-auto">
+                    <button
+                        type="button"
+                        onClick={() => setFilterStatus('all')}
+                        className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+                            filterStatus === 'all' ? 'bg-[#123524] text-[#D4AF37] shadow-sm' : 'text-gray-600'
+                        }`}
+                    >
+                        အားလုံး ({posSales.length})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setFilterStatus('deposit_only')}
+                        className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center ${
+                            filterStatus === 'deposit_only' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600'
+                        }`}
+                    >
+                        ကျန်ငွေရရန်ကျန် ({summaryStats.pendingBalanceCount})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setFilterStatus('paid_in_full')}
+                        className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+                            filterStatus === 'paid_in_full' ? 'bg-emerald-700 text-white shadow-sm' : 'text-gray-600'
+                        }`}
+                    >
+                        အပြည့်ချေပြီး ({posSales.length - summaryStats.pendingBalanceCount})
+                    </button>
+                </div>
+
+                <div className="relative w-full sm:w-72">
+                    <input
+                        type="text"
+                        placeholder="ဘောင်ချာနံပါတ်၊ အမည် သို့မဟုတ် ဖုန်း ရှာရန်..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold"
+                    />
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                </div>
+            </div>
+
+            {/* POS Sales Table */}
             <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[800px]">
+                <table className="w-full text-left border-collapse min-w-[900px]">
                     <thead>
                         <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
                             <th className="p-3 pb-4">Invoice No / Date</th>
                             <th className="p-3 pb-4">Customer</th>
-                            <th className="p-3 pb-4">Services & Items</th>
+                            <th className="p-3 pb-4">Services & Discount</th>
                             <th className="p-3 pb-4">Therapist</th>
-                            <th className="p-3 pb-4">Payment</th>
-                            <th className="p-3 pb-4 text-right">Total Amount</th>
+                            <th className="p-3 pb-4">Payment & Balance Status</th>
+                            <th className="p-3 pb-4 text-right">Total & Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {posSales.length === 0 && (
+                        {filteredPosSales.length === 0 && (
                             <tr>
                                 <td colSpan={6} className="p-10 text-center text-gray-400 font-bold">
-                                    ယနေ့အတွက် Walk-in POS အရောင်းမှတ်တမ်း မရှိသေးပါ။
+                                    ရွေးချယ်ထားသော စာရင်းအတွက် POS အရောင်းမှတ်တမ်း မရှိပါ။
                                 </td>
                             </tr>
                         )}
-                        {posSales.map((sale, idx) => {
+                        {filteredPosSales.map((sale: any, idx: number) => {
                             const rawTx = decryptText(sale.txId) || sale.txId || `SL-${idx}`;
                             const custName = decryptText(sale.name) || sale.name || 'Walk-in Guest';
                             const custPhone = decryptText(sale.phone) || sale.phone || '';
+                            const discLabel = sale.discountLabel ? (decryptText(sale.discountLabel) || sale.discountLabel) : '';
+                            const origPrice = sale.originalPrice ? Number(decryptText(sale.originalPrice) || sale.originalPrice) : 0;
+
+                            const isDepositDue = sale.paymentStatus === 'deposit_only' && Number(sale.balanceDue) > 0;
+                            const depositAmt = Number(sale.depositPaid) || 0;
+                            const balanceAmt = Number(sale.balanceDue) || 0;
 
                             return (
-                                <tr key={sale.id || idx} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
+                                <tr
+                                    key={sale.id || idx}
+                                    className={`border-b transition text-sm ${
+                                        isDepositDue ? 'bg-amber-50/40 border-amber-200 hover:bg-amber-50/70' : 'border-gray-50 hover:bg-gray-50'
+                                    }`}
+                                >
                                     <td className="p-3">
                                         <div className="font-mono font-black text-[#123524]">{rawTx}</div>
-                                        <div className="text-[10px] text-gray-400 mt-0.5">{sale.date} {sale.time}</div>
+                                        <div className="text-[10px] text-gray-500 font-semibold mt-0.5">{sale.date} {sale.time}</div>
                                     </td>
                                     <td className="p-3">
                                         <div className="font-bold text-gray-800">{custName}</div>
-                                        {custPhone && <div className="text-xs text-gray-500 font-mono">{custPhone}</div>}
+                                        {custPhone && custPhone !== 'Walk-in' && (
+                                            <div className="text-xs text-gray-500 font-mono">{custPhone}</div>
+                                        )}
                                     </td>
-                                    <td className="p-3 font-semibold text-gray-700 max-w-xs">{sale.service}</td>
-                                    <td className="p-3 text-gray-600 font-medium">{sale.therapist}</td>
+                                    <td className="p-3 max-w-xs">
+                                        <div className="font-semibold text-gray-800 text-xs leading-snug">{sale.service}</div>
+                                        {discLabel && discLabel !== '[Shop Walk-in Sale]' && (
+                                            <div className="text-[10px] text-green-700 font-bold mt-1 bg-green-50 px-2 py-0.5 rounded border border-green-200 w-fit">
+                                                {discLabel}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="p-3 text-gray-700 font-bold text-xs">{sale.therapist}</td>
                                     <td className="p-3">
-                                        <span className="bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 rounded-full text-[10px] font-bold">
-                                            {sale.paymentMethod}
-                                        </span>
+                                        <div className="text-[10px] font-bold text-gray-700 mb-1">
+                                            {(sale.paymentMethod || '').split('(')[0].trim()}
+                                        </div>
+                                        {isDepositDue ? (
+                                            <div className="p-2 rounded-lg bg-white border border-amber-300 shadow-2xs space-y-0.5 w-max">
+                                                <div className="text-[10px] font-bold text-amber-800">
+                                                    စရံငွေ (Deposit): <span className="font-black">{formatPrice(depositAmt)}</span>
+                                                </div>
+                                                <div className="text-[11px] font-black text-red-600 flex items-center">
+                                                    <AlertCircle className="w-3 h-3 mr-1" />
+                                                    ကျန်ငွေ (Due): {formatPrice(balanceAmt)}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-black inline-flex items-center">
+                                                <CheckCircle className="w-3 h-3 mr-1" /> Paid in Full
+                                            </span>
+                                        )}
                                     </td>
-                                    <td className="p-3 text-right font-black text-base text-[#123524]">
-                                        {formatPrice(sale.totalPrice)}
+                                    <td className="p-3 text-right">
+                                        {origPrice > sale.totalPrice && (
+                                            <div className="text-[10px] text-gray-400 line-through">
+                                                {formatPrice(origPrice)}
+                                            </div>
+                                        )}
+                                        <div className="font-black text-base text-[#123524]">
+                                            {formatPrice(sale.totalPrice)}
+                                        </div>
+
+                                        <div className="mt-2 flex items-center justify-end gap-1.5">
+                                            {isDepositDue && (
+                                                <button
+                                                    type="button"
+                                                    disabled={approvingId === sale.id}
+                                                    onClick={() => handleApproveBalanceInAdmin(sale)}
+                                                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-black flex items-center shadow-sm transition disabled:opacity-50"
+                                                >
+                                                    <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                                                    {approvingId === sale.id ? 'Approving...' : 'ကျန်ငွေ Approve'}
+                                                </button>
+                                            )}
+
+                                            {adminRole === 'super_admin' && sale.id && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteSale(sale.id, rawTx)}
+                                                    title="Delete POS Record"
+                                                    className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             );
