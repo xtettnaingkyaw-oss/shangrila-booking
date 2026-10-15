@@ -95,117 +95,146 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   );
 }
 
-const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
+  const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
   const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
-  const [updateRequestCount, setUpdateRequestCount] = useState(0); // 🌟 အသစ်ထည့်ထားသော State 🌟
+  const [updateRequestCount, setUpdateRequestCount] = useState(0);
   const [adminRole, setAdminRole] = useState<'super_admin' | 'custom'>('super_admin');
   const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
   const [roleLoaded, setRoleLoaded] = useState(false);
   const isFirstLoad = useRef(true);
 
   useEffect(() => {
-      const fetchRole = async () => {
-          try {
-              const allAdmins = await getDocs(collection(db, 'admins'));
-              let matchedAdmin: LocalAdminProfile | null = null;
-              allAdmins.forEach(d => {
-                 const raw = d.data(); const decUser = decryptText(raw.username) || d.id;
-                 if (decUser.toLowerCase() === loggedInAdmin.toLowerCase()) matchedAdmin = raw as LocalAdminProfile;
-              });
-              if (matchedAdmin) {
-                  const r = matchedAdmin.role || 'super_admin'; 
-                  const p = matchedAdmin.permissions || ['bookings', 'reports', 'users', 'points', 'admins', 'settings', 'penalties'];
-                  setAdminRole(r); setAdminPermissions(p);
-                  if (r !== 'super_admin' && !p.includes(tab) && p.length > 0) setTab(p[0] as any);
-              }
-          } catch (e) { console.error("Error fetching admin role", e); }
-          setRoleLoaded(true);
-      };
-      fetchRole();
+    const fetchRole = async () => {
+      try {
+        const allAdmins = await getDocs(collection(db, 'admins'));
+        let matchedAdmin: LocalAdminProfile | null = null;
+        allAdmins.forEach(d => {
+          const raw = d.data();
+          const decUser = decryptText(raw.username) || d.id;
+          if (decUser.toLowerCase() === loggedInAdmin.toLowerCase()) matchedAdmin = raw as LocalAdminProfile;
+        });
+        if (matchedAdmin) {
+          const r = matchedAdmin.role || 'super_admin';
+          const p = matchedAdmin.permissions || ['bookings', 'reports', 'users', 'points', 'admins', 'settings', 'penalties'];
+          setAdminRole(r);
+          setAdminPermissions(p);
+          const isAllowedExtraTab =
+            (p.includes('bookings') && (tab === 'sales_summary' || tab === 'pos_sales')) ||
+            (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns'));
+          if (r !== 'super_admin' && !p.includes(tab) && !isAllowedExtraTab && p.length > 0) {
+            setTab(p[0] as any);
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching admin role", e);
+      }
+      setRoleLoaded(true);
+    };
+    fetchRole();
   }, [loggedInAdmin, tab]);
 
-// 🌟 HR Tab တွင် Noti ပြရန်အတွက် fullName ကိုပါ ထည့်သွင်းရေတွက်မည် 🌟
-    const [onboardingPendingCount, setOnboardingPendingCount] = useState(0);
+  const [onboardingPendingCount, setOnboardingPendingCount] = useState(0);
 
-    useEffect(() => {
-        const q = query(collection(db, 'onboarding_requests'), where('status', '==', 'pending'));
-        const unsubReq = onSnapshot(q, (snap) => {
-            let realCount = 0;
-            snap.forEach(doc => {
-                const data = doc.data();
-                // FIX: data.name အပြင် data.fullName ပါ ထည့်စစ်ပါမည်
-                if ((data.fullName && data.fullName.trim() !== '') || (data.name && data.name.trim() !== '')) {
-                    realCount++;
-                }
-            });
-            setOnboardingPendingCount(realCount);
-        });
-        return () => unsubReq();
-    }, []);
+  useEffect(() => {
+    const q = query(collection(db, 'onboarding_requests'), where('status', '==', 'pending'));
+    const unsubReq = onSnapshot(q, (snap) => {
+      let realCount = 0;
+      snap.forEach(doc => {
+        const data = doc.data();
+        if ((data.fullName && data.fullName.trim() !== '') || (data.name && data.name.trim() !== '')) {
+          realCount++;
+        }
+      });
+      setOnboardingPendingCount(realCount);
+    });
+    return () => unsubReq();
+  }, []);
 
-useEffect(() => {
+  useEffect(() => {
     const q = query(collection(db, 'users'), where('resetRequested', '==', true));
     const unsubUsers = onSnapshot(q, (snap) => {
-        setResetRequestCount(snap.size); 
+      setResetRequestCount(snap.size);
     });
     return () => unsubUsers();
-}, []);
+  }, []);
 
-useEffect(() => {
+  useEffect(() => {
     const q = query(collection(db, 'therapists'), where('updateRequested', '==', true));
     const unsubUpdates = onSnapshot(q, (snap) => {
-        let realCount = 0;
-        snap.forEach(doc => {
-            const data = doc.data();
-            if (data.name && data.name.trim() !== '') realCount++;
-        });
-        setUpdateRequestCount(realCount); 
+      let realCount = 0;
+      snap.forEach(doc => {
+        const data = doc.data();
+        if (data.name && data.name.trim() !== '') realCount++;
+      });
+      setUpdateRequestCount(realCount);
     });
     return () => unsubUpdates();
-}, []);
-
-   // 🌟 အသစ်ထည့်ထားသော useEffect (Staff Profile Update တောင်းဆိုမှု အရေအတွက်ကို ယူရန်) 🌟
- useEffect(() => {
-      const q = query(collection(db, 'therapists'), where('updateRequested', '==', true));
-      const unsubUpdates = onSnapshot(q, (snap) => {
-          setUpdateRequestCount(snap.size); 
-      });
-      return () => unsubUpdates();
   }, []);
 
   useEffect(() => {
     const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(300));
     const unsubscribe = onSnapshot(q, (snap) => {
-      const data: Booking[] = []; let currentPendingCount = 0;
-      snap.forEach((doc) => { 
-          const raw = doc.data();
-          const b = { 
-             id: doc.id, ...raw, name: decryptText(raw.name) || raw.name, phone: decryptText(raw.phone) || raw.phone, txId: decryptText(raw.txId) || raw.txId, 
-             specialRequest: decryptText(raw.specialRequest) || raw.specialRequest, originalPrice: raw.originalPrice ? Number(decryptText(raw.originalPrice)) : undefined,
-             discountPercent: raw.discountPercent ? Number(decryptText(raw.discountPercent)) : undefined, discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
-             vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
-          } as Booking; 
-          data.push(b); if (b.status === 'pending') currentPendingCount++; 
+      const data: Booking[] = [];
+      let currentPendingCount = 0;
+      snap.forEach((doc) => {
+        const raw = doc.data();
+        const b = {
+          id: doc.id,
+          ...raw,
+          name: decryptText(raw.name) || raw.name,
+          phone: decryptText(raw.phone) || raw.phone,
+          txId: decryptText(raw.txId) || raw.txId,
+          specialRequest: decryptText(raw.specialRequest) || raw.specialRequest,
+          originalPrice: raw.originalPrice ? Number(decryptText(raw.originalPrice)) : undefined,
+          discountPercent: raw.discountPercent ? Number(decryptText(raw.discountPercent)) : undefined,
+          discountLabel: raw.discountLabel ? decryptText(raw.discountLabel) : undefined,
+          vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
+        } as Booking;
+        data.push(b);
+        if (b.status === 'pending') currentPendingCount++;
       });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setBookings(data); setPendingCount(currentPendingCount);
+      setBookings(data);
+      setPendingCount(currentPendingCount);
       if (!isFirstLoad.current && snap.docChanges().some(change => change.type === 'added' && change.doc.data().status === 'pending')) {
         const audioEl = document.getElementById('admin-alert-sound') as HTMLAudioElement;
-        if (audioEl) { audioEl.currentTime = 0; audioEl.play().catch(e => console.log("Audio blocked", e)); setTimeout(() => { audioEl.pause(); audioEl.currentTime = 0; }, 5000); }
+        if (audioEl) {
+          audioEl.currentTime = 0;
+          audioEl.play().catch(e => console.log("Audio blocked", e));
+          setTimeout(() => {
+            audioEl.pause();
+            audioEl.currentTime = 0;
+          }, 5000);
+        }
       }
       isFirstLoad.current = false;
     });
     return () => unsubscribe();
   }, []);
 
-  const handleInteraction = useCallback(() => { const audioEl = document.getElementById('admin-alert-sound') as HTMLAudioElement; if (audioEl && audioEl.paused) { audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {}); } }, []);
-  const hasAccess = useCallback((tabId: string) => { if (adminRole === 'super_admin') return true; return adminPermissions.includes(tabId); }, [adminRole, adminPermissions]);
+  const handleInteraction = useCallback(() => {
+    const audioEl = document.getElementById('admin-alert-sound') as HTMLAudioElement;
+    if (audioEl && audioEl.paused) {
+      audioEl.play().then(() => {
+        audioEl.pause();
+        audioEl.currentTime = 0;
+      }).catch(() => {});
+    }
+  }, []);
+
+  const hasAccess = useCallback((tabId: string) => {
+    if (adminRole === 'super_admin') return true;
+    return adminPermissions.includes(tabId);
+  }, [adminRole, adminPermissions]);
+
   const pendingBookings = useMemo(() => bookings.filter(b => b.status !== 'in_progress' && b.status !== 'completed'), [bookings]);
   const historyBookings = useMemo(() => bookings.filter(b => b.status === 'in_progress' || b.status === 'completed'), [bookings]);
-  const posUnpaidBalanceCount = useMemo(() => {return bookings.filter((b: any) => b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0).length;}, [bookings]);
+  const posUnpaidBalanceCount = useMemo(() => {
+    return bookings.filter((b: any) => b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0).length;
+  }, [bookings]);
 
   if (!roleLoaded) return <div className="p-10 text-center text-gray-500 font-bold mt-10">Loading Admin Privileges...</div>;
 
@@ -213,49 +242,113 @@ useEffect(() => {
     <div className="animate-fade-in" onClick={handleInteraction}>
       <audio id="admin-alert-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto" loop />
       <div className="flex flex-wrap justify-center items-center gap-2 mb-6 scrollbar-hide overflow-x-auto p-1 mt-6 sm:mt-0 px-4 sm:px-0">
-        {hasAccess('bookings') && (<button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><CalendarPlus className="w-4 h-4 mr-2" /> Bookings {pendingCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{pendingCount}</span>}</button>)}
-        {hasAccess('reports') && (<button onClick={() => setTab('reports')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'reports' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><BarChart2 className="w-4 h-4 mr-2" /> Staff History</button>)}
-        {hasAccess('users') && (<button onClick={() => setTab('users')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><User className="w-4 h-4 mr-2" /> Users {resetRequestCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{resetRequestCount}</span>}</button>)}
-        {hasAccess('points') && (<button onClick={() => setTab('points')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'points' ? 'bg-yellow-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Star className="w-4 h-4 mr-2" /> Point Mgmt</button>)}
-        {hasAccess('admins') && (<button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ShieldCheck className="w-4 h-4 mr-2" /> Admins</button>)}
-        {hasAccess('penalties') && (<button onClick={() => setTab('penalties')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'penalties' ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Banknote className="w-4 h-4 mr-2" /> Penalty & Loans</button>)}
-        {hasAccess('settings') && (<button onClick={() => setTab('roster')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><ClipboardList className="w-4 h-4 mr-2" /> Duty Roster</button>)}
-        {hasAccess('settings') && (<button onClick={() => setTab('campaigns')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'campaigns' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}><Gift className="w-4 h-4 mr-2" /> Campaigns</button>)}
         {hasAccess('bookings') && (
-            <button
-                onClick={() => setTab('sales_summary')}
-                className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
-                    tab === 'sales_summary'
-                        ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-md border border-[#D4AF37]/40'
-                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                }`}
-            >
-                <TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]" /> Sale Summary
-            </button>
-         )}
-         {hasAccess('bookings') && (
-            <button 
-                onClick={() => setTab('pos_sales')} 
-                className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'pos_sales' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
-            >
-                <ShoppingBag className="w-4 h-4 mr-2 text-[#D4AF37]" /> POS Sales
-                {posUnpaidBalanceCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
-                    {posUnpaidBalanceCount}
-                  </span>
-                )}
-            </button>
+          <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            <CalendarPlus className="w-4 h-4 mr-2" /> Bookings
+            {pendingCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{pendingCount}</span>}
+          </button>
         )}
-         
-         {hasAccess('settings') && (<button onClick={() => setTab('hr')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'hr' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-    <UserPlus className="w-4 h-4 mr-2" /> HR Management 
-    {/* 🌟 Pending Request သို့မဟုတ် Update Request တစ်ခုခုရှိလျှင် အနီစက်ပြမည် 🌟 */}
-    {(updateRequestCount > 0 || onboardingPendingCount > 0) && (
-        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
-            {updateRequestCount + onboardingPendingCount}
-        </span>
-    )}
-<button
+
+        {hasAccess('reports') && (
+          <button onClick={() => setTab('reports')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'reports' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            <BarChart2 className="w-4 h-4 mr-2" /> Staff History
+          </button>
+        )}
+
+        {hasAccess('users') && (
+          <button onClick={() => setTab('users')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            <User className="w-4 h-4 mr-2" /> Users
+            {resetRequestCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{resetRequestCount}</span>}
+          </button>
+        )}
+
+        {hasAccess('points') && (
+          <button onClick={() => setTab('points')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'points' ? 'bg-yellow-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            <Star className="w-4 h-4 mr-2" /> Point Mgmt
+          </button>
+        )}
+
+        {hasAccess('admins') && (
+          <button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            <ShieldCheck className="w-4 h-4 mr-2" /> Admins
+          </button>
+        )}
+
+        {hasAccess('penalties') && (
+          <button onClick={() => setTab('penalties')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'penalties' ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            <Banknote className="w-4 h-4 mr-2" /> Penalty & Loans
+          </button>
+        )}
+
+        {hasAccess('settings') && (
+          <button onClick={() => setTab('roster')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            <ClipboardList className="w-4 h-4 mr-2" /> Duty Roster
+          </button>
+        )}
+
+        {hasAccess('settings') && (
+          <button onClick={() => setTab('campaigns')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'campaigns' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            <Gift className="w-4 h-4 mr-2" /> Campaigns
+          </button>
+        )}
+
+        {hasAccess('bookings') && (
+          <button
+            onClick={() => setTab('sales_summary')}
+            className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
+              tab === 'sales_summary'
+                ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-md border border-[#D4AF37]/40'
+                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]" /> Sale Summary
+          </button>
+        )}
+
+        {hasAccess('bookings') && (
+          <button
+            onClick={() => setTab('pos_sales')}
+            className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
+              tab === 'pos_sales' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4 mr-2 text-[#D4AF37]" /> POS Sales
+            {posUnpaidBalanceCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
+                {posUnpaidBalanceCount}
+              </span>
+            )}
+          </button>
+        )}
+
+        {hasAccess('settings') && (
+          <button
+            onClick={() => setTab('hr')}
+            className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
+              tab === 'hr' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <UserPlus className="w-4 h-4 mr-2" /> HR Management
+            {(updateRequestCount > 0 || onboardingPendingCount > 0) && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
+                {updateRequestCount + onboardingPendingCount}
+              </span>
+            )}
+          </button>
+        )}
+
+        {hasAccess('settings') && (
+          <button
+            onClick={() => setTab('settings')}
+            className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
+              tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <Settings className="w-4 h-4 mr-2" /> Settings
+          </button>
+        )}
+
+        <button
           onClick={async () => {
             try {
               if ('serviceWorker' in navigator) {
@@ -274,7 +367,14 @@ useEffect(() => {
         >
           🔄 Update App
         </button>
-        <button onClick={onLogout} className="px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm sm:ml-1"><LogOut className="w-4 h-4 mr-2" /> Logout</button>
+
+        <button
+          onClick={onLogout}
+          className="px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm sm:ml-1"
+        >
+          <LogOut className="w-4 h-4 mr-2" /> Logout
+        </button>
+      </div>
 
       {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
       {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
