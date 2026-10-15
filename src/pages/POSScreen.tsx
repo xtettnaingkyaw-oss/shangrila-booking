@@ -2263,9 +2263,12 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="font-serif font-extrabold text-xs sm:text-sm text-[#D4AF37] tracking-wide flex items-center truncate">
-                <Crown className="w-3.5 h-3.5 mr-1 flex-shrink-0" /> SHANGRI-LA POS
-              </h1>
+              <img
+                  src={digitalLogoUrl || defaultLogoImg}
+                  alt="Shangri-La Logo"
+                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-[#D4AF37] mr-2 flex-shrink-0 shadow-sm bg-[#123524]"
+                />
+                SHANGRI-LA POS
               <span className="bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40 px-2 py-0.5 rounded-md text-[9px] font-extrabold whitespace-nowrap">
                 {activeViewLabel}
               </span>
