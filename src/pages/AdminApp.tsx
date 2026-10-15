@@ -106,6 +106,20 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   const [roleLoaded, setRoleLoaded] = useState(false);
   const isFirstLoad = useRef(true);
 
+  // 🌟 Responsive Sidebar States (Mobile Drawer + Desktop Collapse) 🌟
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
+
+  // Logo fallback
+  const defaultLogoUrl = useMemo(() => {
+    try {
+      return new URL('../THE SHANGRI LA - LOGO.png', import.meta.url).href;
+    } catch {
+      return '';
+    }
+  }, []);
+  const activeLogoUrl = appData?.branding?.logoUrl || defaultLogoUrl;
+
   useEffect(() => {
     const fetchRole = async () => {
       try {
@@ -236,158 +250,425 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
     return bookings.filter((b: any) => b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0).length;
   }, [bookings]);
 
+  const handleForceRefreshApp = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) await r.unregister();
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) await caches.delete(k);
+      }
+    } catch {}
+    window.location.reload();
+  };
+
+  // 🌟 Structured Navigation Groups for World-Class Spa Admin Experience 🌟
+  const navGroups = useMemo(() => [
+    {
+      groupTitle: 'Sales & Revenue',
+      items: [
+        {
+          id: 'sales_summary',
+          label: 'Sale Summary',
+          subLabel: 'Online + POS Analytics',
+          icon: TrendingUp,
+          visible: hasAccess('bookings'),
+          badge: 0
+        },
+        {
+          id: 'bookings',
+          label: 'Online Bookings',
+          subLabel: 'Booking Requests',
+          icon: CalendarPlus,
+          visible: hasAccess('bookings'),
+          badge: pendingCount
+        },
+        {
+          id: 'pos_sales',
+          label: 'POS Walk-in Sales',
+          subLabel: 'Receipts & Balance Due',
+          icon: ShoppingBag,
+          visible: hasAccess('bookings'),
+          badge: posUnpaidBalanceCount
+        }
+      ]
+    },
+    {
+      groupTitle: 'Staff & Operations',
+      items: [
+        {
+          id: 'reports',
+          label: 'Staff History & Live',
+          subLabel: 'In-Room & Performance',
+          icon: BarChart2,
+          visible: hasAccess('reports'),
+          badge: 0
+        },
+        {
+          id: 'roster',
+          label: 'Duty Roster',
+          subLabel: 'Attendance & Shifts',
+          icon: ClipboardList,
+          visible: hasAccess('settings'),
+          badge: 0
+        },
+        {
+          id: 'hr',
+          label: 'HR Management',
+          subLabel: 'Onboarding & Profiles',
+          icon: UserPlus,
+          visible: hasAccess('settings'),
+          badge: updateRequestCount + onboardingPendingCount
+        },
+        {
+          id: 'penalties',
+          label: 'Penalty & Loans',
+          subLabel: 'Fines & Staff Advances',
+          icon: Banknote,
+          visible: hasAccess('penalties'),
+          badge: 0
+        }
+      ]
+    },
+    {
+      groupTitle: 'Customers & VIP',
+      items: [
+        {
+          id: 'users',
+          label: 'Users & VIP Profiles',
+          subLabel: 'Member Accounts & OTP',
+          icon: User,
+          visible: hasAccess('users'),
+          badge: resetRequestCount
+        },
+        {
+          id: 'points',
+          label: 'Point Management',
+          subLabel: 'Add & Audit VIP Points',
+          icon: Star,
+          visible: hasAccess('points'),
+          badge: 0
+        },
+        {
+          id: 'campaigns',
+          label: 'Game Campaigns',
+          subLabel: 'Lantern Game Winners',
+          icon: Gift,
+          visible: hasAccess('settings'),
+          badge: 0
+        }
+      ]
+    },
+    {
+      groupTitle: 'System & Security',
+      items: [
+        {
+          id: 'admins',
+          label: 'Manage Admins',
+          subLabel: 'Roles & Permissions',
+          icon: ShieldCheck,
+          visible: hasAccess('admins'),
+          badge: 0
+        },
+        {
+          id: 'settings',
+          label: 'System Settings',
+          subLabel: 'Menu, Staff & Branding',
+          icon: Settings,
+          visible: hasAccess('settings'),
+          badge: 0
+        }
+      ]
+    }
+  ], [hasAccess, pendingCount, posUnpaidBalanceCount, updateRequestCount, onboardingPendingCount, resetRequestCount]);
+
+  const activeNavItem = useMemo(() => {
+    for (const grp of navGroups) {
+      for (const it of grp.items) {
+        if (it.id === tab) return it;
+      }
+    }
+    return { label: 'Dashboard', subLabel: 'Overview', icon: TrendingUp };
+  }, [navGroups, tab]);
+
+  const totalAlertsCount = pendingCount + posUnpaidBalanceCount + resetRequestCount + updateRequestCount + onboardingPendingCount;
+
   if (!roleLoaded) return <div className="p-10 text-center text-gray-500 font-bold mt-10">Loading Admin Privileges...</div>;
 
   return (
-    <div className="animate-fade-in" onClick={handleInteraction}>
+    <div
+      className="fixed inset-0 z-[100] bg-[#F4F6F5] flex overflow-hidden font-sans text-gray-800"
+      onClick={handleInteraction}
+    >
       <audio id="admin-alert-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto" loop />
-      <div className="flex flex-wrap justify-center items-center gap-2 mb-6 scrollbar-hide overflow-x-auto p-1 mt-6 sm:mt-0 px-4 sm:px-0">
-        {hasAccess('bookings') && (
-          <button onClick={() => setTab('bookings')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'bookings' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            <CalendarPlus className="w-4 h-4 mr-2" /> Bookings
-            {pendingCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{pendingCount}</span>}
-          </button>
-        )}
 
-        {hasAccess('reports') && (
-          <button onClick={() => setTab('reports')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'reports' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            <BarChart2 className="w-4 h-4 mr-2" /> Staff History
-          </button>
-        )}
+      {/* ==========================================
+          MOBILE / TABLET BACKDROP OVERLAY
+         ========================================== */}
+      {isMobileSidebarOpen && (
+        <div
+          onClick={() => setIsMobileSidebarOpen(false)}
+          className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-xs lg:hidden transition-opacity"
+        />
+      )}
 
-        {hasAccess('users') && (
-          <button onClick={() => setTab('users')} className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'users' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            <User className="w-4 h-4 mr-2" /> Users
-            {resetRequestCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">{resetRequestCount}</span>}
-          </button>
-        )}
+      {/* ==========================================
+          LUXURY SIDE NAVIGATION BAR (Desktop Fixed + Mobile Slide-Out Drawer)
+         ========================================== */}
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 z-[120] bg-[#0B2419] text-white flex flex-col justify-between border-r border-[#C8A951]/25 shadow-2xl transition-all duration-300 ease-in-out ${
+          isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'
+        } ${isDesktopSidebarCollapsed ? 'lg:w-20' : 'lg:w-68'}`}
+      >
+        {/* 1. Brand Header inside Sidebar */}
+        <div className="h-16 px-4 bg-gradient-to-r from-[#123524] to-[#0B2419] border-b border-[#C8A951]/25 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            {activeLogoUrl ? (
+              <img
+                src={activeLogoUrl}
+                alt="The Shangri-La"
+                className="w-10 h-10 rounded-full object-cover border-2 border-[#C8A951] shadow-md flex-shrink-0 bg-[#123524]"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-[#123524] border-2 border-[#C8A951] flex items-center justify-center text-[#C8A951] font-serif font-black text-sm flex-shrink-0">
+                SL
+              </div>
+            )}
+            {!isDesktopSidebarCollapsed && (
+              <div className="min-w-0">
+                <h1 className="font-serif font-black text-sm text-[#D4AF37] tracking-wider truncate">
+                  THE SHANGRI-LA
+                </h1>
+                <p className="text-[10px] text-emerald-200/80 font-semibold uppercase tracking-widest truncate">
+                  Admin Backoffice
+                </p>
+              </div>
+            )}
+          </div>
 
-        {hasAccess('points') && (
-          <button onClick={() => setTab('points')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'points' ? 'bg-yellow-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            <Star className="w-4 h-4 mr-2" /> Point Mgmt
-          </button>
-        )}
-
-        {hasAccess('admins') && (
-          <button onClick={() => setTab('admins')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'admins' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            <ShieldCheck className="w-4 h-4 mr-2" /> Admins
-          </button>
-        )}
-
-        {hasAccess('penalties') && (
-          <button onClick={() => setTab('penalties')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'penalties' ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            <Banknote className="w-4 h-4 mr-2" /> Penalty & Loans
-          </button>
-        )}
-
-        {hasAccess('settings') && (
-          <button onClick={() => setTab('roster')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            <ClipboardList className="w-4 h-4 mr-2" /> Duty Roster
-          </button>
-        )}
-
-        {hasAccess('settings') && (
-          <button onClick={() => setTab('campaigns')} className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${tab === 'campaigns' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            <Gift className="w-4 h-4 mr-2" /> Campaigns
-          </button>
-        )}
-
-        {hasAccess('bookings') && (
+          {/* Close Button on Mobile / Collapse Toggle on Desktop */}
           <button
-            onClick={() => setTab('sales_summary')}
-            className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
-              tab === 'sales_summary'
-                ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] shadow-md border border-[#D4AF37]/40'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-            }`}
+            type="button"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="lg:hidden p-1.5 rounded-lg bg-white/10 text-gray-300 hover:text-white"
           >
-            <TrendingUp className="w-4 h-4 mr-2 text-[#D4AF37]" /> Sale Summary
+            <X className="w-4 h-4" />
           </button>
-        )}
+        </div>
 
-        {hasAccess('bookings') && (
+        {/* 2. Scrollable Categorized Navigation Links */}
+        <div className="flex-1 overflow-y-auto py-3 px-2.5 space-y-4 scrollbar-hide">
+          {navGroups.map((group, gIdx) => {
+            const visibleItems = group.items.filter((i) => i.visible);
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={gIdx} className="space-y-1">
+                {!isDesktopSidebarCollapsed && (
+                  <div className="px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-[#D4AF37]/65">
+                    {group.groupTitle}
+                  </div>
+                )}
+                {visibleItems.map((item) => {
+                  const isActive = tab === item.id;
+                  const IconComp = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setTab(item.id as any);
+                        setIsMobileSidebarOpen(false);
+                      }}
+                      title={isDesktopSidebarCollapsed ? `${item.label} — ${item.subLabel}` : undefined}
+                      className={`w-full group relative flex items-center ${
+                        isDesktopSidebarCollapsed ? 'justify-center px-2 py-3' : 'justify-between px-3 py-2.5'
+                      } rounded-xl text-left transition-all duration-150 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-[#D4AF37] via-[#e0be4c] to-[#C8A951] text-[#0B2419] shadow-lg font-black'
+                          : 'text-gray-200 hover:bg-white/10 hover:text-white font-bold'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <IconComp
+                          className={`w-4 h-4 flex-shrink-0 transition-transform group-hover:scale-110 ${
+                            isActive ? 'text-[#0B2419]' : 'text-[#D4AF37]'
+                          }`}
+                        />
+                        {!isDesktopSidebarCollapsed && (
+                          <div className="min-w-0">
+                            <div className="text-xs leading-tight truncate">{item.label}</div>
+                            <div
+                              className={`text-[10px] truncate mt-0.5 ${
+                                isActive ? 'text-[#0B2419]/80 font-bold' : 'text-gray-400 font-medium'
+                              }`}
+                            >
+                              {item.subLabel}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Notification Badge */}
+                      {item.badge > 0 && (
+                        <span
+                          className={`${
+                            isDesktopSidebarCollapsed
+                              ? 'absolute top-1.5 right-1.5 w-4 h-4 text-[9px]'
+                              : 'px-2 py-0.5 text-[10px]'
+                          } bg-red-500 text-white font-black rounded-full flex items-center justify-center shadow animate-pulse flex-shrink-0`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 3. Sidebar Footer Actions (POS Quick Launch, Collapse, Update & Logout) */}
+        <div className="p-3 border-t border-white/10 bg-black/25 space-y-2 flex-shrink-0">
+          {/* Open Walk-in POS Terminal Button */}
           <button
-            onClick={() => setTab('pos_sales')}
-            className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
-              tab === 'pos_sales' ? 'bg-[#123524] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-            }`}
+            type="button"
+            onClick={() => (window.location.href = '/?mode=pos')}
+            title="Open Walk-in POS Terminal"
+            className="w-full py-2.5 px-3 rounded-xl bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] border border-[#D4AF37]/40 text-xs font-black flex items-center justify-center gap-2 shadow-sm transition"
           >
-            <ShoppingBag className="w-4 h-4 mr-2 text-[#D4AF37]" /> POS Sales
+            <ShoppingBag className="w-4 h-4 flex-shrink-0" />
+            {!isDesktopSidebarCollapsed && <span>Open Walk-in POS →</span>}
+          </button>
+
+          <div className={`grid ${isDesktopSidebarCollapsed ? 'grid-cols-1' : 'grid-cols-2'} gap-1.5`}>
+            <button
+              type="button"
+              onClick={handleForceRefreshApp}
+              title="Clear Cache & Update App"
+              className="py-2 px-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+            >
+              <span>🔄</span>
+              {!isDesktopSidebarCollapsed && <span>Update App</span>}
+            </button>
+
+            <button
+              type="button"
+              onClick={onLogout}
+              title="Logout Admin"
+              className="py-2 px-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+            >
+              <LogOut className="w-3.5 h-3.5 flex-shrink-0" />
+              {!isDesktopSidebarCollapsed && <span>Logout</span>}
+            </button>
+          </div>
+
+          {/* Desktop Sidebar Collapse/Expand Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsDesktopSidebarCollapsed(!isDesktopSidebarCollapsed)}
+            className="hidden lg:flex w-full py-1.5 text-[10px] font-bold text-gray-400 hover:text-[#D4AF37] items-center justify-center gap-1 transition"
+          >
+            {isDesktopSidebarCollapsed ? '➔ Expand Menu' : '← Collapse Sidebar'}
+          </button>
+        </div>
+      </aside>
+
+      {/* ==========================================
+          MAIN FULL-SCREEN WORKSPACE (100% Width on Desktop & Responsive on Mobile/Tablet)
+         ========================================== */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* Top Executive Header Bar */}
+        <header className="h-16 bg-white border-b border-gray-200 px-4 sm:px-6 flex items-center justify-between gap-3 flex-shrink-0 shadow-2xs z-20">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Hamburger Menu Button for Mobile & Tablet */}
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="lg:hidden p-2.5 rounded-xl bg-[#123524] text-[#D4AF37] shadow-sm active:scale-95 transition relative"
+              title="Open Admin Menu"
+            >
+              <div className="space-y-1">
+                <span className="block w-4 h-0.5 bg-[#D4AF37]" />
+                <span className="block w-4 h-0.5 bg-[#D4AF37]" />
+                <span className="block w-4 h-0.5 bg-[#D4AF37]" />
+              </div>
+              {totalAlertsCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center">
+                  {totalAlertsCount}
+                </span>
+              )}
+            </button>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-extrabold text-[#123524] truncate">
+                  {activeNavItem.label}
+                </h2>
+                <span className="hidden sm:inline-block bg-[#123524]/10 text-[#123524] px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                  {activeNavItem.subLabel}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400 font-semibold hidden sm:block">
+                The Shangri-La Men's Retreat • Mandalay Executive Portal
+              </p>
+            </div>
+          </div>
+
+          {/* Right Quick Status Pills & Actions */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            {pendingCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setTab('bookings')}
+                className="px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200 text-xs font-black flex items-center gap-1.5 animate-pulse hover:bg-red-100 transition"
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Pending Bookings:</span> {pendingCount}
+              </button>
+            )}
+
             {posUnpaidBalanceCount > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
-                {posUnpaidBalanceCount}
-              </span>
+              <button
+                type="button"
+                onClick={() => setTab('pos_sales')}
+                className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-xs font-black flex items-center gap-1.5 hover:bg-amber-100 transition"
+              >
+                <ShoppingBag className="w-3.5 h-3.5 text-amber-600" />
+                <span className="hidden sm:inline">POS Balance Due:</span> {posUnpaidBalanceCount}
+              </button>
             )}
-          </button>
-        )}
 
-        {hasAccess('settings') && (
-          <button
-            onClick={() => setTab('hr')}
-            className={`relative px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
-              tab === 'hr' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            <UserPlus className="w-4 h-4 mr-2" /> HR Management
-            {(updateRequestCount > 0 || onboardingPendingCount > 0) && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md font-bold animate-pulse">
-                {updateRequestCount + onboardingPendingCount}
+            <div className="hidden md:flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span className="text-xs font-bold text-gray-700 capitalize">{loggedInAdmin}</span>
+              <span className="text-[10px] font-black bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded uppercase">
+                {adminRole === 'super_admin' ? 'Super Admin' : 'Staff Admin'}
               </span>
-            )}
-          </button>
-        )}
+            </div>
+          </div>
+        </header>
 
-        {hasAccess('settings') && (
-          <button
-            onClick={() => setTab('settings')}
-            className={`px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap ${
-              tab === 'settings' ? 'bg-[#D4AF37] text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            <Settings className="w-4 h-4 mr-2" /> Settings
-          </button>
-        )}
-
-        <button
-          onClick={async () => {
-            try {
-              if ('serviceWorker' in navigator) {
-                const regs = await navigator.serviceWorker.getRegistrations();
-                for (const r of regs) await r.unregister();
-              }
-              if ('caches' in window) {
-                const keys = await caches.keys();
-                for (const k of keys) await caches.delete(k);
-              }
-            } catch {}
-            window.location.reload();
-          }}
-          className="px-3.5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 shadow-sm"
-          title="Clear Cache & Load Latest Version"
-        >
-          🔄 Update App
-        </button>
-
-        <button
-          onClick={onLogout}
-          className="px-4 sm:px-5 py-3 rounded-lg font-bold text-xs transition-all flex items-center whitespace-nowrap bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm sm:ml-1"
-        >
-          <LogOut className="w-4 h-4 mr-2" /> Logout
-        </button>
+        {/* Scrollable Full-Width Content Area */}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6">
+          <div className="w-full max-w-[1600px] mx-auto pb-12">
+            {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
+            {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
+            {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
+            {tab === 'points' && hasAccess('points') && <AdminPointManagement adminRole={adminRole} appData={appData} />}
+            {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
+            {tab === 'penalties' && hasAccess('penalties') && <AdminPenaltyManager therapists={appData.therapists} />}
+            {tab === 'roster' && hasAccess('settings') && <DutyRosterSystem therapists={appData.therapists} />}
+            {tab === 'hr' && hasAccess('settings') && <AdminHRManagement />}
+            {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
+            {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView />}
+            {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
+            {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
+          </div>
+        </main>
       </div>
-
-      {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
-      {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
-      {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
-      {tab === 'points' && hasAccess('points') && <AdminPointManagement adminRole={adminRole} appData={appData} />}
-      {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
-      {tab === 'penalties' && hasAccess('penalties') && <AdminPenaltyManager therapists={appData.therapists} />}
-      {tab === 'roster' && hasAccess('settings') && <DutyRosterSystem therapists={appData.therapists} />}
-      {tab === 'hr' && hasAccess('settings') && <AdminHRManagement />}
-      {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
-      {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView />}
-      {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
-      {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
     </div>
   );
 });
