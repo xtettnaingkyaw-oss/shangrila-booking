@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, addDoc, getDocs, updateDoc, doc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, addDoc, getDocs, updateDoc, doc, onSnapshot, setDoc, deleteDoc, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security';
 import { AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
@@ -7,7 +7,8 @@ import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
   ArrowLeft, History, Search, Banknote, Bluetooth, Settings, Upload, X,
-  Menu, PackagePlus, Trash2, ChevronRight, Tag, AlertCircle, Calendar
+  Menu, PackagePlus, Trash2, ChevronRight, Tag, AlertCircle, Calendar,
+  Lock, LogOut, UserPlus, Shield, Eye, EyeOff, Users, KeyRound, Ban
 } from 'lucide-react';
 
 // Project ထဲရှိ THE SHANGRI LA - LOGO.png ကို Build Error မတက်စေဘဲ လှမ်းယူခြင်း
@@ -71,7 +72,22 @@ interface OfflineSaleRecord {
   synced: boolean;
   startTimeMillis?: number;
   expectedEndTimeMillis?: number;
+  cashierId?: string;
+  cashierName?: string;
 }
+
+export interface PosUserAccount {
+  id: string;
+  username: string;
+  displayName: string;
+  passwordEnc: string;
+  role: 'admin' | 'manager' | 'cashier';
+  status: 'active' | 'suspended';
+  createdAt: number;
+  lastLoginAt?: number;
+}
+
+const POS_AUTH_USER_KEY = 'shangrila_pos_logged_in_user_v1';
 
 interface PosPrintSettings {
   paperWidth: '58mm' | '80mm';
@@ -273,11 +289,221 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   // 🌟 Navigation Views & Slide-Out Side Menu State 🌟
   const [activePosView, setActivePosView] = useState<
-    'register' | 'online_bookings' | 'history' | 'extra_items' | 'discounts' | 'settings'
+    'register' | 'online_bookings' | 'history' | 'extra_items' | 'discounts' | 'pos_users' | 'settings'
   >('register');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
 
-  // 🌟 Live Online Bookings State inside POS (For Instant Receipt Printing & Deposit Approval) 🌟
+  // 🌟 POS User Account Login / Register / Admin Management States 🌟
+  const [currentPosUser, setCurrentPosUser] = useState<PosUserAccount | null>(() => {
+    try {
+      const saved = localStorage.getItem(POS_AUTH_USER_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authDisplayName, setAuthDisplayName] = useState('');
+  const [authRole, setAuthRole] = useState<'manager' | 'cashier'>('cashier');
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const [posUsersList, setPosUsersList] = useState<PosUserAccount[]>([]);
+  const [adminNewStaffName, setAdminNewStaffName] = useState('');
+  const [adminNewUsername, setAdminNewUsername] = useState('');
+  const [adminNewPassword, setAdminNewPassword] = useState('');
+  const [adminNewRole, setAdminNewRole] = useState<'admin' | 'manager' | 'cashier'>('cashier');
+
+  // 🌟 Real-Time Sync for POS Staff Accounts (`pos_users`) 🌟
+  useEffect(() => {
+    const unsubUsers = onSnapshot(
+      collection(db, 'pos_users'),
+      (snap) => {
+        const list: PosUserAccount[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          list.push({
+            id: d.id,
+            username: decryptText(data.username) || data.username || d.id,
+            displayName: decryptText(data.displayName) || data.displayName || 'POS Staff',
+            passwordEnc: data.passwordEnc || '',
+            role: data.role || 'cashier',
+            status: data.status || 'active',
+            createdAt: Number(data.createdAt) || Date.now(),
+            lastLoginAt: Number(data.lastLoginAt) || undefined
+          });
+        });
+        list.sort((a, b) => b.createdAt - a.createdAt);
+        setPosUsersList(list);
+
+        if (currentPosUser) {
+          const me = list.find((u) => u.id === currentPosUser.id);
+          if (me && me.status === 'suspended') {
+            alert('သင့် POS အကောင့်ကို Admin မှ ယာယီပိတ်ထားပါသည်။');
+            setCurrentPosUser(null);
+            localStorage.removeItem(POS_AUTH_USER_KEY);
+          }
+        }
+      },
+      (err) => console.warn('POS users sync warning:', err)
+    );
+    return () => unsubUsers();
+  }, [currentPosUser?.id]);
+
+  // 🌟 POS Login & Register Submit Handler 🌟
+  const handlePosAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    const cleanUser = authUsername.trim().toLowerCase();
+    const cleanPass = authPassword.trim();
+
+    if (!cleanUser || !cleanPass) {
+      setAuthError('ဖုန်းနံပါတ်/Username နှင့် စကားဝှက် ပြည့်စုံစွာ ဖြည့်သွင်းပါ။');
+      return;
+    }
+
+    setAuthLoading(true);
+    try {
+      const snap = await getDocs(collection(db, 'pos_users'));
+      let matchedUser: PosUserAccount | null = null;
+
+      snap.forEach((d) => {
+        const data = d.data();
+        const uName = (decryptText(data.username) || data.username || d.id).trim().toLowerCase();
+        if (uName === cleanUser || d.id === cleanUser) {
+          matchedUser = {
+            id: d.id,
+            username: decryptText(data.username) || data.username || d.id,
+            displayName: decryptText(data.displayName) || data.displayName || 'POS Staff',
+            passwordEnc: data.passwordEnc || '',
+            role: data.role || 'cashier',
+            status: data.status || 'active',
+            createdAt: Number(data.createdAt) || Date.now()
+          };
+        }
+      });
+
+      if (authTab === 'login') {
+        if (!matchedUser) {
+          setAuthError('အကောင့် မတွေ့ရှိပါ။ အကောင့်သစ်ဖြစ်ပါက "Register" မှ အရင်ဖွင့်ပေးပါ။');
+          setAuthLoading(false);
+          return;
+        }
+        const decPass =
+          decryptText((matchedUser as PosUserAccount).passwordEnc) ||
+          (matchedUser as PosUserAccount).passwordEnc;
+        if (decPass !== cleanPass) {
+          setAuthError('စကားဝှက် (Password) မှားယွင်းနေပါသည်။');
+          setAuthLoading(false);
+          return;
+        }
+        if ((matchedUser as PosUserAccount).status === 'suspended') {
+          setAuthError('ဤအကောင့်ကို Admin မှ ယာယီပိတ်ထားပါသည်။');
+          setAuthLoading(false);
+          return;
+        }
+        const loggedIn: PosUserAccount = {
+          ...(matchedUser as PosUserAccount),
+          lastLoginAt: Date.now()
+        };
+        await updateDoc(doc(db, 'pos_users', loggedIn.id), { lastLoginAt: Date.now() }).catch(() => {});
+        setCurrentPosUser(loggedIn);
+        localStorage.setItem(POS_AUTH_USER_KEY, JSON.stringify(loggedIn));
+      } else {
+        if (!authDisplayName.trim()) {
+          setAuthError('ဝန်ထမ်းအမည် (Staff Name) ထည့်သွင်းပါ။');
+          setAuthLoading(false);
+          return;
+        }
+        if (matchedUser) {
+          setAuthError('ဤဖုန်းနံပါတ် / Username ဖြင့် အကောင့်ရှိပြီးသားဖြစ်ပါသည်။ Sign In မှ ဝင်ပေးပါ။');
+          setAuthLoading(false);
+          return;
+        }
+        const assignedRole: 'admin' | 'manager' | 'cashier' = snap.empty ? 'admin' : authRole;
+        const newDocId = `pos_usr_${Date.now()}`;
+        const newUser: PosUserAccount = {
+          id: newDocId,
+          username: authUsername.trim(),
+          displayName: authDisplayName.trim(),
+          passwordEnc: encryptText(cleanPass),
+          role: assignedRole,
+          status: 'active',
+          createdAt: Date.now(),
+          lastLoginAt: Date.now()
+        };
+        await setDoc(doc(db, 'pos_users', newDocId), {
+          username: encryptText(newUser.username),
+          displayName: encryptText(newUser.displayName),
+          passwordEnc: newUser.passwordEnc,
+          role: newUser.role,
+          status: newUser.status,
+          createdAt: newUser.createdAt,
+          lastLoginAt: newUser.lastLoginAt
+        });
+        setCurrentPosUser(newUser);
+        localStorage.setItem(POS_AUTH_USER_KEY, JSON.stringify(loggedInUser(newUser)));
+      }
+    } catch (err: any) {
+      setAuthError('ချိတ်ဆက်မှု အမှားရှိနေပါသည်: ' + (err.message || 'Check connection'));
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const loggedInUser = (u: PosUserAccount) => u;
+
+  const handlePosLogout = () => {
+    if (confirm('POS အကောင့်မှ ထွက်မည်မှာ သေချာပါသလား?')) {
+      setCurrentPosUser(null);
+      localStorage.removeItem(POS_AUTH_USER_KEY);
+      setIsSideMenuOpen(false);
+    }
+  };
+
+  // 🌟 Admin Functions to Manage POS Users 🌟
+  const handleAdminCreatePosUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminNewStaffName.trim() || !adminNewUsername.trim() || !adminNewPassword.trim()) return;
+    const id = `pos_usr_${Date.now()}`;
+    await setDoc(doc(db, 'pos_users', id), {
+      displayName: encryptText(adminNewStaffName.trim()),
+      username: encryptText(adminNewUsername.trim()),
+      passwordEnc: encryptText(adminNewPassword.trim()),
+      role: adminNewRole,
+      status: 'active',
+      createdAt: Date.now()
+    });
+    setAdminNewStaffName('');
+    setAdminNewUsername('');
+    setAdminNewPassword('');
+  };
+
+  const handleAdminTogglePosUserStatus = async (u: PosUserAccount) => {
+    const nextStatus = u.status === 'active' ? 'suspended' : 'active';
+    await updateDoc(doc(db, 'pos_users', u.id), { status: nextStatus });
+  };
+
+  const handleAdminChangePosUserRole = async (u: PosUserAccount, role: 'admin' | 'manager' | 'cashier') => {
+    await updateDoc(doc(db, 'pos_users', u.id), { role });
+  };
+
+  const handleAdminResetPosUserPass = async (u: PosUserAccount) => {
+    const newPass = prompt(`${u.displayName} (${u.username}) အတွက် Password အသစ် ရိုက်ထည့်ပါ:`);
+    if (!newPass || !newPass.trim()) return;
+    await updateDoc(doc(db, 'pos_users', u.id), { passwordEnc: encryptText(newPass.trim()) });
+    alert('✅ Password အသစ် ပြောင်းလဲပြီးပါပြီ။');
+  };
+
+  const handleAdminDeletePosUser = async (u: PosUserAccount) => {
+    if (!confirm(`${u.displayName} (${u.username}) ၏ POS အကောင့်ကို ဖျက်မည်မှာ သေချာပါသလား?`)) return;
+    await deleteDoc(doc(db, 'pos_users', u.id));
+  };
+
+  // 🌟 Live Online Bookings & Multi-Device POS History Cloud Sync 🌟
   const [liveOnlineBookings, setLiveOnlineBookings] = useState<any[]>([]);
   const [onlineSearchQuery, setOnlineSearchQuery] = useState('');
   const [onlineFilterTab, setOnlineFilterTab] = useState<'all' | 'today' | 'deposit_due'>('all');
@@ -290,18 +516,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       q,
       (snap) => {
         const list: any[] = [];
-        const activePosInvoiceSet = new Set<string>();
+        const cloudWalkInSales: OfflineSaleRecord[] = [];
         const cancelledPosInvoiceSet = new Set<string>();
-        const paidInFullPosInvoiceSet = new Set<string>();
-        let oldestLoadedMillis = Infinity;
 
         snap.forEach((d) => {
           const raw = d.data();
-          const cAt = Number(raw.createdAt) || 0;
-          if (cAt > 0 && cAt < oldestLoadedMillis) {
-            oldestLoadedMillis = cAt;
-          }
-
           const decTx = String(decryptText(raw.txId) || raw.txId || '').trim();
           const decDiscLabel = raw.discountLabel ? decryptText(raw.discountLabel) || raw.discountLabel : '';
           const isWalkInPos =
@@ -313,10 +532,82 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             if (raw.status === 'cancelled') {
               cancelledPosInvoiceSet.add(decTx);
             } else {
-              activePosInvoiceSet.add(decTx);
-              if (raw.paymentStatus === 'paid_in_full' || Number(raw.balanceDue) === 0) {
-                paidInFullPosInvoiceSet.add(decTx);
+              // 🌟 Construct Full POS Receipt Record from Cloud so ANY Device / Phone sees ALL Receipts! 🌟
+              const total = Number(raw.totalPrice) || 0;
+              const subTotal = raw.originalPrice
+                ? Number(decryptText(raw.originalPrice) || raw.originalPrice) || total
+                : total;
+              const discAmt = Math.max(0, subTotal - total);
+              const discPct = raw.discountPercent
+                ? Number(decryptText(raw.discountPercent) || raw.discountPercent) || 0
+                : 0;
+              const rawName = decryptText(raw.name) || raw.name || 'Walk-in Guest';
+              const cleanCustomerName = String(rawName).replace(/\s*\(Walk-in\)\s*$/i, '').trim() || 'Walk-in Guest';
+              const rawPhone = decryptText(raw.phone) || raw.phone || '';
+              const cleanCustomerPhone = rawPhone === 'Walk-in' ? '' : rawPhone;
+              const cleanPayMethod = String(raw.paymentMethod || 'Cash').split('(')[0].trim() || 'Cash';
+              const isDepDue = raw.paymentStatus === 'deposit_only' && Number(raw.balanceDue) > 0;
+
+              let parsedItems: CartItem[] = [];
+              if (Array.isArray(raw.posItems) && raw.posItems.length > 0) {
+                parsedItems = raw.posItems;
+              } else {
+                const parts = String(raw.service || 'Spa Service')
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                parsedItems = parts.map((p, idx) => {
+                  const qtyMatch = p.match(/\s+x(\d+)$/i);
+                  const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+                  const isVvip = p.includes('+ VVIP');
+                  const durMatch = p.match(/\(([^)]+)\)/);
+                  const cleanTitle = p
+                    .replace(/\s+x\d+$/i, '')
+                    .replace(/\s*\+\s*VVIP/i, '')
+                    .replace(/\s*\([^)]*\)/g, '')
+                    .trim();
+                  return {
+                    cartId: `cloud_${d.id}_${idx}`,
+                    id: `item_${idx}`,
+                    name: cleanTitle || p,
+                    duration: durMatch ? durMatch[1] : undefined,
+                    price: parts.length === 1 ? Math.round(subTotal / qty) : Math.round(subTotal / (parts.length * qty)),
+                    isVvipUpgrade: isVvip,
+                    qty
+                  };
+                });
               }
+
+              cloudWalkInSales.push({
+                localId: raw.posLocalId || `cloud_${d.id}`,
+                firestoreDocId: d.id,
+                invoiceNo: decTx || `SL-${d.id.slice(-4).toUpperCase()}`,
+                createdAt: Number(raw.createdAt) || Date.now(),
+                date: raw.date || getLocalTodayStr(),
+                time: raw.time || '12:00 PM',
+                customerName: cleanCustomerName,
+                customerPhone: cleanCustomerPhone,
+                therapistName: raw.therapist || 'Any Available Therapist',
+                items: parsedItems,
+                subTotal,
+                discountType: 'percent',
+                discountValue: discPct,
+                discountAmount: discAmt,
+                discountReason: String(decDiscLabel).replace(/^[Shop Walk-in]\s*/i, ''),
+                totalPrice: total,
+                paymentMethod: cleanPayMethod,
+                paymentStatus: isDepDue ? 'deposit_only' : 'paid_in_full',
+                depositPaid: isDepDue ? Number(raw.depositPaid) || 0 : total,
+                balanceDue: isDepDue ? Number(raw.balanceDue) || 0 : 0,
+                cashReceived: isDepDue ? Number(raw.depositPaid) || 0 : total,
+                changeDue: 0,
+                serviceStatus: raw.status === 'completed' ? 'completed' : 'in_progress',
+                pointsEarned: Math.floor(total / 35000),
+                note: decryptText(raw.specialRequest) || '',
+                synced: true,
+                cashierId: raw.cashierId || '',
+                cashierName: raw.cashierName ? decryptText(raw.cashierName) || raw.cashierName : ''
+              });
             }
           } else if (decTx !== 'ADMIN') {
             const total = Number(raw.totalPrice) || 0;
@@ -339,53 +630,30 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
         setLiveOnlineBookings(list);
 
-        // 🌟 Real-Time Sync: Admin မှ Cancel သို့မဟုတ် Delete လုပ်ထားသော ဘောင်ချာများကို Shop POS မှ အလိုအလျောက် ဖယ်ရှားပေးခြင်း 🌟
-        setSalesHistory((prevHistory) => {
-          let changed = false;
-          const syncedHistory = prevHistory
-            .filter((item) => {
-              // Offline ဖြစ်နေစဉ် ရိုက်ထားပြီး မSync ရသေးသော ဘောင်ချာများကို မဖျက်ပါ
-              if (!item.synced) return true;
-              // Admin မှ Cancel လုပ်ထားလျှင် Shop POS မှ ချက်ချင်းဖယ်ရှားမည်
-              if (cancelledPosInvoiceSet.has(item.invoiceNo)) {
-                changed = true;
-                return false;
-              }
-              // Admin မှ အပြီးတိုင် Delete လုပ်ထားခဲ့သော ဘောင်ချာအဟောင်းများကိုလည်း Shop POS မှ ဖယ်ရှားမည်
-              if (
-                snap.size > 0 &&
-                item.createdAt >= oldestLoadedMillis &&
-                !activePosInvoiceSet.has(item.invoiceNo)
-              ) {
-                changed = true;
-                return false;
-              }
-              return true;
-            })
-            .map((item) => {
-              // Admin ဘက်မှ ကျန်ငွေ Approve လုပ်လိုက်ပါက Shop POS တွင်လည်း Paid in Full အလိုအလျောက် ပြောင်းပေးမည်
-              if (
-                item.paymentStatus === 'deposit_only' &&
-                paidInFullPosInvoiceSet.has(item.invoiceNo)
-              ) {
-                changed = true;
-                return {
-                  ...item,
-                  paymentStatus: 'paid_in_full' as const,
-                  depositPaid: item.totalPrice,
-                  balanceDue: 0
-                };
-              }
-              return item;
-            });
+        // 🌟 Merge Cloud Walk-in Sales + Unsynced Offline Local Sales so ALL Devices share 100% of History! 🌟
+        setSalesHistory((prevLocal) => {
+          const unsyncedOnly = prevLocal.filter(
+            (item) => !item.synced && !cancelledPosInvoiceSet.has(item.invoiceNo)
+          );
+          const mergedByInvoice = new Map<string, OfflineSaleRecord>();
 
-          if (changed) {
-            try {
-              localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(syncedHistory));
-            } catch {}
-            return syncedHistory;
-          }
-          return prevHistory;
+          cloudWalkInSales.forEach((cSale) => {
+            mergedByInvoice.set(cSale.invoiceNo, cSale);
+          });
+          unsyncedOnly.forEach((uSale) => {
+            if (!mergedByInvoice.has(uSale.invoiceNo)) {
+              mergedByInvoice.set(uSale.invoiceNo, uSale);
+            }
+          });
+
+          const finalHistory = Array.from(mergedByInvoice.values())
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .slice(0, 200);
+
+          try {
+            localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(finalHistory));
+          } catch {}
+          return finalHistory;
         });
       },
       (err) => console.warn('POS real-time sync warning:', err)
@@ -1284,6 +1552,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       specialRequest: encryptText(noteWithBalanceInfo),
       status: record.serviceStatus,
       createdAt: record.createdAt,
+      posLocalId: record.localId,
+      posItems: record.items,
+      cashierId: currentPosUser?.id || '',
+      cashierName: encryptText(currentPosUser?.displayName || 'POS Staff'),
       ...(record.startTimeMillis && { startTimeMillis: record.startTimeMillis }),
       ...(record.expectedEndTimeMillis && { expectedEndTimeMillis: record.expectedEndTimeMillis })
     };
@@ -2366,6 +2638,177 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     promoObj?.hotelDiscountPercent ||
     15;
 
+  // 🌟 IF NOT LOGGED IN -> SHOW LUXURY SHANGRI-LA POS LOGIN & REGISTER PORTAL 🌟
+  if (!currentPosUser) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#071911] via-[#123524] to-[#0b2217] flex items-center justify-center p-4 font-sans relative overflow-hidden">
+        <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border-2 border-[#D4AF37]/50 overflow-hidden animate-fade-in">
+          <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-6 text-center border-b border-[#D4AF37]/40">
+            <img
+              src={digitalLogoUrl || defaultLogoImg}
+              alt="The Shangri-La Logo"
+              className="w-16 h-16 rounded-full mx-auto mb-2.5 object-cover border-2 border-[#D4AF37] shadow-lg bg-[#123524]"
+            />
+            <h1 className="font-serif font-black text-lg sm:text-xl text-[#D4AF37] tracking-wider uppercase">
+              THE SHANGRI-LA POS
+            </h1>
+            <p className="text-[10px] font-extrabold text-gray-200 uppercase tracking-widest mt-0.5">
+              Cloud Multi-Device Staff Portal
+            </p>
+          </div>
+
+          <div className="p-6 space-y-5">
+            <div className="grid grid-cols-2 bg-gray-100 p-1 rounded-2xl border border-gray-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab('login');
+                  setAuthError('');
+                }}
+                className={`py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 ${
+                  authTab === 'login' ? 'bg-[#123524] text-[#D4AF37] shadow-sm' : 'text-gray-500'
+                }`}
+              >
+                <Lock className="w-3.5 h-3.5" /> Sign In (အကောင့်ဝင်ရန်)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthTab('register');
+                  setAuthError('');
+                }}
+                className={`py-2.5 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 ${
+                  authTab === 'register' ? 'bg-[#123524] text-[#D4AF37] shadow-sm' : 'text-gray-500'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" /> Register (အကောင့်သစ်)
+              </button>
+            </div>
+
+            {authError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-600" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handlePosAuthSubmit} className="space-y-4">
+              {authTab === 'register' && (
+                <div>
+                  <label className="block text-[11px] font-extrabold text-[#123524] uppercase mb-1">
+                    Staff Full Name (ဝန်ထမ်းအမည်)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={authDisplayName}
+                      onChange={(e) => setAuthDisplayName(e.target.value)}
+                      placeholder="ဥပမာ - Mg Mg (Reception)"
+                      className="w-full pl-9 pr-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                    />
+                    <User className="w-4 h-4 text-[#D4AF37] absolute left-3 top-3" />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-extrabold text-[#123524] uppercase mb-1">
+                  Phone Number or Username (ဖုန်းနံပါတ် / ID)
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={authUsername}
+                    onChange={(e) => setAuthUsername(e.target.value)}
+                    placeholder="09xxxxxxxxx သို့မဟုတ် staff01"
+                    className="w-full pl-9 pr-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                  />
+                  <Shield className="w-4 h-4 text-[#D4AF37] absolute left-3 top-3" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold text-[#123524] uppercase mb-1">
+                  Password / PIN (စကားဝှက်)
+                </label>
+                <div className="relative">
+                  <input
+                    type={showAuthPassword ? 'text' : 'password'}
+                    required
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-9 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                  />
+                  <KeyRound className="w-4 h-4 text-[#D4AF37] absolute left-3 top-3" />
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthPassword(!showAuthPassword)}
+                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                  >
+                    {showAuthPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {authTab === 'register' && (
+                <div>
+                  <label className="block text-[11px] font-extrabold text-[#123524] uppercase mb-1">
+                    Staff Role (တာဝန်)
+                  </label>
+                  <select
+                    value={authRole}
+                    onChange={(e) => setAuthRole(e.target.value as 'manager' | 'cashier')}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-[#123524] outline-none"
+                  >
+                    <option value="cashier">POS Cashier / Receptionist</option>
+                    <option value="manager">Spa Manager</option>
+                  </select>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-3.5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-xs uppercase tracking-widest shadow-lg hover:opacity-95 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {authLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>ချိတ်ဆက်နေပါသည်...</span>
+                  </>
+                ) : authTab === 'login' ? (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>Sign In to Cloud POS</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4" />
+                    <span>Create POS Account & Login</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
+              <span>All Receipts Sync Across Devices</span>
+              <button
+                type="button"
+                onClick={() => (window.location.href = '/?mode=admin')}
+                className="font-bold text-[#123524] hover:underline"
+              >
+                Admin Backoffice →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 flex flex-col font-sans">
       {/* 🌟 UI/UX Guaranteed Tablet Split-Screen Grid & Parabolic Jump-to-Bill Keyframes 🌟 */}
@@ -2594,6 +3037,24 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 <button
                   type="button"
                   onClick={() => {
+                    setActivePosView('pos_users');
+                    setIsSideMenuOpen(false);
+                  }}
+                  className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                    activePosView === 'pos_users'
+                      ? 'bg-[#D4AF37] text-[#123524] shadow-md font-black'
+                      : 'text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Users className="w-4 h-4" /> POS Staff Accounts ({posUsersList.length})
+                  </span>
+                  <ChevronRight className="w-4 h-4 opacity-70" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
                     setActivePosView('settings');
                     setIsSideMenuOpen(false);
                   }}
@@ -2612,6 +3073,20 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             </div>
 
             <div className="p-3.5 border-t border-white/10 space-y-2 bg-black/20">
+              <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-[#D4AF37] truncate">{currentPosUser.displayName}</div>
+                  <div className="text-[10px] text-gray-300 uppercase">{currentPosUser.role} • {currentPosUser.username}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handlePosLogout}
+                  title="Sign Out"
+                  className="p-2 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 transition"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={handleForceRefreshApp}
@@ -2920,7 +3395,165 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       {/* ==========================================
           VIEW 5: DISCOUNTS & PROMOTIONS SETTING TAB
          ========================================== */}
-      {activePosView === 'online_bookings' ? (
+      {activePosView === 'pos_users' ? (
+        <div className="max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-5 animate-fade-in">
+          <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-4">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-[#123524] flex items-center">
+                  <Users className="w-5 h-5 mr-2 text-[#D4AF37]" />
+                  POS Staff & User Accounts Management (Admin)
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  POS အကောင့်များကို အသစ်ဖွင့်ပေးခြင်း၊ Password ပြင်ခြင်း နှင့် အကောင့်ပိတ်/ဖွင့် စီမံနိုင်ပါသည်
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActivePosView('register')}
+                className="px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-bold shadow-sm"
+              >
+                ← Back to POS Register
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleAdminCreatePosUser}
+              className="bg-gradient-to-r from-yellow-50 to-amber-50/40 p-4 rounded-xl border border-[#D4AF37]/40 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
+            >
+              <div className="sm:col-span-3">
+                <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">Staff Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ဝန်ထမ်းအမည်"
+                  value={adminNewStaffName}
+                  onChange={(e) => setAdminNewStaffName(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none"
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">Phone / Username</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="09xxxxxxxxx / ID"
+                  value={adminNewUsername}
+                  onChange={(e) => setAdminNewUsername(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">Password</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="စကားဝှက်"
+                  value={adminNewPassword}
+                  onChange={(e) => setAdminNewPassword(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold text-[#123524] uppercase mb-1">Role</label>
+                <select
+                  value={adminNewRole}
+                  onChange={(e) => setAdminNewRole(e.target.value as any)}
+                  className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-[#123524]"
+                >
+                  <option value="cashier">Cashier</option>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <button
+                  type="submit"
+                  className="w-full py-2.5 px-3 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black uppercase shadow-sm hover:bg-[#1a4a32] transition flex items-center justify-center"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add User
+                </button>
+              </div>
+            </form>
+
+            <div className="space-y-2.5">
+              {posUsersList.map((u) => (
+                <div
+                  key={u.id}
+                  className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 transition ${
+                    u.status === 'suspended'
+                      ? 'bg-red-50/40 border-red-200 opacity-75'
+                      : 'bg-gray-50 border-gray-200 hover:border-[#D4AF37]'
+                  }`}
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-xs sm:text-sm text-[#123524]">{u.displayName}</span>
+                      <span className="font-mono text-xs font-bold text-gray-600 bg-white px-2 py-0.5 rounded border border-gray-200">
+                        ID: {u.username}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                          u.status === 'active'
+                            ? 'bg-green-100 text-green-800 border border-green-300'
+                            : 'bg-red-100 text-red-700 border border-red-300'
+                        }`}
+                      >
+                        {u.status}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-500">
+                      Password: <span className="font-mono font-bold text-gray-700">{decryptText(u.passwordEnc) || '••••'}</span>
+                      {u.lastLoginAt && <span> • နောက်ဆုံးဝင်ချိန်: {new Date(u.lastLoginAt).toLocaleString()}</span>}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleAdminChangePosUserRole(u, e.target.value as any)}
+                      className="p-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-[#123524]"
+                    >
+                      <option value="cashier">Cashier</option>
+                      <option value="manager">Manager</option>
+                      <option value="admin">Admin</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAdminResetPosUserPass(u)}
+                      className="px-2.5 py-1.5 rounded-lg bg-yellow-50 text-[#123524] border border-[#D4AF37]/50 text-[11px] font-bold hover:bg-yellow-100 transition flex items-center"
+                    >
+                      <KeyRound className="w-3 h-3 mr-1" /> Pass ပြင်ရန်
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAdminTogglePosUserStatus(u)}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition flex items-center ${
+                        u.status === 'active'
+                          ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                          : 'bg-green-50 text-green-800 border-green-300 hover:bg-green-100'
+                      }`}
+                    >
+                      <Ban className="w-3 h-3 mr-1" />
+                      {u.status === 'active' ? 'Suspend' : 'Activate'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAdminDeletePosUser(u)}
+                      className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : activePosView === 'online_bookings' ? (
         /* ==========================================
            VIEW: ONLINE BOOKINGS IN POS (Print Receipt, Deposit Check & Approve Balance)
            ========================================== */
