@@ -11,6 +11,7 @@ import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, Payme
 import { useAppStore } from '../AppDataContext';
 import { AdminPenaltyManager } from './PenaltySystem';
 import AdminSalesSummaryView from './AdminSalesSummaryView';
+import { BookOpen } from 'lucide-react';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -96,7 +97,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
   const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
-  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales'>('bookings');
+  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales'| 'handbook'>('bookings');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -129,7 +130,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           setAdminPermissions(p);
           const isAllowedExtraTab =
             (p.includes('bookings') && (tab === 'sales_summary' || tab === 'pos_sales')) ||
-            (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns'));
+            (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns' || tab === 'handbook'));
           if (r !== 'super_admin' && !p.includes(tab) && !isAllowedExtraTab && p.length > 0) {
             setTab(p[0] as any);
           }
@@ -313,6 +314,14 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           icon: UserPlus,
           visible: hasAccess('settings'),
           badge: updateRequestCount + onboardingPendingCount
+        },
+        {
+          id: 'handbook',
+          label: 'Employee Handbook',
+          subLabel: 'Staff Rules & CMS',
+          icon: BookOpen,
+          visible: hasAccess('settings'),
+          badge: 0
         },
         {
           id: 'penalties',
@@ -658,6 +667,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
             {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView />}
             {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
             {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
+            {tab === 'handbook' && hasAccess('settings') && <AdminEmployeeHandbookManager />}
           </div>
         </main>
       </div>
