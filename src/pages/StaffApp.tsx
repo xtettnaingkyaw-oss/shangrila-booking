@@ -12,6 +12,9 @@ import { useAppStore } from '../AppDataContext';
 import { StaffPenaltyView } from './PenaltySystem'; // 🌟 Add Penalty View Import 🌟
 import { NewEmployeeOnboardingForm, StaffProfileView } from './OnboardingSystem';
 
+import { StaffEmployeeHandbookReader } from './EmployeeHandbookSystem';
+import { BookOpen } from 'lucide-react';
+
 const formatPrice = (price: any) => {
     const num = Number(price);
     if (isNaN(num)) return '0 Ks';
@@ -209,7 +212,7 @@ const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || app
    const [activeSession, setActiveSession] = useState<Booking | null>(null);
    const [showClockInFlow, setShowClockInFlow] = useState(false);
    const [loading, setLoading] = useState(true);
-   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials' | 'roster' | 'profile'>('service');
+   const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials' | 'roster' | 'profile' | 'handbook'>('service');
    const [showMoreTabs, setShowMoreTabs] = useState(false); 
    
    const [rosterData, setRosterData] = useState<any>(null);
@@ -293,7 +296,7 @@ const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || app
                    <button onClick={() => { setStaffTab('performance'); setShowMoreTabs(false); }} className={`flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition ${staffTab === 'performance' ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] shadow text-[#D4AF37]' : 'text-gray-500 hover:bg-gray-100'}`}><Sparkles className="w-3 h-3 inline mb-0.5 mr-1"/>Matrix</button>
                    
                    {/* 🌟 View More Button 🌟 */}
-                   <button onClick={() => setShowMoreTabs(!showMoreTabs)} className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition flex items-center justify-center ${['history', 'financials', 'roster', 'profile'].includes(staffTab) || showMoreTabs ? 'bg-gray-200 text-[#123524] shadow-inner' : 'text-gray-500 hover:bg-gray-100'}`}>
+                   <button onClick={() => setShowMoreTabs(!showMoreTabs)} className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition flex items-center justify-center ${['history', 'financials', 'roster', 'profile', 'handbook'].includes(staffTab) || showMoreTabs ? 'bg-gray-200 text-[#123524] shadow-inner' : 'text-gray-500 hover:bg-gray-100'}`}>
                        More <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${showMoreTabs ? 'rotate-180' : ''}`} />
                        {(unpaidPenaltyCount > 0 || hasRosterNoti) && (
                            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-100 border border-red-200 rounded-full flex items-center justify-center shadow-sm">
@@ -323,8 +326,31 @@ const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || app
                        <button onClick={() => { setStaffTab('profile'); setShowMoreTabs(false); }} className={`px-4 py-3 text-xs font-bold text-left rounded-lg transition flex items-center ${staffTab === 'profile' ? 'bg-gray-50 text-[#123524]' : 'text-gray-600 hover:bg-gray-50'}`}>
                            <User className="w-4 h-4 mr-2 text-gray-400" /> My Profile
                        </button>
+
+                       <button onClick={() => { setStaffTab('handbook'); setShowMoreTabs(false); }} className={`px-4 py-3 text-xs font-bold text-left rounded-lg transition flex items-center ${staffTab === 'handbook' ? 'bg-[#123524] text-[#D4AF37]' : 'text-gray-600 hover:bg-gray-50'}`}>
+                           <BookOpen className={`w-4 h-4 mr-2 ${staffTab === 'handbook' ? 'text-[#D4AF37]' : 'text-[#D4AF37]'}`} /> Employee Hand Book
+                       </button>
                    </div>
                )}
+
+               {/* 🌟 Tab Menu Bar အောက်တွင် ဝန်ထမ်းတိုင်း တိုက်ရိုက် မြင်တွေ့နှိပ်နိုင်မည့် Employee Hand Book Bar 🌟 */}
+               <button
+                   type="button"
+                   onClick={() => { setStaffTab(staffTab === 'handbook' ? 'service' : 'handbook'); setShowMoreTabs(false); }}
+                   className={`mt-2 w-full py-2.5 px-4 rounded-xl font-bold text-xs transition-all flex items-center justify-between border ${
+                       staffTab === 'handbook'
+                           ? 'bg-gradient-to-r from-[#0B2419] to-[#123524] text-[#D4AF37] border-[#C8A951] shadow-md'
+                           : 'bg-gradient-to-r from-amber-50/80 via-white to-amber-50/80 text-[#123524] border-[#D4AF37]/40 hover:border-[#D4AF37]'
+                   }`}
+               >
+                   <span className="flex items-center">
+                       <BookOpen className="w-4 h-4 mr-2 text-[#D4AF37]" />
+                       Employee Hand Book (ဝန်ထမ်းလက်စွဲစာအုပ် နှင့် စည်းကမ်းချက်များ)
+                   </span>
+                   <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${staffTab === 'handbook' ? 'bg-[#D4AF37] text-[#0B2419]' : 'bg-[#123524] text-[#D4AF37]'}`}>
+                       {staffTab === 'handbook' ? '← Back' : 'ဖတ်ရှုရန် →'}
+                   </span>
+               </button>
            </div>
            {/* 🌟 TAB MENU END 🌟 */}
 
@@ -333,6 +359,7 @@ const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || app
            {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={liveStaff} />}
            {staffTab === 'financials' && <StaffPenaltyView therapistName={liveStaff.name} />}
            {staffTab === 'profile' && <StaffProfileView staff={liveStaff} />}
+           {staffTab === 'handbook' && <StaffEmployeeHandbookReader staffId={liveStaff.id} staffName={liveStaff.name} />}
            
            {/* 🌟 DUTY ROSTER VIEW (Dropdown ပါဝင်သည်) 🌟 */}
            {staffTab === 'roster' && (
