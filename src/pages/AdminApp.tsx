@@ -11,6 +11,7 @@ import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, Payme
 import { useAppStore } from '../AppDataContext';
 import { AdminPenaltyManager } from './PenaltySystem';
 import AdminSalesSummaryView from './AdminSalesSummaryView';
+import { AdminEmployeeHandbookManager } from './EmployeeHandbookSystem';
 import { BookOpen } from 'lucide-react';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
