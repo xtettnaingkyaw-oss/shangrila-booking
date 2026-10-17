@@ -307,9 +307,9 @@ const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || app
                    </button>
                </div>
 
-               {/* 🌟 Dropdown Menu 🌟 */}
+               {/* 🌟 Dropdown Menu (More အောက်တွင်သာ ပြသမည်) 🌟 */}
                {showMoreTabs && (
-                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-slide-up flex flex-col p-1.5">
+                   <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-slide-up flex flex-col p-1.5">
                        <button onClick={() => { setStaffTab('history'); setShowMoreTabs(false); }} className={`px-4 py-3 text-xs font-bold text-left rounded-lg transition flex items-center ${staffTab === 'history' ? 'bg-gray-50 text-[#123524]' : 'text-gray-600 hover:bg-gray-50'}`}>
                            <History className="w-4 h-4 mr-2 text-gray-400" /> History
                        </button>
@@ -323,34 +323,16 @@ const liveStaff = appData.therapists.find(t => t.id === loggedInStaff.id) || app
                            <span className="flex items-center"><ClipboardList className={`w-4 h-4 mr-2 ${hasRosterNoti ? 'text-red-400 animate-bounce' : 'text-blue-400'}`} /> Duties</span>
                            {hasRosterNoti && <span className="bg-red-500 w-2 h-2 rounded-full shadow-md animate-ping mr-1"></span>}
                        </button>
+
                        <button onClick={() => { setStaffTab('profile'); setShowMoreTabs(false); }} className={`px-4 py-3 text-xs font-bold text-left rounded-lg transition flex items-center ${staffTab === 'profile' ? 'bg-gray-50 text-[#123524]' : 'text-gray-600 hover:bg-gray-50'}`}>
                            <User className="w-4 h-4 mr-2 text-gray-400" /> My Profile
                        </button>
 
                        <button onClick={() => { setStaffTab('handbook'); setShowMoreTabs(false); }} className={`px-4 py-3 text-xs font-bold text-left rounded-lg transition flex items-center ${staffTab === 'handbook' ? 'bg-[#123524] text-[#D4AF37]' : 'text-gray-600 hover:bg-gray-50'}`}>
-                           <BookOpen className={`w-4 h-4 mr-2 ${staffTab === 'handbook' ? 'text-[#D4AF37]' : 'text-[#D4AF37]'}`} /> Employee Hand Book
+                           <BookOpen className="w-4 h-4 mr-2 text-[#D4AF37] flex-shrink-0" /> Employee Hand Book
                        </button>
                    </div>
                )}
-
-               {/* 🌟 Tab Menu Bar အောက်တွင် ဝန်ထမ်းတိုင်း တိုက်ရိုက် မြင်တွေ့နှိပ်နိုင်မည့် Employee Hand Book Bar 🌟 */}
-               <button
-                   type="button"
-                   onClick={() => { setStaffTab(staffTab === 'handbook' ? 'service' : 'handbook'); setShowMoreTabs(false); }}
-                   className={`mt-2 w-full py-2.5 px-4 rounded-xl font-bold text-xs transition-all flex items-center justify-between border ${
-                       staffTab === 'handbook'
-                           ? 'bg-gradient-to-r from-[#0B2419] to-[#123524] text-[#D4AF37] border-[#C8A951] shadow-md'
-                           : 'bg-gradient-to-r from-amber-50/80 via-white to-amber-50/80 text-[#123524] border-[#D4AF37]/40 hover:border-[#D4AF37]'
-                   }`}
-               >
-                   <span className="flex items-center">
-                       <BookOpen className="w-4 h-4 mr-2 text-[#D4AF37]" />
-                       Employee Hand Book (ဝန်ထမ်းလက်စွဲစာအုပ် နှင့် စည်းကမ်းချက်များ)
-                   </span>
-                   <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${staffTab === 'handbook' ? 'bg-[#D4AF37] text-[#0B2419]' : 'bg-[#123524] text-[#D4AF37]'}`}>
-                       {staffTab === 'handbook' ? '← Back' : 'ဖတ်ရှုရန် →'}
-                   </span>
-               </button>
            </div>
            {/* 🌟 TAB MENU END 🌟 */}
 
