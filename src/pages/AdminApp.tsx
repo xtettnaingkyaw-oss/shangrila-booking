@@ -4809,20 +4809,6 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
     const dateAndSearchFilteredSales = useMemo(() => {
         const today = getLocalTodayStr();
         const yesterday = getYesterdayStr();
-        const q = searchQuery.trim().toLowerCase();
-
-        return posSales.filter((s: any) => {
-            const saleDate = s.date || today;
-            if (dateFilterMode === 'today' && saleDate !== today) return false;
-            if (dateFilterMode === 'yesterday' && saleDate !== yesterday) return false;
-            if (dateFilterMode === 'custom' && customDate && saleDate !== customDate) return false;
-
-            if (q) {
-                const rawTx = safeParseText(s.txId).toLowerCase();
-                const custName = safeParseText(s.name).toLowerCase();
-                const custPhoconst dateAndSearchFilteredSales = useMemo(() => {
-        const today = getLocalTodayStr();
-        const yesterday = getYesterdayStr();
         const thisMonthPrefix = getThisMonthPrefix();
         const lastMonthPrefix = getLastMonthPrefix();
         const q = searchQuery.trim().toLowerCase();
