@@ -611,7 +611,16 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 synced: true
               });
             }
-          } else if (decTx !== 'ADMIN') {
+         } else if (decTx !== 'ADMIN' && decTx !== 'CASH') {
+          const rawPay = String(raw.paymentMethod || '').toLowerCase();
+          const rawService = String(raw.service || '').toLowerCase();
+          const isStaffClockIn =
+            rawPay.includes('cash payment in shop') ||
+            rawService.includes('walk-in reward redemption') ||
+            raw.time === 'Walk-in' ||
+            Boolean(raw.isStaffClockIn);
+
+          if (!isStaffClockIn) {
             const total = Number(raw.totalPrice) || 0;
             const orig = raw.originalPrice ? Number(decryptText(raw.originalPrice) || raw.originalPrice) || total : total;
             const discPct = raw.discountPercent ? Number(decryptText(raw.discountPercent) || raw.discountPercent) || 0 : 0;
@@ -628,8 +637,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
             });
           }
-        });
-
+        }
         setLiveOnlineBookings(list);
 
         // 🌟 Real-Time Sync: Remove Cancelled bills AND Restore any missing valid Cloud POS bills! 🌟
