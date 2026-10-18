@@ -688,8 +688,9 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 
 function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
   const [filterPayMode, setFilterPayMode] = useState<'all' | 'pending_action' | 'deposit_only' | 'paid_in_full' | 'cancelled'>('all');
-  const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'upcoming' | 'custom'>('all');
-  const [customDate, setCustomDate] = useState<string>(getLocalTodayStr());
+  const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'this_month' | 'last_month' | 'upcoming' | 'custom_range'>('all');
+  const [fromDate, setFromDate] = useState<string>(getLocalTodayStr());
+  const [toDate, setToDate] = useState<string>(getLocalTodayStr());
   const [searchQuery, setSearchQuery] = useState('');
 
   // 🌟 Modals States (Deposit Config, View Slip Details, Cancel with Reason) 🌟
@@ -704,6 +705,18 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
     const d = new Date();
     d.setDate(d.getDate() - 1);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+
+  const getThisMonthPrefix = () => {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  };
+
+  const getLastMonthPrefix = () => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   };
 
   const formatReadableDateHeader = (dateStr: string) => {
@@ -725,31 +738,46 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
     return formatted;
   };
 
-  // 🌟 Walk-in POS နှင့် Admin Manual Clock-in များကို ဖယ်ထုတ်ပြီး Online Booking အစစ်များကိုသာ စစ်ထုတ်မည် 🌟
+  // 🌟 Walk-in POS, Cash in Shop နှင့် Admin Manual Clock-in များကို ဖယ်ထုတ်ပြီး Online Booking အစစ်များကိုသာ စစ်ထုတ်မည် 🌟
   const onlineOnlyBookings = useMemo(() => {
     return bookings.filter((b: any) => {
-      const rawTx = String(b.txId || '').trim();
-      if (rawTx === 'ADMIN') return false;
+      const rawTx = String(b.txId || '').trim().toUpperCase();
+      const rawName = String(b.name || '').trim().toLowerCase();
+      const rawPay = String(b.paymentMethod || '').trim().toLowerCase();
+      const rawDisc = String(b.discountLabel || '').trim().toLowerCase();
+
+      if (rawTx === 'ADMIN' || rawTx === 'CASH') return false;
       const isWalkInPos =
         rawTx.startsWith('SL-') ||
-        (b.paymentMethod && String(b.paymentMethod).includes('Shop POS')) ||
-        (b.discountLabel && String(b.discountLabel).includes('[Shop Walk-in'));
+        rawName.includes('walk-in') ||
+        rawPay.includes('shop pos') ||
+        rawPay.includes('cash payment in shop') ||
+        rawDisc.includes('[shop walk-in');
       return !isWalkInPos;
     });
   }, [bookings]);
 
-  // 🌟 1. ရက်စွဲ (Date Filter) နှင့် Search Query စစ်ထုတ်ခြင်း 🌟
+  // 🌟 1. ရက်စွဲ (Date Filter: Today, Yesterday, This Month, Last Month, From-To Range) နှင့် Search စစ်ထုတ်ခြင်း 🌟
   const dateAndSearchFiltered = useMemo(() => {
     const today = getLocalTodayStr();
     const yesterday = getYesterdayStr();
+    const thisMonthPrefix = getThisMonthPrefix();
+    const lastMonthPrefix = getLastMonthPrefix();
     const q = searchQuery.trim().toLowerCase();
 
     return onlineOnlyBookings.filter((b: any) => {
       const bDate = b.date || today;
       if (dateFilterMode === 'today' && bDate !== today) return false;
       if (dateFilterMode === 'yesterday' && bDate !== yesterday) return false;
+      if (dateFilterMode === 'this_month' && !bDate.startsWith(thisMonthPrefix)) return false;
+      if (dateFilterMode === 'last_month' && !bDate.startsWith(lastMonthPrefix)) return false;
       if (dateFilterMode === 'upcoming' && bDate <= today) return false;
-      if (dateFilterMode === 'custom' && customDate && bDate !== customDate) return false;
+      if (dateFilterMode === 'custom_range') {
+        const start = fromDate && toDate && fromDate > toDate ? toDate : fromDate;
+        const end = fromDate && toDate && fromDate > toDate ? fromDate : toDate;
+        if (start && bDate < start) return false;
+        if (end && bDate > end) return false;
+      }
 
       if (q) {
         const matchSearch =
@@ -764,7 +792,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
       }
       return true;
     });
-  }, [onlineOnlyBookings, dateFilterMode, customDate, searchQuery]);
+  }, [onlineOnlyBookings, dateFilterMode, fromDate, toDate, searchQuery]);
 
   // 🌟 2. Payment / Status Filter ထပ်စစ်ခြင်း 🌟
   const filteredBookings = useMemo(() => {
@@ -1069,7 +1097,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `Online_Bookings_Report_${dateFilterMode === 'custom' ? customDate : getLocalTodayStr()}.csv`);
+    link.setAttribute('download', `Online_Bookings_Report_${dateFilterMode === 'custom_range' ? `${fromDate}_to_${toDate}` : getLocalTodayStr()}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -1441,10 +1469,10 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         </div>
       </div>
 
-      {/* 3. Date Filter Bar + Status Filter Pills + Search */}
-      <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3 bg-gray-50/70 p-3 rounded-2xl border border-gray-200/80">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Date Filter Pills */}
+      {/* 3. Date Filter Bar (All, Today, Yesterday, This Month, Last Month, From -> To) + Status Filter + Search */}
+      <div className="flex flex-col gap-3 bg-gray-50/70 p-3.5 rounded-2xl border border-gray-200/80">
+        {/* Top Row: Quick Date Pills & From -> To Date Range Picker */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
             <button
               type="button"
@@ -1475,6 +1503,24 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
             </button>
             <button
               type="button"
+              onClick={() => setDateFilterMode('this_month')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                dateFilterMode === 'this_month' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              ယခုလ (This Month)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode('last_month')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                dateFilterMode === 'last_month' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              အရင်လ (Last Month)
+            </button>
+            <button
+              type="button"
               onClick={() => setDateFilterMode('upcoming')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                 dateFilterMode === 'upcoming' ? 'bg-blue-600 text-white shadow-xs' : 'text-blue-700 hover:bg-blue-50'
@@ -1482,31 +1528,63 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
             >
               ကြိုတင်ရက်ချိန်း (Upcoming)
             </button>
+          </div>
 
-            {/* Custom Date Picker */}
-            <div
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
-                dateFilterMode === 'custom'
-                  ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
-                  : 'bg-gray-50 text-gray-700 border-gray-200'
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
+          {/* 🌟 From Date ➔ To Date Range Picker 🌟 */}
+          <div
+            className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border transition shadow-2xs ${
+              dateFilterMode === 'custom_range'
+                ? 'bg-[#123524] text-[#D4AF37] border-[#D4AF37]'
+                : 'bg-white text-gray-700 border-gray-200'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
+            <div className="flex items-center gap-1.5 text-xs font-bold">
+              <span className={`text-[10px] uppercase ${dateFilterMode === 'custom_range' ? 'text-gray-300' : 'text-gray-400'}`}>
+                From:
+              </span>
               <input
                 type="date"
-                value={customDate}
+                value={fromDate}
                 onChange={(e) => {
-                  setCustomDate(e.target.value);
-                  setDateFilterMode('custom');
+                  const val = e.target.value;
+                  setFromDate(val);
+                  if (toDate && val > toDate) setToDate(val);
+                  setDateFilterMode('custom_range');
                 }}
                 className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
-                  dateFilterMode === 'custom' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                  dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                }`}
+              />
+            </div>
+
+            <span className={`text-xs font-black ${dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-gray-400'}`}>
+              ➔
+            </span>
+
+            <div className="flex items-center gap-1.5 text-xs font-bold">
+              <span className={`text-[10px] uppercase ${dateFilterMode === 'custom_range' ? 'text-gray-300' : 'text-gray-400'}`}>
+                To:
+              </span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setToDate(val);
+                  if (fromDate && val < fromDate) setFromDate(val);
+                  setDateFilterMode('custom_range');
+                }}
+                className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                  dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
                 }`}
               />
             </div>
           </div>
+        </div>
 
-          {/* Payment & Status Filter Pills */}
+        {/* Bottom Row: Payment & Status Filter Pills + Search */}
+        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-2.5 pt-1 border-t border-gray-200/60">
           <div className="flex flex-wrap bg-white p-1 rounded-xl border border-gray-200 shadow-2xs gap-0.5">
             <button
               type="button"
@@ -1554,27 +1632,26 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
               ပယ်ဖျက်ထားသော ({summaryStats.cancelledCount})
             </button>
           </div>
-        </div>
 
-        {/* Search Input */}
-        <div className="relative w-full xl:w-72">
-          <input
-            type="text"
-            placeholder="အမည်၊ ဖုန်း သို့မဟုတ် TxID ရှာရန်..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold shadow-2xs"
-          />
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <div className="relative w-full lg:w-72">
+            <input
+              type="text"
+              placeholder="အမည်၊ ဖုန်း သို့မဟုတ် TxID ရှာရန်..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold shadow-2xs"
+            />
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -4652,8 +4729,20 @@ function AdminCampaignsView() {
 
 function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
     const [filterStatus, setFilterStatus] = useState<'all' | 'deposit_only' | 'paid_in_full' | 'cancelled'>('all');
-    const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'custom'>('all');
-    const [customDate, setCustomDate] = useState<string>(getLocalTodayStr());
+    const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'this_month' | 'last_month' | 'custom_range'>('all');
+    const [fromDate, setFromDate] = useState<string>(getLocalTodayStr());
+    const [toDate, setToDate] = useState<string>(getLocalTodayStr());
+
+    const getThisMonthPrefix = () => {
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    };
+    const getLastMonthPrefix = () => {
+        const d = new Date();
+        d.setDate(1);
+        d.setMonth(d.getMonth() - 1);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    };
     const [searchQuery, setSearchQuery] = useState('');
     const [approvingId, setApprovingId] = useState<string | null>(null);
 
@@ -4731,6 +4820,29 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
             if (q) {
                 const rawTx = safeParseText(s.txId).toLowerCase();
                 const custName = safeParseText(s.name).toLowerCase();
+                const custPhoconst dateAndSearchFilteredSales = useMemo(() => {
+        const today = getLocalTodayStr();
+        const yesterday = getYesterdayStr();
+        const thisMonthPrefix = getThisMonthPrefix();
+        const lastMonthPrefix = getLastMonthPrefix();
+        const q = searchQuery.trim().toLowerCase();
+
+        return posSales.filter((s: any) => {
+            const saleDate = s.date || today;
+            if (dateFilterMode === 'today' && saleDate !== today) return false;
+            if (dateFilterMode === 'yesterday' && saleDate !== yesterday) return false;
+            if (dateFilterMode === 'this_month' && !saleDate.startsWith(thisMonthPrefix)) return false;
+            if (dateFilterMode === 'last_month' && !saleDate.startsWith(lastMonthPrefix)) return false;
+            if (dateFilterMode === 'custom_range') {
+                const start = fromDate && toDate && fromDate > toDate ? toDate : fromDate;
+                const end = fromDate && toDate && fromDate > toDate ? fromDate : toDate;
+                if (start && saleDate < start) return false;
+                if (end && saleDate > end) return false;
+            }
+
+            if (q) {
+                const rawTx = safeParseText(s.txId).toLowerCase();
+                const custName = safeParseText(s.name).toLowerCase();
                 const custPhone = safeParseText(s.phone).toLowerCase();
                 const discLabel = safeParseText(s.discountLabel).toLowerCase();
                 const cancelReason = safeParseText(s.cancelReason).toLowerCase();
@@ -4746,7 +4858,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
             }
             return true;
         });
-    }, [posSales, dateFilterMode, customDate, searchQuery]);
+    }, [posSales, dateFilterMode, fromDate, toDate, searchQuery]);
 
     // 🌟 2. Payment / Cancelled Status Filter ထပ်စစ်ခြင်း 🌟
     const filteredPosSales = useMemo(() => {
@@ -4996,7 +5108,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
-        link.setAttribute('download', `POS_WalkIn_Sales_Report_${dateFilterMode === 'custom' ? customDate : getLocalTodayStr()}.csv`);
+        link.setAttribute('download', `POS_WalkIn_Sales_Report_${dateFilterMode === 'custom_range' ? `${fromDate}_to_${toDate}` : getLocalTodayStr()}.csv`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
@@ -5302,9 +5414,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                             type="button"
                             onClick={() => setDateFilterMode('all')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                                dateFilterMode === 'all'
-                                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
-                                    : 'text-gray-600 hover:text-gray-900'
+                                dateFilterMode === 'all' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
                             }`}
                         >
                             ရက်အားလုံး (All)
@@ -5313,9 +5423,7 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                             type="button"
                             onClick={() => setDateFilterMode('today')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                                dateFilterMode === 'today'
-                                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
-                                    : 'text-gray-600 hover:text-gray-900'
+                                dateFilterMode === 'today' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
                             }`}
                         >
                             ယနေ့ (Today)
@@ -5324,31 +5432,66 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                             type="button"
                             onClick={() => setDateFilterMode('yesterday')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                                dateFilterMode === 'yesterday'
-                                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
-                                    : 'text-gray-600 hover:text-gray-900'
+                                dateFilterMode === 'yesterday' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
                             }`}
                         >
                             မနေ့က (Yesterday)
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setDateFilterMode('this_month')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                dateFilterMode === 'this_month' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            ယခုလ (This Month)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setDateFilterMode('last_month')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                                dateFilterMode === 'last_month' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                        >
+                            အရင်လ (Last Month)
+                        </button>
 
+                        {/* From Date ➔ To Date Range Picker */}
                         <div
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
-                                dateFilterMode === 'custom'
+                            className={`flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
+                                dateFilterMode === 'custom_range'
                                     ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
                                     : 'bg-gray-50 text-gray-700 border-gray-200'
                             }`}
                         >
                             <Calendar className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
+                            <span className="text-[10px] font-bold opacity-75">From:</span>
                             <input
                                 type="date"
-                                value={customDate}
+                                value={fromDate}
                                 onChange={(e) => {
-                                    setCustomDate(e.target.value);
-                                    setDateFilterMode('custom');
+                                    const val = e.target.value;
+                                    setFromDate(val);
+                                    if (toDate && val > toDate) setToDate(val);
+                                    setDateFilterMode('custom_range');
                                 }}
                                 className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
-                                    dateFilterMode === 'custom' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                                    dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                                }`}
+                            />
+                            <span className="text-xs font-black">➔</span>
+                            <span className="text-[10px] font-bold opacity-75">To:</span>
+                            <input
+                                type="date"
+                                value={toDate}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setToDate(val);
+                                    if (fromDate && val < fromDate) setFromDate(val);
+                                    setDateFilterMode('custom_range');
+                                }}
+                                className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                                    dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
                                 }`}
                             />
                         </div>
