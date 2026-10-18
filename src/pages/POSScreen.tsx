@@ -2136,11 +2136,20 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
     const startTimeMillis = startDt.getTime();
     const now = saleDate === getLocalTodayStr() ? Date.now() : startTimeMillis + (Date.now() % 60000);
 
-    let totalMins = 60;
+    let totalMins = 0;
     cart.forEach((c) => {
-      const match = (c.duration || '').match(/(\d+)\s*Mins/i);
-      if (match) totalMins = Math.max(totalMins, parseInt(match[1], 10));
+      const dStr = `${c.duration || ''} ${c.name || ''}`.toLowerCase();
+      const mMatch = dStr.match(/(\d+)\s*(?:mins|min)/i);
+      const hMatch = dStr.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr)/i);
+      let itemMins = 0;
+      if (mMatch) itemMins = parseInt(mMatch[1], 10);
+      else if (hMatch) itemMins = Math.round(parseFloat(hMatch[1]) * 60);
+      else if (dStr.includes('whole day')) itemMins = 480;
+      else if (dStr.includes('whole night')) itemMins = 600;
+      else if (!c.isCustomItem) itemMins = 60;
+      totalMins += itemMins * (c.qty || 1);
     });
+    if (totalMins <= 0) totalMins = 60;
     const expectedEndTimeMillis = startTimeMillis + totalMins * 60 * 1000;
 
     const combinedTherapist =
