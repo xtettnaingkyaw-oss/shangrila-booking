@@ -5746,3 +5746,4 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
     </div>
   );
 }
+);
