@@ -561,7 +561,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               const reconstructedItems: CartItem[] = serviceParts.map((part, idx) => {
                 let s = part;
                 let qty = 1;
-                const qMatch = s.match(/\(x(\d+)\)$/i) \vert{}\vert{} s.match(/\s+x(\d+)$/i);
+                const qMatch = s.match(/\(x(\d+)\)$/i) || s.match(/\s+x(\d+)$/i);
                 if (qMatch) {
                   qty = parseInt(qMatch[1], 10) || 1;
                   s = s.replace(qMatch[0], '').trim();
@@ -1510,8 +1510,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
-  const addToLocalHistory = (record: OfflineSaleRecord) => {
-    const updated = [record, ...salesHistory.filter((r) => r.localId !== record.localId)].slice(0, 60);
+const addToLocalHistory = (record: OfflineSaleRecord) => {
+    const updated = [record, ...salesHistory.filter((r) => r.localId !== record.localId)].slice(0, 3000);
     setSalesHistory(updated);
     try {
       localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updated));
