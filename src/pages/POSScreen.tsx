@@ -632,12 +632,14 @@ export default function POSScreen({ appData }: { appData: AppData }) {
               txId: decTx,
               specialRequest: decryptText(raw.specialRequest) || raw.specialRequest || '',
               originalPrice: orig,
-              discountPercent: discPct,
-              discountLabel: decDiscLabel,
-              vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
-            });
+             discountPercent: discPct,
+                discountLabel: decDiscLabel,
+                vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
+              });
+            }
           }
-        }
+        }); 
+
         setLiveOnlineBookings(list);
 
         // 🌟 Real-Time Sync: Remove Cancelled bills AND Restore any missing valid Cloud POS bills! 🌟
@@ -5746,4 +5748,3 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
     </div>
   );
 }
-);
