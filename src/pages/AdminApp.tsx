@@ -4,7 +4,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock, Banknote, Timer, ClipboardList, PartyPopper, ShoppingBag} from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock, Banknote, Timer, ClipboardList, PartyPopper, ShoppingBag, Users, Ban} from 'lucide-react';
 import { DutyRosterSystem } from './DutyRosterSystem';
 import { AdminHRManagement } from './OnboardingSystem';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
@@ -98,7 +98,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
   const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
-  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'reports' | 'users' | 'points' | 'admins' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook'>('sales_summary');
+  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'reports' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook'>('sales_summary');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -131,7 +131,8 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           setAdminPermissions(p);
           const isAllowedExtraTab =
             (p.includes('bookings') && (tab === 'sales_summary' || tab === 'pos_sales')) ||
-            (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns' || tab === 'handbook'));
+            (p.includes('admins') && tab === 'pos_users') ||
+            (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns' || tab === 'handbook' || tab === 'pos_users'));
           if (r !== 'super_admin' && !p.includes(tab) && !isAllowedExtraTab && p.length > 0) {
             setTab(p[0] as any);
           }
@@ -366,6 +367,14 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
     {
       groupTitle: 'System & Security',
       items: [
+        {
+          id: 'pos_users',
+          label: 'POS Staff Accounts',
+          subLabel: 'POS Login & Cloud Sync',
+          icon: Users,
+          visible: hasAccess('admins') || hasAccess('settings'),
+          badge: 0
+        },
         {
           id: 'admins',
           label: 'Manage Admins',
@@ -669,6 +678,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
             {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
             {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
             {tab === 'handbook' && hasAccess('settings') && <AdminEmployeeHandbookManager />}
+            {tab === 'pos_users' && (hasAccess('admins') || hasAccess('settings')) && <AdminPOSUsersManager adminRole={adminRole} />}
           </div>
         </main>
       </div>
@@ -4880,6 +4890,11 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                                                         <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-0.5">
                                                             {sale.paymentMethod || 'Cash (Shop POS)'}
                                                         </div>
+                                                        {sale.cashierName && (
+                                                            <div className="text-[10px] font-bold text-[#123524] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded mt-1 w-fit">
+                                                                👤 Cashier: {safeParseText(sale.cashierName)}
+                                                            </div>
+                                                        )}
 
                                                         {hasDiscount ? (
                                                             <div className={`mt-2 p-2 rounded-lg w-max space-y-0.5 border ${isCancelled ? 'bg-gray-100 border-gray-200 opacity-60' : 'bg-green-50 border-green-200'}`}>
@@ -4993,4 +5008,376 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
             )}
         </div>
     );
+}
+
+function AdminPOSUsersManager({ adminRole }: { adminRole: string }) {
+  const [posUsers, setPosUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [newStaffName, setNewStaffName] = useState('');
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState<'admin' | 'manager' | 'cashier'>('cashier');
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'pos_users'), (snap) => {
+      const list: any[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        list.push({
+          id: d.id,
+          username: decryptText(data.username) || data.username || d.id,
+          displayName: decryptText(data.displayName) || data.displayName || 'POS Staff',
+          passwordDec: decryptText(data.passwordEnc) || data.passwordEnc || '',
+          role: data.role || 'cashier',
+          status: data.status || 'active',
+          createdAt: Number(data.createdAt) || Date.now(),
+          lastLoginAt: Number(data.lastLoginAt) || undefined
+        });
+      });
+      list.sort((a, b) => b.createdAt - a.createdAt);
+      setPosUsers(list);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleCreatePosUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = newStaffName.trim();
+    const cleanUser = newUsername.trim();
+    const cleanPass = newPassword.trim();
+    if (!cleanName || !cleanUser || !cleanPass) return;
+
+    const exists = posUsers.some((u) => String(u.username).toLowerCase() === cleanUser.toLowerCase());
+    if (exists) {
+      alert('ဤဖုန်းနံပါတ် / Username ဖြင့် POS အကောင့် ရှိပြီးသားဖြစ်ပါသည်။');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const newId = `pos_usr_${Date.now()}`;
+      await setDoc(doc(db, 'pos_users', newId), {
+        displayName: encryptText(cleanName),
+        username: encryptText(cleanUser),
+        passwordEnc: encryptText(cleanPass),
+        role: newRole,
+        status: 'active',
+        createdAt: Date.now()
+      });
+      setNewStaffName('');
+      setNewUsername('');
+      setNewPassword('');
+      setNewRole('cashier');
+      alert(`✅ POS အကောင့် [${cleanName}] အား အောင်မြင်စွာ ဖွင့်ပေးပြီးပါပြီ။`);
+    } catch (err) {
+      alert('POS အကောင့်ဖွင့်ရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleToggleStatus = async (u: any) => {
+    const nextStatus = u.status === 'active' ? 'suspended' : 'active';
+    const confirmMsg =
+      nextStatus === 'suspended'
+        ? `${u.displayName} (${u.username}) ၏ POS အကောင့်ကို ယာယီပိတ် (Suspend) မည်မှာ သေချာပါသလား?`
+        : `${u.displayName} (${u.username}) ၏ POS အကောင့်ကို ပြန်ဖွင့် (Activate) ပေးမည်မှာ သေချာပါသလား?`;
+    if (!window.confirm(confirmMsg)) return;
+    await updateDoc(doc(db, 'pos_users', u.id), { status: nextStatus });
+  };
+
+  const handleChangeRole = async (u: any, role: 'admin' | 'manager' | 'cashier') => {
+    await updateDoc(doc(db, 'pos_users', u.id), { role });
+  };
+
+  const handleResetPassword = async (u: any) => {
+    const nextPass = window.prompt(`${u.displayName} (${u.username}) အတွက် Password အသစ် ရိုက်ထည့်ပါ:`, u.passwordDec);
+    if (!nextPass || !nextPass.trim()) return;
+    await updateDoc(doc(db, 'pos_users', u.id), {
+      passwordEnc: encryptText(nextPass.trim())
+    });
+    alert('✅ Password အသစ် ပြောင်းလဲပြီးပါပြီ။');
+  };
+
+  const handleEditDisplayName = async (u: any) => {
+    const nextName = window.prompt('ဝန်ထမ်းအမည် (Staff Name) ပြင်ဆင်ရန်:', u.displayName);
+    if (!nextName || !nextName.trim()) return;
+    await updateDoc(doc(db, 'pos_users', u.id), {
+      displayName: encryptText(nextName.trim())
+    });
+  };
+
+  const handleDeleteUser = async (u: any) => {
+    if (adminRole !== 'super_admin') {
+      alert('Super Admin သာလျှင် အကောင့်ဖျက်ခွင့်ရှိပါသည်။');
+      return;
+    }
+    if (!window.confirm(`${u.displayName} (${u.username}) ၏ POS အကောင့်ကို အပြီးတိုင် ဖျက်မည်မှာ သေချာပါသလား?`)) return;
+    await deleteDoc(doc(db, 'pos_users', u.id));
+  };
+
+  const filteredUsers = posUsers.filter((u) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      String(u.displayName || '').toLowerCase().includes(q) ||
+      String(u.username || '').toLowerCase().includes(q) ||
+      String(u.role || '').toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-4 gap-4">
+        <div>
+          <h2 className="text-xl font-bold flex items-center text-[#123524]">
+            <Users className="mr-2 text-[#D4AF37]" /> POS Staff & User Accounts Management
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
+            ဆိုင်ရှိ POS (Tablet / Phone / PC) အသုံးပြုမည့် ဝန်ထမ်းအကောင့်များကို စီမံခန့်ခွဲရန်နှင့် အကောင့်ပိတ်/ဖွင့် ပြုလုပ်ရန်
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-3.5 py-1.5 rounded-xl text-xs font-black">
+            Active: {posUsers.filter((u) => u.status === 'active').length}
+          </span>
+          <span className="bg-yellow-50 text-[#123524] border border-[#D4AF37]/40 px-3.5 py-1.5 rounded-xl text-xs font-black">
+            Total Accounts: {posUsers.length}
+          </span>
+        </div>
+      </div>
+
+      {/* Create New POS User Form */}
+      <form
+        onSubmit={handleCreatePosUser}
+        className="bg-gradient-to-r from-yellow-50/80 via-amber-50/40 to-white p-5 rounded-2xl border border-[#D4AF37]/40 grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-end shadow-2xs"
+      >
+        <div className="sm:col-span-3">
+          <label className="block text-[11px] font-extrabold text-[#123524] uppercase mb-1">
+            Staff Full Name (ဝန်ထမ်းအမည်) *
+          </label>
+          <input
+            type="text"
+            required
+            value={newStaffName}
+            onChange={(e) => setNewStaffName(e.target.value)}
+            placeholder="ဥပမာ - Mg Mg (Reception)"
+            className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+          />
+        </div>
+
+        <div className="sm:col-span-3">
+          <label className="block text-[11px] font-extrabold text-[#123524] uppercase mb-1">
+            Phone / Login Username *
+          </label>
+          <input
+            type="text"
+            required
+            value={newUsername}
+            onChange={(e) => setNewUsername(e.target.value)}
+            placeholder="09xxxxxxxxx သို့မဟုတ် staff01"
+            className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="block text-[11px] font-extrabold text-[#123524] uppercase mb-1">
+            Password / PIN *
+          </label>
+          <input
+            type="text"
+            required
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="စကားဝှက်"
+            className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+          />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="block text-[11px] font-extrabold text-[#123524] uppercase mb-1">
+            Role (တာဝန်)
+          </label>
+          <select
+            value={newRole}
+            onChange={(e) => setNewRole(e.target.value as any)}
+            className="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold text-[#123524] outline-none"
+          >
+            <option value="cashier">POS Cashier</option>
+            <option value="manager">Spa Manager</option>
+            <option value="admin">POS Admin</option>
+          </select>
+        </div>
+
+        <div className="sm:col-span-2">
+          <button
+            type="submit"
+            disabled={creating}
+            className="w-full py-2.5 px-4 bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>{creating ? 'Adding...' : 'Add POS User'}</span>
+          </button>
+        </div>
+      </form>
+
+      {/* Search Bar */}
+      <div className="flex justify-between items-center gap-3">
+        <div className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">
+          Registered POS Staff Accounts ({filteredUsers.length})
+        </div>
+        <div className="relative w-full sm:w-72">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="ဝန်ထမ်းအမည် သို့မဟုတ် ဖုန်း/ID ရှာရန်..."
+            className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#D4AF37]"
+          />
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+        </div>
+      </div>
+
+      {/* POS Users Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[820px]">
+          <thead>
+            <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider bg-gray-50/60">
+              <th className="p-3">Staff Name</th>
+              <th className="p-3">Login ID / Phone</th>
+              <th className="p-3">Password</th>
+              <th className="p-3">Role</th>
+              <th className="p-3">Status & Last Login</th>
+              <th className="p-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="p-10 text-center text-gray-400 font-bold">
+                  Loading POS Accounts...
+                </td>
+              </tr>
+            ) : filteredUsers.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-10 text-center text-gray-400 font-bold">
+                  POS အကောင့် မရှိသေးပါ။ အပေါ်တွင် အသစ်ဖွင့်ပေးနိုင်ပါသည်။
+                </td>
+              </tr>
+            ) : (
+              filteredUsers.map((u) => (
+                <tr
+                  key={u.id}
+                  className={`border-b transition text-sm ${
+                    u.status === 'suspended'
+                      ? 'bg-red-50/40 border-red-100 opacity-75'
+                      : 'border-gray-50 hover:bg-gray-50/80'
+                  }`}
+                >
+                  <td className="p-3">
+                    <div className="font-bold text-[#123524] flex items-center gap-1.5">
+                      <span>{u.displayName}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleEditDisplayName(u)}
+                        className="text-gray-400 hover:text-[#123524]"
+                        title="Edit Staff Name"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="text-[10px] text-gray-400">
+                      Created: {new Date(u.createdAt).toLocaleDateString()}
+                    </div>
+                  </td>
+
+                  <td className="p-3 font-mono font-bold text-gray-800">{u.username}</td>
+
+                  <td className="p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold bg-gray-100 px-2.5 py-1 rounded border border-gray-200 text-gray-700">
+                        {u.passwordDec || '••••••'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleResetPassword(u)}
+                        className="text-[10px] font-bold bg-yellow-50 hover:bg-yellow-100 text-[#123524] border border-[#D4AF37]/50 px-2 py-1 rounded-lg flex items-center transition"
+                      >
+                        <KeyRound className="w-3 h-3 mr-1 text-[#D4AF37]" /> ပြင်ရန်
+                      </button>
+                    </div>
+                  </td>
+
+                  <td className="p-3">
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleChangeRole(u, e.target.value as any)}
+                      className="p-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-[#123524] outline-none focus:border-[#123524]"
+                    >
+                      <option value="cashier">Cashier</option>
+                      <option value="manager">Manager</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </td>
+
+                  <td className="p-3">
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase inline-flex items-center ${
+                        u.status === 'active'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : 'bg-red-100 text-red-700 border border-red-300'
+                      }`}
+                    >
+                      {u.status === 'active' ? '● Active' : '🚫 Suspended'}
+                    </span>
+                    {u.lastLoginAt && (
+                      <div className="text-[10px] text-gray-500 mt-1">
+                        Last Login: {new Date(u.lastLoginAt).toLocaleString()}
+                      </div>
+                    )}
+                  </td>
+
+                  <td className="p-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(u)}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition flex items-center ${
+                          u.status === 'active'
+                            ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                            : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                        }`}
+                      >
+                        <Ban className="w-3 h-3 mr-1" />
+                        {u.status === 'active' ? 'Suspend (ပိတ်ရန်)' : 'Activate (ဖွင့်ရန်)'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUser(u)}
+                        disabled={adminRole !== 'super_admin'}
+                        title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete POS Account'}
+                        className={`p-2 rounded-lg transition ${
+                          adminRole === 'super_admin'
+                            ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                            : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                        }`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
