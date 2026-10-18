@@ -817,7 +817,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
                   </li>
                   <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
                     <span className="text-[#D4AF37] mr-2 font-bold">•</span>
-                    <span>ရရှိထားသော Discount ခံစားခွင့်အား ဆိုင်၏ ဝန်ဆောင်မှုအားလုံးအပေါ်တွင် အသုံးပြုနိုင်ပါသည်။</span>
+                    <span>ရရှိထားသော Discount ခံစားခွင့်အား (Waxing Service) များမှလွဲ၍ ဆိုင်၏ ဝန်ဆောင်မှုအားလုံးအပေါ်တွင် အသုံးပြုနိုင်ပါသည်။</span>
                   </li>
                   <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
                     <span className="text-[#D4AF37] mr-2 font-bold">•</span>
