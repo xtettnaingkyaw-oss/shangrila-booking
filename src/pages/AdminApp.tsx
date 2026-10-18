@@ -184,7 +184,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(300));
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(3000));
     const unsubscribe = onSnapshot(q, (snap) => {
       const data: Booking[] = [];
       let currentPendingCount = 0;
