@@ -213,17 +213,48 @@ export default function AdminSalesSummaryView({
     };
   }, [datePreset, customStartDate, customEndDate]);
 
-  // 🌟 Normalize All Bookings (Both Online & Walk-in POS) 🌟
+ // 🌟 Normalize All Bookings (Both Online & Walk-in POS) with Strict Non-Revenue Filter 🌟
   const allNormalizedSales: NormalizedSale[] = useMemo(() => {
     return bookings
-      .filter((b) => {
-        const tx = safeStr(b.txId);
-        // Exclude Admin Manual Clock-in dummy records (totalPrice === 0 and txId === 'ADMIN')
-        if (tx === 'ADMIN' && (!b.totalPrice || b.totalPrice === 0)) return false;
-        // Exclude Walk-in Reward Redemption dummy logs with 0 price
-        if ((b.service || '').includes('Walk-in Reward Redemption') && (!b.totalPrice || b.totalPrice === 0)) {
+      .filter((b: any) => {
+        const rawTx = String(decryptText(b.txId) || b.txId || '').trim();
+        const rawTxUpper = rawTx.toUpperCase();
+        const rawName = String(decryptText(b.name) || b.name || '').trim().toLowerCase();
+        const rawPay = String(b.paymentMethod || '').trim().toLowerCase();
+        const rawDisc = String(decryptText(b.discountLabel) || b.discountLabel || '').trim().toLowerCase();
+        const rawService = String(b.service || '').trim().toLowerCase();
+        const rawTime = String(b.time || '').trim().toLowerCase();
+        const priceNum = Number(b.totalPrice) || 0;
+
+        // 1. Exclude Admin Manual Clock-in or Cashier Staff Clock-In dummy records
+        if (
+          rawTxUpper === 'ADMIN' ||
+          rawTxUpper === 'CASH' ||
+          rawTx === '' ||
+          rawTx === '-'
+        ) {
           return false;
         }
+
+        // 2. Exclude Walk-in Reward Redemption (0 Ks)
+        if (rawService.includes('walk-in reward redemption') || priceNum <= 0) {
+          return false;
+        }
+
+        // 3. Exclude Staff App Clock-In records ('Cash Payment in Shop' or 'Walk-in' without proper POS invoice)
+        const isStaffClockInRecord =
+          rawPay.includes('cash payment in shop') ||
+          rawName.includes('walk-in') ||
+          Boolean(b.isStaffClockIn);
+
+        // If it's a staff clock-in and NOT a genuine POS bill (SL-...) and NOT a genuine online booking, exclude it
+        const isGenuinePos = rawTxUpper.startsWith('SL-') || rawPay.includes('shop pos') || rawDisc.includes('[shop walk-in') || Boolean(b.posLocalId);
+        const isGenuineOnline = !isStaffClockInRecord && !isGenuinePos && priceNum > 0;
+
+        if (isStaffClockInRecord && !isGenuinePos && !isGenuineOnline) {
+          return false;
+        }
+
         return true;
       })
       .map((b: any) => {
