@@ -510,14 +510,16 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   const [posDepositModalBooking, setPosDepositModalBooking] = useState<any | null>(null);
   const [posCustomDepositStr, setPosCustomDepositStr] = useState('');
 
-  useEffect(() => {
-    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(300));
+ useEffect(() => {
+    const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(3000));
     const unsub = onSnapshot(
       q,
       (snap) => {
         const list: any[] = [];
-        const cloudWalkInSales: OfflineSaleRecord[] = [];
+        const activePosInvoiceSet = new Set<string>();
         const cancelledPosInvoiceSet = new Set<string>();
+        const paidInFullPosInvoiceSet = new Set<string>();
+        const cloudPosRecordsMap = new Map<string, OfflineSaleRecord>();
 
         snap.forEach((d) => {
           const raw = d.data();
@@ -532,81 +534,81 @@ export default function POSScreen({ appData }: { appData: AppData }) {
             if (raw.status === 'cancelled') {
               cancelledPosInvoiceSet.add(decTx);
             } else {
-              // 🌟 Construct Full POS Receipt Record from Cloud so ANY Device / Phone sees ALL Receipts! 🌟
+              activePosInvoiceSet.add(decTx);
+              if (raw.paymentStatus === 'paid_in_full' || Number(raw.balanceDue) === 0) {
+                paidInFullPosInvoiceSet.add(decTx);
+              }
+
+              // Reconstruct POS Record from Firestore in case local history lost it
               const total = Number(raw.totalPrice) || 0;
-              const subTotal = raw.originalPrice
+              const orig = raw.originalPrice
                 ? Number(decryptText(raw.originalPrice) || raw.originalPrice) || total
                 : total;
-              const discAmt = Math.max(0, subTotal - total);
+              const discAmt = Math.max(0, orig - total);
               const discPct = raw.discountPercent
                 ? Number(decryptText(raw.discountPercent) || raw.discountPercent) || 0
                 : 0;
-              const rawName = decryptText(raw.name) || raw.name || 'Walk-in Guest';
-              const cleanCustomerName = String(rawName).replace(/\s*\(Walk-in\)\s*$/i, '').trim() || 'Walk-in Guest';
-              const rawPhone = decryptText(raw.phone) || raw.phone || '';
-              const cleanCustomerPhone = rawPhone === 'Walk-in' ? '' : rawPhone;
-              const cleanPayMethod = String(raw.paymentMethod || 'Cash').split('(')[0].trim() || 'Cash';
               const isDepDue = raw.paymentStatus === 'deposit_only' && Number(raw.balanceDue) > 0;
+              const depPaid = isDepDue ? Number(raw.depositPaid) || 0 : total;
+              const balDue = isDepDue ? Number(raw.balanceDue) || 0 : 0;
+              const cleanMethod = String(raw.paymentMethod || 'Cash').split('(')[0].trim();
 
-              let parsedItems: CartItem[] = [];
-              if (Array.isArray(raw.posItems) && raw.posItems.length > 0) {
-                parsedItems = raw.posItems;
-              } else {
-                const parts = String(raw.service || 'Spa Service')
-                  .split(',')
-                  .map((s) => s.trim())
-                  .filter(Boolean);
-                parsedItems = parts.map((p, idx) => {
-                  const qtyMatch = p.match(/\s+x(\d+)$/i);
-                  const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
-                  const isVvip = p.includes('+ VVIP');
-                  const durMatch = p.match(/\(([^)]+)\)/);
-                  const cleanTitle = p
-                    .replace(/\s+x\d+$/i, '')
-                    .replace(/\s*\+\s*VVIP/i, '')
-                    .replace(/\s*\([^)]*\)/g, '')
-                    .trim();
-                  return {
-                    cartId: `cloud_${d.id}_${idx}`,
-                    id: `item_${idx}`,
-                    name: cleanTitle || p,
-                    duration: durMatch ? durMatch[1] : undefined,
-                    price: parts.length === 1 ? Math.round(subTotal / qty) : Math.round(subTotal / (parts.length * qty)),
-                    isVvipUpgrade: isVvip,
-                    qty
-                  };
-                });
-              }
+              const serviceParts = String(raw.service || 'Service')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
 
-              cloudWalkInSales.push({
-                localId: raw.posLocalId || `cloud_${d.id}`,
+              const reconstructedItems: CartItem[] = serviceParts.map((part, idx) => {
+                let s = part;
+                let qty = 1;
+                const qMatch = s.match(/\(x(\d+)\)$/i) \vert{}\vert{} s.match(/\s+x(\d+)$/i);
+                if (qMatch) {
+                  qty = parseInt(qMatch[1], 10) || 1;
+                  s = s.replace(qMatch[0], '').trim();
+                }
+                const isVvip = s.includes('+ VVIP') || s.toLowerCase().includes('vvip');
+                s = s.replace('+ VVIP', '').trim();
+                return {
+                  cartId: `cloud_${d.id}_${idx}`,
+                  id: `cloud_${idx}`,
+                  name: s,
+                  price: serviceParts.length === 1 ? Math.round(orig / qty) : Math.round(orig / serviceParts.length),
+                  isVvipUpgrade: isVvip,
+                  qty
+                };
+              });
+
+              cloudPosRecordsMap.set(decTx, {
+                localId: `cloud_${d.id}`,
                 firestoreDocId: d.id,
-                invoiceNo: decTx || `SL-${d.id.slice(-4).toUpperCase()}`,
+                invoiceNo: decTx,
                 createdAt: Number(raw.createdAt) || Date.now(),
                 date: raw.date || getLocalTodayStr(),
-                time: raw.time || '12:00 PM',
-                customerName: cleanCustomerName,
-                customerPhone: cleanCustomerPhone,
+                time: raw.time || '',
+                customerName: decryptText(raw.name) || raw.name || 'Walk-in Guest',
+                customerPhone: decryptText(raw.phone) || raw.phone || '',
+                customerVipTier: raw.vipTierName ? decryptText(raw.vipTierName) : undefined,
                 therapistName: raw.therapist || 'Any Available Therapist',
-                items: parsedItems,
-                subTotal,
+                items: reconstructedItems,
+                subTotal: orig,
                 discountType: 'percent',
                 discountValue: discPct,
                 discountAmount: discAmt,
-                discountReason: String(decDiscLabel).replace('[Shop Walk-in]', '').trim(),
+                discountReason: String(decDiscLabel)
+                  .replace('[Shop Walk-in Sale]', '')
+                  .replace('[Shop Walk-in]', '')
+                  .trim(),
                 totalPrice: total,
-                paymentMethod: cleanPayMethod,
+                paymentMethod: cleanMethod,
                 paymentStatus: isDepDue ? 'deposit_only' : 'paid_in_full',
-                depositPaid: isDepDue ? Number(raw.depositPaid) || 0 : total,
-                balanceDue: isDepDue ? Number(raw.balanceDue) || 0 : 0,
-                cashReceived: isDepDue ? Number(raw.depositPaid) || 0 : total,
+                depositPaid: depPaid,
+                balanceDue: balDue,
+                cashReceived: depPaid,
                 changeDue: 0,
                 serviceStatus: raw.status === 'completed' ? 'completed' : 'in_progress',
                 pointsEarned: Math.floor(total / 35000),
-                note: decryptText(raw.specialRequest) || '',
-                synced: true,
-                cashierId: raw.cashierId || '',
-                cashierName: raw.cashierName ? decryptText(raw.cashierName) || raw.cashierName : ''
+                note: decryptText(raw.specialRequest) || raw.specialRequest || '',
+                synced: true
               });
             }
           } else if (decTx !== 'ADMIN') {
@@ -630,30 +632,61 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
         setLiveOnlineBookings(list);
 
-        // 🌟 Merge Cloud Walk-in Sales + Unsynced Offline Local Sales so ALL Devices share 100% of History! 🌟
-        setSalesHistory((prevLocal) => {
-          const unsyncedOnly = prevLocal.filter(
-            (item) => !item.synced && !cancelledPosInvoiceSet.has(item.invoiceNo)
-          );
-          const mergedByInvoice = new Map<string, OfflineSaleRecord>();
+        // 🌟 Real-Time Sync: Remove Cancelled bills AND Restore any missing valid Cloud POS bills! 🌟
+        setSalesHistory((prevHistory) => {
+          let changed = false;
+          const existingInvSet = new Set<string>();
 
-          cloudWalkInSales.forEach((cSale) => {
-            mergedByInvoice.set(cSale.invoiceNo, cSale);
-          });
-          unsyncedOnly.forEach((uSale) => {
-            if (!mergedByInvoice.has(uSale.invoiceNo)) {
-              mergedByInvoice.set(uSale.invoiceNo, uSale);
+          const filteredHistory = prevHistory
+            .filter((item) => {
+              if (!item.synced) {
+                existingInvSet.add(item.invoiceNo);
+                return true;
+              }
+              if (cancelledPosInvoiceSet.has(item.invoiceNo)) {
+                changed = true;
+                return false;
+              }
+              existingInvSet.add(item.invoiceNo);
+              return true;
+            })
+            .map((item) => {
+              if (
+                item.paymentStatus === 'deposit_only' &&
+                paidInFullPosInvoiceSet.has(item.invoiceNo)
+              ) {
+                changed = true;
+                return {
+                  ...item,
+                  paymentStatus: 'paid_in_full' as const,
+                  depositPaid: item.totalPrice,
+                  balanceDue: 0
+                };
+              }
+              return item;
+            });
+
+          // Restore any valid POS bills from Firestore that were missing locally
+          const restoredBills: OfflineSaleRecord[] = [];
+          cloudPosRecordsMap.forEach((cloudRec, invNo) => {
+            if (!existingInvSet.has(invNo)) {
+              restoredBills.push(cloudRec);
+              changed = true;
             }
           });
 
-          const finalHistory = Array.from(mergedByInvoice.values())
-            .sort((a, b) => b.createdAt - a.createdAt)
-            .slice(0, 200);
-
-          try {
-            localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(finalHistory));
-          } catch {}
-          return finalHistory;
+          if (changed) {
+            const merged = [...filteredHistory, ...restoredBills].sort((a, b) => {
+              const dateCmp = (b.date || '').localeCompare(a.date || '');
+              if (dateCmp !== 0) return dateCmp;
+              return (b.createdAt || 0) - (a.createdAt || 0);
+            });
+            try {
+              localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(merged));
+            } catch {}
+            return merged;
+          }
+          return prevHistory;
         });
       },
       (err) => console.warn('POS real-time sync warning:', err)
@@ -2087,11 +2120,11 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     if (cart.length === 0) return;
     setSavingSale(true);
 
-    const now = Date.now();
-    const [hStr, mStr] = (saleTime || '12:00').split(':');
+  const [hStr, mStr] = (saleTime || '12:00').split(':');
     const [y, m, d] = (saleDate || getLocalTodayStr()).split('-').map(Number);
     const startDt = new Date(y, m - 1, d, Number(hStr) || 0, Number(mStr) || 0, 0, 0);
     const startTimeMillis = startDt.getTime();
+    const now = saleDate === getLocalTodayStr() ? Date.now() : startTimeMillis + (Date.now() % 60000);
 
     let totalMins = 60;
     cart.forEach((c) => {
