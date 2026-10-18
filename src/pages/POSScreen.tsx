@@ -593,7 +593,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 discountType: 'percent',
                 discountValue: discPct,
                 discountAmount: discAmt,
-                discountReason: String(decDiscLabel).replace(/^[Shop Walk-in]\s*/i, ''),
+                discountReason: String(decDiscLabel).replace('[Shop Walk-in]', '').trim(),
                 totalPrice: total,
                 paymentMethod: cleanPayMethod,
                 paymentStatus: isDepDue ? 'deposit_only' : 'paid_in_full',
