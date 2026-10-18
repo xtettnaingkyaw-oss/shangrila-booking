@@ -665,7 +665,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         {/* Scrollable Full-Width Content Area */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6">
           <div className="w-full max-w-[1600px] mx-auto pb-12">
-            {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={pendingBookings} adminRole={adminRole} />}
+            {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={bookings} adminRole={adminRole} />}
             {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
             {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
             {tab === 'points' && hasAccess('points') && <AdminPointManagement adminRole={adminRole} appData={appData} />}
@@ -687,57 +687,216 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 });
 
 function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
-  const [filterPayMode, setFilterPayMode] = useState<'all' | 'deposit_only' | 'paid_in_full'>('all');
+  const [filterPayMode, setFilterPayMode] = useState<'all' | 'pending_action' | 'deposit_only' | 'paid_in_full' | 'cancelled'>('all');
+  const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'upcoming' | 'custom'>('all');
+  const [customDate, setCustomDate] = useState<string>(getLocalTodayStr());
   const [searchQuery, setSearchQuery] = useState('');
+
+  // 🌟 Modals States (Deposit Config, View Slip Details, Cancel with Reason) 🌟
   const [depositModalBooking, setDepositModalBooking] = useState<Booking | null>(null);
   const [customDepositInput, setCustomDepositInput] = useState<string>('');
+  const [viewingBooking, setViewingBooking] = useState<Booking | null>(null);
+  const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
+  const [cancelReasonInput, setCancelReasonInput] = useState<string>('');
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
 
-  // 🌟 Walk-in POS ဘောင်ချာများကို ဖယ်ထုတ်ပြီး Online Booking အစစ်များကိုသာ ပြသမည် 🌟
+  const getYesterdayStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+
+  const formatReadableDateHeader = (dateStr: string) => {
+    if (!dateStr) return 'Unknown Date';
+    const today = getLocalTodayStr();
+    const yesterday = getYesterdayStr();
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return dateStr;
+    const dt = new Date(y, m - 1, d);
+    const formatted = dt.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+    if (dateStr === today) return `ယနေ့ (Today) — ${formatted}`;
+    if (dateStr === yesterday) return `မနေ့က (Yesterday) — ${formatted}`;
+    if (dateStr > today) return `ကြိုတင်ရက်ချိန်း (Upcoming) — ${formatted}`;
+    return formatted;
+  };
+
+  // 🌟 Walk-in POS နှင့် Admin Manual Clock-in များကို ဖယ်ထုတ်ပြီး Online Booking အစစ်များကိုသာ စစ်ထုတ်မည် 🌟
   const onlineOnlyBookings = useMemo(() => {
     return bookings.filter((b: any) => {
       const rawTx = String(b.txId || '').trim();
+      if (rawTx === 'ADMIN') return false;
       const isWalkInPos =
         rawTx.startsWith('SL-') ||
-        (b.paymentMethod && b.paymentMethod.includes('Shop POS')) ||
+        (b.paymentMethod && String(b.paymentMethod).includes('Shop POS')) ||
         (b.discountLabel && String(b.discountLabel).includes('[Shop Walk-in'));
       return !isWalkInPos;
     });
   }, [bookings]);
 
-  const filteredBookings = useMemo(() => {
-    return onlineOnlyBookings.filter((b: any) => {
-      const q = searchQuery.trim().toLowerCase();
-      const matchSearch =
-        !q ||
-        (b.name || '').toLowerCase().includes(q) ||
-        (b.phone || '').toLowerCase().includes(q) ||
-        (b.txId || '').toLowerCase().includes(q) ||
-        (b.service || '').toLowerCase().includes(q) ||
-        (b.therapist || '').toLowerCase().includes(q);
-      if (!matchSearch) return false;
+  // 🌟 1. ရက်စွဲ (Date Filter) နှင့် Search Query စစ်ထုတ်ခြင်း 🌟
+  const dateAndSearchFiltered = useMemo(() => {
+    const today = getLocalTodayStr();
+    const yesterday = getYesterdayStr();
+    const q = searchQuery.trim().toLowerCase();
 
-      const isDepositDue = b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
-      if (filterPayMode === 'deposit_only') return isDepositDue;
-      if (filterPayMode === 'paid_in_full') return !isDepositDue;
+    return onlineOnlyBookings.filter((b: any) => {
+      const bDate = b.date || today;
+      if (dateFilterMode === 'today' && bDate !== today) return false;
+      if (dateFilterMode === 'yesterday' && bDate !== yesterday) return false;
+      if (dateFilterMode === 'upcoming' && bDate <= today) return false;
+      if (dateFilterMode === 'custom' && customDate && bDate !== customDate) return false;
+
+      if (q) {
+        const matchSearch =
+          (b.name || '').toLowerCase().includes(q) ||
+          (b.phone || '').toLowerCase().includes(q) ||
+          (b.txId || '').toLowerCase().includes(q) ||
+          (b.service || '').toLowerCase().includes(q) ||
+          (b.therapist || '').toLowerCase().includes(q) ||
+          (b.discountLabel || '').toLowerCase().includes(q) ||
+          (b.cancelReason || '').toLowerCase().includes(q);
+        if (!matchSearch) return false;
+      }
       return true;
     });
-  }, [onlineOnlyBookings, filterPayMode, searchQuery]);
+  }, [onlineOnlyBookings, dateFilterMode, customDate, searchQuery]);
 
-  const onlineDepositDueCount = useMemo(() => {
-    return onlineOnlyBookings.filter((b: any) => b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0).length;
-  }, [onlineOnlyBookings]);
+  // 🌟 2. Payment / Status Filter ထပ်စစ်ခြင်း 🌟
+  const filteredBookings = useMemo(() => {
+    return dateAndSearchFiltered.filter((b: any) => {
+      const isCancelled = b.status === 'cancelled';
+      if (filterPayMode === 'cancelled') return isCancelled;
+
+      const isPendingAction = b.status === 'pending' || b.status === 'payment_checking';
+      if (filterPayMode === 'pending_action') return !isCancelled && isPendingAction;
+
+      const isDepositDue = !isCancelled && b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
+      if (filterPayMode === 'deposit_only') return isDepositDue;
+      if (filterPayMode === 'paid_in_full') return !isCancelled && !isDepositDue;
+
+      return true; // 'all'
+    });
+  }, [dateAndSearchFiltered, filterPayMode]);
+
+  // 🌟 3. Summary Financial Cards (4 Cards - Excludes Cancelled Bookings Automatically!) 🌟
+  const summaryStats = useMemo(() => {
+    let totalOnlineSalesAmt = 0;
+    let totalDiscountAmt = 0;
+    let totalCollectedAmt = 0;
+    let totalPendingBalanceAmt = 0;
+    let pendingBalanceCount = 0;
+    let pendingActionCount = 0;
+    let validBookingsCount = 0;
+    let cancelledCount = 0;
+
+    dateAndSearchFiltered.forEach((b: any) => {
+      if (b.status === 'cancelled') {
+        cancelledCount++;
+        return;
+      }
+      validBookingsCount++;
+      if (b.status === 'pending' || b.status === 'payment_checking') {
+        pendingActionCount++;
+      }
+
+      const total = Number(b.totalPrice) || 0;
+      const orig = Number(b.originalPrice) || total;
+      const disc = orig > total ? orig - total : 0;
+
+      const isDepositDue = b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
+      const due = isDepositDue ? Number(b.balanceDue) || 0 : 0;
+      const paid = isDepositDue ? (Number(b.depositPaid) || Math.max(0, total - due)) : total;
+
+      totalOnlineSalesAmt += total;
+      totalDiscountAmt += disc;
+      totalCollectedAmt += paid;
+      totalPendingBalanceAmt += due;
+      if (isDepositDue) pendingBalanceCount++;
+    });
+
+    return {
+      totalOnlineSalesAmt,
+      totalDiscountAmt,
+      totalCollectedAmt,
+      totalPendingBalanceAmt,
+      pendingBalanceCount,
+      pendingActionCount,
+      validBookingsCount,
+      cancelledCount
+    };
+  }, [dateAndSearchFiltered]);
+
+  // 🌟 4. ရက်စွဲတစ်ရက်ချင်းစီအလိုက် အုပ်စုဖွဲ့ပြီး Daily Total တွက်ချက်ခြင်း 🌟
+  const groupedBookingsByDate = useMemo(() => {
+    const today = getLocalTodayStr();
+    const groupsMap = new Map<
+      string,
+      {
+        date: string;
+        bookingsList: Booking[];
+        validCount: number;
+        pendingCount: number;
+        cancelledCount: number;
+        dailyTotalAmount: number;
+        dailyCollectedAmount: number;
+        dailyPendingBalance: number;
+      }
+    >();
+
+    filteredBookings.forEach((b: any) => {
+      const dKey = b.date || today;
+      if (!groupsMap.has(dKey)) {
+        groupsMap.set(dKey, {
+          date: dKey,
+          bookingsList: [],
+          validCount: 0,
+          pendingCount: 0,
+          cancelledCount: 0,
+          dailyTotalAmount: 0,
+          dailyCollectedAmount: 0,
+          dailyPendingBalance: 0
+        });
+      }
+      const grp = groupsMap.get(dKey)!;
+      grp.bookingsList.push(b);
+
+      if (b.status === 'cancelled') {
+        grp.cancelledCount += 1;
+        return;
+      }
+
+      grp.validCount += 1;
+      if (b.status === 'pending' || b.status === 'payment_checking') {
+        grp.pendingCount += 1;
+      }
+
+      const total = Number(b.totalPrice) || 0;
+      const isDepositDue = b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
+      const due = isDepositDue ? Number(b.balanceDue) || 0 : 0;
+      const paid = isDepositDue ? (Number(b.depositPaid) || Math.max(0, total - due)) : total;
+
+      grp.dailyTotalAmount += total;
+      grp.dailyCollectedAmount += paid;
+      grp.dailyPendingBalance += due;
+    });
+
+    return Array.from(groupsMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [filteredBookings]);
 
   const handleStatusChange = async (b: Booking, newStatus: string) => {
-    let reason = '';
     if (newStatus === 'cancelled') {
-      const input = window.prompt("Reason for cancellation:");
-      if (input === null) return;
-      reason = input;
-    } else {
-      if (!window.confirm('Are you sure you want to change this status?')) return;
+      setCancellingBooking(b);
+      setCancelReasonInput('');
+      return;
     }
+    if (!window.confirm(`Booking Status ကို "${newStatus.toUpperCase()}" သို့ ပြောင်းလဲမည်မှာ သေချာပါသလား?`)) return;
 
-    let updateData: any = { status: newStatus, cancelReason: reason };
+    let updateData: any = { status: newStatus, cancelReason: '' };
 
     if (newStatus === 'approved' && !(b as any).pointsAdded && b.totalPrice >= 35000) {
       const earnedPts = Math.floor(b.totalPrice / 35000);
@@ -795,6 +954,31 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
     }
   };
 
+  // 🌟 Confirm Cancel Online Booking with Reason 🌟
+  const handleConfirmCancelOnlineBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cancellingBooking) return;
+    const reason = cancelReasonInput.trim();
+    if (!reason) {
+      alert('ကျေးဇူးပြု၍ ပယ်ဖျက်ရသည့် အကြောင်းရင်း (Cancel Reason) ရေးပေးပါ။');
+      return;
+    }
+    setIsSubmittingCancel(true);
+    try {
+      await updateDoc(doc(db, 'bookings', cancellingBooking.id!), {
+        status: 'cancelled',
+        cancelReason: reason,
+        cancelledAt: Date.now()
+      });
+      setCancellingBooking(null);
+      setCancelReasonInput('');
+    } catch (err) {
+      alert('Booking ပယ်ဖျက်ရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    } finally {
+      setIsSubmittingCancel(false);
+    }
+  };
+
   // 🌟 Online Booking အား စရံတစ်ဝက် (50%) သို့မဟုတ် စိတ်ကြိုက်စရံ သတ်မှတ်ပေးမည့် Function 🌟
   const handleSetOnlineDeposit = async (b: Booking, depositAmt: number) => {
     const total = Number(b.totalPrice) || 0;
@@ -825,42 +1009,59 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
     }
   };
 
+  // 🌟 Direct Telegram Contact Helper for Customer 🌟
+  const handleContactCustomerTelegram = (b: Booking) => {
+    if (!b.phone) return;
+    let formattedPhone = b.phone.replace(/[^0-9+]/g, '');
+    if (formattedPhone.startsWith('09')) {
+      formattedPhone = '+959' + formattedPhone.substring(2);
+    } else if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+' + formattedPhone;
+    }
+    const msg = encodeURIComponent(
+      `မင်္ဂလာပါ ခင်ဗျာ။ The Shangri-La Men's Retreat မှ ဖြစ်ပါသည်။\nလူကြီးမင်း၏ Online Booking —\n• ရက်စွဲ/အချိန်: ${b.date} (${b.time})\n• ဝန်ဆောင်မှု: ${b.service}\n• Therapist: ${b.therapist}\n• ကျသင့်ငွေ: ${formatPrice(b.totalPrice)}\nအား လက်ခံရရှိပြီး အတည်ပြုပေးထားပါသည်ခင်ဗျာ။`
+    );
+    window.open(`https://t.me/${formattedPhone}?text=${msg}`, '_blank');
+  };
+
   const handleDelete = async (id: string) => {
     if (adminRole !== 'super_admin') {
       alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။');
       return;
     }
-    if (window.confirm('Are you sure you want to delete this booking?')) {
+    if (window.confirm('ဤ Online Booking မှတ်တမ်းကို အပြီးတိုင် ဖျက်မည်မှာ သေချာပါသလား?')) {
       await deleteDoc(doc(db, 'bookings', id));
     }
   };
 
   const handleExportExcel = () => {
-    const headers = ['Booking ID', 'Customer Name', 'Phone', 'Service', 'Therapist', 'Date', 'Time', 'Total Price (Ks)', 'Original Price (Ks)', 'Discount Percent (%)', 'Discount Label', 'Payment Method', 'Payment Status', 'Deposit Paid (Ks)', 'Balance Due (Ks)', 'Transaction ID', 'Status', 'Special Request', 'Booking Date'];
+    const headers = ['Booking ID', 'Status', 'Cancel Reason', 'Date', 'Time', 'Customer Name', 'Phone', 'Service', 'Therapist', 'Original Price (Ks)', 'Discount Percent (%)', 'Discount Label', 'Net Total Price (Ks)', 'Payment Method', 'Payment Status', 'Deposit Paid (Ks)', 'Balance Due (Ks)', 'Transaction ID', 'Special Request', 'Submitted At'];
     const rows = filteredBookings.map((b: any) => {
-      const isDep = b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
-      const depPaid = isDep ? Number(b.depositPaid) || 0 : Number(b.totalPrice) || 0;
+      const isCancelled = b.status === 'cancelled';
+      const isDep = !isCancelled && b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0;
+      const depPaid = isCancelled ? 0 : isDep ? Number(b.depositPaid) || 0 : Number(b.totalPrice) || 0;
       const balDue = isDep ? Number(b.balanceDue) || 0 : 0;
       return [
         b.id || '',
+        `"${b.status || ''}"`,
+        `"${b.cancelReason || ''}"`,
+        b.date || '',
+        `"${b.time || ''}"`,
         `"${b.name || ''}"`,
         `"${b.phone || ''}"`,
         `"${b.service || ''}"`,
         `"${b.therapist || ''}"`,
-        b.date || '',
-        b.time || '',
-        b.totalPrice || 0,
-        b.originalPrice || '',
-        b.discountPercent || '',
+        b.originalPrice || b.totalPrice || 0,
+        b.discountPercent || 0,
         b.discountLabel ? `"${b.discountLabel}"` : '',
+        isCancelled ? 0 : (b.totalPrice || 0),
         `"${b.paymentMethod || ''}"`,
-        isDep ? 'Deposit Only' : 'Paid in Full',
+        isCancelled ? 'Cancelled' : isDep ? 'Deposit Only' : 'Paid in Full',
         depPaid,
         balDue,
         `"${b.txId || ''}"`,
-        b.status || '',
         `"${b.specialRequest || ''}"`,
-        new Date(b.createdAt).toLocaleString()
+        b.createdAt ? `"${new Date(b.createdAt).toLocaleString()}"` : ''
       ];
     });
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -868,7 +1069,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `Online_Bookings_Report_${getLocalTodayStr()}.csv`);
+    link.setAttribute('download', `Online_Bookings_Report_${dateFilterMode === 'custom' ? customDate : getLocalTodayStr()}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -876,10 +1077,12 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
   };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
-      {/* 🌟 Deposit / Full Paid Configuration Modal for Online Bookings 🌟 */}
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6 animate-fade-in">
+      {/* ==========================================
+          MODAL 1: DEPOSIT / FULL PAID CONFIGURATION
+         ========================================== */}
       {depositModalBooking && (
-        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[250] bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-[#D4AF37]/40 space-y-4 animate-fade-in">
             <div className="flex justify-between items-center border-b pb-3">
               <div>
@@ -951,255 +1154,762 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         </div>
       )}
 
+      {/* ==========================================
+          MODAL 2: VIEW ONLINE BOOKING SLIP DETAILS
+         ========================================== */}
+      {viewingBooking && (() => {
+        const isCancelled = viewingBooking.status === 'cancelled';
+        const total = Number(viewingBooking.totalPrice) || 0;
+        const orig = Number(viewingBooking.originalPrice) || total;
+        const discAmt = orig > total ? orig - total : 0;
+        const isDepDue = !isCancelled && (viewingBooking as any).paymentStatus === 'deposit_only' && Number((viewingBooking as any).balanceDue) > 0;
+        const depAmt = Number((viewingBooking as any).depositPaid) || 0;
+        const balAmt = Number((viewingBooking as any).balanceDue) || 0;
+        const serviceList = String(viewingBooking.service || '').split(',').map(s => s.trim()).filter(Boolean);
+
+        return (
+          <div className="fixed inset-0 z-[250] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-[#D4AF37]/40 my-auto animate-fade-in space-y-4">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <h3 className="text-sm font-black text-[#123524] flex items-center">
+                  <CalendarPlus className="w-4 h-4 mr-1.5 text-[#D4AF37]" />
+                  Online Booking Slip (ဘောင်ချာအသေးစိတ်)
+                </h3>
+                <button onClick={() => setViewingBooking(null)} className="p-1 rounded-full bg-gray-100 text-gray-500 hover:text-red-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 font-mono text-xs space-y-3">
+                {isCancelled && (
+                  <div className="bg-red-600 text-white text-center py-1.5 px-3 rounded-lg font-sans font-black text-xs uppercase tracking-widest">
+                    🚫 CANCELLED BOOKING (ပယ်ဖျက်ထားသည်)
+                  </div>
+                )}
+
+                <div className="text-center border-b border-dashed border-gray-300 pb-2.5">
+                  <div className="font-serif font-black text-sm text-[#123524]">THE SHANGRI-LA</div>
+                  <div className="text-[9px] text-gray-500 uppercase tracking-widest">MEN'S RETREAT • ONLINE BOOKING</div>
+                </div>
+
+                <div className="space-y-1 text-[11px] border-b border-dashed border-gray-300 pb-2.5">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Transaction ID:</span>
+                    <span className="font-black text-[#123524]">{viewingBooking.txId || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Booking Date:</span>
+                    <span className="font-bold">{viewingBooking.date} ({viewingBooking.time})</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Customer:</span>
+                    <span className="font-bold text-right">{viewingBooking.name} ({viewingBooking.phone})</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Therapist:</span>
+                    <span className="font-bold text-[#123524] text-right">{viewingBooking.therapist || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Status:</span>
+                    <span className="font-black uppercase text-emerald-700">{viewingBooking.status}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 border-b border-dashed border-gray-300 pb-2.5">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase">Booked Services:</div>
+                  {serviceList.map((svc, i) => (
+                    <div key={i} className="text-[11px] font-bold text-gray-800 pl-1">
+                      {i + 1}. {svc}
+                    </div>
+                  ))}
+                  {viewingBooking.specialRequest && (
+                    <div className="text-[10px] text-red-600 italic pt-1">
+                      Note: {viewingBooking.specialRequest}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-gray-500">Subtotal (မူရင်းကျသင့်ငွေ):</span>
+                    <span className="font-bold">{formatPrice(orig)}</span>
+                  </div>
+                  {discAmt > 0 && (
+                    <div className="flex justify-between text-[11px] text-green-700 font-bold">
+                      <span>Discount ({viewingBooking.discountLabel || `${viewingBooking.discountPercent}%`}):</span>
+                      <span>-{formatPrice(discAmt)}</span>
+                    </div>
+                  )}
+                  <div className={`flex justify-between text-sm font-black py-1.5 border-t border-dashed border-gray-300 ${isCancelled ? 'line-through text-gray-400' : 'text-[#123524]'}`}>
+                    <span>NET TOTAL:</span>
+                    <span>{formatPrice(total)}</span>
+                  </div>
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-gray-500">Payment Method:</span>
+                    <span className="font-bold">{viewingBooking.paymentMethod || 'Online Pay'}</span>
+                  </div>
+                  {isDepDue && (
+                    <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 mt-1 space-y-0.5 font-sans">
+                      <div className="flex justify-between text-[10px] font-bold text-amber-900">
+                        <span>စရံလွှဲငွေ:</span>
+                        <span>{formatPrice(depAmt)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] font-black text-red-600">
+                        <span>ကျန်ငွေ (Balance Due):</span>
+                        <span>{formatPrice(balAmt)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {isCancelled && viewingBooking.cancelReason && (
+                  <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 font-sans text-xs space-y-1">
+                    <div className="text-[10px] font-black text-red-700 uppercase">ပယ်ဖျက်ရသည့် အကြောင်းရင်း:</div>
+                    <div className="font-bold text-red-900">{viewingBooking.cancelReason}</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleContactCustomerTelegram(viewingBooking)}
+                  className="flex-1 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition"
+                >
+                  <MessageCircle className="w-4 h-4" /> Telegram ပို့မည်
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewingBooking(null)}
+                  className="flex-1 py-2.5 bg-[#123524] text-[#D4AF37] rounded-xl font-black text-xs transition"
+                >
+                  ပိတ်မည် (Close)
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ==========================================
+          MODAL 3: CANCEL ONLINE BOOKING WITH REASON
+         ========================================== */}
+      {cancellingBooking && (
+        <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <form
+            onSubmit={handleConfirmCancelOnlineBooking}
+            className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-red-200 space-y-4 animate-fade-in"
+          >
+            <div className="flex justify-between items-start border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-red-600 flex items-center">
+                  <AlertCircle className="w-5 h-5 mr-1.5" />
+                  Cancel Online Booking (ရက်ချိန်း ပယ်ဖျက်ရန်)
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Customer: <strong className="text-gray-800">{cancellingBooking.name}</strong> • ပမာဏ:{' '}
+                  <strong className="text-[#123524]">{formatPrice(cancellingBooking.totalPrice)}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCancellingBooking(null);
+                  setCancelReasonInput('');
+                }}
+                className="text-gray-400 hover:text-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-extrabold text-gray-700 mb-1.5">
+                ပယ်ဖျက်ရသည့် အကြောင်းရင်း (Cancel Reason) *
+              </label>
+              <textarea
+                required
+                rows={3}
+                value={cancelReasonInput}
+                onChange={(e) => setCancelReasonInput(e.target.value)}
+                placeholder="ဥပမာ - ငွေလွှဲပြေစာ မမှန်ကန်သောကြောင့် / Customer မှ ရက်ချိန်းပြန်ဖျက်သောကြောင့်..."
+                className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-red-500"
+              />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {[
+                  'Customer မှ ရက်ချိန်းပြန်လည်ပယ်ဖျက်သည်',
+                  'ငွေလွှဲ TxID စစ်ဆေး၍ မတွေ့ရှိပါ',
+                  'Booking ၂ ခါ ထပ်တင်မိသောကြောင့် (Duplicate)',
+                  'ရွေးချယ်ထားသော အချိန်/Therapist မအားလပ်ပါ'
+                ].map((preset, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setCancelReasonInput(preset)}
+                    className="text-[10px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-lg transition"
+                  >
+                    + {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCancellingBooking(null);
+                  setCancelReasonInput('');
+                }}
+                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs transition"
+              >
+                မလုပ်တော့ပါ
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingCancel || !cancelReasonInput.trim()}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs shadow-md transition disabled:opacity-50"
+              >
+                {isSubmittingCancel ? 'Cancelling...' : '🚫 Confirm Cancel Booking'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* 1. Header & Export */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-4 gap-4">
         <div>
           <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
-            <CalendarPlus className="mr-2 text-yellow-500" /> Online Booking Requests
+            <CalendarPlus className="mr-2 text-[#D4AF37]" /> Online Bookings & Daily Revenue Report
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            Web App မှ တက်လာသော Online Booking များ၊ ငွေလွှဲစရံ (Deposit) နှင့် ကျန်ငွေများ စစ်ဆေးအတည်ပြုရန်
+            ရက်စွဲအလိုက် Online Booking များ၊ တစ်ရက်စာ ရောင်းရငွေချုပ် (Daily Total)၊ ငွေလွှဲစရံ (Deposit) နှင့် ကျန်ငွေများ စစ်ဆေးအတည်ပြုရန်
           </p>
         </div>
         <div className="flex items-center space-x-3 w-full sm:w-auto">
-          <button onClick={handleExportExcel} className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm">
+          <button
+            onClick={handleExportExcel}
+            className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100 transition shadow-sm"
+          >
             <Download className="w-4 h-4 mr-1.5" /> Export Excel
           </button>
-          <span className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-bold border border-yellow-200">
-            Total: {filteredBookings.length}
+          <span className="bg-yellow-100 text-yellow-800 px-4 py-2 rounded-lg text-xs font-black border border-yellow-200">
+            Valid Bookings: {summaryStats.validBookingsCount}
           </span>
         </div>
       </div>
 
-      {/* Filter Pills & Search */}
-      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-        <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => setFilterPayMode('all')}
-            className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-              filterPayMode === 'all' ? 'bg-[#123524] text-[#D4AF37] shadow-sm' : 'text-gray-600'
-            }`}
-          >
-            အားလုံး ({onlineOnlyBookings.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterPayMode('deposit_only')}
-            className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-              filterPayMode === 'deposit_only' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600'
-            }`}
-          >
-            စရံသာလွှဲ / ကျန်ငွေရှိ ({onlineDepositDueCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterPayMode('paid_in_full')}
-            className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-              filterPayMode === 'paid_in_full' ? 'bg-emerald-700 text-white shadow-sm' : 'text-gray-600'
-            }`}
-          >
-            အပြည့်ချေပြီး ({onlineOnlyBookings.length - onlineDepositDueCount})
-          </button>
+      {/* 2. Executive Financial Summary Cards (4 Cards) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
+          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+            စုစုပေါင်း Online ရောင်းရငွေ (Net Online Sales)
+          </div>
+          <div className="text-lg font-black text-[#123524] mt-1">
+            {formatPrice(summaryStats.totalOnlineSalesAmt)}
+          </div>
+        </div>
+        <div className="p-4 rounded-xl bg-green-50/60 border border-green-200">
+          <div className="text-[10px] font-bold text-green-700 uppercase tracking-wider">
+            စုစုပေါင်း လျှော့ပေးငွေ (Total Discounts)
+          </div>
+          <div className="text-lg font-black text-green-700 mt-1">
+            -{formatPrice(summaryStats.totalDiscountAmt)}
+          </div>
+        </div>
+        <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
+          <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+            လက်ခံရရှိပြီးငွေ (Collected / Deposit + Full)
+          </div>
+          <div className="text-lg font-black text-emerald-800 mt-1">
+            {formatPrice(summaryStats.totalCollectedAmt)}
+          </div>
+        </div>
+        <div className={`p-4 rounded-xl border ${summaryStats.totalPendingBalanceAmt > 0 ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
+          <div className="text-[10px] font-bold text-red-600 uppercase tracking-wider flex items-center justify-between">
+            <span>ရရန်ကျန်ငွေ (Pending Balance Due)</span>
+            {summaryStats.pendingBalanceCount > 0 && (
+              <span className="bg-red-600 text-white text-[9px] px-2 py-0.5 rounded-full font-black">
+                {summaryStats.pendingBalanceCount} Bookings
+              </span>
+            )}
+          </div>
+          <div className="text-lg font-black text-red-600 mt-1">
+            {formatPrice(summaryStats.totalPendingBalanceAmt)}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Date Filter Bar + Status Filter Pills + Search */}
+      <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3 bg-gray-50/70 p-3 rounded-2xl border border-gray-200/80">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Date Filter Pills */}
+          <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setDateFilterMode('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                dateFilterMode === 'all' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              ရက်အားလုံး (All)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode('today')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                dateFilterMode === 'today' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              ယနေ့ (Today)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode('yesterday')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                dateFilterMode === 'yesterday' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              မနေ့က (Yesterday)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode('upcoming')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                dateFilterMode === 'upcoming' ? 'bg-blue-600 text-white shadow-xs' : 'text-blue-700 hover:bg-blue-50'
+              }`}
+            >
+              ကြိုတင်ရက်ချိန်း (Upcoming)
+            </button>
+
+            {/* Custom Date Picker */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
+                dateFilterMode === 'custom'
+                  ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
+                  : 'bg-gray-50 text-gray-700 border-gray-200'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => {
+                  setCustomDate(e.target.value);
+                  setDateFilterMode('custom');
+                }}
+                className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                  dateFilterMode === 'custom' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                }`}
+              />
+            </div>
+          </div>
+
+          {/* Payment & Status Filter Pills */}
+          <div className="flex flex-wrap bg-white p-1 rounded-xl border border-gray-200 shadow-2xs gap-0.5">
+            <button
+              type="button"
+              onClick={() => setFilterPayMode('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                filterPayMode === 'all' ? 'bg-[#123524] text-white shadow-xs' : 'text-gray-600'
+              }`}
+            >
+              အားလုံး ({dateAndSearchFiltered.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterPayMode('pending_action')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                filterPayMode === 'pending_action' ? 'bg-yellow-500 text-white shadow-xs' : 'text-yellow-700 hover:bg-yellow-50'
+              }`}
+            >
+              အတည်ပြုရန်ကျန် ({summaryStats.pendingActionCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterPayMode('deposit_only')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                filterPayMode === 'deposit_only' ? 'bg-amber-500 text-white shadow-xs' : 'text-gray-600'
+              }`}
+            >
+              စရံ / ကျန်ငွေရှိ ({summaryStats.pendingBalanceCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterPayMode('paid_in_full')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                filterPayMode === 'paid_in_full' ? 'bg-emerald-700 text-white shadow-xs' : 'text-gray-600'
+              }`}
+            >
+              အပြည့်ချေပြီး ({summaryStats.validBookingsCount - summaryStats.pendingBalanceCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterPayMode('cancelled')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                filterPayMode === 'cancelled' ? 'bg-red-600 text-white shadow-xs' : 'text-red-600 hover:bg-red-50'
+              }`}
+            >
+              ပယ်ဖျက်ထားသော ({summaryStats.cancelledCount})
+            </button>
+          </div>
         </div>
 
-        <div className="relative w-full sm:w-72">
+        {/* Search Input */}
+        <div className="relative w-full xl:w-72">
           <input
             type="text"
             placeholder="အမည်၊ ဖုန်း သို့မဟုတ် TxID ရှာရန်..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold"
+            className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold shadow-2xs"
           />
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[880px]">
-          <thead>
-            <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
-              <th className="p-3 pb-4">Customer</th>
-              <th className="p-3 pb-4">Service & Therapist</th>
-              <th className="p-3 pb-4">Date & Time</th>
-              <th className="p-3 pb-4">TxID, Deposit & Total</th>
-              <th className="p-3 pb-4">Status & Action</th>
-              <th className="p-3 pb-4 text-right">Delete</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredBookings.length === 0 && (
-              <tr>
-                <td colSpan={6} className="p-10 text-center text-gray-400 font-bold">
-                  No pending online bookings.
-                </td>
-              </tr>
-            )}
-            {filteredBookings.map((b) => {
-              const isDepositDue = (b as any).paymentStatus === 'deposit_only' && Number((b as any).balanceDue) > 0;
-              return (
-                <tr key={b.id} className={`border-b transition ${isDepositDue ? 'bg-amber-50/30 border-amber-200 hover:bg-amber-50/60' : 'border-gray-50 hover:bg-gray-50'}`}>
-                  <td className="p-3">
-                    <div className="font-bold text-gray-800 text-sm">{b.name || 'No Name'}</div>
-                    <div className="text-xs text-gray-500 font-mono">{b.phone || '-'}</div>
-                    {b.vipTierName ? (
-                      <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-sm">
-                        <Crown className="w-3 h-3 mr-1 text-yellow-600" /> {b.vipTierName}
-                      </div>
-                    ) : b.discountPercent && b.discountPercent > 0 ? (
-                      <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-sm">
-                        <Sparkles className="w-3 h-3 mr-1 text-green-600" /> Promo Active
-                      </div>
-                    ) : null}
-                  </td>
-
-                  <td className="p-3">
-                    <div className="font-bold text-sm text-gray-800">{b.service || '-'}</div>
-                    <div className="text-xs text-gray-500 mt-1 flex items-center">
-                      <User className="w-3 h-3 mr-1" />
-                      {b.therapist || '-'}
+      {/* 4. Date-Grouped Online Bookings Sections */}
+      {groupedBookingsByDate.length === 0 ? (
+        <div className="p-12 text-center text-gray-400 font-bold border border-dashed border-gray-200 rounded-2xl space-y-2">
+          <div>ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် Online Booking မှတ်တမ်း မရှိပါ။</div>
+          {dateFilterMode !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setDateFilterMode('all')}
+              className="text-xs font-black text-[#123524] underline"
+            >
+              ရက်အားလုံး ပြန်ကြည့်မည် (Show All Dates)
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {groupedBookingsByDate.map((group) => (
+            <div
+              key={group.date}
+              className="rounded-2xl border border-gray-200 shadow-xs overflow-hidden bg-white"
+            >
+              {/* Daily Header Banner */}
+              <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 sm:px-5 py-3.5 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] shadow-inner">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-extrabold text-xs sm:text-sm text-[#D4AF37] tracking-wide">
+                      {formatReadableDateHeader(group.date)}
                     </div>
-                    {b.specialRequest && <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>}
-                  </td>
-
-                  <td className="p-3 text-sm text-gray-700">
-                    <div className="font-semibold text-[#123524]">{b.date || '-'}</div>
-                    <div className="text-gray-600 text-xs mt-1 mb-2">{b.time || '-'}</div>
-                    {b.createdAt && (
-                      <div className="text-[9px] font-bold text-gray-400 flex flex-col gap-0.5 border-t border-gray-100 pt-1.5 mt-1.5 w-max">
-                        <span className="uppercase text-[8px] tracking-wider text-blue-400">Submitted At:</span>
-                        <span>{new Date(b.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                    )}
-                  </td>
-
-                  <td className="p-3">
-                    <div className="font-mono font-bold text-gray-800 text-sm">TxID: {b.txId || '-'}</div>
-                    <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-0.5">
-                      {(b.paymentMethod || 'Unknown').split('(')[0].trim()}
-                    </div>
-
-                    {b.originalPrice && b.originalPrice > b.totalPrice ? (
-                      <div className="mt-1.5 p-1.5 bg-green-50 border border-green-100 rounded-md w-max">
-                        <div className="flex items-center space-x-2 mb-0.5">
-                          <span className="text-[10px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span>
-                          <span className="text-[9px] font-bold text-red-500 bg-red-100 px-1 py-0.5 rounded">-{b.discountPercent}%</span>
-                        </div>
-                        <div className="font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
-                        {b.discountLabel && <div className="text-[8.5px] text-green-700 font-semibold mt-1 uppercase tracking-wider">{b.discountLabel.replace(/ \(\d+\%\)/, '')}</div>}
-                      </div>
-                    ) : (
-                      <div className="mt-1 font-bold text-[#123524] text-sm">{formatPrice(b.totalPrice)}</div>
-                    )}
-
-                    {/* 🌟 Online ငွေလွှဲ စရံ (Deposit) vs အပြည့်ချေ (Full Paid) စစ်ဆေးချက်နှင့် Approve ခလုတ် 🌟 */}
-                    {isDepositDue ? (
-                      <div className="mt-2 p-2 bg-amber-50 border border-amber-300 rounded-lg space-y-1 w-max">
-                        <div className="text-[10px] font-bold text-amber-900">
-                          စရံလွှဲငွေ: {formatPrice(Number((b as any).depositPaid) || 0)}
-                        </div>
-                        <div className="text-[10px] font-black text-red-600">
-                          ကျန်ငွေရရန်: {formatPrice(Number((b as any).balanceDue) || 0)}
-                        </div>
-                        <div className="flex gap-1 pt-1">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (!window.confirm(`ကျန်ငွေ ${formatPrice(Number((b as any).balanceDue))} အပြည့်အဝ လက်ခံရရှိပြီးကြောင်း Approve လုပ်မည်မှာ သေချာပါသလား?`)) return;
-                              const cleanMethod = (b.paymentMethod || '').split('(')[0].trim();
-                              await updateDoc(doc(db, 'bookings', b.id!), {
-                                paymentStatus: 'paid_in_full',
-                                balanceDue: 0,
-                                depositPaid: b.totalPrice,
-                                paymentMethod: `${cleanMethod} (Full Paid - Approved)`
-                              });
-                            }}
-                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[9px] font-black flex items-center shadow-sm transition"
-                          >
-                            <CheckCircle className="w-3 h-3 mr-1" /> ကျန်ငွေ Approve
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDepositModalBooking(b);
-                              setCustomDepositInput(String((b as any).depositPaid || ''));
-                            }}
-                            className="px-2 py-1 bg-white border border-gray-300 text-gray-600 rounded text-[9px] font-bold hover:bg-gray-100"
-                          >
-                            ပြင်ရန်
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center">
-                          <CheckCircle className="w-2.5 h-2.5 mr-1" /> Full Paid
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-200 font-semibold mt-0.5">
+                      <span>အတည်ပြု/Valid Booking: <strong>{group.validCount} ခု</strong></span>
+                      {group.pendingCount > 0 && (
+                        <span className="bg-yellow-500 text-[#123524] px-2 py-0.5 rounded-full text-[10px] font-black animate-pulse">
+                          အတည်ပြုရန်ကျန်: {group.pendingCount} ခု
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDepositModalBooking(b);
-                            setCustomDepositInput(String(Math.round((b.totalPrice || 0) / 2)));
-                          }}
-                          className="text-[9px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded transition"
-                          title="စရံတစ်ဝက် သို့မဟုတ် စရံငွေသာ လွှဲထားပါက သတ်မှတ်ရန်"
+                      )}
+                      {group.cancelledCount > 0 && (
+                        <span className="bg-red-500/30 border border-red-400/50 text-red-200 px-2 py-0.2 rounded text-[10px] font-bold">
+                          ပယ်ဖျက်: {group.cancelledCount} ခု
+                        </span>
+                      )}
+                      <span>•</span>
+                      <span>လက်ခံရရှိပြီး: <strong>{formatPrice(group.dailyCollectedAmount)}</strong></span>
+                      {group.dailyPendingBalance > 0 && (
+                        <span className="bg-red-500 text-white px-2 py-0.5 rounded-full text-[10px] font-black animate-pulse">
+                          ကျန်ငွေရရန်: {formatPrice(group.dailyPendingBalance)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-black/30 px-4 py-2 rounded-xl border border-[#D4AF37]/40 text-right ml-auto">
+                  <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wider block">
+                    Daily Online Total (တစ်ရက်စာ စုစုပေါင်း)
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-[#D4AF37]">
+                    {formatPrice(group.dailyTotalAmount)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Bookings Table inside Date Group */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[980px]">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
+                      <th className="p-3">Customer</th>
+                      <th className="p-3">Service & Therapist</th>
+                      <th className="p-3">Appointment Time</th>
+                      <th className="p-3">TxID, Deposit & Total</th>
+                      <th className="p-3">Booking Status</th>
+                      <th className="p-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.bookingsList.map((b) => {
+                      const isCancelled = b.status === 'cancelled';
+                      const isDepositDue = !isCancelled && (b as any).paymentStatus === 'deposit_only' && Number((b as any).balanceDue) > 0;
+                      const isPending = b.status === 'pending' || b.status === 'payment_checking';
+
+                      return (
+                        <tr
+                          key={b.id}
+                          className={`border-b last:border-b-0 transition text-sm ${
+                            isCancelled
+                              ? 'bg-red-50/35 hover:bg-red-50/60'
+                              : isPending
+                              ? 'bg-yellow-50/30 hover:bg-yellow-50/60'
+                              : isDepositDue
+                              ? 'bg-amber-50/30 border-amber-200 hover:bg-amber-50/60'
+                              : 'border-gray-50 hover:bg-gray-50'
+                          }`}
                         >
-                          စရံသတ်မှတ်ရန်
-                        </button>
-                      </div>
-                    )}
-                  </td>
+                          {/* 1. Customer */}
+                          <td className="p-3">
+                            <div className={`font-bold text-sm ${isCancelled ? 'line-through text-gray-500' : 'text-gray-800'}`}>
+                              {b.name || 'No Name'}
+                            </div>
+                            <div className="text-xs text-gray-500 font-mono">{b.phone || '-'}</div>
+                            {isCancelled ? (
+                              <span className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black bg-red-600 text-white uppercase tracking-wider">
+                                🚫 Cancelled
+                              </span>
+                            ) : b.vipTierName ? (
+                              <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-yellow-100 to-yellow-50 text-yellow-800 border border-yellow-300 shadow-2xs">
+                                <Crown className="w-3 h-3 mr-1 text-yellow-600" /> {b.vipTierName}
+                              </div>
+                            ) : b.discountPercent && b.discountPercent > 0 ? (
+                              <div className="mt-1.5 flex items-center w-fit px-2 py-0.5 rounded text-[9px] font-bold bg-gradient-to-r from-green-100 to-green-50 text-green-800 border border-green-300 shadow-2xs">
+                                <Sparkles className="w-3 h-3 mr-1 text-green-600" /> Promo ({b.discountPercent}% OFF)
+                              </div>
+                            ) : null}
+                          </td>
 
-                  <td className="p-3">
-                    <select
-                      value={b.status}
-                      onChange={(e) => handleStatusChange(b, e.target.value)}
-                      className={`text-[10px] font-bold p-1.5 rounded outline-none border cursor-pointer ${
-                        b.status === 'approved'
-                          ? 'bg-green-50 text-green-700 border-green-200'
-                          : b.status === 'payment_checking'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : b.status === 'cancelled'
-                          ? 'bg-red-50 text-red-700 border-red-200'
-                          : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                      }`}
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="payment_checking">Confirming</option>
-                      <option value="approved">Approve</option>
-                      <option value="cancelled">Cancel</option>
-                    </select>
-                    {b.status === 'cancelled' && b.cancelReason && (
-                      <div className="text-[9px] text-red-500 mt-1 max-w-[120px] truncate" title={b.cancelReason}>
-                        Reason: {b.cancelReason}
-                      </div>
-                    )}
-                    {(b as any).pointsAdded && (
-                      <div className="text-[8px] text-green-600 font-bold mt-1 uppercase">
-                        <Award className="w-2.5 h-2.5 inline mr-0.5" />Pts Added
-                      </div>
-                    )}
-                  </td>
+                          {/* 2. Service & Therapist */}
+                          <td className="p-3 max-w-xs">
+                            <div className={`font-bold text-sm leading-snug ${isCancelled ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                              {b.service || '-'}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1 flex items-center font-semibold">
+                              <User className="w-3 h-3 mr-1 text-[#D4AF37]" />
+                              {b.therapist || '-'}
+                            </div>
+                            {b.specialRequest && (
+                              <div className="text-xs text-red-500 mt-1 italic">Note: {b.specialRequest}</div>
+                            )}
+                          </td>
 
-                  <td className="p-3 text-right">
-                    <button
-                      onClick={() => handleDelete(b.id!)}
-                      disabled={adminRole !== 'super_admin'}
-                      title={adminRole !== 'super_admin' ? 'Super Admin Only' : 'Delete Booking'}
-                      className={`p-2 rounded-lg transition ${
-                        adminRole === 'super_admin'
-                          ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                          : 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                      }`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                          {/* 3. Appointment Time & Submitted At */}
+                          <td className="p-3 text-sm text-gray-700">
+                            <div className="font-semibold text-[#123524]">{b.date || '-'}</div>
+                            <div className="text-gray-600 text-xs font-bold mt-0.5 mb-1.5">{b.time || '-'}</div>
+                            {b.createdAt && (
+                              <div className="text-[9px] font-bold text-gray-400 flex flex-col gap-0.5 border-t border-gray-100 pt-1.5 mt-1 w-max">
+                                <span className="uppercase text-[8px] tracking-wider text-blue-400">Submitted At:</span>
+                                <span>
+                                  {new Date(b.createdAt).toLocaleString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* 4. TxID, Deposit & Total */}
+                          <td className="p-3">
+                            <div className={`font-mono font-bold text-sm ${isCancelled ? 'line-through text-red-700' : 'text-gray-800'}`}>
+                              TxID: {b.txId || '-'}
+                            </div>
+                            <div className="text-[9px] uppercase tracking-wider font-bold text-gray-500 mt-0.5">
+                              {(b.paymentMethod || 'Online Pay').split('(')[0].trim()}
+                            </div>
+
+                            {b.originalPrice && b.originalPrice > b.totalPrice ? (
+                              <div className={`mt-1.5 p-1.5 rounded-md w-max border ${isCancelled ? 'bg-gray-100 border-gray-200 opacity-60' : 'bg-green-50 border-green-100'}`}>
+                                <div className="flex items-center space-x-2 mb-0.5">
+                                  <span className="text-[10px] text-gray-400 line-through">{formatPrice(b.originalPrice)}</span>
+                                  <span className="text-[9px] font-bold text-red-500 bg-red-100 px-1 py-0.5 rounded">-{b.discountPercent}%</span>
+                                </div>
+                                <div className={`font-bold text-sm ${isCancelled ? 'line-through text-gray-500' : 'text-[#123524]'}`}>
+                                  {formatPrice(b.totalPrice)}
+                                </div>
+                                {b.discountLabel && (
+                                  <div className="text-[8.5px] text-green-700 font-semibold mt-0.5 uppercase tracking-wider">
+                                    {b.discountLabel.replace(/ \(\d+\%\)/, '')}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className={`mt-1 font-black text-base ${isCancelled ? 'line-through text-gray-400' : 'text-[#123524]'}`}>
+                                {formatPrice(b.totalPrice)}
+                              </div>
+                            )}
+
+                            {/* Deposit vs Full Paid Controls */}
+                            {!isCancelled && (
+                              isDepositDue ? (
+                                <div className="mt-2 p-2 bg-amber-50 border border-amber-300 rounded-lg space-y-1 w-max">
+                                  <div className="text-[10px] font-bold text-amber-900">
+                                    စရံလွှဲငွေ: {formatPrice(Number((b as any).depositPaid) || 0)}
+                                  </div>
+                                  <div className="text-[10px] font-black text-red-600">
+                                    ကျန်ငွေရရန်: {formatPrice(Number((b as any).balanceDue) || 0)}
+                                  </div>
+                                  <div className="flex gap-1 pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (!window.confirm(`ကျန်ငွေ ${formatPrice(Number((b as any).balanceDue))} အပြည့်အဝ လက်ခံရရှိပြီးကြောင်း Approve လုပ်မည်မှာ သေချာပါသလား?`)) return;
+                                        const cleanMethod = (b.paymentMethod || '').split('(')[0].trim();
+                                        await updateDoc(doc(db, 'bookings', b.id!), {
+                                          paymentStatus: 'paid_in_full',
+                                          balanceDue: 0,
+                                          depositPaid: b.totalPrice,
+                                          paymentMethod: `${cleanMethod} (Full Paid - Approved)`
+                                        });
+                                      }}
+                                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[9px] font-black flex items-center shadow-sm transition"
+                                    >
+                                      <CheckCircle className="w-3 h-3 mr-1" /> ကျန်ငွေ Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setDepositModalBooking(b);
+                                        setCustomDepositInput(String((b as any).depositPaid || ''));
+                                      }}
+                                      className="px-2 py-1 bg-white border border-gray-300 text-gray-600 rounded text-[9px] font-bold hover:bg-gray-100"
+                                    >
+                                      ပြင်ရန်
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center">
+                                    <CheckCircle className="w-2.5 h-2.5 mr-1" /> Full Paid
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDepositModalBooking(b);
+                                      setCustomDepositInput(String(Math.round((b.totalPrice || 0) / 2)));
+                                    }}
+                                    className="text-[9px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded transition"
+                                  >
+                                    စရံသတ်မှတ်ရန်
+                                  </button>
+                                </div>
+                              )
+                            )}
+                          </td>
+
+                          {/* 5. Booking Status & Points Badge */}
+                          <td className="p-3">
+                            <select
+                              value={b.status}
+                              onChange={(e) => handleStatusChange(b, e.target.value)}
+                              className={`text-[10px] font-black px-2.5 py-1.5 rounded-lg outline-none border cursor-pointer uppercase tracking-wider ${
+                                b.status === 'approved' || b.status === 'completed'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : b.status === 'in_progress'
+                                  ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                  : b.status === 'payment_checking'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                  : b.status === 'cancelled'
+                                  ? 'bg-red-50 text-red-700 border-red-200'
+                                  : 'bg-yellow-50 text-yellow-800 border-yellow-300'
+                              }`}
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="payment_checking">Confirming</option>
+                              <option value="approved">Approved</option>
+                              <option value="in_progress">In Room (Active)</option>
+                              <option value="completed">Completed</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+
+                            {isCancelled && b.cancelReason && (
+                              <div className="mt-1.5 p-2 rounded-lg bg-red-50 border border-red-200 text-[10px] text-red-800 font-bold max-w-[180px] leading-snug">
+                                အကြောင်းရင်း: {b.cancelReason}
+                              </div>
+                            )}
+
+                            {(b as any).pointsAdded && !isCancelled && (
+                              <div className="text-[9px] text-emerald-600 font-black mt-1.5 uppercase flex items-center">
+                                <Award className="w-3 h-3 mr-0.5" /> VIP Points Added
+                              </div>
+                            )}
+                          </td>
+
+                          {/* 6. Actions (View Slip, Telegram, Cancel, Delete) */}
+                          <td className="p-3 text-right">
+                            <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setViewingBooking(b)}
+                                className="px-2.5 py-1.5 rounded-lg bg-[#123524]/10 hover:bg-[#123524] text-[#123524] hover:text-[#D4AF37] font-black text-[10px] transition flex items-center whitespace-nowrap"
+                              >
+                                🧾 View Slip
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleContactCustomerTelegram(b)}
+                                title="Send Confirmation via Telegram"
+                                className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                              </button>
+
+                              {!isCancelled && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCancellingBooking(b);
+                                    setCancelReasonInput('');
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white font-black text-[10px] transition whitespace-nowrap"
+                                >
+                                  🚫 Cancel
+                                </button>
+                              )}
+
+                              {adminRole === 'super_admin' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(b.id!)}
+                                  title="Permanently Delete Record (Super Admin)"
+                                  className="p-1.5 rounded-lg bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600 transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
