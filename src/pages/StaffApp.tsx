@@ -1708,7 +1708,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
             
             {/* 🌟 FIX: Long Therapist Name Wrapping Properly 🌟 */}
-            <h3 className="text-[#D4AF37] font-bold text-[11px] sm:text-xs tracking-wider uppercase mb-5 flex items-center text-center px-2 leading-relaxed">
+            <h3 className="text-[#D4AF37] font-bold text-[10px] sm:text-xs tracking-wider uppercase mb-5 flex items-center text-center px-1 leading-relaxed">
               <Target className="w-4 h-4 mr-1.5 flex-shrink-0" /> 
               <span>MONTHLY TARGET ({loggedInStaff.name.toUpperCase()})</span>
             </h3>
@@ -1738,19 +1738,19 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
               </svg>
             </div>
 
-            {/* 🌟 FIX: Compact Grid Boxes to prevent text overflow 🌟 */}
+            {/* 🌟 FIX: Compact Grid Boxes with responsive text sizing 🌟 */}
             <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full mt-7">
-              <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-white/10 text-center">
+              <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-white/10 text-center min-w-0">
                 <div className="text-[8px] sm:text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-0.5">Target</div>
-                <div className="text-[10px] sm:text-xs font-bold text-white truncate">{formatPrice(monthlyTotalTarget)}</div>
+                <div className="text-[9px] sm:text-xs font-bold text-white truncate">{formatPrice(monthlyTotalTarget)}</div>
               </div>
-              <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-[#D4AF37]/30 text-center">
+              <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-[#D4AF37]/30 text-center min-w-0">
                 <div className="text-[8px] sm:text-[9px] text-[#D4AF37] font-bold uppercase tracking-wider mb-0.5">Actual Sales</div>
-                <div className="text-[10px] sm:text-xs font-bold text-[#D4AF37] truncate">{formatPrice(myTotalSales)}</div>
+                <div className="text-[9px] sm:text-xs font-bold text-[#D4AF37] truncate">{formatPrice(myTotalSales)}</div>
               </div>
-              <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-white/10 text-center">
+              <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-white/10 text-center min-w-0">
                 <div className="text-[8px] sm:text-[9px] text-emerald-300 font-bold uppercase tracking-wider mb-0.5">Sections</div>
-                <div className="text-[10px] sm:text-xs font-bold text-white truncate">{myTotalSections} Sec</div>
+                <div className="text-[9px] sm:text-xs font-bold text-white truncate">{myTotalSections} Sec</div>
               </div>
             </div>
           </div>
@@ -1845,11 +1845,11 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                     </div>
                   </div>
                   {item.hasSales && (
-                    <div className="space-y-1 my-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                    <div className="space-y-1.5 my-2 bg-gray-50 p-3 rounded-xl border border-gray-100">
                       {item.services.map((s: any, sIdx: number) => (
-                        <div key={sIdx} className="flex justify-between text-xs font-semibold text-gray-800">
-                          <span>• {s.serviceName}</span>
-                          <span className="font-bold text-[#123524]">{formatPrice(s.salesAmount)}</span>
+                        <div key={sIdx} className="flex justify-between items-center text-xs font-semibold text-gray-800 gap-2">
+                          <span className="leading-snug flex-1">• {s.serviceName}</span>
+                          <span className="font-bold text-[#123524] whitespace-nowrap flex-shrink-0">{formatPrice(s.salesAmount)}</span>
                         </div>
                       ))}
                     </div>
