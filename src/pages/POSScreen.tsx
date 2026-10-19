@@ -3853,10 +3853,47 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                       {/* Print Thermal Receipt Button */}
                       <button
                         type="button"
-                        onClick={() => setActiveReceipt(receiptObj)}
+                        onClick={async () => {
+                          if (b.status !== 'approved' && b.status !== 'in_progress' && b.status !== 'completed') {
+                            alert('⚠️ ဤ Online Booking ကို Admin ဘက်မှ Approve အရင်လုပ်ပေးရန် လိုအပ်ပါသည်။');
+                            return;
+                          }
+
+                          // 🌟 Admin Approve လုပ်ပြီးသား Online Booking ကို POS ကနေ ဘောင်ချာထုတ်လိုက်ပြီဆိုတာနဲ့ ဝန်ထမ်း App မှာ အချိန်စမှတ်ပေးမည်! 🌟
+                          if (b.status === 'approved' && b.id) {
+                            const nowMs = Date.now();
+                            const sText = String(b.service || '').toLowerCase();
+                            const mMatch = sText.match(/(\d+)\s*(?:mins|min)/i);
+                            const hMatch = sText.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr)/i);
+                            let totalMins = 60;
+                            if (mMatch) totalMins = parseInt(mMatch[1], 10);
+                            else if (hMatch) totalMins = Math.round(parseFloat(hMatch[1]) * 60);
+                            else if (sText.includes('whole day')) totalMins = 480;
+                            else if (sText.includes('whole night')) totalMins = 600;
+
+                            const expectedEndMs = nowMs + totalMins * 60 * 1000;
+                            const nowTimeStr = new Date(nowMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                            try {
+                              await updateDoc(doc(db, 'bookings', b.id), {
+                                status: 'in_progress',
+                                startTimeMillis: nowMs,
+                                expectedEndTimeMillis: expectedEndMs,
+                                posPrintedAt: nowMs
+                              });
+                              receiptObj.serviceStatus = 'in_progress';
+                              receiptObj.time = nowTimeStr;
+                            } catch (err) {
+                              console.warn('Failed to start online booking timer:', err);
+                            }
+                          }
+
+                          setActiveReceipt(receiptObj);
+                        }}
                         className="px-3.5 py-2.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black flex items-center shadow-md hover:opacity-95 transition"
                       >
-                        <Printer className="w-4 h-4 mr-1.5" /> ဘောင်ချာထုတ်မည်
+                        <Printer className="w-4 h-4 mr-1.5" />
+                        {b.status === 'approved' ? 'ဘောင်ချာထုတ် & အချိန်စမှတ်မည်' : 'ဘောင်ချာထုတ်မည်'}
                       </button>
                     </div>
                   </div>
