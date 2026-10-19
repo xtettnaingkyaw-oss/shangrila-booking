@@ -946,34 +946,45 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
 
     let updateData: any = { status: newStatus, cancelReason: '' };
 
+    // အကယ်၍ Approved လုပ်ခြင်းဖြစ်ပြီး ပွိုင့်မထည့်ရသေးပါက Points များကို လုံခြုံစွာ ပေါင်းထည့်မည်
     if (newStatus === 'approved' && !(b as any).pointsAdded && b.totalPrice >= 35000) {
       const earnedPts = Math.floor(b.totalPrice / 35000);
       try {
         const usersSnap = await getDocs(collection(db, 'users'));
         let targetDocRef: any = null;
+        let existingPts = 0;
+
+        const cleanBookingPhone = String(b.phone || '').trim();
+        const normalizePhone = (p: string) => p.replace(/[^0-9]/g, '').replace(/^959/, '09');
+        const targetNorm = normalizePhone(cleanBookingPhone);
 
         usersSnap.forEach(d => {
           const uData = d.data();
-          const decPhone = decryptText(uData.phone) || d.id;
-          if (decPhone === b.phone) {
+          const decPhone = decryptText(uData.phone) || uData.phone || d.id;
+          const decPhoneNorm = normalizePhone(decPhone);
+          
+          if (decPhone === cleanBookingPhone || d.id === cleanBookingPhone || (targetNorm.length >= 7 && decPhoneNorm === targetNorm)) {
             targetDocRef = doc(db, 'users', d.id);
+            const rawPts = decryptText(uData.points) || uData.points || '0';
+            existingPts = parseInt(rawPts, 10) || 0;
           }
         });
 
         if (targetDocRef) {
+          // အကယ်၍ Customer အကောင့် ရှိပြီးသားဆိုလျှင် Points ပေါင်းမည်
           await runTransaction(db, async (transaction) => {
             const userDoc = await transaction.get(targetDocRef);
             if (!userDoc.exists()) throw new Error("User does not exist!");
 
             const uData = userDoc.data() as any;
-            const currentPts = parseInt(decryptText(uData.points as string) || (uData.points as string) || '0', 10);
+            const currentPts = parseInt(decryptText(uData.points) || uData.points || '0', 10) || existingPts;
             const newTotal = currentPts + earnedPts;
 
             transaction.update(targetDocRef, { points: encryptText(newTotal.toString()) });
 
             const newHistoryRef = doc(collection(db, 'point_history'));
             transaction.set(newHistoryRef, {
-              phone: encryptText(b.phone),
+              phone: encryptText(cleanBookingPhone),
               amount: encryptText(b.totalPrice.toString()),
               pointsEarned: encryptText(earnedPts.toString()),
               invoiceNo: encryptText(b.txId || 'Online'),
@@ -988,17 +999,45 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
 
           alert(`✅ Booking Confirmed! Customer ထံသို့ Point (${earnedPts} Pts) အလိုအလျောက် ပေါင်းထည့်ပေးလိုက်ပါပြီ။`);
           return;
+        } else {
+          // အကယ်၍ Customer အကောင့် မရှိသေးပါက အလိုအလျောက် အကောင့်သစ် ဖွင့်ပေးပြီး Points ထည့်မည်
+          const newUserRef = doc(collection(db, 'users'));
+          await setDoc(newUserRef, {
+            phone: encryptText(cleanBookingPhone),
+            name: encryptText(b.name || 'Online Guest'),
+            password: encryptText(''),
+            dob: encryptText(''),
+            points: encryptText(earnedPts.toString()),
+            createdAt: Date.now()
+          });
+
+          await addDoc(collection(db, 'point_history'), {
+            phone: encryptText(cleanBookingPhone),
+            amount: encryptText(b.totalPrice.toString()),
+            pointsEarned: encryptText(earnedPts.toString()),
+            invoiceNo: encryptText(b.txId || 'Online'),
+            type: encryptText('Online Booking'),
+            date: getLocalTodayStr(),
+            createdAt: Date.now()
+          });
+
+          await updateDoc(doc(db, 'bookings', b.id!), { ...updateData, pointsAdded: true });
+          alert(`✅ Booking Confirmed! Customer အကောင့်အသစ် ဖွင့်လှစ်ပေးပြီး Point (${earnedPts} Pts) ထည့်သွင်းပြီးပါပြီ။`);
+          return;
         }
       } catch (e) {
         console.error("Transaction Error:", e);
-        alert("Error Update! Booking Status နှင့် Point ပေါင်းခြင်း မအောင်မြင်ပါ။");
+        // အကယ်၍ Transaction Fail ခدခဲ့ရင်တောင် Booking Status ကို အရင် Approved ဖြစ်အောင် Update လုပ်ပေးမည် (အရေးကြီးဆုံးဖြစ်သောကြောင့်)
+        await updateDoc(doc(db, 'bookings', b.id!), updateData);
+        alert("⚠️ Booking Status ကို အတည်ပြုပြီးပါပြီ (သို့သော် Point ပေါင်းရာတွင် အကြိမ်ရေကန့်သတ်ချက်/ချိတ်ဆက်မှု အနည်းငယ်နှောင့်နှေးသွားပါသည်။)");
         return;
       }
     }
+
     try {
       await updateDoc(doc(db, 'bookings', b.id!), updateData);
     } catch (e) {
-      alert("Error Update");
+      alert("Error Update Status");
     }
   };
 
