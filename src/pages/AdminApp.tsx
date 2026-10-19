@@ -2803,7 +2803,7 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
                   အချိန်ပို (Overtime / Late)
                 </div>
                 <div className={`text-2xl font-black mt-1 ${activeOvertimeCount > 0 ? 'text-red-600 animate-pulse' : 'text-gray-700'}`}>
-                  {activeOvertimeCount} <span className="text-xs font-bold">ပွဲ</span>
+                  {activeOvertimeCount} <span className="text-xs font-bold">Sec</span>
                 </div>
               </div>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeOvertimeCount > 0 ? 'bg-red-500/15 text-red-600' : 'bg-gray-200/70 text-gray-400'}`}>
@@ -2831,7 +2831,7 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
                   ယနေ့ စုစုပေါင်း Sections
                 </div>
                 <div className="text-2xl font-black text-[#123524] mt-1">
-                  {totalSectionsToday} <span className="text-xs font-bold text-emerald-700">ပွဲ</span>
+                  {totalSectionsToday} <span className="text-xs font-bold text-emerald-700">Sec</span>
                 </div>
               </div>
               <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center">
@@ -3152,8 +3152,8 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
                       <div className="mt-auto pt-2.5 border-t border-dashed border-gray-300/70">
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-[10px] font-bold text-gray-600">
-                            ယနေ့ ဝင်ပြီးသောပွဲ (Today Sections):{' '}
-                            <strong className="text-orange-600 text-xs">{tStats.count} ပွဲ</strong>
+                            ယနေ့ ဝင်ပြီးသော​ Sections (Today Sections):{' '}
+                            <strong className="text-orange-600 text-xs">{tStats.count} Sec</strong>
                           </span>
                           {Number(b.totalPrice) > 0 && (
                             <span className="text-[11px] font-black text-[#123524]">
