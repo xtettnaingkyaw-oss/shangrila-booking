@@ -1491,7 +1491,7 @@ export default function AdminSalesSummaryView({
                               {r.therapist}
                             </td>
                             <td className="p-3 text-center font-black text-gray-800">
-                              {r.sessions} ပွဲ
+                              {r.sessions} Sec
                             </td>
                             <td className="p-3 text-right font-semibold text-gray-600">
                               {formatPrice(r.grossSales)}
