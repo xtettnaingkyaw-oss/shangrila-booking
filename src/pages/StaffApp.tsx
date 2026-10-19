@@ -1405,7 +1405,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
   const todayStr = getLocalTodayStr();
   const currentYearMonth = todayStr.substring(0, 7); // e.g. "2026-10"
 
-  // 🌟 Real-time Bookings များကို ဖတ်ယူခြင်း (Excel Upload တင်စရာမလိုတော့ပါ) 🌟
   useEffect(() => {
     const q = query(collection(db, 'bookings'));
     const unsub = onSnapshot(q, (snap) => {
@@ -1448,11 +1447,9 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     return String(name || '').trim();
   }, []);
 
-  // Configurable Daily Target & Commission Rate
   const BASE_DAILY_TARGET = Number(localStorage.getItem('shangrila_daily_target')) || 150000;
   const COMMISSION_PCT = Number(localStorage.getItem('shangrila_commission_pct')) || 20;
 
-  // Active Month Days List
   const [yStr, mStr] = currentYearMonth.split('-');
   const yearNum = parseInt(yStr, 10) || 2026;
   const monthNum = parseInt(mStr, 10) || 10;
@@ -1465,7 +1462,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
   const monthlyTotalTarget = daysInMonth * BASE_DAILY_TARGET;
 
-  // Transform Bookings into Staff Sales Entries for Current Month
   const liveSalesEntries = useMemo(() => {
     const entries: any[] = [];
     bookings.forEach((b: any) => {
@@ -1513,7 +1509,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     return entries;
   }, [bookings, currentYearMonth, COMMISSION_PCT, getShortStaffLabel]);
 
-  // Build Leaderboard for Current Month
   const sortedPerformers = useMemo(() => {
     const map = new Map<string, { staffName: string; shortLabel: string; actualSales: number; sectionsCount: number; commission: number }>();
 
@@ -1541,7 +1536,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     return sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map((p) => p.actualSales), 1) : 1;
   }, [sortedPerformers]);
 
-  // Check if staff item is the logged-in staff
   const checkIsMe = useCallback((staffName: string) => {
     const cleanStaff = staffName.trim().toLowerCase();
     const myName = loggedInStaff.name.trim().toLowerCase();
@@ -1549,7 +1543,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     return cleanStaff === myName || cleanStaff === myId || cleanStaff.includes(myName) || myName.includes(cleanStaff);
   }, [loggedInStaff]);
 
-  // My Personal Summary for Current Month
   const myEntries = useMemo(() => {
     return liveSalesEntries.filter((e) => checkIsMe(e.staffName));
   }, [liveSalesEntries, checkIsMe]);
@@ -1558,14 +1551,12 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
   const myTotalComm = myEntries.reduce((s, e) => s + e.commissionAmount, 0);
   const myTotalSections = myEntries.length;
 
-  // My Attendance (Worked Days vs Missed Days)
   const pastDays = allMonthDates.filter((d) => d <= todayStr);
   const workedDaysSet = new Set(myEntries.map((e) => e.date));
   const workedDaysCount = pastDays.filter((d) => workedDaysSet.has(d)).length;
   const missedDays = pastDays.filter((d) => !workedDaysSet.has(d));
   const missedDaysCount = missedDays.length;
 
-  // Dynamic Daily Tracker for Me
   let cumActualPrior = 0;
   const fullDailyBreakdown = allMonthDates.map((dStr, idx) => {
     const dayRecords = myEntries.filter((e) => e.date === dStr);
@@ -1679,26 +1670,28 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
               return (
                 <div
                   key={idx}
-                  className={`flex items-center p-4 rounded-xl border transition-all ${
+                  className={`flex items-center p-3 sm:p-4 rounded-xl border transition-all ${
                     isMe ? 'bg-yellow-50/50 border-[#D4AF37] shadow-md scale-[1.02]' : 'bg-white border-gray-100 shadow-sm'
                   }`}
                 >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mr-4 ${badgeClass}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mr-3 flex-shrink-0 ${badgeClass}`}>
                     {idx === 0 && actualSales > 0 ? <Trophy className="w-4 h-4" /> : `#${idx + 1}`}
                   </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-gray-800 text-sm flex items-center gap-2">
-                      <span>{p.staffName}</span>
-                      <span className="text-[10px] font-black bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                  <div className="flex-1 min-w-0 pr-2">
+                    <div className="font-bold text-gray-800 text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
+                      <span className="truncate">{p.staffName}</span>
+                      <span className="text-[9px] font-black bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded whitespace-nowrap">
                         {p.sectionsCount} Sec
                       </span>
-                      {isMe && <span className="text-[9px] bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded uppercase tracking-wider">YOU</span>}
+                      {isMe && <span className="text-[8px] bg-[#123524] text-[#D4AF37] px-1.5 py-0.5 rounded uppercase tracking-wider font-black">YOU</span>}
                     </div>
-                    <div className="text-[10px] text-gray-500 font-semibold mt-0.5">Target: {formatPrice(monthlyTotalTarget)}</div>
+                    <div className="text-[10px] text-gray-500 font-semibold mt-0.5 truncate">
+                      Target: {formatPrice(monthlyTotalTarget)}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-black text-[#123524]">{formatPrice(actualSales)}</div>
-                    <div className={`text-[9px] font-bold mt-0.5 ${metPercent >= 50 ? 'text-green-500' : 'text-orange-500'}`}>
+                  <div className="text-right flex-shrink-0">
+                    <div className="font-black text-[#123524] text-xs sm:text-sm">{formatPrice(actualSales)}</div>
+                    <div className={`text-[9px] font-bold mt-0.5 ${metPercent >= 50 ? 'text-green-600' : 'text-orange-500'}`}>
                       Met {metPercent.toFixed(1)}%
                     </div>
                   </div>
@@ -1711,18 +1704,21 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
       {subTab === 'my_stats' && (
         <div className="space-y-6">
-          <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
+          <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-5 sm:p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-            <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center">
-              <Target className="w-4 h-4 mr-2" /> Monthly Target ({loggedInStaff.name})
+            
+            {/* 🌟 FIX: Long Therapist Name Wrapping Properly 🌟 */}
+            <h3 className="text-[#D4AF37] font-bold text-[11px] sm:text-xs tracking-wider uppercase mb-5 flex items-center text-center px-2 leading-relaxed">
+              <Target className="w-4 h-4 mr-1.5 flex-shrink-0" /> 
+              <span>MONTHLY TARGET ({loggedInStaff.name.toUpperCase()})</span>
             </h3>
 
-            <div className="relative w-32 h-32 flex items-center justify-center bg-black/20 rounded-full border-4 border-white/5 shadow-inner">
+            <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center bg-black/20 rounded-full border-4 border-white/5 shadow-inner">
               <div className="text-center">
-                <div className="text-2xl font-black text-white">
+                <div className="text-xl sm:text-2xl font-black text-white">
                   {myTotalSales > 0 && monthlyTotalTarget > 0 ? Math.round((myTotalSales / monthlyTotalTarget) * 100) : 0}%
                 </div>
-                <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-1">Achieved</div>
+                <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-0.5">Achieved</div>
               </div>
               <svg viewBox="0 0 128 128" className="absolute inset-0 w-full h-full transform -rotate-90 overflow-visible">
                 <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
@@ -1742,18 +1738,19 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
               </svg>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 w-full mt-8">
-              <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
-                <div className="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Target</div>
-                <div className="text-xs font-bold text-white">{formatPrice(monthlyTotalTarget)}</div>
+            {/* 🌟 FIX: Compact Grid Boxes to prevent text overflow 🌟 */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full mt-7">
+              <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-white/10 text-center">
+                <div className="text-[8px] sm:text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-0.5">Target</div>
+                <div className="text-[10px] sm:text-xs font-bold text-white truncate">{formatPrice(monthlyTotalTarget)}</div>
               </div>
-              <div className="bg-white/10 p-3 rounded-xl border border-[#D4AF37]/30 text-center">
-                <div className="text-[9px] text-[#D4AF37] font-bold uppercase tracking-wider mb-1">Actual Sales</div>
-                <div className="text-xs font-bold text-[#D4AF37]">{formatPrice(myTotalSales)}</div>
+              <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-[#D4AF37]/30 text-center">
+                <div className="text-[8px] sm:text-[9px] text-[#D4AF37] font-bold uppercase tracking-wider mb-0.5">Actual Sales</div>
+                <div className="text-[10px] sm:text-xs font-bold text-[#D4AF37] truncate">{formatPrice(myTotalSales)}</div>
               </div>
-              <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
-                <div className="text-[9px] text-emerald-300 font-bold uppercase tracking-wider mb-1">Sections</div>
-                <div className="text-xs font-bold text-white">{myTotalSections} Sec</div>
+              <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-white/10 text-center">
+                <div className="text-[8px] sm:text-[9px] text-emerald-300 font-bold uppercase tracking-wider mb-0.5">Sections</div>
+                <div className="text-[10px] sm:text-xs font-bold text-white truncate">{myTotalSections} Sec</div>
               </div>
             </div>
           </div>
@@ -1800,7 +1797,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
             {missedDaysCount > 0 ? (
               <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
                 <span className="text-[10px] font-bold text-gray-500 mb-2.5 block">Section မဝင်ထားသော ရက်များ :</span>
-                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                <div className="flex flex-wrap gap-2">
                   {missedDays.map((dStr) => (
                     <span key={dStr} className="bg-white border border-red-200 text-red-500 text-[9px] font-bold px-2 py-1 rounded-md shadow-2xs">
                       {dStr}
@@ -1848,7 +1845,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                     </div>
                   </div>
                   {item.hasSales && (
-                    <div className="space-y-1.5 my-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                    <div className="space-y-1 my-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
                       {item.services.map((s: any, sIdx: number) => (
                         <div key={sIdx} className="flex justify-between text-xs font-semibold text-gray-800">
                           <span>• {s.serviceName}</span>
