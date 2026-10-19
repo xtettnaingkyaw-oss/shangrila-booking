@@ -7,7 +7,7 @@ import {
   LogOut, User, Clock, CheckCircle, History, Coffee, Sparkles,
   Calendar, ShieldAlert, KeyRound, ChevronDown, Droplets, Trophy,
   TrendingUp, Target, Award, Crown, Banknote, ClipboardList, Bell,
-  BookOpen, CheckCircle2, Timer, AlertTriangle, Hourglass
+  BookOpen, CheckCircle2, Timer, AlertTriangle, Hourglass, Zap
 } from 'lucide-react';
 import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
 
@@ -22,7 +22,6 @@ const formatPrice = (price: any) => {
   return num.toLocaleString() + ' Ks';
 };
 
-// 🌟 မိနစ် နှင့် စက္ကန့်ကို အမြဲတမ်း MM:SS ပုံစံဖြင့် ရှင်းလင်းတိကျစွာ ပြသပေးမည့် Function 🌟
 const formatSecondsMMSS = (totalSeconds: number | undefined) => {
   if (totalSeconds === undefined || isNaN(totalSeconds)) return '00:00';
   const isNegative = totalSeconds < 0;
@@ -37,21 +36,44 @@ const getLocalTodayStr = () => {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 };
 
-const getYesterdayStr = () => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+// 🌟 ၁။ Admin Clock-In သီးသန့် ဟုတ်/မဟုတ် စစ်ဆေးသည့် Function 🌟
+// (POS ဘောင်ချာ SL-... နှင့် Online Booking တို့ လုံးဝမပါဝင်စေရ)
+export const isStrictlyAdminClockIn = (b: any): boolean => {
+  if (!b) return false;
+  const decTx = String(decryptText(b.txId) || b.txId || '').trim().toUpperCase();
+  const payMethod = String(b.paymentMethod || '').toLowerCase();
+  const discLabel = String(decryptText(b.discountLabel) || b.discountLabel || '').toLowerCase();
+
+  // POS Walk-in Bill သို့မဟုတ် Online Booking ဖြစ်ပါက Admin Clock-In မဟုတ်ပါ (ဝန်ထမ်းကိုယ်တိုင် ပိတ်မှ ရပ်မည်)
+  if (
+    decTx.startsWith('SL-') ||
+    decTx.startsWith('OB-') ||
+    payMethod.includes('shop pos') ||
+    discLabel.includes('[shop walk-in') ||
+    Boolean(b.posLocalId)
+  ) {
+    return false;
+  }
+
+  return (
+    Boolean(b.isAdminClockIn) ||
+    Boolean(b.isStaffClockIn) ||
+    decTx === 'ADMIN' ||
+    decTx === 'CASH' ||
+    payMethod.includes('admin clock') ||
+    payMethod.includes('cash payment in shop') ||
+    b.time === 'Walk-in'
+  );
 };
 
-// 🌟 SMART SERVICE DURATION PARSER: Service အမည် နှင့် AppData Menu မှ မိနစ်အတိအကျကို တွက်ချက်ပေးခြင်း 🌟
-const extractAccurateServiceDurationMins = (session: any, appData: AppData): { totalMins: number; label: string } => {
+// 🌟 ၂။ Service Menu အတိုင်း မိနစ်အတိအကျ တွက်ချက်ပေးသည့် Smart Parser 🌟
+export const extractAccurateServiceDurationMins = (session: any, appData: AppData): { totalMins: number; label: string } => {
   const serviceStr = String(session?.service || '');
 
-  // 1. POS Items array ပါလာပါက ၎င်းထဲမှ duration များကို ဦးစားပေး ပေါင်းတွက်မည်
   if (Array.isArray(session?.posItems) && session.posItems.length > 0) {
     let sumMins = 0;
     session.posItems.forEach((item: any) => {
-      const itemMins = parseDurationStringToMins(item.duration || item.name || '', appData);
+      const itemMins = parseDurationStringToMins(`${item.name || ''} ${item.duration || ''}`, appData);
       if (itemMins > 0) {
         sumMins += itemMins * (Number(item.qty) || 1);
       }
@@ -61,7 +83,6 @@ const extractAccurateServiceDurationMins = (session: any, appData: AppData): { t
     }
   }
 
-  // 2. Service string ထဲမှ ကော်မာခံထားသော ဝန်ဆောင်မှုတစ်ခုချင်းစီကို ခွဲထုတ်ပြီး စစ်ဆေးမည်
   const parts = serviceStr.split(',').map((s) => s.trim()).filter(Boolean);
   let totalCalcMins = 0;
 
@@ -76,7 +97,6 @@ const extractAccurateServiceDurationMins = (session: any, appData: AppData): { t
     return { totalMins: totalCalcMins, label: `${totalCalcMins} Mins` };
   }
 
-  // 3. Fallback: startTimeMillis နှင့် expectedEndTimeMillis ကွာခြားချက်မှ ရှာမည်
   if (session?.startTimeMillis && session?.expectedEndTimeMillis && session.expectedEndTimeMillis > session.startTimeMillis) {
     const diffMins = Math.round((session.expectedEndTimeMillis - session.startTimeMillis) / 60000);
     if (diffMins > 0 && diffMins <= 1440) {
@@ -87,30 +107,18 @@ const extractAccurateServiceDurationMins = (session: any, appData: AppData): { t
   return { totalMins: 60, label: '60 Mins' };
 };
 
-const parseDurationStringToMins = (text: string, appData: AppData): number => {
+export const parseDurationStringToMins = (text: string, appData: AppData): number => {
   const clean = text.toLowerCase();
 
-  // Check explicit "XXX mins" or "XXX min"
   const minsMatch = clean.match(/(\d+)\s*(?:mins|min|မိနစ်)/i);
-  if (minsMatch) {
-    return parseInt(minsMatch[1], 10);
-  }
+  if (minsMatch) return parseInt(minsMatch[1], 10);
 
-  // Check explicit "X hours" or "X hr"
   const hrsMatch = clean.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr|နာရီ)/i);
-  if (hrsMatch) {
-    return Math.round(parseFloat(hrsMatch[1]) * 60);
-  }
+  if (hrsMatch) return Math.round(parseFloat(hrsMatch[1]) * 60);
 
-  // Check Special Packages (Whole Day / Whole Night)
-  if (clean.includes('whole day') || clean.includes('full day')) {
-    return 480; // 8 Hours (480 Mins)
-  }
-  if (clean.includes('whole night') || clean.includes('overnight') || clean.includes('full night')) {
-    return 600; // 10 Hours (600 Mins)
-  }
+  if (clean.includes('whole day') || clean.includes('full day')) return 480; // 8 Hours
+  if (clean.includes('whole night') || clean.includes('overnight') || clean.includes('full night')) return 600; // 10 Hours
 
-  // Look up matching item in AppData categories
   if (appData?.categories) {
     for (const cat of appData.categories) {
       for (const item of cat.items || []) {
@@ -126,7 +134,6 @@ const parseDurationStringToMins = (text: string, appData: AppData): number => {
     }
   }
 
-  // Extra items (Oil bottle, Drink, Underwear) have 0 service duration unless "extra time"
   if (clean.includes('oil (bottle)') || clean.includes('underwear') || clean.includes('drink') || clean.includes('coffee')) {
     return 0;
   }
@@ -134,7 +141,6 @@ const parseDurationStringToMins = (text: string, appData: AppData): number => {
   return 60;
 };
 
-// 🌟 Parse "10:26 AM" + "2026-10-18" into accurate Milliseconds 🌟
 const parseBookingDateTimeToMillis = (dateStr: string, timeStr: string, fallbackCreatedAt?: number): number => {
   try {
     if (!dateStr || !timeStr) return fallbackCreatedAt || Date.now();
@@ -197,7 +203,7 @@ function StatusBadge({ status, cancelReason }: { status: string; cancelReason?: 
   if (status === 'approved')
     return (
       <span className="text-green-600 border border-green-200 bg-green-50 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center w-fit">
-        <CheckCircle className="w-3 h-3 mr-1" /> Confirmed
+        <CheckCircle className="w-3 h-3 mr-1" /> Approved (POS ဘောင်ချာထုတ်ရန်စောင့်ဆိုင်းဆဲ)
       </span>
     );
   if (status === 'cancelled')
@@ -239,7 +245,14 @@ export default function StaffApp() {
   if (!globalAppData) return <div className="text-center py-20 font-bold text-gray-500">Loading Staff Portal...</div>;
 
   if (isRegistering) {
-    return <NewEmployeeOnboardingForm onBack={() => { window.location.hash = ''; setIsRegistering(false); }} />;
+    return (
+      <NewEmployeeOnboardingForm
+        onBack={() => {
+          window.location.hash = '';
+          setIsRegistering(false);
+        }}
+      />
+    );
   }
 
   return (
@@ -401,14 +414,14 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
   const [hasRosterNoti, setHasRosterNoti] = useState(false);
   const [unpaidPenaltyCount, setUnpaidPenaltyCount] = useState(0);
 
-  // 🌟 REAL-TIME SESSION LISTENER (Supports Single & Dual Therapist Assignments + Zombie Session Auto-Cleanup!) 🌟
+  // 🌟 REAL-TIME SESSION LISTENER:
+  // 1. ဒီနေ့မဟုတ်သော Session အဟောင်းများကို အလိုအလျောက် ပိတ်ပြီး ဖျောက်မည်။
+  // 2. Admin Clock-In သီးသန့်ကိုသာ အချိန်ပြည့်လျှင် Auto Clock-Out လုပ်မည်။
+  // 3. POS နှင့် Online Booking (POS မှ ဘောင်ချာထုတ်ပြီးသား) များကိုမူ ဝန်ထမ်းက Complete နှိပ်မှသာ ရပ်မည်။
   useEffect(() => {
-    const todayStr = getLocalTodayStr();
-    const yesterdayStr = getYesterdayStr();
-
-    // Query recent bookings and filter for this therapist (supports "Therapist No-1 & Therapist No-2" as well!)
     const q = query(collection(db, 'bookings'));
     const unsubscribe = onSnapshot(q, (snap) => {
+      const todayStr = getLocalTodayStr();
       const myActiveCandidates: Booking[] = [];
       const myUpcomingToday: Booking[] = [];
       const now = Date.now();
@@ -417,33 +430,11 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
         const raw = docSnap.data();
         const therapistField = String(raw.therapist || '');
 
-        // Check if this booking belongs to this logged-in staff (exact match or part of dual therapist "A & B")
         const assignedNames = therapistField.split(/&|,/).map((s) => s.trim().toLowerCase());
         const isAssignedToMe = assignedNames.includes(liveStaff.name.trim().toLowerCase());
         if (!isAssignedToMe) return;
 
         const decTx = String(decryptText(raw.txId) || raw.txId || '').trim();
-        const rawPay = String(raw.paymentMethod || '').toLowerCase();
-        const rawService = String(raw.service || '').toLowerCase();
-
-        // Ignore old unverified manual self-clock-ins that have no POS invoice or valid booking
-        const isFakeSelfClockIn =
-          Boolean(raw.isStaffClockIn) ||
-          raw.time === 'Walk-in' ||
-          rawPay.includes('cash payment in shop') ||
-          rawService.includes('walk-in reward redemption');
-
-        if (isFakeSelfClockIn) {
-          // Auto-clean old fake self-clock-in if still stuck in_progress
-          if (raw.status === 'in_progress') {
-            updateDoc(doc(db, 'bookings', docSnap.id), {
-              status: 'cancelled',
-              cancelReason: 'Auto-cleaned legacy self clock-in'
-            }).catch(() => {});
-          }
-          return;
-        }
-
         const b: Booking = {
           id: docSnap.id,
           ...raw,
@@ -454,29 +445,39 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
         } as Booking;
 
         if (b.status === 'in_progress') {
-          // 🌟 ZOMBIE SESSION GUARD: ၂၄ နာရီထက် ပိုကြာနေသော ရက်ဟောင်း (`2026-09-24` ကဲ့သို့) Session များကို Auto-Complete ပိတ်ပေးမည် 🌟
-          const isValidRecentDate = b.date === todayStr || b.date === yesterdayStr;
+          const durInfo = extractAccurateServiceDurationMins(b, appData);
           const startMs = b.startTimeMillis || parseBookingDateTimeToMillis(b.date, b.time, b.createdAt);
-          const ageHours = (now - startMs) / (1000 * 60 * 60);
+          const expectedEndMs = startMs + durInfo.totalMins * 60 * 1000;
 
-          if (!isValidRecentDate || ageHours > 18) {
-            // Automatically close stale zombie session in Firestore so it never blocks the staff screen again
-            const durInfo = extractAccurateServiceDurationMins(b, appData);
-            const expectedEndMs = startMs + durInfo.totalMins * 60 * 1000;
+          // (က) ဒီနေ့မဟုတ်သော ရက်ဟောင်းမှ ကျန်နေသည့် Session များအားလုံးကို အလိုအလျောက် ပိတ်သိမ်းပြီး ဖျောက်မည်
+          if (b.date !== todayStr) {
             updateDoc(doc(db, 'bookings', docSnap.id), {
               status: 'completed',
               actualEndTimeMillis: expectedEndMs,
               overtimeSeconds: 0
             }).catch(() => {});
-          } else {
-            myActiveCandidates.push(b);
+            return;
           }
+
+          // (ခ) Admin Clock-In သီးသန့်ဖြစ်ပြီး သတ်မှတ်ချိန်ပြည့်သွားပါက အလိုအလျောက် Auto Clock-Out လုပ်မည်
+          if (isStrictlyAdminClockIn(b) && now >= expectedEndMs) {
+            updateDoc(doc(db, 'bookings', docSnap.id), {
+              status: 'completed',
+              startTimeMillis: startMs,
+              expectedEndTimeMillis: expectedEndMs,
+              actualEndTimeMillis: expectedEndMs,
+              overtimeSeconds: 0
+            }).catch(() => {});
+            return;
+          }
+
+          myActiveCandidates.push(b);
         } else if (b.date === todayStr && (b.status === 'approved' || b.status === 'payment_checking')) {
+          // Online Booking (Admin Approve လုပ်ပြီးသော်လည်း POS မှ ဘောင်ချာမထုတ်ရသေးသဖြင့် စောင့်ဆိုင်းနေသော ပွဲများ)
           myUpcomingToday.push(b);
         }
       });
 
-      // Pick the most recent active session if multiple exist
       myActiveCandidates.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setActiveSession(myActiveCandidates[0] || null);
 
@@ -520,7 +521,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
     if (rosterData?.updatedAt) localStorage.setItem('shangrila_roster_last_seen', rosterData.updatedAt.toString());
   };
 
-  // 🌟 COMPLETE SERVICE HANDLER (Calculates accurate end time & overtime based on actual service duration!) 🌟
+  // 🌟 ဝန်ထမ်းမှ ဝန်ဆောင်မှုပြီးဆုံးကြောင်း နှိပ်သည့်အခါ အချိန်မည်မျှကျော်သွားသည် (Overtime) ကို အတိအကျ တွက်ချက်သိမ်းဆည်းပေးခြင်း 🌟
   const handleCompleteServiceSession = async () => {
     if (!activeSession || !activeSession.id || stoppingSession) return;
     if (!window.confirm('ဝန်ဆောင်မှု ပြီးဆုံးကြောင်း အတည်ပြုပါသလား? (Confirm Service Completed)')) return;
@@ -540,7 +541,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
         startTimeMillis: startMs,
         expectedEndTimeMillis: accurateExpectedEndMs,
         actualEndTimeMillis: now,
-        overtimeSeconds: Math.floor(overtimeMillis / 1000)
+        overtimeSeconds: isStrictlyAdminClockIn(activeSession) ? 0 : Math.floor(overtimeMillis / 1000)
       });
       setActiveSession(null);
     } catch (error) {
@@ -555,7 +556,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
 
   return (
     <div className="bg-white p-4 sm:p-8 rounded-2xl shadow-sm border border-gray-100 animate-fade-in relative">
-      {/* Staff Profile Top Header */}
       <div className="flex justify-between items-center mb-6 pb-6 border-b border-gray-100">
         <div className="flex items-center">
           <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden mr-3 sm:mr-4 border-2 border-[#123524] shadow-sm flex-shrink-0">
@@ -807,9 +807,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
         </div>
       )}
 
-      {/* =========================================================================
-          🌟 SERVICE TAB: NO MANUAL CLOCK-IN! POS/ADMIN AUTO-ASSIGN + 1-TAP COMPLETE 🌟
-         ========================================================================= */}
       {staffTab === 'service' && (
         <div className="space-y-6 mt-4 animate-fade-in">
           {activeSession ? (
@@ -831,19 +828,24 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                 လက်ရှိ ဝန်ဆောင်မှုပေးနေသော အချိန်မရှိပါ
               </h3>
               <p className="text-xs font-semibold text-gray-500 max-w-md mx-auto leading-relaxed">
-                Reception POS (သို့မဟုတ်) Admin မှ ဘောင်ချာဖြတ်၍ တာဝန်ချပေးလိုက်သည်နှင့် သင်၏ Service အချိန်မှတ်တမ်း ဤနေရာတွင် အလိုအလျောက် ပေါ်လာပါမည်။ ဝန်ဆောင်မှုပြီးဆုံးချိန်မှသာ <strong>"Complete Service"</strong> ခလုတ်ကို နှိပ်ပေးရပါမည်။
+                Reception POS မှ ဘောင်ချာထုတ်လိုက်သည့်အခါ (သို့မဟုတ်) Admin Clock-In သွင်းပေးလိုက်သည့်အခါမှသာ သင်၏ Service Timer စတင်မှတ်သားပါမည်။
               </p>
             </div>
           )}
 
-          {/* Today's Upcoming Confirmed Bookings Queue */}
+          {/* Today's Upcoming Online Bookings (Waiting for POS Receipt Print to Start Timer!) */}
           {upcomingBookings.length > 0 && (
             <div className="bg-gray-50 p-4 sm:p-5 rounded-2xl border border-gray-200 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs sm:text-sm font-black text-[#123524] flex items-center">
-                  <Hourglass className="w-4 h-4 mr-1.5 text-[#D4AF37]" />
-                  ယနေ့ ကြိုတင်ဘိုကင်စာရင်း (Upcoming Confirmed Bookings)
-                </h4>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-[#123524] flex items-center">
+                    <Hourglass className="w-4 h-4 mr-1.5 text-[#D4AF37]" />
+                    ယနေ့ ကြိုတင်ဘိုကင်စာရင်း (Upcoming Online Bookings)
+                  </h4>
+                  <p className="text-[10px] text-gray-500 font-semibold mt-0.5">
+                    ဧည့်သည်ရောက်ရှိပြီး POS မှ ဘောင်ချာထုတ်လိုက်သည်နှင့် အချိန်စတင်မှတ်သားပေးပါမည်
+                  </p>
+                </div>
                 <span className="bg-[#123524] text-[#D4AF37] text-[10px] font-black px-2.5 py-0.5 rounded-full">
                   {upcomingBookings.length} ပွဲ
                 </span>
@@ -859,12 +861,12 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-black text-[#123524] bg-yellow-50 border border-[#D4AF37]/40 px-2 py-0.5 rounded">
-                            {ub.time}
+                            ချိန်းဆိုချိန်: {ub.time}
                           </span>
                           <span className="font-bold text-xs sm:text-sm text-gray-800">{ub.service}</span>
                         </div>
                         <div className="text-[11px] text-gray-500 mt-1">
-                          Customer: <strong className="text-gray-700">{ub.name}</strong> • ကြာချိန်: <strong>{dur.totalMins} Mins</strong>
+                          Customer: <strong className="text-gray-700">{ub.name}</strong> • သတ်မှတ်ချိန်: <strong>{dur.totalMins} Mins</strong>
                         </div>
                       </div>
                       <StatusBadge status={ub.status} />
@@ -881,7 +883,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
 }
 
 // ============================================================================
-// 🌟 ACTIVE SESSION DISPLAY (Accurate Service Minutes, Progress Bar & 1-Tap Complete) 🌟
+// 🌟 ACTIVE SESSION DISPLAY (Distinguishes Admin Auto-Out vs POS/Online Manual Complete) 🌟
 // ============================================================================
 function ActiveSessionDisplay({
   session,
@@ -894,29 +896,40 @@ function ActiveSessionDisplay({
   onStop: () => void;
   stopping: boolean;
 }) {
-  // Calculate Accurate Duration from Service Name / Menu Data
+  const isAdminAutoSession = useMemo(() => isStrictlyAdminClockIn(session), [session]);
   const durationInfo = useMemo(() => extractAccurateServiceDurationMins(session, appData), [session, appData]);
   const totalServiceSeconds = durationInfo.totalMins * 60;
 
-  // Calculate Accurate Start & Expected End Millis
   const accurateStartMillis = useMemo(() => {
     if (session.startTimeMillis && session.startTimeMillis > 0) return session.startTimeMillis;
     return parseBookingDateTimeToMillis(session.date, session.time, session.createdAt);
   }, [session.startTimeMillis, session.date, session.time, session.createdAt]);
 
   const accurateExpectedEndMillis = useMemo(() => {
-    // Always compute from accurateStartMillis + accurate duration so Whole Day/Night or 90/120 Mins are never cut short to 60 mins!
     return accurateStartMillis + totalServiceSeconds * 1000;
   }, [accurateStartMillis, totalServiceSeconds]);
 
   const [nowMillis, setNowMillis] = useState<number>(Date.now());
 
+  // Live 1-second ticker + Auto Clock-Out trigger if strictly Admin Clock-In
   useEffect(() => {
     const intervalId = setInterval(() => {
-      setNowMillis(Date.now());
+      const currentNow = Date.now();
+      setNowMillis(currentNow);
+
+      // Admin Clock-In ဖြစ်ပြီး အချိန်ပြည့်သွားပါက အလိုအလျောက် Auto Clock-Out လုပ်မည်
+      if (isAdminAutoSession && currentNow >= accurateExpectedEndMillis && session.id) {
+        updateDoc(doc(db, 'bookings', session.id), {
+          status: 'completed',
+          startTimeMillis: accurateStartMillis,
+          expectedEndTimeMillis: accurateExpectedEndMillis,
+          actualEndTimeMillis: accurateExpectedEndMillis,
+          overtimeSeconds: 0
+        }).catch(() => {});
+      }
     }, 1000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [isAdminAutoSession, accurateStartMillis, accurateExpectedEndMillis, session.id]);
 
   const elapsedSeconds = Math.max(0, Math.floor((nowMillis - accurateStartMillis) / 1000));
   const remainingSeconds = Math.max(0, Math.ceil((accurateExpectedEndMillis - nowMillis) / 1000));
@@ -931,18 +944,27 @@ function ActiveSessionDisplay({
 
   return (
     <div className="animate-fade-in space-y-5">
-      {/* Main Luxury Session Card */}
       <div className="bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] text-white p-5 sm:p-7 rounded-3xl shadow-xl border-2 border-[#D4AF37]/60 relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-white/10">
           <StatusBadge status={session.status} />
-          {session.txId && (
-            <span className="font-mono text-[11px] font-black bg-black/30 text-[#D4AF37] px-3 py-1 rounded-lg border border-[#D4AF37]/30">
-              Bill No: {session.txId}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {isAdminAutoSession ? (
+              <span className="inline-flex items-center gap-1 bg-blue-500/20 text-blue-200 border border-blue-400/40 px-2.5 py-1 rounded-lg text-[10px] font-black">
+                <Zap className="w-3 h-3 text-yellow-300" /> Admin Clock-In (အချိန်ပြည့်လျှင် Auto ပိတ်မည်)
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 bg-amber-500/20 text-amber-200 border border-amber-400/40 px-2.5 py-1 rounded-lg text-[10px] font-black">
+                <Clock className="w-3 h-3 text-[#D4AF37]" /> ဝန်ဆောင်မှုပြီးလျှင် Complete နှိပ်ရန်
+              </span>
+            )}
+            {session.txId && (
+              <span className="font-mono text-[11px] font-black bg-black/30 text-[#D4AF37] px-3 py-1 rounded-lg border border-[#D4AF37]/30">
+                {session.txId}
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Service Title & Total Minutes Pill */}
         <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-1.5 bg-[#D4AF37] text-[#123524] px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider shadow-sm">
@@ -962,8 +984,7 @@ function ActiveSessionDisplay({
             </div>
           </div>
 
-          {/* Big Countdown / Overtime Timer Display */}
-          <div className="bg-black/30 backdrop-blur-xs px-5 py-4 rounded-2xl border border-white/15 text-center sm:text-right min-w-[190px]">
+          <div className="bg-black/30 backdrop-blur-xs px-5 py-4 rounded-2xl border border-white/15 text-center sm:text-right min-w-[195px]">
             {remainingSeconds > 0 ? (
               <>
                 <div className="text-[10px] font-extrabold text-[#D4AF37] uppercase tracking-widest mb-1">
@@ -979,25 +1000,24 @@ function ActiveSessionDisplay({
             ) : (
               <div className="animate-pulse">
                 <div className="text-[10px] font-extrabold text-red-400 uppercase tracking-widest mb-1 flex items-center justify-center sm:justify-end gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5" /> သတ်မှတ်ချိန်ကျော်လွန် (OVERTIME)
+                  <AlertTriangle className="w-3.5 h-3.5" /> အချိန်ပို (OVERTIME)
                 </div>
                 <div className="text-4xl sm:text-5xl font-mono font-black text-red-400 tracking-tight">
                   +{formatSecondsMMSS(overtimeSeconds)}
                 </div>
                 <div className="text-[10px] font-bold text-red-300 mt-1">
-                  သတ်မှတ်ချိန် ({durationInfo.totalMins} မိနစ်) ပြည့်ပါပြီ
+                  သတ်မှတ်ချိန်ထက် ကျော်လွန်နေပါသည်
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Visual Progress Bar */}
         <div className="mt-6 space-y-1.5">
           <div className="flex justify-between text-[11px] font-bold text-gray-300">
             <span>စတင်ချိန်: <strong className="text-white">{startTimeFormatted}</strong></span>
             <span>ကြာမြင့်ချိန်: <strong className="text-[#D4AF37]">{formatSecondsMMSS(elapsedSeconds)} / {durationInfo.totalMins}:00</strong></span>
-            <span>ပြီးဆုံးချိန်: <strong className="text-white">{expectedEndFormatted}</strong></span>
+            <span>ပြီးဆုံးရမည့်ချိန်: <strong className="text-white">{expectedEndFormatted}</strong></span>
           </div>
           <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden p-0.5 border border-white/10">
             <div
@@ -1011,7 +1031,6 @@ function ActiveSessionDisplay({
           </div>
         </div>
 
-        {/* Price & Therapist Info Bar */}
         <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap justify-between items-center gap-2 text-xs text-gray-300">
           <span>
             ကျသင့်ငွေ: <strong className="text-[#D4AF37] text-sm">{formatPrice(session.totalPrice)}</strong>
@@ -1022,7 +1041,6 @@ function ActiveSessionDisplay({
         </div>
       </div>
 
-      {/* 🌟 ONE-TAP COMPLETE SERVICE BUTTON 🌟 */}
       <button
         type="button"
         disabled={stopping}
@@ -1111,7 +1129,7 @@ function StaffDailyHistoryTab({ loggedInStaff, appData }: { loggedInStaff: Thera
                 </div>
                 {b.status === 'completed' && b.overtimeSeconds !== undefined && b.overtimeSeconds > 60 && (
                   <div className="mt-2 text-[10px] text-red-600 font-bold bg-red-50 p-1.5 rounded text-right">
-                    Overtime: +{Math.floor(b.overtimeSeconds / 60)} mins
+                    အချိန်ပို (Overtime): +{Math.floor(b.overtimeSeconds / 60)} မိနစ် {b.overtimeSeconds % 60} စက္ကန့်
                   </div>
                 )}
               </div>
