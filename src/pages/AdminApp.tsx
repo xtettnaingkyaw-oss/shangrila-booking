@@ -666,7 +666,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6">
           <div className="w-full max-w-[1600px] mx-auto pb-12">
             {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={bookings} adminRole={adminRole} />}
-            {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} adminRole={adminRole} therapists={appData.therapists} />}
+            {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} allBookings={bookings} adminRole={adminRole} therapists={appData.therapists} />}
             {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
             {tab === 'points' && hasAccess('points') && <AdminPointManagement adminRole={adminRole} appData={appData} />}
             {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
@@ -2261,7 +2261,7 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   );
 }
 
-function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
+function function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }: { bookings: Booking[], allBookings?: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
   const [view, setView] = useState<'dashboard' | 'service' | 'outpass' | 'performance'>('dashboard');
   const [outpasses, setOutpasses] = useState<OutPass[]>([]);
   const [serviceDateFilter, setServiceDateFilter] = useState<'today' | 'all'>('today');
@@ -3144,7 +3144,7 @@ function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: 
         </div>
       )}
 
-      {view === 'performance' && <AdminStaffPerformanceView therapists={therapists} />}
+      {view === 'performance' && <AdminStaffPerformanceView therapists={therapists} bookings={allBookings || bookings} />}
     </div>
   );
 }
@@ -4821,468 +4821,1486 @@ const handleSaveTherapists = async () => {
   );
 }
 
-function AdminStaffPerformanceView({ therapists }: { therapists: TherapistProfile[] }) {
-    const [matrixData, setMatrixData] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [selectedStaffId, setSelectedStaffId] = useState<string>('');
+function AdminStaffPerformanceView({ therapists, bookings = [] }: { therapists: TherapistProfile[]; bookings?: Booking[] }) {
+  const todayStr = getLocalTodayStr();
+  const currentYearMonth = todayStr.substring(0, 7); // e.g. "2026-10"
+  const currentYear = todayStr.substring(0, 4); // e.g. "2026"
 
-    useEffect(() => {
-        const unsub = onSnapshot(doc(db, 'settings', 'matrixData'), (snap) => {
-            if (snap.exists()) setMatrixData(snap.data());
-            setLoading(false);
-        });
-        return () => unsub();
-    }, []);
+  const getPrevYearMonth = (ym: string) => {
+    const [y, m] = ym.split('-').map(Number);
+    if (!y || !m) return currentYearMonth;
+    const d = new Date(y, m - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
 
-    if (loading) return <div className="text-center py-20 text-[#D4AF37] font-bold animate-pulse text-xs uppercase tracking-widest">Loading Matrix Data...</div>;
-    if (!matrixData || !matrixData.dailyEntries) return <div className="text-center py-20 text-gray-400 font-bold text-xs bg-gray-50 rounded-xl border border-dashed border-gray-200 mt-4">No Matrix Data available. Please upload the Excel file in Settings.</div>;
+  const getYesterdayDateStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
 
-    const parseExcelDate = (val: any) => {
-        if (!val) return '';
-        if (typeof val === 'number') {
-            const d = new Date(Math.round((val - 25569) * 86400 * 1000));
-            return d.toISOString().split('T')[0];
-        }
-        const str = String(val).trim();
-        if (str.includes('T')) return str.split('T')[0];
-        return str;
+  const getSameDayInMonth = (ym: string, dayNum: number) => {
+    const [y, m] = ym.split('-').map(Number);
+    if (!y || !m) return `${ym}-01`;
+    const maxDay = new Date(y, m, 0).getDate();
+    const safeDay = Math.min(Math.max(1, dayNum), maxDay);
+    return `${ym}-${String(safeDay).padStart(2, '0')}`;
+  };
+
+  // 🌟 1. Primary Filter States (Leaderboard & Staff Stats ကြည့်ရန် ကာလရွေးချယ်မှု) 🌟
+  const [selectedStaffId, setSelectedStaffId] = useState<string>('');
+  const [periodMode, setPeriodMode] = useState<'monthly' | 'daily' | 'yearly' | 'custom_range'>('monthly');
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [selectedYear, setSelectedYear] = useState<string>(currentYear);
+  const [rangeFrom, setRangeFrom] = useState<string>(`${currentYearMonth}-01`);
+  const [rangeTo, setRangeTo] = useState<string>(todayStr);
+
+  // 🌟 2. Interactive Comparison Engine States (ရက်အလိုက် / လအလိုက် / နှစ်အလိုက် / Custom Range နှိုင်းယှဉ်မှု) 🌟
+  const [compareMode, setCompareMode] = useState<'month_vs_month' | 'day_vs_day' | 'year_vs_year' | 'range_vs_range'>('month_vs_month');
+  const [compMonthA, setCompMonthA] = useState<string>(() => getPrevYearMonth(currentYearMonth));
+  const [compMonthB, setCompMonthB] = useState<string>(currentYearMonth);
+
+  const [compDayA, setCompDayA] = useState<string>(() => {
+    const yest = getYesterdayDateStr();
+    const prevYm = getPrevYearMonth(currentYearMonth);
+    const dayNum = parseInt(yest.split('-')[2] || '1', 10);
+    return getSameDayInMonth(prevYm, dayNum);
+  });
+  const [compDayB, setCompDayB] = useState<string>(getYesterdayDateStr());
+
+  const [compYearA, setCompYearA] = useState<string>(String(Number(currentYear) - 1));
+  const [compYearB, setCompYearB] = useState<string>(currentYear);
+
+  const [compRangeAFrom, setCompRangeAFrom] = useState<string>(() => `${getPrevYearMonth(currentYearMonth)}-01`);
+  const [compRangeATo, setCompRangeATo] = useState<string>(() => {
+    const prevYm = getPrevYearMonth(currentYearMonth);
+    const curDay = parseInt(todayStr.split('-')[2] || '15', 10);
+    return getSameDayInMonth(prevYm, curDay);
+  });
+  const [compRangeBFrom, setCompRangeBFrom] = useState<string>(`${currentYearMonth}-01`);
+  const [compRangeBTo, setCompRangeBTo] = useState<string>(todayStr);
+
+  // 🌟 3. Configurable Daily Target & Commission Rate (Saved in LocalStorage) 🌟
+  const [baseDailyTarget, setBaseDailyTarget] = useState<number>(() => {
+    return Number(localStorage.getItem('shangrila_daily_target')) || 150000;
+  });
+  const [commissionPercent, setCommissionPercent] = useState<number>(() => {
+    return Number(localStorage.getItem('shangrila_commission_pct')) || 20;
+  });
+
+  const handleTargetChange = (val: number) => {
+    const clean = Math.max(0, val);
+    setBaseDailyTarget(clean);
+    localStorage.setItem('shangrila_daily_target', String(clean));
+  };
+
+  const handleCommissionChange = (val: number) => {
+    const clean = Math.min(100, Math.max(0, val));
+    setCommissionPercent(clean);
+    localStorage.setItem('shangrila_commission_pct', String(clean));
+  };
+
+  // Unique Therapists List
+  const uniqueTherapists = useMemo(() => {
+    return Array.from(new Map(therapists.filter((t) => t.name && t.name.trim() !== '').map((t) => [t.name.trim(), t])).values());
+  }, [therapists]);
+
+  // Format short display label like "No-1" or "Therapist No-1"
+  const getShortStaffLabel = useCallback((name: string) => {
+    const numMatch = String(name || '').match(/no[-\s]*(\d+)/i) || String(name || '').match(/(\d+)/);
+    if (numMatch) return `No-${numMatch[1]}`;
+    return String(name || '').trim();
+  }, []);
+
+  // 🌟 4. Transform Live Bookings (Sale Summary Data) into Normalized Staff Sales Entries 🌟
+  const liveSalesEntries = useMemo(() => {
+    const entries: {
+      bookingId: string;
+      date: string;
+      yearMonth: string;
+      year: string;
+      staffId: string;
+      staffName: string;
+      shortLabel: string;
+      serviceName: string;
+      customerName: string;
+      salesAmount: number;
+      commissionAmount: number;
+      source: 'POS' | 'Online';
+    }[] = [];
+
+    const parseSafeNum = (v: any): number => {
+      if (v === undefined || v === null || v === '') return 0;
+      if (typeof v === 'number') return isNaN(v) ? 0 : v;
+      const s = String(v).trim();
+      const dec = decryptText(s);
+      const n = Number(dec || s);
+      return isNaN(n) ? 0 : n;
     };
 
-    const allEntries = (matrixData.dailyEntries || []).map((e: any) => ({
-        ...e,
-        ParsedDate: parseExcelDate(e.Date),
-        CleanStaffId: String(e['Staff ID'] || '').trim().toLowerCase(),
-        CleanStaffName: String(e['Staff Name'] || '').trim().toLowerCase()
-    }));
+    const parseSafeStr = (v: any): string => {
+      if (!v) return '';
+      if (typeof v !== 'string') return String(v);
+      return decryptText(v) || v;
+    };
 
-    const uniqueDates = Array.from(new Set(allEntries.map((e: any) => e.ParsedDate))).filter(Boolean).sort() as string[];
-    
-    const allDates: string[] = [];
-    if (uniqueDates.length > 0) {
-        const firstDateStr = uniqueDates[0];
-        const [yearStr, monthStr] = firstDateStr.split('-');
-        const year = parseInt(yearStr, 10);
-        const month = parseInt(monthStr, 10);
-        const daysInMonth = new Date(year, month, 0).getDate();
-        for (let i = 1; i <= daysInMonth; i++) {
-            allDates.push(`${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
-        }
-    } else {
-        const currentMonth = new Date().getMonth() + 1;
-        const currentYear = new Date().getFullYear();
-        const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-        for (let i = 1; i <= daysInMonth; i++) {
-            allDates.push(`${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
-        }
-    }
+    bookings.forEach((b: any) => {
+      if (!b || b.status === 'cancelled') return;
 
-    const totalDays = allDates.length;
-    const BASE_DAILY_TARGET = 150000;
-    const monthlyTotalTarget = totalDays * BASE_DAILY_TARGET;
+      const rawTx = parseSafeStr(b.txId).trim().toUpperCase();
+      const rawPay = String(b.paymentMethod || '').trim().toLowerCase();
+      const rawDisc = parseSafeStr(b.discountLabel).trim().toLowerCase();
+      const rawService = String(b.service || '').trim();
+      const totalAmt = parseSafeNum(b.totalPrice);
 
-    const staffSalesMap = new Map();
-    let calcThisMonthUpToToday = 0; 
-    let calcYesterdaySales = 0; 
-    let calcTotalThisMonthSales = 0;
+      // Exclude non-sale Admin/Staff clock-ins or 0 Ks redemptions
+      if (
+        totalAmt <= 0 ||
+        rawTx === 'ADMIN' ||
+        rawTx === 'CASH' ||
+        Boolean(b.isAdminClockIn) ||
+        Boolean(b.isStaffClockIn) ||
+        rawService.toLowerCase().includes('walk-in reward redemption')
+      ) {
+        return;
+      }
 
-    const todayStr = getLocalTodayStr();
-    const prevD = new Date(); prevD.setDate(prevD.getDate() - 1);
-    const prevDayStr = prevD.getFullYear() + '-' + String(prevD.getMonth() + 1).padStart(2, '0') + '-' + String(prevD.getDate()).padStart(2, '0');
+      const isPos =
+        rawTx.startsWith('SL-') ||
+        rawPay.includes('shop pos') ||
+        rawDisc.includes('[shop walk-in') ||
+        Boolean(b.posLocalId);
 
-    allEntries.forEach((e: any) => {
-        const sId = String(e['Staff ID'] || '').trim().replace(/^SGL-0*/i, 'No-');
-        const amt = Number(e['Sales Amount']) || 0;
-        
-        if (!staffSalesMap.has(sId)) { staffSalesMap.set(sId, { actual: 0 }); }
-        staffSalesMap.get(sId).actual += amt;
+      // For Online Bookings, include confirmed/active/completed/payment_checking sales
+      const bDate = String(b.date || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(bDate)) return;
 
-        calcTotalThisMonthSales += amt;
-        if (e.ParsedDate <= todayStr) calcThisMonthUpToToday += amt;
-        if (e.ParsedDate === prevDayStr) calcYesterdaySales += amt;
+      const rawTherapistStr = String(b.therapist || '').trim();
+      if (!rawTherapistStr || rawTherapistStr === '-' || rawTherapistStr.toLowerCase().includes('any available')) {
+        return;
+      }
+
+      // Support single or dual therapists (e.g., "Therapist No-1 & Therapist No-3")
+      const splitNames = rawTherapistStr
+        .split(/&|,|\+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      if (splitNames.length === 0) return;
+
+      const shareAmt = Math.round(totalAmt / splitNames.length);
+      const shareComm = Math.round((shareAmt * commissionPercent) / 100);
+
+      splitNames.forEach((tNameRaw) => {
+        // Match against registered therapists by name or number
+        const tNumMatch = tNameRaw.match(/\d+/);
+        const tNum = tNumMatch ? parseInt(tNumMatch[0], 10) : null;
+
+        const matchedProfile = uniqueTherapists.find((tp) => {
+          const tpNameLower = tp.name.trim().toLowerCase();
+          if (tpNameLower === tNameRaw.toLowerCase()) return true;
+          const tpNumMatch = tpNameLower.match(/\d+/);
+          const tpNum = tpNumMatch ? parseInt(tpNumMatch[0], 10) : null;
+          return tNum !== null && tpNum !== null && tNum === tpNum;
+        });
+
+        const finalName = matchedProfile ? matchedProfile.name : tNameRaw;
+        const finalId = matchedProfile ? matchedProfile.id : tNameRaw;
+
+        entries.push({
+          bookingId: b.id || '',
+          date: bDate,
+          yearMonth: bDate.substring(0, 7),
+          year: bDate.substring(0, 4),
+          staffId: finalId,
+          staffName: finalName,
+          shortLabel: getShortStaffLabel(finalName),
+          serviceName: rawService,
+          customerName: parseSafeStr(b.name) || 'Walk-in Guest',
+          salesAmount: shareAmt,
+          commissionAmount: shareComm,
+          source: isPos ? 'POS' : 'Online'
+        });
+      });
     });
 
-    const sortedPerformers = Array.from(staffSalesMap.entries()).map(([id, data]) => ({
-        'Staff ID': id,
-        '1 to 31 Actual': data.actual
-    })).sort((a, b) => b['1 to 31 Actual'] - a['1 to 31 Actual']);
+    return entries;
+  }, [bookings, uniqueTherapists, commissionPercent, getShortStaffLabel]);
 
-    const maxActual = sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map(p => p['1 to 31 Actual']), 1) : 1;
+  // Available Years & Months for Dropdowns
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<string>([currentYear, String(Number(currentYear) - 1)]);
+    liveSalesEntries.forEach((e) => {
+      if (e.year) yearsSet.add(e.year);
+    });
+    return Array.from(yearsSet).sort().reverse();
+  }, [liveSalesEntries, currentYear]);
 
-    // 🌟 Excel Comparison Data ကို Firestore မှ Real-time ဖတ်မည်။
-    const comparison = matrixData.comparisonData || {};
-    const comparisonMeta = matrixData.comparisonMeta || {};
+  // 🌟 5. Active Period Date List & Target Calculation 🌟
+  const activePeriodInfo = useMemo(() => {
+    let startStr = `${selectedMonth}-01`;
+    let endStr = todayStr;
+    let periodLabel = '';
+    let totalDaysInPeriod = 30;
 
-    const upToTodayData = comparison.upToToday || { lastMonth: 0, thisMonth: calcThisMonthUpToToday, difference: calcThisMonthUpToToday };
-    const yesterdayData = comparison.yesterday || { lastMonth: 0, thisMonth: calcYesterdaySales, difference: calcYesterdaySales };
-    const targetData = comparison.target || { actual: 0, target: 0, growthPercent: 0 };
-    const fullMonthData = comparison.fullMonth || { lastMonth: 0, thisMonth: calcTotalThisMonthSales, difference: calcTotalThisMonthSales };
-
-    const lastMonthUpToTodaySales = Number(upToTodayData.lastMonth) || 0;
-    const displayThisMonthUpToToday = Number(upToTodayData.thisMonth) || 0;
-    const upToTodayDiff = Number(upToTodayData.difference) || (displayThisMonthUpToToday - lastMonthUpToTodaySales);
-    const lastMonthYesterdaySales = Number(yesterdayData.lastMonth) || 0;
-    const displayYesterdaySales = Number(yesterdayData.thisMonth) || 0;
-    const dayDifference = Number(yesterdayData.difference) || (displayYesterdaySales - lastMonthYesterdaySales);
-    const targetActual = Number(targetData.actual) || 0;
-    const targetAmount = Number(targetData.target) || 0;
-    const growthTargetPercent = Number(targetData.growthPercent) || 0;
-    const totalLastMonthSales = Number(fullMonthData.lastMonth) || 0;
-    const totalThisMonthSales = Number(fullMonthData.thisMonth) || 0;
-    const salesDiff = Number(fullMonthData.difference) || (totalThisMonthSales - totalLastMonthSales);
-
-    const yesterdayDateTextStr = prevDayStr;
-    const lastMonthNameStr = comparisonMeta.previousMonthName || 'PREVIOUS MONTH';
-    const thisMonthNameStr = comparisonMeta.thisMonthName || 'THIS MONTH';
-    const lastFullMonthNameStr = lastMonthNameStr;
-    const thisFullMonthNameStr = thisMonthNameStr;
-
-    const top5Gaps = [];
-    for (let i = 0; i < Math.min(4, sortedPerformers.length); i++) {
-        const p1 = sortedPerformers[i];
-        const p2 = sortedPerformers[i + 1];
-        const diff = (Number(p1['1 to 31 Actual']) || 0) - (Number(p2['1 to 31 Actual']) || 0);
-        top5Gaps.push({ rank1: `#${i + 1} (${p1['Staff ID']})`, rank2: `#${i + 2} (${p2['Staff ID']})`, diff });
+    if (periodMode === 'monthly') {
+      const [y, m] = selectedMonth.split('-').map(Number);
+      const daysInMonth = y && m ? new Date(y, m, 0).getDate() : 30;
+      startStr = `${selectedMonth}-01`;
+      endStr = `${selectedMonth}-${String(daysInMonth).padStart(2, '0')}`;
+      totalDaysInPeriod = daysInMonth;
+      const dt = new Date(y || 2026, (m || 1) - 1, 1);
+      periodLabel = dt.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    } else if (periodMode === 'daily') {
+      startStr = selectedDate;
+      endStr = selectedDate;
+      totalDaysInPeriod = 1;
+      periodLabel = `Daily (${selectedDate})`;
+    } else if (periodMode === 'yearly') {
+      startStr = `${selectedYear}-01-01`;
+      endStr = `${selectedYear}-12-31`;
+      totalDaysInPeriod = 365;
+      periodLabel = `Year ${selectedYear}`;
+    } else {
+      const s = rangeFrom <= rangeTo ? rangeFrom : rangeTo;
+      const e = rangeFrom <= rangeTo ? rangeTo : rangeFrom;
+      startStr = s;
+      endStr = e;
+      const d1 = new Date(s);
+      const d2 = new Date(e);
+      const diffDays = Math.max(1, Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1);
+      totalDaysInPeriod = diffDays;
+      periodLabel = `${s} ➔ ${e} (${diffDays} Days)`;
     }
 
-    // 🌟 FIX: Declare these variables outside the 'if' block so they don't cause crashes in the UI 🌟
-    let myEntries: any[] = [];
-    let dailyBreakdown: any[] = [];
-    let pastDays: any[] = []; 
-    let workedDaysCount = 0;
-    let missedDaysCount = 0;
-    let missedDays: any[] = [];
-    let mySummary = null;
+    // Generate dates list for Daily Tracker (capped to 366 days for safety)
+    const datesList: string[] = [];
+    const cur = new Date(startStr);
+    const endD = new Date(endStr);
+    let safety = 0;
+    while (!isNaN(cur.getTime()) && !isNaN(endD.getTime()) && cur <= endD && safety < 366) {
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, '0');
+      const d = String(cur.getDate()).padStart(2, '0');
+      datesList.push(`${y}-${m}-${d}`);
+      cur.setDate(cur.getDate() + 1);
+      safety++;
+    }
 
-    if (selectedStaffId) {
-        const selectedStaff = therapists.find(t => t.id === selectedStaffId);
-        if (selectedStaff) {
-            const staffNameStr = String(selectedStaff.name || '').trim().toLowerCase();
-            const staffIdStr = String(selectedStaff.id || '').trim().toLowerCase();
-            
-            const nameMatch = staffNameStr.match(/\d+/);
-            const staffNum = nameMatch ? parseInt(nameMatch[0], 10) : (staffIdStr.match(/\d+/) ? parseInt(staffIdStr.match(/\d+/)![0], 10) : null);
+    return {
+      startStr,
+      endStr,
+      periodLabel,
+      totalDaysInPeriod,
+      periodTarget: totalDaysInPeriod * baseDailyTarget,
+      datesList
+    };
+  }, [periodMode, selectedMonth, selectedDate, selectedYear, rangeFrom, rangeTo, todayStr, baseDailyTarget]);
 
-            myEntries = allEntries.filter((e: any) => {
-                const eId = String(e['Staff ID'] || '').trim().toLowerCase();
-                const eNumMatch = eId.match(/\d+/);
-                const eNum = eNumMatch ? parseInt(eNumMatch[0], 10) : null;
-                return eId === staffIdStr || eId === `no-${staffNum}` || (staffNum !== null && eNum === staffNum);
-            });
+  // Filter Entries for Selected Active Period
+  const periodEntries = useMemo(() => {
+    return liveSalesEntries.filter(
+      (e) => e.date >= activePeriodInfo.startStr && e.date <= activePeriodInfo.endStr
+    );
+  }, [liveSalesEntries, activePeriodInfo]);
 
-            const totalMySales = myEntries.reduce((sum, e) => sum + (Number(e['Sales Amount']) || 0), 0);
-            const totalMyComm = myEntries.reduce((sum, e) => sum + (Number(e['Commission']) || 0), 0);
-            
-            if (myEntries.length > 0) {
-                mySummary = {
-                    'Total Actual Sales': totalMySales,
-                    'Total Commessions': totalMyComm,
-                    'Bonus': 0,
-                    'Final Pay': totalMyComm
-                };
-            }
+  // 🌟 6. Build Leaderboard for Active Period (Includes All Therapists) 🌟
+  const sortedPerformers = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        staffId: string;
+        staffName: string;
+        shortLabel: string;
+        actualSales: number;
+        commission: number;
+        sectionsCount: number;
+      }
+    >();
 
-            let cumActualPrior = 0;
-            const fullDailyBreakdown = allDates.map((d: any, idx: number) => {
-                const dayRecords = myEntries.filter((e: any) => e.ParsedDate === d);
-                const dayActual = dayRecords.reduce((sum: number, r: any) => sum + (Number(r['Sales Amount']) || 0), 0);
-                
-                const daysRemaining = totalDays - idx;
-                const remainingTargetPrior = Math.max(0, monthlyTotalTarget - cumActualPrior);
-                const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTargetPrior / daysRemaining) : 0;
-                
-                const runningCumTarget = BASE_DAILY_TARGET * (idx + 1); 
-                const cumActual = cumActualPrior + dayActual;
-                const dailyVariance = dayActual - BASE_DAILY_TARGET;
-                const remainingMonthlyTarget = Math.max(0, monthlyTotalTarget - cumActual);
+    // Initialize all registered therapists so everyone appears on the chart
+    uniqueTherapists.forEach((t) => {
+      map.set(t.name, {
+        staffId: t.id,
+        staffName: t.name,
+        shortLabel: getShortStaffLabel(t.name),
+        actualSales: 0,
+        commission: 0,
+        sectionsCount: 0
+      });
+    });
 
-                cumActualPrior = cumActual;
+    periodEntries.forEach((e) => {
+      if (!map.has(e.staffName)) {
+        map.set(e.staffName, {
+          staffId: e.staffId,
+          staffName: e.staffName,
+          shortLabel: e.shortLabel,
+          actualSales: 0,
+          commission: 0,
+          sectionsCount: 0
+        });
+      }
+      const item = map.get(e.staffName)!;
+      item.actualSales += e.salesAmount;
+      item.commission += e.commissionAmount;
+      item.sectionsCount += 1;
+    });
 
-                return { dayNo: idx + 1, date: d, hasSales: dayRecords.length > 0, services: dayRecords, dayActual, dailyTarget: BASE_DAILY_TARGET, adjustedDailyTarget, dailyVariance, cumTarget: runningCumTarget, cumActual, remainingMonthlyTarget };
-            });
+    return Array.from(map.values()).sort((a, b) => b.actualSales - a.actualSales);
+  }, [uniqueTherapists, periodEntries, getShortStaffLabel]);
 
-            dailyBreakdown = fullDailyBreakdown.filter(item => item.date <= todayStr);
-            pastDays = fullDailyBreakdown.filter(item => item.date < todayStr); // assigned here
-            workedDaysCount = pastDays.filter(item => item.hasSales).length;
-            missedDays = pastDays.filter(item => !item.hasSales);
-            missedDaysCount = missedDays.length;
+  const maxActual = useMemo(() => {
+    return sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map((p) => p.actualSales), 1) : 1;
+  }, [sortedPerformers]);
+
+  const top5Gaps = useMemo(() => {
+    const gaps = [];
+    for (let i = 0; i < Math.min(4, sortedPerformers.length - 1); i++) {
+      const p1 = sortedPerformers[i];
+      const p2 = sortedPerformers[i + 1];
+      gaps.push({
+        rank1: `#${i + 1} (${p1.shortLabel})`,
+        rank2: `#${i + 2} (${p2.shortLabel})`,
+        diff: p1.actualSales - p2.actualSales
+      });
+    }
+    return gaps;
+  }, [sortedPerformers]);
+
+  // 🌟 7. Multi-Mode Comparison Calculations (Month vs Month, Day vs Day, Year vs Year, Range vs Range) 🌟
+  const comparisonStats = useMemo(() => {
+    const sumEntries = (predicate: (e: typeof liveSalesEntries[0]) => boolean) => {
+      let total = 0;
+      let count = 0;
+      liveSalesEntries.forEach((e) => {
+        if (predicate(e)) {
+          total += e.salesAmount;
+          count += 1;
         }
+      });
+      return { total, count };
+    };
+
+    const formatMonthTitle = (ym: string) => {
+      const [y, m] = ym.split('-').map(Number);
+      if (!y || !m) return ym;
+      return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+    };
+
+    // Today's live stats
+    const todayStats = sumEntries((e) => e.date === todayStr);
+    const shopDailyTarget = Math.max(1, uniqueTherapists.length) * baseDailyTarget;
+
+    if (compareMode === 'month_vs_month') {
+      const currentDayOfMonth = parseInt(todayStr.split('-')[2] || '19', 10);
+      const cutoffA = getSameDayInMonth(compMonthA, currentDayOfMonth);
+      const cutoffB = getSameDayInMonth(compMonthB, currentDayOfMonth);
+
+      const upToDayA = sumEntries((e) => e.yearMonth === compMonthA && e.date <= cutoffA);
+      const upToDayB = sumEntries((e) => e.yearMonth === compMonthB && e.date <= cutoffB);
+
+      const fullMonthA = sumEntries((e) => e.yearMonth === compMonthA);
+      const fullMonthB = sumEntries((e) => e.yearMonth === compMonthB);
+
+      const yestDateB = getYesterdayDateStr();
+      const yestDayNum = parseInt(yestDateB.split('-')[2] || '1', 10);
+      const sameDayMonthA = getSameDayInMonth(compMonthA, yestDayNum);
+      const sameDayMonthB = getSameDayInMonth(compMonthB, yestDayNum);
+
+      const dayStatsA = sumEntries((e) => e.date === sameDayMonthA);
+      const dayStatsB = sumEntries((e) => e.date === sameDayMonthB);
+
+      return {
+        modeTitle: `${formatMonthTitle(compMonthA)}  VS  ${formatMonthTitle(compMonthB)}`,
+        labelA: formatMonthTitle(compMonthA),
+        labelB: formatMonthTitle(compMonthB),
+        upToTodayA: upToDayA.total,
+        upToTodayB: upToDayB.total,
+        upToTodayDiff: upToDayB.total - upToDayA.total,
+        upToDayLabel: `၁ ရက်နေ့မှ ${currentDayOfMonth} ရက်နေ့အထိ (Up to Day ${currentDayOfMonth})`,
+        sameDayDateA: sameDayMonthA,
+        sameDayDateB: sameDayMonthB,
+        sameDayA: dayStatsA.total,
+        sameDayB: dayStatsB.total,
+        sameDayDiff: dayStatsB.total - dayStatsA.total,
+        fullTotalA: fullMonthA.total,
+        fullTotalB: fullMonthB.total,
+        fullCountA: fullMonthA.count,
+        fullCountB: fullMonthB.count,
+        fullDiff: fullMonthB.total - fullMonthA.total,
+        growthPct: fullMonthA.total > 0 ? ((fullMonthB.total - fullMonthA.total) / fullMonthA.total) * 100 : 0,
+        todayActual: todayStats.total,
+        shopDailyTarget
+      };
     }
 
-    return (
-        <div className="animate-fade-in mt-6">
-            <div className="bg-gray-50 p-5 rounded-2xl shadow-sm border border-gray-200 mb-6">
-                <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider flex items-center">
-                    <User className="w-4 h-4 mr-2 text-[#D4AF37]" /> Select Therapist to View Performance
+    if (compareMode === 'day_vs_day') {
+      const dA = sumEntries((e) => e.date === compDayA);
+      const dB = sumEntries((e) => e.date === compDayB);
+      const diff = dB.total - dA.total;
+      return {
+        modeTitle: `DATE COMPARISON: ${compDayA}  VS  ${compDayB}`,
+        labelA: `Date A (${compDayA})`,
+        labelB: `Date B (${compDayB})`,
+        upToTodayA: dA.total,
+        upToTodayB: dB.total,
+        upToTodayDiff: diff,
+        upToDayLabel: `ရွေးချယ်ထားသော ရက် (၂) ရက် တိုက်ရိုက်နှိုင်းယှဉ်ချက်`,
+        sameDayDateA: compDayA,
+        sameDayDateB: compDayB,
+        sameDayA: dA.total,
+        sameDayB: dB.total,
+        sameDayDiff: diff,
+        fullTotalA: dA.total,
+        fullTotalB: dB.total,
+        fullCountA: dA.count,
+        fullCountB: dB.count,
+        fullDiff: diff,
+        growthPct: dA.total > 0 ? (diff / dA.total) * 100 : 0,
+        todayActual: todayStats.total,
+        shopDailyTarget
+      };
+    }
+
+    if (compareMode === 'year_vs_year') {
+      const yA = sumEntries((e) => e.year === compYearA);
+      const yB = sumEntries((e) => e.year === compYearB);
+      const diff = yB.total - yA.total;
+      return {
+        modeTitle: `YEARLY COMPARISON: ${compYearA}  VS  ${compYearB}`,
+        labelA: `YEAR ${compYearA}`,
+        labelB: `YEAR ${compYearB}`,
+        upToTodayA: yA.total,
+        upToTodayB: yB.total,
+        upToTodayDiff: diff,
+        upToDayLabel: `နှစ်အလိုက် စုစုပေါင်း ရောင်းရငွေ နှိုင်းယှဉ်ချက်`,
+        sameDayDateA: compYearA,
+        sameDayDateB: compYearB,
+        sameDayA: yA.count,
+        sameDayB: yB.count,
+        sameDayDiff: yB.count - yA.count,
+        fullTotalA: yA.total,
+        fullTotalB: yB.total,
+        fullCountA: yA.count,
+        fullCountB: yB.count,
+        fullDiff: diff,
+        growthPct: yA.total > 0 ? (diff / yA.total) * 100 : 0,
+        todayActual: todayStats.total,
+        shopDailyTarget
+      };
+    }
+
+    // Custom Range A vs Range B
+    const rAStart = compRangeAFrom <= compRangeATo ? compRangeAFrom : compRangeATo;
+    const rAEnd = compRangeAFrom <= compRangeATo ? compRangeATo : compRangeAFrom;
+    const rBStart = compRangeBFrom <= compRangeBTo ? compRangeBFrom : compRangeBTo;
+    const rBEnd = compRangeBFrom <= compRangeBTo ? compRangeBTo : compRangeBFrom;
+
+    const rA = sumEntries((e) => e.date >= rAStart && e.date <= rAEnd);
+    const rB = sumEntries((e) => e.date >= rBStart && e.date <= rBEnd);
+    const diff = rB.total - rA.total;
+
+    return {
+      modeTitle: `CUSTOM RANGE COMPARISON`,
+      labelA: `${rAStart} ➔ ${rAEnd}`,
+      labelB: `${rBStart} ➔ ${rBEnd}`,
+      upToTodayA: rA.total,
+      upToTodayB: rB.total,
+      upToTodayDiff: diff,
+      upToDayLabel: `ရက်အပိုင်းအခြား (၂) ခု တိုက်ရိုက်နှိုင်းယှဉ်ချက်`,
+      sameDayDateA: `${rAStart}..${rAEnd}`,
+      sameDayDateB: `${rBStart}..${rBEnd}`,
+      sameDayA: rA.total,
+      sameDayB: rB.total,
+      sameDayDiff: diff,
+      fullTotalA: rA.total,
+      fullTotalB: rB.total,
+      fullCountA: rA.count,
+      fullCountB: rB.count,
+      fullDiff: diff,
+      growthPct: rA.total > 0 ? (diff / rA.total) * 100 : 0,
+      todayActual: todayStats.total,
+      shopDailyTarget
+    };
+  }, [
+    liveSalesEntries,
+    compareMode,
+    compMonthA,
+    compMonthB,
+    compDayA,
+    compDayB,
+    compYearA,
+    compYearB,
+    compRangeAFrom,
+    compRangeATo,
+    compRangeBFrom,
+    compRangeBTo,
+    todayStr,
+    uniqueTherapists.length,
+    baseDailyTarget
+  ]);
+
+  // 🌟 8. Individual Selected Staff Breakdown 🌟
+  const selectedStaffObj = useMemo(() => {
+    if (!selectedStaffId) return null;
+    return uniqueTherapists.find((t) => t.id === selectedStaffId || t.name === selectedStaffId) || null;
+  }, [selectedStaffId, uniqueTherapists]);
+
+  const individualStats = useMemo(() => {
+    if (!selectedStaffObj) return null;
+
+    const myEntries = periodEntries.filter(
+      (e) => e.staffName.trim().toLowerCase() === selectedStaffObj.name.trim().toLowerCase()
+    );
+
+    const totalMySales = myEntries.reduce((s, e) => s + e.salesAmount, 0);
+    const totalMyComm = myEntries.reduce((s, e) => s + e.commissionAmount, 0);
+    const totalMySections = myEntries.length;
+
+    const totalDays = activePeriodInfo.datesList.length || 1;
+    const periodTarget = activePeriodInfo.periodTarget;
+
+    let cumActualPrior = 0;
+    const fullDailyBreakdown = activePeriodInfo.datesList.map((dStr, idx) => {
+      const dayRecords = myEntries.filter((e) => e.date === dStr);
+      const dayActual = dayRecords.reduce((s, r) => s + r.salesAmount, 0);
+
+      const daysRemaining = totalDays - idx;
+      const remainingTargetPrior = Math.max(0, periodTarget - cumActualPrior);
+      const adjustedDailyTarget = daysRemaining > 0 ? Math.round(remainingTargetPrior / daysRemaining) : 0;
+
+      const runningCumTarget = baseDailyTarget * (idx + 1);
+      const cumActual = cumActualPrior + dayActual;
+      const dailyVariance = dayActual - baseDailyTarget;
+      const remainingMonthlyTarget = Math.max(0, periodTarget - cumActual);
+
+      cumActualPrior = cumActual;
+
+      return {
+        dayNo: idx + 1,
+        date: dStr,
+        hasSales: dayRecords.length > 0,
+        services: dayRecords,
+        dayActual,
+        dailyTarget: baseDailyTarget,
+        adjustedDailyTarget,
+        dailyVariance,
+        cumTarget: runningCumTarget,
+        cumActual,
+        remainingMonthlyTarget
+      };
+    });
+
+    const dailyBreakdown = fullDailyBreakdown.filter((item) => item.date <= todayStr);
+    const pastDays = fullDailyBreakdown.filter((item) => item.date <= todayStr);
+    const workedDaysCount = pastDays.filter((item) => item.hasSales).length;
+    const missedDays = pastDays.filter((item) => !item.hasSales);
+
+    return {
+      staffName: selectedStaffObj.name,
+      shortLabel: getShortStaffLabel(selectedStaffObj.name),
+      totalMySales,
+      totalMyComm,
+      totalMySections,
+      periodTarget,
+      dailyBreakdown: [...dailyBreakdown].reverse(), // Show most recent days first
+      pastDaysCount: pastDays.length,
+      workedDaysCount,
+      missedDays,
+      missedDaysCount: missedDays.length
+    };
+  }, [selectedStaffObj, periodEntries, activePeriodInfo, baseDailyTarget, todayStr, getShortStaffLabel]);
+
+  // CSV Export Handler
+  const handleExportPerformanceCSV = () => {
+    const headers = ['Rank', 'Therapist Name', 'Staff Short ID', 'Period', 'Total Sections', 'Actual Sales (Ks)', 'Target (Ks)', 'Achievement (%)', `Estimated Commission (${commissionPercent}%)`];
+    const rows = sortedPerformers.map((p, i) => {
+      const pct = activePeriodInfo.periodTarget > 0 ? ((p.actualSales / activePeriodInfo.periodTarget) * 100).toFixed(1) : '0';
+      return [
+        i + 1,
+        `"${p.staffName}"`,
+        `"${p.shortLabel}"`,
+        `"${activePeriodInfo.periodLabel}"`,
+        p.sectionsCount,
+        p.actualSales,
+        activePeriodInfo.periodTarget,
+        `${pct}%`,
+        p.commission
+      ];
+    });
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Staff_Performance_${activePeriodInfo.periodLabel.replace(/\s+/g, '_')}.csv`;
+    link.click();
+  };
+
+  return (
+    <div className="animate-fade-in mt-6 space-y-6">
+      {/* =========================================================================
+          1. TOP CONTROL BAR: LIVE DATA BADGE, PERIOD FILTER (DAY/MONTH/YEAR/RANGE) & STAFF SELECTOR
+         ========================================================================= */}
+      <div className="bg-gradient-to-br from-gray-50 to-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200/80 pb-3.5">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                Live Synced with Sale Summary
+              </span>
+              <span className="text-xs font-extrabold text-[#123524]">
+                ({activePeriodInfo.periodLabel})
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-500 font-semibold mt-1">
+              Excel ဖိုင်တင်စရာမလိုဘဲ Online Bookings နှင့် POS Walk-in Sales စာရင်းများမှ တိုက်ရိုက်တွက်ချက်ထားပါသည်
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleExportPerformanceCSV}
+            className="px-3.5 py-2 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs transition"
+          >
+            <Download className="w-4 h-4" /> Export Performance CSV
+          </button>
+        </div>
+
+        {/* Period Filter Mode Pills + Dynamic Pickers */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+          <div className="lg:col-span-5">
+            <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+              ၁။ ကြည့်ရှုလိုသော ကာလအမျိုးအစား (Select Period Mode)
+            </label>
+            <div className="grid grid-cols-4 gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
+              {[
+                { id: 'monthly', label: 'လအလိုက်' },
+                { id: 'daily', label: 'ရက်အလိုက်' },
+                { id: 'yearly', label: 'နှစ်အလိုက်' },
+                { id: 'custom_range', label: 'Date Range' }
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setPeriodMode(m.id as any)}
+                  className={`py-2 px-2 rounded-lg text-[11px] font-black transition ${
+                    periodMode === m.id
+                      ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Dynamic Date/Month/Year/Range Inputs */}
+          <div className="lg:col-span-4">
+            {periodMode === 'monthly' && (
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+                  လ နှင့် နှစ် ရွေးချယ်ရန် (Select Month)
                 </label>
-                <div className="relative">
-                    <select value={selectedStaffId} onChange={(e) => setSelectedStaffId(e.target.value)} className="w-full p-3 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-gray-800 appearance-none cursor-pointer shadow-sm">
-                        <option value="">-- Show Global Leaderboard --</option>
-{Array.from(new Map(therapists.map(t => [t.name, t])).values()).map((t: any) => (<option key={t.id} value={t.id}>{t.name}</option>))}
-                    </select>
-                    <ChevronDown className="absolute right-4 top-3.5 w-5 h-5 text-gray-400 pointer-events-none" />
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => e.target.value && setSelectedMonth(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#D4AF37]"
+                />
+              </div>
+            )}
+
+            {periodMode === 'daily' && (
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+                  ရက်စွဲ ရွေးချယ်ရန် (Select Date)
+                </label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#D4AF37]"
+                />
+              </div>
+            )}
+
+            {periodMode === 'yearly' && (
+              <div>
+                <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+                  နှစ် ရွေးချယ်ရန် (Select Year)
+                </label>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#D4AF37]"
+                >
+                  {availableYears.map((yr) => (
+                    <option key={yr} value={yr}>
+                      {yr} ခုနှစ်
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {periodMode === 'custom_range' && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">From Date</label>
+                  <input
+                    type="date"
+                    value={rangeFrom}
+                    onChange={(e) => setRangeFrom(e.target.value)}
+                    className="w-full p-2 bg-white border border-gray-300 rounded-xl text-xs font-bold text-[#123524]"
+                  />
                 </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">To Date</label>
+                  <input
+                    type="date"
+                    value={rangeTo}
+                    onChange={(e) => setRangeTo(e.target.value)}
+                    className="w-full p-2 bg-white border border-gray-300 rounded-xl text-xs font-bold text-[#123524]"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Therapist Selector */}
+          <div className="lg:col-span-3">
+            <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center">
+              <User className="w-3.5 h-3.5 mr-1 text-[#D4AF37]" /> ဝန်ထမ်း ရွေးချယ်ရန်
+            </label>
+            <div className="relative">
+              <select
+                value={selectedStaffId}
+                onChange={(e) => setSelectedStaffId(e.target.value)}
+                className="w-full p-2.5 bg-white border border-gray-300 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-black text-[#123524] appearance-none cursor-pointer shadow-2xs pr-8"
+              >
+                <option value="">-- Show Global Leaderboard --</option>
+                {uniqueTherapists.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+        </div>
+
+        {/* Adjustable Daily Target & Commission Rate Bar */}
+        <div className="pt-3 border-t border-gray-200/60 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-gray-500">ဝန်ထမ်း တစ်ရက်စာ Target:</span>
+              <input
+                type="number"
+                step={10000}
+                value={baseDailyTarget}
+                onChange={(e) => handleTargetChange(Number(e.target.value))}
+                className="w-28 px-2.5 py-1 bg-white border border-gray-300 rounded-lg font-black text-[#123524] text-xs outline-none focus:border-[#D4AF37]"
+              />
+              <span className="text-[10px] font-bold text-gray-400">Ks / Day</span>
             </div>
 
-            {!selectedStaffId ? (
-                <div className="space-y-6 animate-slide-up">
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
-                        <div className="flex items-end space-x-3 h-52 pb-2 pt-14 min-w-max border-b border-gray-100">
-                            {sortedPerformers.map((p, idx) => {
-                                const actualSales = p['1 to 31 Actual'];
-                                const heightPercent = Math.max(5, (actualSales / maxActual) * 100);
-                                const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
-                                
-                                let barColor = 'bg-gray-200 hover:bg-gray-300';
-                                if (idx === 0) barColor = 'bg-gradient-to-t from-[#123524] to-[#1a4a32] shadow-md'; 
-                                else if (idx === 1) barColor = 'bg-gradient-to-t from-[#D4AF37] to-yellow-400 shadow-md'; 
-                                else if (idx === 2) barColor = 'bg-gradient-to-t from-gray-400 to-gray-300 shadow-md'; 
-                                else if (idx === 3) barColor = 'bg-gradient-to-t from-orange-400 to-orange-300 shadow-sm'; 
-                                else if (idx === 4) barColor = 'bg-gradient-to-t from-blue-400 to-blue-300 shadow-sm'; 
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-gray-500">ကော်မရှင်နှုန်း (Commission %):</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={commissionPercent}
+                onChange={(e) => handleCommissionChange(Number(e.target.value))}
+                className="w-16 px-2.5 py-1 bg-white border border-gray-300 rounded-lg font-black text-[#123524] text-xs outline-none focus:border-[#D4AF37]"
+              />
+              <span className="text-[10px] font-bold text-gray-400">%</span>
+            </div>
+          </div>
 
-                                return (
-                                    <div key={idx} className="flex flex-col justify-end items-center group w-12 h-full">
-                                        <div className="text-[9px] font-bold text-gray-500 mb-2 opacity-0 group-hover:opacity-100 transition-opacity -rotate-45 whitespace-nowrap z-10">
-                                            {formatPrice(actualSales)}
-                                        </div>
-                                        <div className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out flex justify-center ${barColor}`} style={{ height: `${heightPercent}%` }}>
-                                            {idx === 0 && <Crown className="w-6 h-6 text-[#D4AF37] absolute -top-12" />}
-                                            <span className={`absolute -top-5 text-[9px] font-bold ${idx === 0 ? 'text-[#123524]' : idx === 1 ? 'text-yellow-600' : 'text-gray-600'}`}>
-                                                {metPercent.toFixed(0)}%
-                                            </span>
-                                        </div>
-                                        <span className="text-[10px] font-bold mt-2 text-gray-600">{p['Staff ID']}</span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8">
-                        <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><TrendingUp className="w-4 h-4 mr-2 text-blue-500"/> Last Month Vs This Month</h3>
-                        <div className="space-y-6">
-                            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                                <div className="text-xs font-bold text-blue-900 mb-2 flex items-center"><Calendar className="w-3.5 h-3.5 mr-1.5"/> ပြီးခဲ့တဲ့လ vs ယခုလ (Up to Today)</div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                                    <div className="bg-white p-2.5 rounded-lg border border-blue-200"><div className="text-[9px] text-gray-500 font-bold uppercase">{lastMonthNameStr}</div><div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthUpToTodaySales)}</div></div>
-                                    <div className="bg-white p-2.5 rounded-lg border border-blue-200"><div className="text-[9px] text-blue-700 font-bold uppercase">{thisMonthNameStr}</div><div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayThisMonthUpToToday)}</div></div>
-                                    <div className={`p-2.5 rounded-lg border text-center ${upToTodayDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}><div className="text-[9px] font-bold uppercase">Difference</div><div className="text-xs font-black mt-0.5">{upToTodayDiff >= 0 ? '+' : ''}{formatPrice(upToTodayDiff)}</div></div>
-                                </div>
-                            </div>
-
-                            <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100">
-                                <div className="text-xs font-bold text-purple-900 mb-2 flex items-center"><Clock className="w-3.5 h-3.5 mr-1.5"/> မနေ့ကနေ့ချင်းအလိုက်နှိုင်းယှဉ်ချက် ({yesterdayDateTextStr})</div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                                    <div className="bg-white p-2.5 rounded-lg border border-purple-200"><div className="text-[9px] text-gray-500 font-bold uppercase">Last Month Same Day</div><div className="text-xs font-bold text-gray-800 mt-0.5">{formatPrice(lastMonthYesterdaySales)}</div></div>
-                                    <div className="bg-white p-2.5 rounded-lg border border-purple-200"><div className="text-[9px] text-purple-700 font-bold uppercase">This Month Yesterday</div><div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(displayYesterdaySales)}</div></div>
-                                    <div className={`p-2.5 rounded-lg border text-center ${dayDifference >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}><div className="text-[9px] font-bold uppercase">Day Difference</div><div className="text-xs font-black mt-0.5">{dayDifference >= 0 ? '+' : ''}{formatPrice(dayDifference)}</div></div>
-                                </div>
-                            </div>
-
-                            <div className="bg-yellow-50/60 p-4 rounded-xl border border-yellow-200">
-                                <div className="text-xs font-bold text-yellow-900 mb-2 flex items-center"><Target className="w-3.5 h-3.5 mr-1.5"/> Today's Target</div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                                    <div className="bg-white p-2.5 rounded-lg border border-yellow-200"><div className="text-[9px] text-gray-500 font-bold uppercase">Actual</div><div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(targetActual)}</div></div>
-                                    <div className="bg-white p-2.5 rounded-lg border border-yellow-200"><div className="text-[9px] text-yellow-700 font-bold uppercase">Target</div><div className="text-xs font-black text-[#123524] mt-0.5">{formatPrice(targetAmount)}</div></div>
-                                    <div className="bg-white p-2.5 rounded-lg border border-yellow-200"><div className="text-[9px] text-yellow-700 font-bold uppercase">Growth Target</div><div className="text-xs font-black text-yellow-700 mt-0.5">{growthTargetPercent.toFixed(0)}%</div></div>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                                <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center"><div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">{lastFullMonthNameStr} TOTAL</div><div className="text-sm font-bold text-gray-800">{formatPrice(totalLastMonthSales)}</div></div>
-                                <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center"><div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">{thisFullMonthNameStr} TOTAL</div><div className="text-sm font-black text-[#123524]">{formatPrice(totalThisMonthSales)}</div></div>
-                                <div className={`p-3.5 rounded-xl border text-center ${salesDiff >= 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}><div className="text-[9px] font-bold uppercase tracking-wider mb-1">Full Month Difference</div><div className="text-sm font-black">{salesDiff >= 0 ? '+' : ''}{formatPrice(salesDiff)}</div></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                        <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-[#D4AF37]"/> Top-5 Rank Gap Analysis</h3>
-                        <div className="space-y-2.5">
-                            {top5Gaps.map((gap, gIdx) => (
-                                <div key={gIdx} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs font-semibold">
-                                    <span className="text-gray-700">{gap.rank1} &nbsp;vs&nbsp; {gap.rank2}</span>
-                                    <span className="font-black text-[#123524]">Gap: {formatPrice(gap.diff)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        {sortedPerformers.map((p, idx) => {
-                            let badgeClass = "bg-gray-100 text-gray-600";
-                            if (idx === 0) badgeClass = "bg-yellow-100 text-yellow-700 border border-yellow-300";
-                            else if (idx === 1) badgeClass = "bg-gray-200 text-gray-700 border border-gray-400";
-                            else if (idx === 2) badgeClass = "bg-orange-100 text-orange-700 border border-orange-300";
-
-                            const actualSales = p['1 to 31 Actual'];
-                            const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
-
-                            return (
-                                <div key={idx} className="flex items-center p-4 rounded-xl border bg-white border-gray-100 shadow-sm transition-all hover:border-[#D4AF37]/50 hover:shadow-md cursor-default">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mr-4 ${badgeClass}`}>
-                                        {idx === 0 ? <Trophy className="w-4 h-4"/> : `#${idx + 1}`}
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="font-bold text-gray-800 text-sm flex items-center">{p['Staff ID']}</div>
-                                        <div className="text-[10px] text-gray-500 font-semibold mt-0.5">Target: {formatPrice(monthlyTotalTarget)}</div>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="font-black text-[#123524]">{formatPrice(actualSales)}</div>
-                                        <div className={`text-[9px] font-bold mt-0.5 ${metPercent >= 50 ? 'text-green-500' : 'text-orange-500'}`}>
-                                            Met {metPercent.toFixed(1)}%
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            ) : (
-                <div className="space-y-6 animate-slide-up">
-                    {!mySummary ? (
-                        <div className="text-center py-10 text-gray-400 text-xs font-bold border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">Selected staff data is not found in the uploaded Matrix.</div>
-                    ) : (
-                        <>
-                            <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-                                <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center"><Target className="w-4 h-4 mr-2"/> Monthly Target ({selectedStaffId})</h3>
-                                
-                                <div className="relative w-32 h-32 flex items-center justify-center bg-black/20 rounded-full border-4 border-white/5 shadow-inner">
-                                    <div className="text-center">
-                                        <div className="text-2xl font-black text-white">{mySummary['Total Actual Sales'] > 0 && monthlyTotalTarget > 0 ? Math.round((mySummary['Total Actual Sales'] / monthlyTotalTarget) * 100) : 0}%</div>
-                                        <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-1">Achieved</div>
-                                    </div>
-                                    <svg viewBox="0 0 128 128" className="absolute inset-0 w-full h-full transform -rotate-90 overflow-visible">
-                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
-                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#D4AF37]" strokeDasharray="364" strokeDashoffset={364 - (364 * (mySummary['Total Actual Sales'] / monthlyTotalTarget))} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-out' }} />
-                                    </svg>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4 w-full mt-8">
-                                    <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
-                                        <div className="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Target</div>
-                                        <div className="text-sm font-bold text-white">{formatPrice(monthlyTotalTarget)}</div>
-                                    </div>
-                                    <div className="bg-white/10 p-3 rounded-xl border border-[#D4AF37]/30 text-center">
-                                        <div className="text-[9px] text-[#D4AF37] font-bold uppercase tracking-wider mb-1">Actual Sales</div>
-                                        <div className="text-sm font-bold text-[#D4AF37]">{formatPrice(mySummary['Total Actual Sales'])}</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-yellow-600"/> Financial Summary</h3>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                                        <span className="text-xs font-semibold text-gray-600">Total Commissions</span>
-                                        <span className="font-bold text-[#123524]">{formatPrice(mySummary['Total Commessions'])}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                                        <span className="text-xs font-semibold text-gray-600">Bonus</span>
-                                        <span className="font-bold text-blue-600">{formatPrice(mySummary['Bonus'])}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                                        <span className="text-xs font-bold text-yellow-800">Final Expected Pay</span>
-                                        <span className="font-black text-yellow-700 text-lg">{formatPrice(mySummary['Final Pay'])}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center"><Calendar className="w-4 h-4 mr-2 text-blue-500"/> Attendance Summary</h3>
-                                <p className="text-[10px] text-gray-500 mb-4">(လဆန်းမှ ပြီးခဲ့သည့်ရက်အထိ အလုပ်လုပ်ရက် စုစုပေါင်း {pastDays.length} ရက်အတွင်း ဝင်ရောက်မှု အခြေအနေ)</p>
-                                
-                                <div className="grid grid-cols-2 gap-3 mb-4">
-                                    <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
-                                        <div className="text-[9px] text-green-600 font-bold uppercase tracking-wider mb-1">Worked Days</div>
-                                        <div className="text-2xl font-black text-green-700">{workedDaysCount} <span className="text-[10px] font-bold text-green-600/70">/ {pastDays.length} Days</span></div>
-                                    </div>
-                                    <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">
-                                        <div className="text-[9px] text-red-600 font-bold uppercase tracking-wider mb-1">Missed Days</div>
-                                        <div className="text-2xl font-black text-red-700">{missedDaysCount} <span className="text-[10px] font-bold text-red-600/70">/ {pastDays.length} Days</span></div>
-                                    </div>
-                                </div>
-
-                                {missedDaysCount > 0 ? (
-                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
-                                        <span className="text-[10px] font-bold text-gray-500 mb-2.5 block">Section မဝင်ထားသော ရက်များ :</span>
-                                        <div className="flex flex-wrap gap-2">
-                                            {missedDays.map(md => (
-                                                <span key={md.date} className="bg-white border border-red-200 text-red-500 text-[9px] font-bold px-2 py-1 rounded-md shadow-sm">
-                                                    Day {md.dayNo} ({md.date})
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center text-[10px] font-bold text-gray-500 flex flex-col items-center">
-                                        <CheckCircle className="w-5 h-5 text-green-500 mb-1.5"/>
-                                        ယနေ့အထိ Section မပျက်ထားပါ။ အလွန်ကောင်းမွန်ပါတယ်။
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                                <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
-                                    <span className="flex items-center"><Calendar className="w-4 h-4 mr-2 text-[#D4AF37]"/> Dynamic Daily Tracker</span>
-                                </h3>
-                                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                                    {dailyBreakdown.map((item, idx) => (
-                                        <div key={idx} className={`p-4 rounded-xl border transition-all ${item.hasSales ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-50/70 border-dashed border-gray-200'}`}>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <div className="flex items-center space-x-2">
-                                                    <span className="bg-[#123524] text-[#D4AF37] text-[10px] font-bold px-2 py-0.5 rounded">Day {item.dayNo}</span>
-                                                    <span className="text-xs font-mono font-bold text-gray-700">{item.date}</span>
-                                                </div>
-                                                <div>
-                                                    {item.hasSales ? (
-                                                        <span className="bg-green-100 text-green-700 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">Active Sale</span>
-                                                    ) : (
-                                                        <span className="bg-gray-200 text-gray-600 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">No Sales</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            {item.hasSales && (
-                                                <div className="space-y-1 my-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-                                                    {item.services.map((s: any, sIdx: number) => (
-                                                        <div key={sIdx} className="flex justify-between text-xs font-semibold text-gray-800">
-                                                            <span>• {s['Service Name']}</span>
-                                                            <span className="font-bold text-[#123524]">{formatPrice(s['Sales Amount'])}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
-                                                <div>
-                                                    <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
-                                                    <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
-                                                        {formatPrice(item.dayActual)} <span className="text-[9px] font-bold text-gray-400">({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})</span>
-                                                    </span>
-                                                    <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
-                                                        Total Actual: {formatPrice(item.cumActual)}
-                                                    </span>
-                                                </div>
-                                                <div className="text-right">
-                                                    <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
-                                                    <span className="font-bold text-[#123524]">{formatPrice(item.adjustedDailyTarget)}</span>
-                                                    <span className="text-[9px] text-gray-500 block mt-1.5">
-                                                        Remaining: <span className="font-bold text-red-500">{formatPrice(item.remainingMonthlyTarget)}</span>
-                                                    </span>
-                                                    <span className="text-[9px] text-gray-500 block mt-0.5">
-                                                        Cum. Target: {formatPrice(item.cumTarget)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
+          <div className="text-[11px] font-bold text-gray-500">
+            ရွေးချယ်ထားသောကာလ Target ({activePeriodInfo.totalDaysInPeriod} ရက်စာ):{' '}
+            <strong className="text-[#123524]">{formatPrice(activePeriodInfo.periodTarget)}</strong>
+          </div>
         </div>
-    );
+      </div>
+
+      {/* =========================================================================
+          2. GLOBAL LEADERBOARD & MULTI-PERIOD COMPARISON STUDIO
+         ========================================================================= */}
+      {!selectedStaffId ? (
+        <div className="space-y-6 animate-slide-up">
+          {/* Bar Chart Card */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-black text-[#123524] flex items-center">
+                  <Trophy className="w-4 h-4 mr-2 text-[#D4AF37]" />
+                  Staff Performance Leaderboard — {activePeriodInfo.periodLabel}
+                </h3>
+                <p className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                  ဝန်ထမ်းတစ်ဦးချင်းစီ၏ လက်တွေ့ရောင်းအား နှင့် Target ပြည့်မီမှု ရာခိုင်နှုန်း (ဘားတိုင်ပေါ်နှိပ်၍ အသေးစိတ်ကြည့်နိုင်သည်)
+                </p>
+              </div>
+              <span className="text-xs font-black text-[#123524] bg-yellow-50 border border-[#D4AF37]/40 px-3 py-1 rounded-xl">
+                Total Period Sales: {formatPrice(sortedPerformers.reduce((s, p) => s + p.actualSales, 0))}
+              </span>
+            </div>
+
+            <div className="flex items-end space-x-4 h-56 pb-2 pt-14 min-w-max border-b border-gray-100 px-2">
+              {sortedPerformers.map((p, idx) => {
+                const actualSales = p.actualSales;
+                const heightPercent = Math.max(6, (actualSales / maxActual) * 100);
+                const metPercent =
+                  activePeriodInfo.periodTarget > 0 ? (actualSales / activePeriodInfo.periodTarget) * 100 : 0;
+
+                let barColor = 'bg-gray-200 hover:bg-gray-300';
+                if (idx === 0 && actualSales > 0) barColor = 'bg-gradient-to-t from-[#123524] to-[#1a4a32] shadow-md';
+                else if (idx === 1 && actualSales > 0) barColor = 'bg-gradient-to-t from-[#D4AF37] to-yellow-400 shadow-md';
+                else if (idx === 2 && actualSales > 0) barColor = 'bg-gradient-to-t from-gray-400 to-gray-300 shadow-md';
+                else if (idx === 3 && actualSales > 0) barColor = 'bg-gradient-to-t from-orange-400 to-orange-300 shadow-sm';
+                else if (idx === 4 && actualSales > 0) barColor = 'bg-gradient-to-t from-blue-400 to-blue-300 shadow-sm';
+
+                return (
+                  <div
+                    key={p.staffId}
+                    onClick={() => setSelectedStaffId(p.staffId)}
+                    title={`${p.staffName}: ${formatPrice(actualSales)} (${p.sectionsCount} Sections)`}
+                    className="flex flex-col justify-end items-center group w-14 h-full cursor-pointer"
+                  >
+                    <div className="text-[9px] font-black text-[#123524] mb-2 opacity-0 group-hover:opacity-100 transition-opacity -rotate-35 whitespace-nowrap z-10 bg-yellow-50 px-1.5 py-0.5 rounded border border-[#D4AF37]">
+                      {formatPrice(actualSales)}
+                    </div>
+                    <div
+                      className={`w-9 rounded-t-lg relative transition-all duration-700 ease-out flex justify-center ${barColor}`}
+                      style={{ height: `${heightPercent}%` }}
+                    >
+                      {idx === 0 && actualSales > 0 && <Crown className="w-6 h-6 text-[#D4AF37] absolute -top-11 animate-bounce" />}
+                      <span
+                        className={`absolute -top-5 text-[9px] font-black ${
+                          idx === 0 ? 'text-[#123524]' : idx === 1 ? 'text-yellow-600' : 'text-gray-600'
+                        }`}
+                      >
+                        {metPercent.toFixed(0)}%
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-black mt-2 text-gray-700 group-hover:text-[#123524] truncate max-w-[56px]">
+                      {p.shortLabel}
+                    </span>
+                    <span className="text-[8px] font-bold text-gray-400">{p.sectionsCount} ပွဲ</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* =====================================================================
+              🌟 INTERACTIVE MULTI-PERIOD COMPARISON STUDIO (MONTH / DAY / YEAR / RANGE) 🌟
+             ===================================================================== */}
+          <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+              <div>
+                <h3 className="font-black text-gray-800 text-sm sm:text-base flex items-center">
+                  <TrendingUp className="w-4 h-4 mr-2 text-blue-600" />
+                  Custom Period Comparison Studio (စိတ်ကြိုက် ကာလနှိုင်းယှဉ်ချက်)
+                </h3>
+                <p className="text-[11px] text-gray-500 font-semibold mt-0.5">
+                  ရက်အလိုက်၊ လအလိုက်၊ နှစ်အလိုက် သို့မဟုတ် Date Range အလိုက် မိမိနှိုင်းယှဉ်လိုသော ကာလ (၂) ခုကို စိတ်ကြိုက်ရွေးချယ် နှိုင်းယှဉ်နိုင်ပါသည်
+                </p>
+              </div>
+
+              {/* Comparison Mode Selector Tabs */}
+              <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
+                {[
+                  { id: 'month_vs_month', label: 'လအလိုက် (Month vs Month)' },
+                  { id: 'day_vs_day', label: 'ရက်အလိုက် (Day vs Day)' },
+                  { id: 'year_vs_year', label: 'နှစ်အလိုက် (Year vs Year)' },
+                  { id: 'range_vs_range', label: 'Date Range နှိုင်းယှဉ်ရန်' }
+                ].map((cm) => (
+                  <button
+                    key={cm.id}
+                    type="button"
+                    onClick={() => setCompareMode(cm.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition ${
+                      compareMode === cm.id
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {cm.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Dynamic Pickers for Period A vs Period B */}
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+              {compareMode === 'month_vs_month' && (
+                <div className="grid grid-cols-1 sm:grid-cols-11 gap-3 items-center">
+                  <div className="sm:col-span-5">
+                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                      ပထမလ ရွေးချယ်ရန် (Month A)
+                    </label>
+                    <input
+                      type="month"
+                      value={compMonthA}
+                      onChange={(e) => e.target.value && setCompMonthA(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-black text-gray-800 outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-1 text-center font-black text-xs text-blue-600 pt-4">VS</div>
+                  <div className="sm:col-span-5">
+                    <label className="block text-[10px] font-black text-blue-700 uppercase mb-1">
+                      ဒုတိယလ ရွေးချယ်ရန် (Month B)
+                    </label>
+                    <input
+                      type="month"
+                      value={compMonthB}
+                      onChange={(e) => e.target.value && setCompMonthB(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-blue-300 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-blue-600"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {compareMode === 'day_vs_day' && (
+                <div className="grid grid-cols-1 sm:grid-cols-11 gap-3 items-center">
+                  <div className="sm:col-span-5">
+                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                      ပထမ ရက်စွဲ (Date A)
+                    </label>
+                    <input
+                      type="date"
+                      value={compDayA}
+                      onChange={(e) => e.target.value && setCompDayA(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-black text-gray-800"
+                    />
+                  </div>
+                  <div className="sm:col-span-1 text-center font-black text-xs text-purple-600 pt-4">VS</div>
+                  <div className="sm:col-span-5">
+                    <label className="block text-[10px] font-black text-purple-700 uppercase mb-1">
+                      ဒုတိယ ရက်စွဲ (Date B)
+                    </label>
+                    <input
+                      type="date"
+                      value={compDayB}
+                      onChange={(e) => e.target.value && setCompDayB(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-purple-300 rounded-xl text-xs font-black text-[#123524]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {compareMode === 'year_vs_year' && (
+                <div className="grid grid-cols-1 sm:grid-cols-11 gap-3 items-center">
+                  <div className="sm:col-span-5">
+                    <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                      ပထမနှစ် (Year A)
+                    </label>
+                    <select
+                      value={compYearA}
+                      onChange={(e) => setCompYearA(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-black text-gray-800"
+                    >
+                      {availableYears.map((y) => (
+                        <option key={y} value={y}>
+                          {y} ခုနှစ်
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-1 text-center font-black text-xs text-blue-600 pt-4">VS</div>
+                  <div className="sm:col-span-5">
+                    <label className="block text-[10px] font-black text-blue-700 uppercase mb-1">
+                      ဒုတိယနှစ် (Year B)
+                    </label>
+                    <select
+                      value={compYearB}
+                      onChange={(e) => setCompYearB(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-blue-300 rounded-xl text-xs font-black text-[#123524]"
+                    >
+                      {availableYears.map((y) => (
+                        <option key={y} value={y}>
+                          {y} ခုနှစ်
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {compareMode === 'range_vs_range' && (
+                <div className="grid grid-cols-1 lg:grid-cols-11 gap-3 items-center">
+                  <div className="lg:col-span-5 bg-white p-3 rounded-xl border border-gray-200">
+                    <div className="text-[10px] font-black text-gray-500 uppercase mb-2">ကာလ (A) — Period A Range</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="date"
+                        value={compRangeAFrom}
+                        onChange={(e) => setCompRangeAFrom(e.target.value)}
+                        className="p-2 border border-gray-300 rounded-lg text-xs font-bold"
+                      />
+                      <input
+                        type="date"
+                        value={compRangeATo}
+                        onChange={(e) => setCompRangeATo(e.target.value)}
+                        className="p-2 border border-gray-300 rounded-lg text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+                  <div className="lg:col-span-1 text-center font-black text-xs text-blue-600">VS</div>
+                  <div className="lg:col-span-5 bg-white p-3 rounded-xl border border-blue-200">
+                    <div className="text-[10px] font-black text-blue-700 uppercase mb-2">ကာလ (B) — Period B Range</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="date"
+                        value={compRangeBFrom}
+                        onChange={(e) => setCompRangeBFrom(e.target.value)}
+                        className="p-2 border border-blue-300 rounded-lg text-xs font-bold text-[#123524]"
+                      />
+                      <input
+                        type="date"
+                        value={compRangeBTo}
+                        onChange={(e) => setCompRangeBTo(e.target.value)}
+                        className="p-2 border border-blue-300 rounded-lg text-xs font-bold text-[#123524]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Comparison Results Cards */}
+            <div className="space-y-5">
+              {/* 1. Same Day-of-Month / Direct Period Comparison */}
+              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                <div className="text-xs font-bold text-blue-900 mb-2.5 flex items-center justify-between">
+                  <span className="flex items-center">
+                    <Calendar className="w-3.5 h-3.5 mr-1.5" /> {comparisonStats.upToDayLabel}
+                  </span>
+                  <span className="text-[10px] font-black bg-white px-2.5 py-0.5 rounded-full border border-blue-200 text-blue-700">
+                    Growth: {comparisonStats.growthPct >= 0 ? '+' : ''}
+                    {comparisonStats.growthPct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                  <div className="bg-white p-3 rounded-lg border border-blue-200">
+                    <div className="text-[9px] text-gray-500 font-bold uppercase">{comparisonStats.labelA}</div>
+                    <div className="text-sm font-bold text-gray-800 mt-1">{formatPrice(comparisonStats.upToTodayA)}</div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-blue-200">
+                    <div className="text-[9px] text-blue-700 font-bold uppercase">{comparisonStats.labelB}</div>
+                    <div className="text-sm font-black text-[#123524] mt-1">{formatPrice(comparisonStats.upToTodayB)}</div>
+                  </div>
+                  <div
+                    className={`p-3 rounded-lg border text-center ${
+                      comparisonStats.upToTodayDiff >= 0
+                        ? 'bg-green-50 border-green-200 text-green-700'
+                        : 'bg-red-50 border-red-200 text-red-700'
+                    }`}
+                  >
+                    <div className="text-[9px] font-bold uppercase">Difference (ကွာခြားချက်)</div>
+                    <div className="text-sm font-black mt-1">
+                      {comparisonStats.upToTodayDiff >= 0 ? '+' : ''}
+                      {formatPrice(comparisonStats.upToTodayDiff)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Yesterday / Same Day Comparison (Shown in Month vs Month mode, or Quick Date Picker) */}
+              {compareMode === 'month_vs_month' && (
+                <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100">
+                  <div className="text-xs font-bold text-purple-900 mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex items-center">
+                      <Clock className="w-3.5 h-3.5 mr-1.5" /> နေ့ချင်းအလိုက် နှိုင်းယှဉ်ချက် ({comparisonStats.sameDayDateA} vs{' '}
+                      {comparisonStats.sameDayDateB})
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                    <div className="bg-white p-3 rounded-lg border border-purple-200">
+                      <div className="text-[9px] text-gray-500 font-bold uppercase">{comparisonStats.sameDayDateA}</div>
+                      <div className="text-sm font-bold text-gray-800 mt-1">{formatPrice(comparisonStats.sameDayA)}</div>
+                    </div>
+                    <div className="bg-white p-3 rounded-lg border border-purple-200">
+                      <div className="text-[9px] text-purple-700 font-bold uppercase">{comparisonStats.sameDayDateB}</div>
+                      <div className="text-sm font-black text-[#123524] mt-1">{formatPrice(comparisonStats.sameDayB)}</div>
+                    </div>
+                    <div
+                      className={`p-3 rounded-lg border text-center ${
+                        comparisonStats.sameDayDiff >= 0
+                          ? 'bg-green-50 border-green-200 text-green-700'
+                          : 'bg-red-50 border-red-200 text-red-700'
+                      }`}
+                    >
+                      <div className="text-[9px] font-bold uppercase">Day Difference</div>
+                      <div className="text-sm font-black mt-1">
+                        {comparisonStats.sameDayDiff >= 0 ? '+' : ''}
+                        {formatPrice(comparisonStats.sameDayDiff)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Today's Shop Target Status */}
+              <div className="bg-yellow-50/60 p-4 rounded-xl border border-yellow-200">
+                <div className="text-xs font-bold text-yellow-900 mb-2 flex items-center">
+                  <Target className="w-3.5 h-3.5 mr-1.5" /> Today's Live Shop Target ({todayStr})
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                  <div className="bg-white p-3 rounded-lg border border-yellow-200">
+                    <div className="text-[9px] text-gray-500 font-bold uppercase">Today Actual Sales</div>
+                    <div className="text-sm font-black text-[#123524] mt-1">{formatPrice(comparisonStats.todayActual)}</div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-yellow-200">
+                    <div className="text-[9px] text-yellow-700 font-bold uppercase">
+                      Shop Daily Target ({uniqueTherapists.length} Staff)
+                    </div>
+                    <div className="text-sm font-black text-[#123524] mt-1">{formatPrice(comparisonStats.shopDailyTarget)}</div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-yellow-200">
+                    <div className="text-[9px] text-yellow-700 font-bold uppercase">Today Achievement</div>
+                    <div className="text-sm font-black text-yellow-700 mt-1">
+                      {comparisonStats.shopDailyTarget > 0
+                        ? `${Math.round((comparisonStats.todayActual / comparisonStats.shopDailyTarget) * 100)}%`
+                        : '0%'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Full Period Total Summary Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
+                  <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">
+                    {comparisonStats.labelA} TOTAL ({comparisonStats.fullCountA} ပွဲ)
+                  </div>
+                  <div className="text-sm font-bold text-gray-800">{formatPrice(comparisonStats.fullTotalA)}</div>
+                </div>
+                <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
+                  <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">
+                    {comparisonStats.labelB} TOTAL ({comparisonStats.fullCountB} ပွဲ)
+                  </div>
+                  <div className="text-sm font-black text-[#123524]">{formatPrice(comparisonStats.fullTotalB)}</div>
+                </div>
+                <div
+                  className={`p-3.5 rounded-xl border text-center ${
+                    comparisonStats.fullDiff >= 0
+                      ? 'bg-green-50 border-green-200 text-green-700'
+                      : 'bg-red-50 border-red-200 text-red-700'
+                  }`}
+                >
+                  <div className="text-[9px] font-bold uppercase tracking-wider mb-1">Full Period Difference</div>
+                  <div className="text-sm font-black">
+                    {comparisonStats.fullDiff >= 0 ? '+' : ''}
+                    {formatPrice(comparisonStats.fullDiff)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Top-5 Rank Gap Analysis */}
+          {top5Gaps.length > 0 && (
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+              <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center">
+                <Award className="w-4 h-4 mr-2 text-[#D4AF37]" /> Top-5 Rank Gap Analysis ({activePeriodInfo.periodLabel})
+              </h3>
+              <div className="space-y-2.5">
+                {top5Gaps.map((gap, gIdx) => (
+                  <div
+                    key={gIdx}
+                    className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs font-semibold"
+                  >
+                    <span className="text-gray-700">
+                      {gap.rank1} &nbsp;vs&nbsp; {gap.rank2}
+                    </span>
+                    <span className="font-black text-[#123524]">Gap: {formatPrice(gap.diff)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Detailed Performers List */}
+          <div className="space-y-3">
+            {sortedPerformers.map((p, idx) => {
+              let badgeClass = 'bg-gray-100 text-gray-600';
+              if (idx === 0 && p.actualSales > 0) badgeClass = 'bg-yellow-100 text-yellow-700 border border-yellow-300';
+              else if (idx === 1 && p.actualSales > 0) badgeClass = 'bg-gray-200 text-gray-700 border border-gray-400';
+              else if (idx === 2 && p.actualSales > 0) badgeClass = 'bg-orange-100 text-orange-700 border border-orange-300';
+
+              const metPercent =
+                activePeriodInfo.periodTarget > 0 ? (p.actualSales / activePeriodInfo.periodTarget) * 100 : 0;
+
+              return (
+                <div
+                  key={p.staffId}
+                  onClick={() => setSelectedStaffId(p.staffId)}
+                  className="flex items-center p-4 rounded-xl border bg-white border-gray-100 shadow-sm transition-all hover:border-[#D4AF37] hover:shadow-md cursor-pointer"
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mr-4 ${badgeClass}`}>
+                    {idx === 0 && p.actualSales > 0 ? <Trophy className="w-4 h-4" /> : `#${idx + 1}`}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                      <span>{p.staffName}</span>
+                      <span className="text-[10px] font-black bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                        {p.sectionsCount} Sections
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-500 font-semibold mt-0.5">
+                      Target: {formatPrice(activePeriodInfo.periodTarget)} • Est. Comm ({commissionPercent}%):{' '}
+                      <strong className="text-[#123524]">{formatPrice(p.commission)}</strong>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-black text-[#123524]">{formatPrice(p.actualSales)}</div>
+                    <div className={`text-[9px] font-bold mt-0.5 ${metPercent >= 50 ? 'text-green-600' : 'text-orange-500'}`}>
+                      Met {metPercent.toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        /* =========================================================================
+           3. INDIVIDUAL STAFF PERFORMANCE VIEW (FIXED CLEAN NAME & LIVE DAILY TRACKER)
+           ========================================================================= */
+        <div className="space-y-6 animate-slide-up">
+          <div className="flex justify-between items-center">
+            <button
+              type="button"
+              onClick={() => setSelectedStaffId('')}
+              className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-black transition flex items-center gap-1.5"
+            >
+              ← Back to Global Leaderboard
+            </button>
+            <span className="text-xs font-bold text-gray-500">
+              Viewing: <strong className="text-[#123524]">{individualStats?.staffName}</strong> ({activePeriodInfo.periodLabel})
+            </span>
+          </div>
+
+          {individualStats && (
+            <>
+              {/* Target Ring Card (Displays Clean Therapist Name instead of Raw ID!) */}
+              <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
+                <h3 className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase mb-6 flex items-center">
+                  <Target className="w-4 h-4 mr-2" /> PERIOD TARGET — {individualStats.staffName} ({activePeriodInfo.periodLabel})
+                </h3>
+
+                <div className="relative w-32 h-32 flex items-center justify-center bg-black/20 rounded-full border-4 border-white/5 shadow-inner">
+                  <div className="text-center">
+                    <div className="text-2xl font-black text-white">
+                      {individualStats.totalMySales > 0 && individualStats.periodTarget > 0
+                        ? Math.round((individualStats.totalMySales / individualStats.periodTarget) * 100)
+                        : 0}
+                      %
+                    </div>
+                    <div className="text-[8px] text-[#D4AF37] font-bold uppercase tracking-wider mt-1">Achieved</div>
+                  </div>
+                  <svg viewBox="0 0 128 128" className="absolute inset-0 w-full h-full transform -rotate-90 overflow-visible">
+                    <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-white/10" />
+                    <circle
+                      cx="64"
+                      cy="64"
+                      r="58"
+                      stroke="currentColor"
+                      strokeWidth="6"
+                      fill="transparent"
+                      className="text-[#D4AF37]"
+                      strokeDasharray="364"
+                      strokeDashoffset={
+                        364 -
+                        364 *
+                          Math.min(
+                            1,
+                            individualStats.periodTarget > 0
+                              ? individualStats.totalMySales / individualStats.periodTarget
+                              : 0
+                          )
+                      }
+                      strokeLinecap="round"
+                      style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+                    />
+                  </svg>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full mt-8">
+                  <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
+                    <div className="text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-1">Period Target</div>
+                    <div className="text-sm font-bold text-white">{formatPrice(individualStats.periodTarget)}</div>
+                  </div>
+                  <div className="bg-white/10 p-3 rounded-xl border border-[#D4AF37]/30 text-center">
+                    <div className="text-[9px] text-[#D4AF37] font-bold uppercase tracking-wider mb-1">Actual Sales</div>
+                    <div className="text-sm font-bold text-[#D4AF37]">{formatPrice(individualStats.totalMySales)}</div>
+                  </div>
+                  <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
+                    <div className="text-[9px] text-emerald-300 font-bold uppercase tracking-wider mb-1">Completed Sections</div>
+                    <div className="text-sm font-bold text-white">{individualStats.totalMySections} ပွဲ</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Summary */}
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center">
+                  <Award className="w-4 h-4 mr-2 text-yellow-600" /> Financial Summary ({individualStats.staffName})
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span className="text-xs font-semibold text-gray-600">
+                      Total Commissions ({commissionPercent}%)
+                    </span>
+                    <span className="font-bold text-[#123524]">{formatPrice(individualStats.totalMyComm)}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <span className="text-xs font-bold text-yellow-800">Final Expected Commission Pay</span>
+                    <span className="font-black text-yellow-700 text-lg">{formatPrice(individualStats.totalMyComm)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Attendance Summary */}
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="font-bold text-gray-800 text-sm mb-2 flex items-center">
+                  <Calendar className="w-4 h-4 mr-2 text-blue-500" /> Active Sales Attendance Summary
+                </h3>
+                <p className="text-[10px] text-gray-500 mb-4">
+                  (ရွေးချယ်ထားသောကာလအတွင်း စုစုပေါင်း {individualStats.pastDaysCount} ရက်အတွင်း ဝန်ဆောင်မှုဝင်ရောက်ခဲ့သည့် ရက်များ)
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="bg-green-50 p-3 rounded-xl border border-green-100 text-center shadow-sm">
+                    <div className="text-[9px] text-green-600 font-bold uppercase tracking-wider mb-1">Active Sales Days</div>
+                    <div className="text-2xl font-black text-green-700">
+                      {individualStats.workedDaysCount}{' '}
+                      <span className="text-[10px] font-bold text-green-600/70">/ {individualStats.pastDaysCount} Days</span>
+                    </div>
+                  </div>
+                  <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">
+                    <div className="text-[9px] text-red-600 font-bold uppercase tracking-wider mb-1">No-Sale Days</div>
+                    <div className="text-2xl font-black text-red-700">
+                      {individualStats.missedDaysCount}{' '}
+                      <span className="text-[10px] font-bold text-red-600/70">/ {individualStats.pastDaysCount} Days</span>
+                    </div>
+                  </div>
+                </div>
+
+                {individualStats.missedDaysCount > 0 ? (
+                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
+                    <span className="text-[10px] font-bold text-gray-500 mb-2.5 block">Section မဝင်ထားသော ရက်များ :</span>
+                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                      {individualStats.missedDays.map((md) => (
+                        <span
+                          key={md.date}
+                          className="bg-white border border-red-200 text-red-500 text-[9px] font-bold px-2 py-1 rounded-md shadow-2xs"
+                        >
+                          Day {md.dayNo} ({md.date})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center text-[10px] font-bold text-gray-500 flex flex-col items-center">
+                    <CheckCircle className="w-5 h-5 text-green-500 mb-1.5" />
+                    ရက်အားလုံး Section ဝင်ထားပါသည်။ အလွန်ကောင်းမွန်ပါတယ်။
+                  </div>
+                )}
+              </div>
+
+              {/* Dynamic Daily Tracker */}
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                <h3 className="font-bold text-[#123524] text-sm mb-4 flex items-center justify-between">
+                  <span className="flex items-center">
+                    <Calendar className="w-4 h-4 mr-2 text-[#D4AF37]" /> Dynamic Daily Tracker (Live from Sale Summary)
+                  </span>
+                </h3>
+                <div className="space-y-3 max-h-[550px] overflow-y-auto pr-1">
+                  {individualStats.dailyBreakdown.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-4 rounded-xl border transition-all ${
+                        item.hasSales ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-50/70 border-dashed border-gray-200'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="bg-[#123524] text-[#D4AF37] text-[10px] font-bold px-2 py-0.5 rounded">
+                            Day {item.dayNo}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-gray-700">{item.date}</span>
+                        </div>
+                        <div>
+                          {item.hasSales ? (
+                            <span className="bg-green-100 text-green-700 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                              Active Sale ({item.services.length} ပွဲ)
+                            </span>
+                          ) : (
+                            <span className="bg-gray-200 text-gray-600 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                              No Sales
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {item.hasSales && (
+                        <div className="space-y-1.5 my-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                          {item.services.map((s: any, sIdx: number) => (
+                            <div key={sIdx} className="flex justify-between items-center text-xs font-semibold text-gray-800">
+                              <span className="truncate pr-2">
+                                • {s.serviceName}{' '}
+                                <span className="text-[9px] font-bold text-gray-400">({s.source})</span>
+                              </span>
+                              <span className="font-bold text-[#123524] whitespace-nowrap">{formatPrice(s.salesAmount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-[11px]">
+                        <div>
+                          <span className="text-gray-400 font-semibold text-[10px] block">Daily Actual vs Target</span>
+                          <span className={`font-black ${item.dayActual >= item.dailyTarget ? 'text-green-600' : 'text-orange-600'}`}>
+                            {formatPrice(item.dayActual)}{' '}
+                            <span className="text-[9px] font-bold text-gray-400">
+                              ({item.dayActual >= item.dailyTarget ? 'Met' : `${formatPrice(item.dailyVariance)}`})
+                            </span>
+                          </span>
+                          <span className="text-[#123524] font-bold text-[9px] block mt-1.5">
+                            Total Cum. Actual: {formatPrice(item.cumActual)}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-gray-400 font-semibold text-[10px] block">Adjusted Daily Target</span>
+                          <span className="font-bold text-[#123524]">{formatPrice(item.adjustedDailyTarget)}</span>
+                          <span className="text-[9px] text-gray-500 block mt-1.5">
+                            Remaining: <span className="font-bold text-red-500">{formatPrice(item.remainingMonthlyTarget)}</span>
+                          </span>
+                          <span className="text-[9px] text-gray-500 block mt-0.5">
+                            Cum. Target: {formatPrice(item.cumTarget)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AdminCampaignsView() {
