@@ -42,7 +42,7 @@ const formatTimeAMPM = (millis: number | undefined): string => {
 };
 
 // 🌟 ၂။ မိနစ် (Minutes) ကို ၁ နာရီကျော်ပါက "နာရီ၊ မိနစ်" ဖြင့် ပြသပေးမည့် Helper Function 🌟
-const formatMinsToHrMin Burmese = (totalMins: number): string => {
+const formatMinsToHrMinBurmese = (totalMins: number): string => {
   const mins = Math.max(0, Math.round(totalMins));
   if (mins >= 60) {
     const h = Math.floor(mins / 60);
@@ -166,16 +166,6 @@ export const extractAccurateServiceDurationMins = (session: any, appData: AppDat
 
   return { totalMins: 60, label: '1 နာရီ' };
 };
-
-function formatMinsToHrMinBurmese(totalMins: number): string {
-  const mins = Math.max(0, Math.round(totalMins));
-  if (mins >= 60) {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return m > 0 ? `${h} နာရီ ${m} မိနစ်` : `${h} နာရီ`;
-  }
-  return `${mins} မိနစ်`;
-}
 
 export const parseDurationStringToMins = (text: string, appData: AppData): number => {
   const clean = text.toLowerCase();
