@@ -2223,291 +2223,891 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
 }
 
 function AdminStaffHistoryList({ bookings, adminRole, therapists }: { bookings: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
-   const [view, setView] = useState<'dashboard' | 'service' | 'outpass' | 'performance'>('dashboard');
-   const [outpasses, setOutpasses] = useState<OutPass[]>([]);
-   const todayStr = getLocalTodayStr(); const [now, setNow] = useState(Date.now());
-   
-   // 🌟 Admin Clock-In Modal States 🌟
-   const [showClockInModal, setShowClockInModal] = useState(false);
-   const { appData: globalAppData } = useAppStore(); // Service Menu တွေဆွဲထုတ်ရန်
-   
-   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 15000); return () => clearInterval(timer); }, []);
-   useEffect(() => { const unsub = onSnapshot(query(collection(db, 'outpasses'), orderBy('outTimeMillis', 'desc')), snap => { const arr: OutPass[] = []; snap.forEach(d => arr.push({id: d.id, ...d.data()} as OutPass)); setOutpasses(arr); }); return () => unsub(); }, []);
-   
-   const formatMillis = (millis: number | undefined) => { if (!millis) return '-'; const date = new Date(millis); return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
-   const formatSecondsAdmin = (totalSeconds: number | undefined) => { if (totalSeconds === undefined) return '00:00'; const isNegative = totalSeconds < 0; const absSecs = Math.abs(totalSeconds); const h = Math.floor(absSecs / 3600); const m = Math.floor((absSecs % 3600) / 60); const s = Math.floor(absSecs % 60); return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; };
-   
-   const handleDeleteBooking = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id)); };
-   const handleDeleteOutpass = async (id: string) => { if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။'); return; } if(window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id)); };
+  const [view, setView] = useState<'dashboard' | 'service' | 'outpass' | 'performance'>('dashboard');
+  const [outpasses, setOutpasses] = useState<OutPass[]>([]);
+  const [serviceDateFilter, setServiceDateFilter] = useState<'today' | 'all'>('today');
+  const todayStr = getLocalTodayStr();
+  const [now, setNow] = useState(Date.now());
 
-   const handleForceCompleteBooking = async (id: string) => {
-       if(window.confirm('ဒီ Service ကို ပြီးဆုံးပြီ (Completed) အဖြစ် သတ်မှတ်မည် သေချာပါသလား?')) {
-           await updateDoc(doc(db, 'bookings', id), { status: 'completed', actualEndTimeMillis: Date.now() });
-       }
-   };
+  // 🌟 Admin Clock-In Modal States 🌟
+  const [showClockInModal, setShowClockInModal] = useState(false);
+  const { appData: globalAppData } = useAppStore();
 
-   const handleForceReturnOutpass = async (id: string) => {
-       if(window.confirm('ဒီ Out Pass ကို ပြန်ရောက်ပြီ (Returned) အဖြစ် သတ်မှတ်မည် သေချာပါသလား?')) {
-           await updateDoc(doc(db, 'outpasses', id), { status: 'returned', inTimeMillis: Date.now() });
-       }
-   };
+  // 🌟 ၁ စက္ကန့်တစ်ကြိမ် Live Countdown နှင့် Auto Clock-Out စစ်ဆေးရန် 🌟
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-   const getTodayServiceStats = (tName: string) => {
-       const tBookings = bookings.filter(b => b.therapist && b.therapist.includes(tName) && b.date === todayStr && (b.status === 'completed' || b.status === 'in_progress'));
-       return {
-           count: tBookings.length,
-           names: tBookings.map(b => (b.service || '').split('(')[0].trim())
-       };
-   };
+  useEffect(() => {
+    const unsub = onSnapshot(query(collection(db, 'outpasses'), orderBy('outTimeMillis', 'desc')), (snap) => {
+      const arr: OutPass[] = [];
+      snap.forEach((d) => arr.push({ id: d.id, ...d.data() } as OutPass));
+      setOutpasses(arr);
+    });
+    return () => unsub();
+  }, []);
 
-   const getTodayOutpassCount = (tName: string) => {
-       return outpasses.filter(o => o.therapist === tName && o.date === todayStr).length;
-   };
+  // 🌟 Helper 1: Admin Clock-In သီးသန့် ဟုတ်/မဟုတ် စစ်ဆေးသည့် Function 🌟
+  // (POS Walk-in SL-... နှင့် Online Booking တို့ကို လုံးဝ မပါဝင်စေရ၊ Admin Clock-In တစ်ခုတည်းသာ true ဖြစ်မည်)
+  const isStrictlyAdminClockIn = useCallback((b: any): boolean => {
+    if (!b) return false;
+    const rawTx = String(b.txId || '').trim().toUpperCase();
+    const rawPay = String(b.paymentMethod || '').toLowerCase();
+    const rawDisc = String(b.discountLabel || '').toLowerCase();
 
-   const activeBookings = bookings.filter(b => b.status === 'in_progress'); 
-   const activeOutpasses = outpasses.filter(o => o.status === 'out');
+    // POS ဘောင်ချာ (SL-...) သို့မဟုတ် Online Booking ဖြစ်ပါက Admin Clock-In မဟုတ်ပါ (ဝန်ထမ်းကိုယ်တိုင်ပိတ်မှ ရပ်မည်)
+    if (
+      rawTx.startsWith('SL-') ||
+      rawTx.startsWith('OB-') ||
+      rawPay.includes('shop pos') ||
+      rawDisc.includes('[shop walk-in') ||
+      Boolean(b.posLocalId)
+    ) {
+      return false;
+    }
 
-// 🌟 ဒီနေ့တစ်နေ့တာလုံးအတွက် ဝန်ထမ်းအားလုံး၏ Stats ကို တွက်ချက်ခြင်း (ပွားနေပါက ၁ ခုတည်းပြရန်) 🌟
-   const uniqueTherapists = Array.from(new Map(therapists.map(t => [t.name, t])).values());
-   const allTherapistsStats = uniqueTherapists.map(t => {
-       const serviceStats = getTodayServiceStats(t.name);
-       const opCount = getTodayOutpassCount(t.name);
-       return { name: t.name, sections: serviceStats.count, outpasses: opCount };
-   });
-   
-   // အရေအတွက် ၁ ခုနှင့်အထက် ရှိသူများကိုသာ စစ်ထုတ်ပြီး အများဆုံးမှ အနည်းဆုံးသို့ စီစဉ်ခြင်း
-   const serviceLeaderboard = [...allTherapistsStats].filter(s => s.sections > 0).sort((a,b) => b.sections - a.sections);
-   const outpassLeaderboard = [...allTherapistsStats].filter(s => s.outpasses > 0).sort((a,b) => b.outpasses - a.outpasses);
+    return (
+      Boolean(b.isAdminClockIn) ||
+      Boolean(b.isStaffClockIn) ||
+      rawTx === 'ADMIN' ||
+      rawTx === 'CASH' ||
+      rawPay.includes('admin') ||
+      rawPay.includes('cash payment in shop') ||
+      String(b.name || '').toLowerCase().includes('admin manual')
+    );
+  }, []);
 
-   return (
-       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 border-b border-gray-100 pb-4">
-              <h2 className="text-xl font-bold flex items-center mb-4 lg:mb-0" style={{ color: THEME.primary }}><BarChart2 className="mr-2 text-[#D4AF37]" /> Staff Reports</h2>
-              <div className="flex space-x-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full lg:w-auto overflow-x-auto scrollbar-hide">
-                 <button onClick={() => setView('dashboard')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'dashboard' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Dashboard</button>
-                 <button onClick={() => setView('service')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'service' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Services List</button>
-                 <button onClick={() => setView('outpass')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${view === 'outpass' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}>Out Passes List</button>
-                 <button onClick={() => setView('performance')} className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition flex items-center justify-center ${view === 'performance' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'}`}><TrendingUp className="w-3.5 h-3.5 mr-1.5"/> Performance Stats</button>
+  // 🌟 Helper 2: Service Menu ထဲမှ မိနစ်အတိအကျ (60 Mins, 90 Mins, 120 Mins, 6 Hrs, 12 Hrs / Whole Day / Whole Night) တွက်ပေးသည့် Function 🌟
+  const parseServiceDurationMins = useCallback((serviceText: string): number => {
+    const clean = String(serviceText || '').toLowerCase();
+
+    // 1. Check explicit "XXX mins"
+    const minsMatch = clean.match(/(\d+)\s*(?:mins|min|မိနစ်)/i);
+    if (minsMatch) return parseInt(minsMatch[1], 10);
+
+    // 2. Check explicit "X hrs" or "X hours" (e.g. "6 Hrs", "12 Hrs")
+    const hrsMatch = clean.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr|နာရီ)/i);
+    if (hrsMatch) return Math.round(parseFloat(hrsMatch[1]) * 60);
+
+    // 3. Check Whole Day / Whole Night / Half Day keywords
+    if (clean.includes('whole night') || clean.includes('whole day')) return 720; // 12 Hrs (720 Mins)
+    if (clean.includes('half day')) return 360; // 6 Hrs (360 Mins)
+    if (clean.includes('part time outcall')) return 100; // 100 Mins
+
+    // 4. Match against globalAppData Menu Categories
+    if (globalAppData?.categories) {
+      for (const cat of globalAppData.categories) {
+        for (const item of cat.items || []) {
+          const itemName = String(item.name || '').toLowerCase();
+          if (itemName && clean.includes(itemName) && item.duration) {
+            const dStr = String(item.duration).toLowerCase();
+            const m = dStr.match(/(\d+)\s*(?:mins|min)/i);
+            if (m) return parseInt(m[1], 10);
+            const h = dStr.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr)/i);
+            if (h) return Math.round(parseFloat(h[1]) * 60);
+          }
+        }
+      }
+    }
+
+    return 60; // Default 60 Mins
+  }, [globalAppData]);
+
+  // 🌟 Helper 3: Booking တစ်ခု၏ Start Time နှင့် Expected End Time အမှန်ကို တွက်ချက်ပေးခြင်း 🌟
+  const getAccurateSessionTimes = useCallback((b: any) => {
+    const durationMins = parseServiceDurationMins(b?.service || '');
+    const startMs = Number(b?.startTimeMillis) || Number(b?.createdAt) || Date.now();
+    // Service Menu ရဲ့ မိနစ်အမှန်ဖြင့် Expected End Time ကို တွက်မည်
+    const expectedEndMs = startMs + durationMins * 60 * 1000;
+    return { startMs, expectedEndMs, durationMins };
+  }, [parseServiceDurationMins]);
+
+  // 🌟 AUTO CLEANUP OLD DAYS & AUTO CLOCK-OUT FOR ADMIN CLOCK-IN ONLY 🌟
+  useEffect(() => {
+    const currentNow = Date.now();
+    const currentToday = getLocalTodayStr();
+
+    bookings.forEach((b: any) => {
+      if (b.status !== 'in_progress' || !b.id) return;
+
+      const { startMs, expectedEndMs } = getAccurateSessionTimes(b);
+
+      // ၁။ ဒီနေ့မဟုတ်သော ရက်ဟောင်းမှ ကျန်နေသည့် In-Progress အားလုံးကို အလိုအလျောက် Completed ပြောင်းပြီး ဖျောက်မည်
+      if (b.date !== currentToday) {
+        updateDoc(doc(db, 'bookings', b.id), {
+          status: 'completed',
+          startTimeMillis: startMs,
+          expectedEndTimeMillis: expectedEndMs,
+          actualEndTimeMillis: expectedEndMs,
+          overtimeSeconds: 0
+        }).catch(() => {});
+        return;
+      }
+
+      // ၂။ Admin Clock-In သီးသန့်ဖြစ်ပြီး Service Menu အချိန်ပြည့်သွားပါက အလိုအလျောက် Auto Clock-Out လုပ်ပေးမည်!
+      // (POS ဘောင်ချာများ နှင့် Online Booking များကိုမူ လုံးဝ Auto မပိတ်ပါ၊ ဝန်ထမ်းနှိပ်မှ ရပ်ပါမည်)
+      if (isStrictlyAdminClockIn(b) && currentNow >= expectedEndMs) {
+        updateDoc(doc(db, 'bookings', b.id), {
+          status: 'completed',
+          startTimeMillis: startMs,
+          expectedEndTimeMillis: expectedEndMs,
+          actualEndTimeMillis: expectedEndMs,
+          overtimeSeconds: 0
+        }).catch(() => {});
+      }
+    });
+  }, [bookings, now, getAccurateSessionTimes, isStrictlyAdminClockIn]);
+
+  const formatMillis = (millis: number | undefined) => {
+    if (!millis) return '-';
+    const date = new Date(millis);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+
+  const formatSecondsAdmin = (totalSeconds: number | undefined) => {
+    if (totalSeconds === undefined || isNaN(totalSeconds)) return '00:00';
+    const isNegative = totalSeconds < 0;
+    const absSecs = Math.max(0, Math.floor(Math.abs(totalSeconds)));
+    const h = Math.floor(absSecs / 3600);
+    const m = Math.floor((absSecs % 3600) / 60);
+    const s = Math.floor(absSecs % 60);
+    return `${isNegative ? '-' : ''}${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const handleDeleteBooking = async (id: string) => {
+    if (adminRole !== 'super_admin') {
+      alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။');
+      return;
+    }
+    if (window.confirm('Are you sure you want to delete this record?')) await deleteDoc(doc(db, 'bookings', id));
+  };
+
+  const handleDeleteOutpass = async (id: string) => {
+    if (adminRole !== 'super_admin') {
+      alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။');
+      return;
+    }
+    if (window.confirm('Are you sure you want to delete this out pass?')) await deleteDoc(doc(db, 'outpasses', id));
+  };
+
+  const handleForceCompleteBooking = async (b: Booking) => {
+    if (!b.id) return;
+    if (window.confirm('ဒီ Service ကို ပြီးဆုံးပြီ (Completed) အဖြစ် သတ်မှတ်မည် သေချာပါသလား?')) {
+      const currentNow = Date.now();
+      const { startMs, expectedEndMs } = getAccurateSessionTimes(b);
+      const isAutoAdmin = isStrictlyAdminClockIn(b);
+      const overtimeSecs = isAutoAdmin ? 0 : Math.max(0, Math.floor((currentNow - expectedEndMs) / 1000));
+
+      await updateDoc(doc(db, 'bookings', b.id), {
+        status: 'completed',
+        startTimeMillis: startMs,
+        expectedEndTimeMillis: expectedEndMs,
+        actualEndTimeMillis: currentNow,
+        overtimeSeconds: overtimeSecs
+      });
+    }
+  };
+
+  const handleForceReturnOutpass = async (id: string) => {
+    if (window.confirm('ဒီ Out Pass ကို ပြန်ရောက်ပြီ (Returned) အဖြစ် သတ်မှတ်မည် သေချာပါသလား?')) {
+      await updateDoc(doc(db, 'outpasses', id), { status: 'returned', inTimeMillis: Date.now() });
+    }
+  };
+
+  const getTodayServiceStats = (tName: string) => {
+    const tBookings = bookings.filter(
+      (b) =>
+        b.therapist &&
+        b.therapist.includes(tName) &&
+        b.date === todayStr &&
+        (b.status === 'completed' || b.status === 'in_progress')
+    );
+    return {
+      count: tBookings.length,
+      names: tBookings.map((b) => (b.service || '').split('(')[0].trim())
+    };
+  };
+
+  const getTodayOutpassCount = (tName: string) => {
+    return outpasses.filter((o) => o.therapist === tName && o.date === todayStr).length;
+  };
+
+  // 🌟 DBOARD ACTIVE FILTER: ဒီနေ့ရက်စွဲ (`b.date === todayStr`) ဖြစ်သော Active Session များကိုသာ ပြသမည်! 🌟
+  const activeBookings = useMemo(() => {
+    return bookings.filter((b) => {
+      if (b.status !== 'in_progress') return false;
+      // ဒီနေ့မဟုတ်သော Session အဟောင်းများ လုံးဝ မပြပါ
+      if (b.date !== todayStr) return false;
+
+      const { expectedEndMs } = getAccurateSessionTimes(b);
+      // Admin Clock-In ဖြစ်ပြီး အချိန်ပြည့်သွားလျှင်လည်း UI မှ ချက်ချင်းဖျောက်မည်
+      if (isStrictlyAdminClockIn(b) && now >= expectedEndMs) return false;
+
+      return true;
+    });
+  }, [bookings, todayStr, now, getAccurateSessionTimes, isStrictlyAdminClockIn]);
+
+  // ဒီနေ့အတွက် Out Pass များသာ ပြသမည်
+  const activeOutpasses = useMemo(() => {
+    return outpasses.filter((o) => o.status === 'out' && o.date === todayStr);
+  }, [outpasses, todayStr]);
+
+  // Services List Tab အတွက် Filter (Today Only သို့မဟုတ် All Dates)
+  const displayedServiceHistory = useMemo(() => {
+    if (serviceDateFilter === 'today') {
+      return bookings.filter((b) => b.date === todayStr);
+    }
+    return bookings;
+  }, [bookings, serviceDateFilter, todayStr]);
+
+  const uniqueTherapists = Array.from(new Map(therapists.map((t) => [t.name, t])).values());
+  const allTherapistsStats = uniqueTherapists.map((t) => {
+    const serviceStats = getTodayServiceStats(t.name);
+    const opCount = getTodayOutpassCount(t.name);
+    return { name: t.name, sections: serviceStats.count, outpasses: opCount };
+  });
+
+  const serviceLeaderboard = [...allTherapistsStats].filter((s) => s.sections > 0).sort((a, b) => b.sections - a.sections);
+  const outpassLeaderboard = [...allTherapistsStats].filter((s) => s.outpasses > 0).sort((a, b) => b.outpasses - a.outpasses);
+
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 border-b border-gray-100 pb-4">
+        <h2 className="text-xl font-bold flex items-center mb-4 lg:mb-0" style={{ color: THEME.primary }}>
+          <BarChart2 className="mr-2 text-[#D4AF37]" /> Staff Reports
+        </h2>
+        <div className="flex space-x-2 bg-gray-50 p-1 rounded-lg border border-gray-200 w-full lg:w-auto overflow-x-auto scrollbar-hide">
+          <button
+            onClick={() => setView('dashboard')}
+            className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${
+              view === 'dashboard' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            Dashboard
+          </button>
+          <button
+            onClick={() => setView('service')}
+            className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${
+              view === 'service' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            Services List
+          </button>
+          <button
+            onClick={() => setView('outpass')}
+            className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition ${
+              view === 'outpass' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            Out Passes List
+          </button>
+          <button
+            onClick={() => setView('performance')}
+            className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-bold rounded transition flex items-center justify-center ${
+              view === 'performance' ? 'bg-white shadow-md text-[#123524]' : 'text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 mr-1.5" /> Performance Stats
+          </button>
+        </div>
+      </div>
+
+      {view === 'dashboard' && (
+        <div className="space-y-8 animate-fade-in">
+          {/* 🌟 ADMIN MANUAL CLOCK IN MODAL (Calculates Exact Duration from Service Menu!) 🌟 */}
+          {showClockInModal && (
+            <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+              <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm animate-slide-up border border-gray-200">
+                <div className="flex justify-between items-center mb-4 border-b pb-3">
+                  <h3 className="text-lg font-bold text-[#123524] flex items-center">
+                    <Timer className="w-5 h-5 mr-2 text-[#D4AF37]" /> Admin Manual Clock In
+                  </h3>
+                  <button onClick={() => setShowClockInModal(false)} className="text-gray-400 hover:text-red-500">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const form = e.target as HTMLFormElement;
+                    const tName = (form.elements.namedItem('therapist') as HTMLSelectElement).value;
+                    const svc = (form.elements.namedItem('service') as HTMLSelectElement).value;
+                    const customSvc = (form.elements.namedItem('customService') as HTMLInputElement).value;
+                    const finalService = svc === 'custom' ? customSvc : svc;
+
+                    if (!tName || (!svc && !customSvc)) {
+                      alert('အချက်အလက်များ ပြည့်စုံအောင် ဖြည့်ပါ။');
+                      return;
+                    }
+
+                    // ၎င်းဝန်ထမ်း လက်ရှိ Service ဝင်နေဆဲဆိုလျှင် ထပ်ဝင်ခွင့်မပြုပါ (Duplicate Guard)
+                    const alreadyInService = activeBookings.some((ab) => ab.therapist === tName);
+                    if (alreadyInService) {
+                      alert(`⚠️ ${tName} သည် လက်ရှိ Service ဝင်နေဆဲ ဖြစ်ပါသည်။`);
+                      return;
+                    }
+
+                    const durationMins = parseServiceDurationMins(finalService);
+                    const startMs = Date.now();
+                    const expectedEndMs = startMs + durationMins * 60 * 1000;
+
+                    if (
+                      window.confirm(
+                        `${tName} အတွက် "${finalService}" (ကြာချိန်: ${durationMins} မိနစ်) စတင်မည် သေချာပါသလား?\n\n(သတ်မှတ်ချိန်ပြည့်ပါက အလိုအလျောက် Auto Clock-Out ထွက်ပါမည်)`
+                      )
+                    ) {
+                      try {
+                        await addDoc(collection(db, 'bookings'), {
+                          name: encryptText('Walk-in (Admin Manual)'),
+                          phone: encryptText('09000000000'),
+                          service: finalService,
+                          therapist: tName,
+                          date: todayStr,
+                          time: new Date(startMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                          status: 'in_progress',
+                          isAdminClockIn: true,
+                          paymentMethod: 'Admin Clock In',
+                          txId: encryptText('ADMIN'),
+                          totalPrice: 0,
+                          createdAt: startMs,
+                          startTimeMillis: startMs,
+                          expectedEndTimeMillis: expectedEndMs
+                        });
+                        setShowClockInModal(false);
+                        alert(`✅ ${tName} အား (${durationMins} မိနစ်) ဖြင့် အောင်မြင်စွာ Clock-in ဝင်ပေးပြီးပါပြီ။`);
+                      } catch (err) {
+                        alert('Error: ' + err);
+                      }
+                    }
+                  }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Select Therapist</label>
+                    <select
+                      name="therapist"
+                      required
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-[#123524]"
+                    >
+                      <option value="">-- ရွေးချယ်ပါ --</option>
+                      {Array.from(new Map(therapists.map((t) => [t.name, t])).values()).map((t: any) => (
+                        <option key={t.id} value={t.name}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Select Service (Menu အချိန်အတိုင်း Auto မှတ်မည်)</label>
+                    <select
+                      name="service"
+                      required
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-gray-700 mb-2"
+                      onChange={(e) => {
+                        const customInput = document.getElementById('customServiceInput') as HTMLInputElement;
+                        if (customInput) customInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
+                      }}
+                    >
+                      <option value="">-- ရွေးချယ်ပါ --</option>
+                      {globalAppData?.categories
+                        ?.flatMap((c) => c.items)
+                        .map((item, idx) => (
+                          <option key={idx} value={`${item.name} (${item.duration})`}>
+                            {item.name} ({item.duration})
+                          </option>
+                        ))}
+                      <option value="custom">-- အခြား (Custom Service) --</option>
+                    </select>
+                    <input
+                      type="text"
+                      id="customServiceInput"
+                      name="customService"
+                      placeholder="ဥပမာ - Oil Massage (90 Mins)"
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-gray-700 hidden"
+                    />
+                  </div>
+
+                  <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <p className="text-[10px] text-blue-800 font-semibold leading-relaxed">
+                      ⚡ <strong>Auto Clock-Out စနစ်:</strong> Admin Clock In ဖြင့် သွင်းထားသော ဝန်ဆောင်မှုသည် ရွေးချယ်ထားသော Service Menu အချိန်ပြည့်သည်နှင့် <strong>အလိုအလျောက် ပြီးဆုံးကြောင်း (Auto Clock-Out)</strong> သတ်မှတ်ပေးပါမည်။
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-lg font-bold shadow-md hover:bg-[#1a4a32] transition"
+                  >
+                    Start Service Now
+                  </button>
+                </form>
               </div>
-           </div>
+            </div>
+          )}
 
-           {view === 'dashboard' && (
-              <div className="space-y-8 animate-fade-in">
-                 
-                 {/* 🌟 ADMIN MANUAL CLOCK IN MODAL 🌟 */}
-                 {showClockInModal && (
-                    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-                        <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm animate-slide-up border border-gray-200">
-                            <div className="flex justify-between items-center mb-4 border-b pb-3">
-                                <h3 className="text-lg font-bold text-[#123524] flex items-center"><Timer className="w-5 h-5 mr-2 text-[#D4AF37]"/> Manual Clock In</h3>
-                                <button onClick={() => setShowClockInModal(false)} className="text-gray-400 hover:text-red-500"><X className="w-5 h-5"/></button>
-                            </div>
-                            
-                            <form onSubmit={async (e) => {
-                                e.preventDefault();
-                                const form = e.target as HTMLFormElement;
-                                const tName = (form.elements.namedItem('therapist') as HTMLSelectElement).value;
-                                const svc = (form.elements.namedItem('service') as HTMLSelectElement).value;
-                                const customSvc = (form.elements.namedItem('customService') as HTMLInputElement).value;
-                                const finalService = svc === 'custom' ? customSvc : svc;
-                                
-                                if (!tName || (!svc && !customSvc)) { alert('အချက်အလက်များ ပြည့်စုံအောင် ဖြည့်ပါ။'); return; }
-                                if(window.confirm(`${tName} အတွက် ${finalService} Service စတင်မည် သေချာပါသလား?`)) {
-                                    try {
-                                        await addDoc(collection(db, 'bookings'), {
-                                            name: encryptText('Walk-in (Admin Manual)'),
-                                            phone: encryptText('09000000000'), // Default Admin Entry
-                                            service: finalService,
-                                            therapist: tName,
-                                            date: todayStr,
-                                            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                                            status: 'in_progress',
-                                            paymentMethod: 'Cash Payment in Shop',
-                                            txId: encryptText('ADMIN'),
-                                            totalPrice: 0, // Admin သွင်းတာမို့ 0 အဖြစ်သာထားမည် (Report မလွဲစေရန်)
-                                            createdAt: Date.now(),
-                                            startTimeMillis: Date.now(),
-                                            expectedEndTimeMillis: Date.now() + (60 * 60 * 1000) // Default 1 Hour
-                                        });
-                                        setShowClockInModal(false);
-                                        alert('✅ အောင်မြင်စွာ Clock-in ဝင်ပြီးပါပြီ။');
-                                    } catch(err) { alert('Error: ' + err); }
-                                }
-                            }} className="space-y-4">
-                                
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1">Select Therapist</label>
-                                    <select name="therapist" required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-[#123524]">
-                                        <option value="">-- ရွေးချယ်ပါ --</option>
-                                        {Array.from(new Map(therapists.map(t => [t.name, t])).values()).map((t: any) => (<option key={t.id} value={t.name}>{t.name}</option>))}
-                                    </select>
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 mb-1">Select Service</label>
-                                    <select name="service" required className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-gray-700 mb-2" onChange={(e) => {
-                                        const customInput = document.getElementById('customServiceInput') as HTMLInputElement;
-                                        if(customInput) customInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
-                                    }}>
-                                        <option value="">-- ရွေးချယ်ပါ --</option>
-                                        {globalAppData?.categories?.flatMap(c => c.items).map((item, idx) => (
-                                            <option key={idx} value={`${item.name} (${item.duration})`}>{item.name} ({item.duration})</option>
-                                        ))}
-                                        <option value="custom">-- အခြား (Custom Service) --</option>
-                                    </select>
-                                    <input type="text" id="customServiceInput" name="customService" placeholder="Service အမည် ရိုက်ထည့်ပါ..." className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none font-bold text-gray-700 hidden" />
-                                </div>
-                                
-                                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                                    <p className="text-[10px] text-yellow-700 font-semibold leading-relaxed">မှတ်ချက်: ဤနေရာမှ ဝင်သော Service များသည် ငွေစာရင်း (Sale Report) တွက်ချက်မှုထဲတွင် <strong className="font-bold text-red-500">မပါဝင်ပါ။</strong> ဝန်ထမ်းအခြေအနေ (Active Status) ပြသရန်အတွက်သာ ရည်ရွယ်ပါသည်။</p>
-                                </div>
+          {/* ================== CURRENTLY IN SERVICE (TODAY ONLY) ================== */}
+          <div>
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-3 border-b border-gray-100 pb-2">
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 flex items-center">
+                  <Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service Today (Active: {activeBookings.length})
+                </h3>
+                <p className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                  Admin Clock-In များ အချိန်ပြည့်လျှင် Auto ပိတ်ပေးပြီး၊ POS / Online Booking များသည် ဝန်ထမ်း Complete နှိပ်မှ ရပ်ပါမည်
+                </p>
+              </div>
+              <button
+                onClick={() => setShowClockInModal(true)}
+                className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-bold border border-blue-200 flex items-center transition shadow-sm"
+              >
+                <Timer className="w-3.5 h-3.5 mr-1.5" /> Admin Clock In
+              </button>
+            </div>
 
-                                <button type="submit" className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-lg font-bold shadow-md hover:bg-[#1a4a32] transition">
-                                    Start Service Now
-                                </button>
-                            </form>
+            {activeBookings.length === 0 ? (
+              <p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">
+                ယနေ့ လက်ရှိ ဝန်ဆောင်မှုပေးနေသော ဝန်ထမ်းမရှိပါ။ (No staff currently in service today)
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeBookings.map((b) => {
+                  const { startMs, expectedEndMs, durationMins } = getAccurateSessionTimes(b);
+                  const isAdminAuto = isStrictlyAdminClockIn(b);
+                  const isOutcall =
+                    b.service.toLowerCase().includes('outcall') ||
+                    b.service.toLowerCase().includes('hotel') ||
+                    b.service.toLowerCase().includes('home') ||
+                    b.service.toLowerCase().includes('whole');
+
+                  // Admin Clock-In မဟုတ်သော POS / Online Booking များတွင်သာ အချိန်ကျော်ပါက LATE (OVERTIME) ပြမည်
+                  const isLate = !isAdminAuto && now > expectedEndMs;
+                  const remainingSecs = Math.max(0, Math.ceil((expectedEndMs - now) / 1000));
+                  const overtimeSecs = isLate ? Math.floor((now - expectedEndMs) / 1000) : 0;
+
+                  const tStats = getTodayServiceStats(b.therapist);
+
+                  return (
+                    <div
+                      key={b.id}
+                      className={`p-4 rounded-xl border flex flex-col ${
+                        isLate
+                          ? 'bg-red-50/60 border-red-300'
+                          : isAdminAuto
+                          ? 'bg-emerald-50/40 border-emerald-200'
+                          : isOutcall
+                          ? 'bg-blue-50/40 border-blue-200'
+                          : 'bg-orange-50/40 border-orange-200'
+                      } shadow-sm relative overflow-hidden transition-all hover:shadow-md`}
+                    >
+                      <div
+                        className={`absolute top-0 left-0 w-1 h-full ${
+                          isLate ? 'bg-red-500' : isAdminAuto ? 'bg-emerald-500' : isOutcall ? 'bg-blue-500' : 'bg-orange-500'
+                        } animate-pulse`}
+                      ></div>
+
+                      <div className="flex justify-between items-start mb-2 gap-2">
+                        <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{b.therapist}</div>
+                        <span
+                          className={`text-[9px] font-black px-2 py-1 rounded uppercase tracking-wider ${
+                            isLate
+                              ? 'bg-red-100 text-red-700 animate-pulse'
+                              : isAdminAuto
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : isOutcall
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-orange-100 text-orange-700'
+                          }`}
+                        >
+                          {isLate
+                            ? `LATE: +${formatSecondsAdmin(overtimeSecs)}`
+                            : `⏳ ${formatSecondsAdmin(remainingSecs)} ကျန်`}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="text-sm font-bold text-gray-800 truncate" title={b.service}>
+                          {b.service.split('(')[0]}
                         </div>
+                        <span className="text-[10px] font-black bg-white border border-gray-200 text-[#123524] px-2 py-0.5 rounded flex-shrink-0">
+                          {durationMins} Mins
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
+                        <span className="flex items-center truncate">
+                          <User className="w-3 h-3 mr-1 text-gray-400 flex-shrink-0" />
+                          Cust: {b.name}
+                        </span>
+                        <span
+                          className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                            isAdminAuto ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {isAdminAuto ? '⚡ Auto Clock-Out' : '👤 Staff Complete'}
+                        </span>
+                      </div>
+
+                      <div
+                        className={`flex justify-between items-center text-xs border-t pt-3 mb-3 ${
+                          isLate ? 'border-red-200' : 'border-gray-200/70'
+                        }`}
+                      >
+                        <div className="text-gray-500">
+                          <span className="font-bold text-gray-600">Start:</span> {formatMillis(startMs)}
+                        </div>
+                        <div className="text-gray-500">
+                          <span className="font-bold text-gray-600">{isAdminAuto ? 'Auto-Out:' : 'End:'}</span>{' '}
+                          <span
+                            className={`${
+                              isLate
+                                ? 'text-red-700 bg-red-100 border-red-300'
+                                : 'text-[#123524] bg-white border-gray-200'
+                            } font-mono font-bold px-1.5 py-0.5 rounded shadow-2xs border ml-1`}
+                          >
+                            {formatMillis(expectedEndMs)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto pt-3 border-t border-dashed border-gray-300/50">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] font-bold text-gray-600">
+                            Today Sections: <span className="text-orange-600">{tStats.count}</span>
+                          </span>
+                        </div>
+                        <div className="text-[9px] text-gray-500 truncate mb-3" title={tStats.names.join(', ')}>
+                          {tStats.names.join(', ')}
+                        </div>
+                        <button
+                          onClick={() => handleForceCompleteBooking(b)}
+                          className="w-full py-2 bg-white border border-gray-300 rounded-lg text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:text-green-700 hover:border-green-300 transition-colors flex items-center justify-center"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> ပြီးဆုံးပြီဟု သတ်မှတ်မည်
+                        </button>
+                      </div>
                     </div>
-                 )}
-
-                 {/* ================== SERVICES SECTION ================== */}
-                 <div>
-                     <div className="flex justify-between items-center mb-3 border-b border-gray-100 pb-2">
-                         <h3 className="text-sm font-bold text-gray-700 flex items-center"><Activity className="w-4 h-4 mr-2 text-orange-500" /> Currently In Service (Active: {activeBookings.length})</h3>
-                         <button onClick={() => setShowClockInModal(true)} className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-bold border border-blue-200 flex items-center transition shadow-sm">
-                             <Timer className="w-3.5 h-3.5 mr-1.5"/> Admin Clock In
-                         </button>
-                     </div>
-                     {activeBookings.length === 0 ? (<p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently in service.</p>) : (
-                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                             {activeBookings.map(b => {
-                                 const isOutcall = b.service.toLowerCase().includes('outcall') || b.service.toLowerCase().includes('hotel') || b.service.toLowerCase().includes('home');
-                                 const isLate = b.expectedEndTimeMillis ? now > b.expectedEndTimeMillis : false;
-                                 let lateText = 'OVERTIME (LATE)'; if (isLate && b.expectedEndTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - b.expectedEndTimeMillis) / 1000))}`;
-                                 const tStats = getTodayServiceStats(b.therapist);
-
-                                 return (
-                                     <div key={b.id} className={`p-4 rounded-xl border flex flex-col ${isLate ? 'bg-red-50/60 border-red-300' : (isOutcall ? 'bg-blue-50/40 border-blue-200' : 'bg-orange-50/40 border-orange-200')} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
-                                         <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : (isOutcall ? 'bg-blue-500' : 'bg-orange-500')} animate-pulse`}></div>
-                                         <div className="flex justify-between items-start mb-2"><div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{b.therapist}</div><span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : (isOutcall ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>{isLate ? lateText : (isOutcall ? 'Outcall' : 'In Room')}</span></div>
-                                         <div className="text-sm font-semibold text-gray-800 truncate mb-1" title={b.service}>{b.service.split('(')[0]}</div>
-                                         <div className="text-xs text-gray-500 mb-3 flex items-center"><User className="w-3 h-3 mr-1 text-gray-400" />Cust: {b.name}</div>
-                                         
-                                         <div className={`flex justify-between items-center text-xs border-t pt-3 mb-3 ${isLate ? 'border-red-200' : (isOutcall ? 'border-blue-200/50' : 'border-orange-200/50')}`}>
-                                             <div className="text-gray-500"><span className="font-bold text-gray-600">Start:</span> {formatMillis(b.startTimeMillis)}</div>
-                                             <div className="text-gray-500"><span className="font-bold text-gray-600">End:</span> <span className={`${isLate ? 'text-red-700 bg-red-100 border-red-300' : (isOutcall ? 'text-blue-600 bg-white border-blue-100' : 'text-orange-600 bg-white border-orange-100')} font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1`}>{formatMillis(b.expectedEndTimeMillis)}</span></div>
-                                         </div>
-
-                                         <div className="mt-auto pt-3 border-t border-dashed border-gray-300/50">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="text-[10px] font-bold text-gray-600">Today Sections: <span className="text-orange-600">{tStats.count}</span></span>
-                                            </div>
-                                            <div className="text-[9px] text-gray-500 truncate mb-3" title={tStats.names.join(', ')}>{tStats.names.join(', ')}</div>
-                                            <button onClick={() => handleForceCompleteBooking(b.id!)} className="w-full py-2 bg-white border border-gray-300 rounded-lg text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:text-green-700 hover:border-green-300 transition-colors flex items-center justify-center">
-                                                <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> ပြီးဆုံးပြီဟု သတ်မှတ်မည်
-                                            </button>
-                                         </div>
-                                     </div>
-                                 );
-                             })}
-                         </div>
-                     )}
-
-                     {/* 🌟 All Staff Today's Total Sections 🌟 */}
-                     <div className="mt-6 pt-5 border-t border-gray-100">
-                         <h4 className="text-[11px] font-bold text-gray-500 mb-3 uppercase tracking-wider flex items-center">
-                             <Activity className="w-3.5 h-3.5 mr-1.5 text-orange-400" />
-                             Today's Total Sections (All Staff)
-                         </h4>
-                         <div className="flex flex-wrap gap-2.5">
-                             {serviceLeaderboard.length === 0 ? (
-                                 <span className="text-xs text-gray-400 font-semibold bg-gray-50 px-3 py-2 rounded-lg border border-dashed border-gray-200">ဒီနေ့အတွက် Section ဝင်ထားသော ဝန်ထမ်းမရှိသေးပါ။</span>
-                             ) : (
-                                 serviceLeaderboard.map(s => (
-                                     <div key={s.name} className="bg-white border border-orange-200 px-3 py-2 rounded-xl flex items-center justify-between gap-3 shadow-sm hover:border-orange-400 transition-colors">
-                                         <span className="text-xs font-bold text-gray-700">{s.name}</span>
-                                         <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-2 py-1 rounded-md">{s.sections} Sections</span>
-                                     </div>
-                                 ))
-                             )}
-                         </div>
-                     </div>
-                 </div>
-                 
-                 {/* ================== OUTPASS SECTION ================== */}
-                 <div className="pt-4">
-                     <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2"><Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})</h3>
-                     {activeOutpasses.length === 0 ? (<p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">No staff currently on out pass.</p>) : (
-                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                             {activeOutpasses.map(o => {
-                                 const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
-                                 let lateText = 'OVERTIME (LATE)'; if (isLate && o.expectedInTimeMillis) lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - o.expectedInTimeMillis) / 1000))}`;
-                                 const opCount = getTodayOutpassCount(o.therapist);
-
-                                 return (
-                                     <div key={o.id} className={`p-4 rounded-xl border flex flex-col ${isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'} shadow-sm relative overflow-hidden transition-all hover:shadow-md`}>
-                                         <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div>
-                                         <div className="flex justify-between items-start mb-2"><div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div><span className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'}`}>{isLate ? lateText : 'Out Pass'}</span></div>
-                                         <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}><span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}</div>
-                                         
-                                         <div className={`flex justify-between items-center text-xs border-t ${isLate ? 'border-red-200' : 'border-purple-200/50'} pt-3 mb-3`}>
-                                             <div className="text-gray-500"><span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}</div>
-                                             <div className="text-gray-500"><span className="font-bold text-gray-600">Return:</span> <span className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'}`}>{formatMillis(o.expectedInTimeMillis)}</span></div>
-                                         </div>
-
-                                         <div className="mt-auto pt-3 border-t border-dashed border-gray-300/50">
-                                            <div className="flex justify-between items-center mb-3">
-                                                <span className="text-[10px] font-bold text-gray-600">Today Outpasses:</span>
-                                                <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">{opCount} / 4 Times</span>
-                                            </div>
-                                            <button onClick={() => handleForceReturnOutpass(o.id!)} className="w-full py-2 bg-white border border-gray-300 rounded-lg text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:text-green-700 hover:border-green-300 transition-colors flex items-center justify-center">
-                                                <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> ပြန်ရောက်ပြီဟု သတ်မှတ်မည်
-                                            </button>
-                                         </div>
-                                     </div>
-                                 );
-                             })}
-                         </div>
-                     )}
-
-                     {/* 🌟 All Staff Today's Total Outpasses 🌟 */}
-                     <div className="mt-6 pt-5 border-t border-gray-100">
-                         <h4 className="text-[11px] font-bold text-gray-500 mb-3 uppercase tracking-wider flex items-center">
-                             <Coffee className="w-3.5 h-3.5 mr-1.5 text-purple-400" />
-                             Today's Outpass Usage (All Staff)
-                         </h4>
-                         <div className="flex flex-wrap gap-2.5">
-                             {outpassLeaderboard.length === 0 ? (
-                                 <span className="text-xs text-gray-400 font-semibold bg-gray-50 px-3 py-2 rounded-lg border border-dashed border-gray-200">ဒီနေ့အတွက် Out Pass သုံးထားသော ဝန်ထမ်းမရှိသေးပါ။</span>
-                             ) : (
-                                 outpassLeaderboard.map(s => (
-                                     <div key={s.name} className="bg-white border border-purple-200 px-3 py-2 rounded-xl flex items-center justify-between gap-3 shadow-sm hover:border-purple-400 transition-colors">
-                                         <span className="text-xs font-bold text-gray-700">{s.name}</span>
-                                         <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-1 rounded-md">{s.outpasses} / 4</span>
-                                     </div>
-                                 ))
-                             )}
-                         </div>
-                     </div>
-
-                 </div>
+                  );
+                })}
               </div>
-           )}
+            )}
 
-           {view === 'service' && (
-              <div className="overflow-x-auto animate-fade-in"><table className="w-full text-left border-collapse min-w-[900px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Service & Customer</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Start Time</th><th className="p-3 pb-4">Expected End</th><th className="p-3 pb-4">Actual End</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead><tbody>{bookings.length === 0 && (<tr><td colSpan={7} className="p-10 text-center text-gray-400">No service records found.</td></tr>)}{bookings.map((b) => { let currentOvertime = b.overtimeSeconds || 0; let isLate = currentOvertime > 0; if (b.status === 'in_progress' && b.expectedEndTimeMillis && now > b.expectedEndTimeMillis) { currentOvertime = Math.floor((now - b.expectedEndTimeMillis) / 1000); isLate = true; } return (<tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm"><td className="p-3 font-bold text-[#123524]">{b.therapist}</td><td className="p-3"><div className="font-semibold text-gray-800">{b.service.split('(')[0]}</div><div className="text-xs text-gray-500 mt-0.5">Cust: {b.name}</div></td><td className="p-3 text-gray-700 font-semibold">{b.date}</td><td className="p-3 font-mono text-gray-600">{formatMillis(b.startTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{formatMillis(b.expectedEndTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{b.status === 'in_progress' ? <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span> : formatMillis(b.actualEndTimeMillis)}</td><td className="p-3 text-right"><div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>{isLate && b.status === 'in_progress' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}</div><button onClick={() => handleDeleteBooking(b.id!)} disabled={adminRole !== 'super_admin'} className={`text-xs font-bold px-2 py-1 rounded transition ${adminRole === 'super_admin' ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-gray-300 bg-gray-100 cursor-not-allowed'}`} title="Delete">Delete</button></td></tr>); })}</tbody></table></div>
-           )}
+            {/* 🌟 All Staff Today's Total Sections 🌟 */}
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <h4 className="text-[11px] font-bold text-gray-500 mb-3 uppercase tracking-wider flex items-center">
+                <Activity className="w-3.5 h-3.5 mr-1.5 text-orange-400" />
+                Today's Total Sections (All Staff)
+              </h4>
+              <div className="flex flex-wrap gap-2.5">
+                {serviceLeaderboard.length === 0 ? (
+                  <span className="text-xs text-gray-400 font-semibold bg-gray-50 px-3 py-2 rounded-lg border border-dashed border-gray-200">
+                    ဒီနေ့အတွက် Section ဝင်ထားသော ဝန်ထမ်းမရှိသေးပါ။
+                  </span>
+                ) : (
+                  serviceLeaderboard.map((s) => (
+                    <div
+                      key={s.name}
+                      className="bg-white border border-orange-200 px-3 py-2 rounded-xl flex items-center justify-between gap-3 shadow-sm hover:border-orange-400 transition-colors"
+                    >
+                      <span className="text-xs font-bold text-gray-700">{s.name}</span>
+                      <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-2 py-1 rounded-md">
+                        {s.sections} Sections
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
 
-           {view === 'outpass' && (
-              <div className="overflow-x-auto animate-fade-in"><table className="w-full text-left border-collapse min-w-[900px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Staff (Therapist)</th><th className="p-3 pb-4">Date</th><th className="p-3 pb-4">Out Time</th><th className="p-3 pb-4">Expected Return</th><th className="p-3 pb-4">Actual Return</th><th className="p-3 pb-4 text-right">Overtime / Action</th></tr></thead><tbody>{outpasses.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">No out pass records found.</td></tr>)}{outpasses.map((o) => { let currentOvertime = o.overtimeSeconds || 0; let isLate = currentOvertime > 0; if (o.status === 'out' && o.expectedInTimeMillis && now > o.expectedInTimeMillis) { currentOvertime = Math.floor((now - o.expectedInTimeMillis) / 1000); isLate = true; } return (<tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm"><td className="p-3"><div className="font-bold text-purple-700"><Coffee className="w-3 h-3 inline mr-1"/>{o.therapist}</div><div className="text-[10px] text-gray-500 mt-0.5">Reason: {o.reason || '-'}</div></td><td className="p-3 text-gray-700 font-semibold">{o.date}</td><td className="p-3 font-mono text-gray-600">{formatMillis(o.outTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td><td className="p-3 font-mono text-gray-600">{o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}</td><td className="p-3 text-right"><div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>{isLate && o.status === 'out' ? '+' : ''}{formatSecondsAdmin(currentOvertime)}</div><button onClick={() => handleDeleteOutpass(o.id!)} disabled={adminRole !== 'super_admin'} className={`text-xs font-bold px-2 py-1 rounded transition ${adminRole === 'super_admin' ? 'text-red-500 hover:text-red-700 bg-red-50' : 'text-gray-300 bg-gray-100 cursor-not-allowed'}`} title="Delete">Delete</button></td></tr>); })}</tbody></table></div>
-           )}
+          {/* ================== OUTPASS SECTION ================== */}
+          <div className="pt-4">
+            <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center border-b border-gray-100 pb-2">
+              <Coffee className="w-4 h-4 mr-2 text-purple-500" /> Currently on Out Pass (Active: {activeOutpasses.length})
+            </h3>
+            {activeOutpasses.length === 0 ? (
+              <p className="text-xs text-gray-400 bg-gray-50 p-6 rounded-xl text-center border border-dashed border-gray-200">
+                No staff currently on out pass.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeOutpasses.map((o) => {
+                  const isLate = o.expectedInTimeMillis ? now > o.expectedInTimeMillis : false;
+                  let lateText = 'OVERTIME (LATE)';
+                  if (isLate && o.expectedInTimeMillis)
+                    lateText = `LATE: +${formatSecondsAdmin(Math.floor((now - o.expectedInTimeMillis) / 1000))}`;
+                  const opCount = getTodayOutpassCount(o.therapist);
 
-           {/* 🌟 Render New Performance View 🌟 */}
-           {view === 'performance' && (
-               <AdminStaffPerformanceView therapists={therapists} />
-           )}
-       </div>
-   );
+                  return (
+                    <div
+                      key={o.id}
+                      className={`p-4 rounded-xl border flex flex-col ${
+                        isLate ? 'bg-red-50/60 border-red-300' : 'bg-purple-50/40 border-purple-200'
+                      } shadow-sm relative overflow-hidden transition-all hover:shadow-md`}
+                    >
+                      <div className={`absolute top-0 left-0 w-1 h-full ${isLate ? 'bg-red-500' : 'bg-purple-500'} animate-pulse`}></div>
+                      <div className="flex justify-between items-start mb-2">
+                        <div className={`font-bold text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>{o.therapist}</div>
+                        <span
+                          className={`text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider ${
+                            isLate ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-purple-100 text-purple-700'
+                          }`}
+                        >
+                          {isLate ? lateText : 'Out Pass'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-600 mb-4 line-clamp-2 h-8" title={o.reason}>
+                        <span className="font-bold text-gray-500">Reason:</span> {o.reason || 'No reason provided'}
+                      </div>
+
+                      <div
+                        className={`flex justify-between items-center text-xs border-t ${
+                          isLate ? 'border-red-200' : 'border-purple-200/50'
+                        } pt-3 mb-3`}
+                      >
+                        <div className="text-gray-500">
+                          <span className="font-bold text-gray-600">Out:</span> {formatMillis(o.outTimeMillis)}
+                        </div>
+                        <div className="text-gray-500">
+                          <span className="font-bold text-gray-600">Return:</span>{' '}
+                          <span
+                            className={`font-mono px-1.5 py-0.5 rounded shadow-sm border ml-1 ${
+                              isLate ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-purple-600 border-purple-100'
+                            }`}
+                          >
+                            {formatMillis(o.expectedInTimeMillis)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto pt-3 border-t border-dashed border-gray-300/50">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-[10px] font-bold text-gray-600">Today Outpasses:</span>
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
+                            {opCount} / 4 Times
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleForceReturnOutpass(o.id!)}
+                          className="w-full py-2 bg-white border border-gray-300 rounded-lg text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:text-green-700 hover:border-green-300 transition-colors flex items-center justify-center"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> ပြန်ရောက်ပြီဟု သတ်မှတ်မည်
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 🌟 All Staff Today's Total Outpasses 🌟 */}
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <h4 className="text-[11px] font-bold text-gray-500 mb-3 uppercase tracking-wider flex items-center">
+                <Coffee className="w-3.5 h-3.5 mr-1.5 text-purple-400" />
+                Today's Outpass Usage (All Staff)
+              </h4>
+              <div className="flex flex-wrap gap-2.5">
+                {outpassLeaderboard.length === 0 ? (
+                  <span className="text-xs text-gray-400 font-semibold bg-gray-50 px-3 py-2 rounded-lg border border-dashed border-gray-200">
+                    ဒီနေ့အတွက် Out Pass သုံးထားသော ဝန်ထမ်းမရှိသေးပါ။
+                  </span>
+                ) : (
+                  outpassLeaderboard.map((s) => (
+                    <div
+                      key={s.name}
+                      className="bg-white border border-purple-200 px-3 py-2 rounded-xl flex items-center justify-between gap-3 shadow-sm hover:border-purple-400 transition-colors"
+                    >
+                      <span className="text-xs font-bold text-gray-700">{s.name}</span>
+                      <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-1 rounded-md">
+                        {s.outpasses} / 4
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === 'service' && (
+        <div className="space-y-4 animate-fade-in">
+          <div className="flex items-center justify-between bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+            <span className="text-xs font-bold text-gray-600">Service History Filter:</span>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => setServiceDateFilter('today')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  serviceDateFilter === 'today' ? 'bg-[#123524] text-[#D4AF37]' : 'bg-white text-gray-600 border border-gray-200'
+                }`}
+              >
+                ယနေ့သာပြမည် (Today Only)
+              </button>
+              <button
+                type="button"
+                onClick={() => setServiceDateFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  serviceDateFilter === 'all' ? 'bg-[#123524] text-[#D4AF37]' : 'bg-white text-gray-600 border border-gray-200'
+                }`}
+              >
+                ရက်အားလုံး (All History)
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead>
+                <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+                  <th className="p-3 pb-4">Staff (Therapist)</th>
+                  <th className="p-3 pb-4">Service & Customer</th>
+                  <th className="p-3 pb-4">Date</th>
+                  <th className="p-3 pb-4">Start Time</th>
+                  <th className="p-3 pb-4">Expected End</th>
+                  <th className="p-3 pb-4">Actual End</th>
+                  <th className="p-3 pb-4 text-right">Overtime / Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedServiceHistory.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="p-10 text-center text-gray-400">
+                      No service records found.
+                    </td>
+                  </tr>
+                )}
+                {displayedServiceHistory.map((b) => {
+                  const { startMs, expectedEndMs, durationMins } = getAccurateSessionTimes(b);
+                  const isAdminAuto = isStrictlyAdminClockIn(b);
+                  let currentOvertime = isAdminAuto ? 0 : b.overtimeSeconds || 0;
+                  let isLate = currentOvertime > 0;
+                  if (!isAdminAuto && b.status === 'in_progress' && now > expectedEndMs) {
+                    currentOvertime = Math.floor((now - expectedEndMs) / 1000);
+                    isLate = true;
+                  }
+                  return (
+                    <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
+                      <td className="p-3 font-bold text-[#123524]">{b.therapist}</td>
+                      <td className="p-3">
+                        <div className="font-semibold text-gray-800">
+                          {b.service.split('(')[0]}{' '}
+                          <span className="text-[10px] font-black text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded ml-1">
+                            {durationMins} Mins
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">Cust: {b.name}</div>
+                      </td>
+                      <td className="p-3 text-gray-700 font-semibold">{b.date}</td>
+                      <td className="p-3 font-mono text-gray-600">{formatMillis(startMs)}</td>
+                      <td className="p-3 font-mono text-gray-600">{formatMillis(expectedEndMs)}</td>
+                      <td className="p-3 font-mono text-gray-600">
+                        {b.status === 'in_progress' ? (
+                          <span className="text-orange-500 animate-pulse font-bold">ACTIVE</span>
+                        ) : (
+                          formatMillis(b.actualEndTimeMillis || expectedEndMs)
+                        )}
+                      </td>
+                      <td className="p-3 text-right">
+                        <div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>
+                          {isLate && b.status === 'in_progress' ? '+' : ''}
+                          {formatSecondsAdmin(currentOvertime)}
+                        </div>
+                        <button
+                          onClick={() => handleDeleteBooking(b.id!)}
+                          disabled={adminRole !== 'super_admin'}
+                          className={`text-xs font-bold px-2 py-1 rounded transition ${
+                            adminRole === 'super_admin'
+                              ? 'text-red-500 hover:text-red-700 bg-red-50'
+                              : 'text-gray-300 bg-gray-100 cursor-not-allowed'
+                          }`}
+                          title="Delete"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {view === 'outpass' && (
+        <div className="overflow-x-auto animate-fade-in">
+          <table className="w-full text-left border-collapse min-w-[900px]">
+            <thead>
+              <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+                <th className="p-3 pb-4">Staff (Therapist)</th>
+                <th className="p-3 pb-4">Date</th>
+                <th className="p-3 pb-4">Out Time</th>
+                <th className="p-3 pb-4">Expected Return</th>
+                <th className="p-3 pb-4">Actual Return</th>
+                <th className="p-3 pb-4 text-right">Overtime / Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {outpasses.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-10 text-center text-gray-400">
+                    No out pass records found.
+                  </td>
+                </tr>
+              )}
+              {outpasses.map((o) => {
+                let currentOvertime = o.overtimeSeconds || 0;
+                let isLate = currentOvertime > 0;
+                if (o.status === 'out' && o.expectedInTimeMillis && now > o.expectedInTimeMillis) {
+                  currentOvertime = Math.floor((now - o.expectedInTimeMillis) / 1000);
+                  isLate = true;
+                }
+                return (
+                  <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
+                    <td className="p-3">
+                      <div className="font-bold text-purple-700">
+                        <Coffee className="w-3 h-3 inline mr-1" />
+                        {o.therapist}
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">Reason: {o.reason || '-'}</div>
+                    </td>
+                    <td className="p-3 text-gray-700 font-semibold">{o.date}</td>
+                    <td className="p-3 font-mono text-gray-600">{formatMillis(o.outTimeMillis)}</td>
+                    <td className="p-3 font-mono text-gray-600">{formatMillis(o.expectedInTimeMillis)}</td>
+                    <td className="p-3 font-mono text-gray-600">
+                      {o.status === 'out' ? <span className="text-orange-500 animate-pulse font-bold">OUT NOW</span> : formatMillis(o.inTimeMillis)}
+                    </td>
+                    <td className="p-3 text-right">
+                      <div className={`font-mono font-bold text-base mb-1 ${isLate ? 'text-red-600 animate-pulse' : 'text-gray-400'}`}>
+                        {isLate && o.status === 'out' ? '+' : ''}
+                        {formatSecondsAdmin(currentOvertime)}
+                      </div>
+                      <button
+                        onClick={() => handleDeleteOutpass(o.id!)}
+                        disabled={adminRole !== 'super_admin'}
+                        className={`text-xs font-bold px-2 py-1 rounded transition ${
+                          adminRole === 'super_admin'
+                            ? 'text-red-500 hover:text-red-700 bg-red-50'
+                            : 'text-gray-300 bg-gray-100 cursor-not-allowed'
+                        }`}
+                        title="Delete"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {view === 'performance' && <AdminStaffPerformanceView therapists={therapists} />}
+    </div>
+  );
 }
 
 function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: AppData }) {
