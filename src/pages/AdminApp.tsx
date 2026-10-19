@@ -5692,7 +5692,7 @@ function AdminStaffPerformanceView({ therapists, bookings = [] }: { therapists: 
                     <span className="text-[10px] font-black mt-2 text-gray-700 group-hover:text-[#123524] truncate max-w-[56px]">
                       {p.shortLabel}
                     </span>
-                    <span className="text-[8px] font-bold text-gray-400">{p.sectionsCount} ပွဲ</span>
+                    <span className="text-[8px] font-bold text-gray-400">{p.sectionsCount} Sec</span>
                   </div>
                 );
               })}
@@ -5979,13 +5979,13 @@ function AdminStaffPerformanceView({ therapists, bookings = [] }: { therapists: 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                 <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-center">
                   <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">
-                    {comparisonStats.labelA} TOTAL ({comparisonStats.fullCountA} ပွဲ)
+                    {comparisonStats.labelA} TOTAL ({comparisonStats.fullCountA} Sec)
                   </div>
                   <div className="text-sm font-bold text-gray-800">{formatPrice(comparisonStats.fullTotalA)}</div>
                 </div>
                 <div className="bg-yellow-50 p-3.5 rounded-xl border border-yellow-200 text-center">
                   <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">
-                    {comparisonStats.labelB} TOTAL ({comparisonStats.fullCountB} ပွဲ)
+                    {comparisonStats.labelB} TOTAL ({comparisonStats.fullCountB} Sec)
                   </div>
                   <div className="text-sm font-black text-[#123524]">{formatPrice(comparisonStats.fullTotalB)}</div>
                 </div>
@@ -6146,7 +6146,7 @@ function AdminStaffPerformanceView({ therapists, bookings = [] }: { therapists: 
                   </div>
                   <div className="bg-white/10 p-3 rounded-xl border border-white/10 text-center">
                     <div className="text-[9px] text-emerald-300 font-bold uppercase tracking-wider mb-1">Completed Sections</div>
-                    <div className="text-sm font-bold text-white">{individualStats.totalMySections} ပွဲ</div>
+                    <div className="text-sm font-bold text-white">{individualStats.totalMySections} Sec</div>
                   </div>
                 </div>
               </div>
@@ -6243,7 +6243,7 @@ function AdminStaffPerformanceView({ therapists, bookings = [] }: { therapists: 
                         <div>
                           {item.hasSales ? (
                             <span className="bg-green-100 text-green-700 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                              Active Sale ({item.services.length} ပွဲ)
+                              Active Sale ({item.services.length} Sec)
                             </span>
                           ) : (
                             <span className="bg-gray-200 text-gray-600 text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
