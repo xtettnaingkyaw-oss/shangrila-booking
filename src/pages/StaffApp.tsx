@@ -31,20 +31,80 @@ const formatSecondsMMSS = (totalSeconds: number | undefined) => {
   return `${isNegative ? '-' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
+// 🌟 ၁။ အချိန် (Millis) ကို အမြဲတမ်း AM / PM ဖြင့် ပြသပေးမည့် Helper Function 🌟
+const formatTimeAMPM = (millis: number | undefined): string => {
+  if (!millis || isNaN(millis)) return '-';
+  return new Date(millis).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+};
+
+// 🌟 ၂။ မိနစ် (Minutes) ကို ၁ နာရီကျော်ပါက "နာရီ၊ မိနစ်" ဖြင့် ပြသပေးမည့် Helper Function 🌟
+const formatMinsToHrMin Burmese = (totalMins: number): string => {
+  const mins = Math.max(0, Math.round(totalMins));
+  if (mins >= 60) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h} နာရီ ${m} မိနစ်` : `${h} နာရီ`;
+  }
+  return `${mins} မိနစ်`;
+};
+
+// 🌟 ၃။ စက္ကန့် (Seconds) ကို ၁ နာရီကျော်ပါက "နာရီ၊ မိနစ်" နှင့် ၁ နာရီအောက်ဆိုပါက "MM:SS မိနစ်" ပြသပေးမည့် Helper 🌟
+const formatTimerDisplay = (totalSeconds: number): { mainText: string; unitText: string; subText: string } => {
+  const absSecs = Math.max(0, Math.floor(Math.abs(totalSeconds)));
+  const h = Math.floor(absSecs / 3600);
+  const m = Math.floor((absSecs % 3600) / 60);
+  const s = absSecs % 60;
+
+  if (h > 0) {
+    const padH = String(h).padStart(2, '0');
+    const padM = String(m).padStart(2, '0');
+    const padS = String(s).padStart(2, '0');
+    return {
+      mainText: `${h} နာရီ ${m} မိနစ်`,
+      unitText: '',
+      subText: `(${padH}:${padM}:${padS} — ${h} နာရီ ${m} မိနစ် ${s} စက္ကန့်)`
+    };
+  }
+
+  return {
+    mainText: `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
+    unitText: 'မိနစ်',
+    subText: `${m} မိနစ် ${s} စက္ကန့်`
+  };
+};
+
+// 🌟 ၄။ စက္ကန့်အတိအကျကို မြန်မာလို (X နာရီ Y မိနစ် Z စက္ကန့်) ပြသပေးမည့် Helper 🌟
+const formatSecondsToBurmeseWords = (totalSeconds: number): string => {
+  const absSecs = Math.max(0, Math.floor(Math.abs(totalSeconds)));
+  const h = Math.floor(absSecs / 3600);
+  const m = Math.floor((absSecs % 3600) / 60);
+  const s = absSecs % 60;
+
+  if (h > 0) {
+    return `${h} နာရီ ${m} မိနစ် ${s > 0 ? `${s} စက္ကန့်` : ''}`.trim();
+  }
+  if (m > 0) {
+    return `${m} မိနစ် ${s > 0 ? `${s} စက္ကန့်` : ''}`.trim();
+  }
+  return `${s} စက္ကန့်`;
+};
+
 const getLocalTodayStr = () => {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 };
 
-// 🌟 ၁။ Admin Clock-In သီးသန့် ဟုတ်/မဟုတ် စစ်ဆေးသည့် Function 🌟
-// (POS ဘောင်ချာ SL-... နှင့် Online Booking တို့ လုံးဝမပါဝင်စေရ)
+// 🌟 Admin Clock-In သီးသန့် ဟုတ်/မဟုတ် စစ်ဆေးသည့် Function 🌟
 export const isStrictlyAdminClockIn = (b: any): boolean => {
   if (!b) return false;
   const decTx = String(decryptText(b.txId) || b.txId || '').trim().toUpperCase();
   const payMethod = String(b.paymentMethod || '').toLowerCase();
   const discLabel = String(decryptText(b.discountLabel) || b.discountLabel || '').toLowerCase();
 
-  // POS Walk-in Bill သို့မဟုတ် Online Booking ဖြစ်ပါက Admin Clock-In မဟုတ်ပါ (ဝန်ထမ်းကိုယ်တိုင် ပိတ်မှ ရပ်မည်)
   if (
     decTx.startsWith('SL-') ||
     decTx.startsWith('OB-') ||
@@ -66,7 +126,7 @@ export const isStrictlyAdminClockIn = (b: any): boolean => {
   );
 };
 
-// 🌟 ၂။ Service Menu အတိုင်း မိနစ်အတိအကျ တွက်ချက်ပေးသည့် Smart Parser 🌟
+// 🌟 Service Menu အတိုင်း မိနစ်အတိအကျ တွက်ချက်ပေးသည့် Smart Parser 🌟
 export const extractAccurateServiceDurationMins = (session: any, appData: AppData): { totalMins: number; label: string } => {
   const serviceStr = String(session?.service || '');
 
@@ -79,7 +139,7 @@ export const extractAccurateServiceDurationMins = (session: any, appData: AppDat
       }
     });
     if (sumMins > 0) {
-      return { totalMins: sumMins, label: `${sumMins} Mins` };
+      return { totalMins: sumMins, label: formatMinsToHrMinBurmese(sumMins) };
     }
   }
 
@@ -94,18 +154,28 @@ export const extractAccurateServiceDurationMins = (session: any, appData: AppDat
   }
 
   if (totalCalcMins > 0) {
-    return { totalMins: totalCalcMins, label: `${totalCalcMins} Mins` };
+    return { totalMins: totalCalcMins, label: formatMinsToHrMinBurmese(totalCalcMins) };
   }
 
   if (session?.startTimeMillis && session?.expectedEndTimeMillis && session.expectedEndTimeMillis > session.startTimeMillis) {
     const diffMins = Math.round((session.expectedEndTimeMillis - session.startTimeMillis) / 60000);
     if (diffMins > 0 && diffMins <= 1440) {
-      return { totalMins: diffMins, label: `${diffMins} Mins` };
+      return { totalMins: diffMins, label: formatMinsToHrMinBurmese(diffMins) };
     }
   }
 
-  return { totalMins: 60, label: '60 Mins' };
+  return { totalMins: 60, label: '1 နာရီ' };
 };
+
+function formatMinsToHrMinBurmese(totalMins: number): string {
+  const mins = Math.max(0, Math.round(totalMins));
+  if (mins >= 60) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h} နာရီ ${m} မိနစ်` : `${h} နာရီ`;
+  }
+  return `${mins} မိနစ်`;
+}
 
 export const parseDurationStringToMins = (text: string, appData: AppData): number => {
   const clean = text.toLowerCase();
@@ -414,10 +484,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
   const [hasRosterNoti, setHasRosterNoti] = useState(false);
   const [unpaidPenaltyCount, setUnpaidPenaltyCount] = useState(0);
 
-  // 🌟 REAL-TIME SESSION LISTENER:
-  // 1. ဒီနေ့မဟုတ်သော Session အဟောင်းများကို အလိုအလျောက် ပိတ်ပြီး ဖျောက်မည်။
-  // 2. Admin Clock-In သီးသန့်ကိုသာ အချိန်ပြည့်လျှင် Auto Clock-Out လုပ်မည်။
-  // 3. POS နှင့် Online Booking (POS မှ ဘောင်ချာထုတ်ပြီးသား) များကိုမူ ဝန်ထမ်းက Complete နှိပ်မှသာ ရပ်မည်။
   useEffect(() => {
     const q = query(collection(db, 'bookings'));
     const unsubscribe = onSnapshot(q, (snap) => {
@@ -449,7 +515,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
           const startMs = b.startTimeMillis || parseBookingDateTimeToMillis(b.date, b.time, b.createdAt);
           const expectedEndMs = startMs + durInfo.totalMins * 60 * 1000;
 
-          // (က) ဒီနေ့မဟုတ်သော ရက်ဟောင်းမှ ကျန်နေသည့် Session များအားလုံးကို အလိုအလျောက် ပိတ်သိမ်းပြီး ဖျောက်မည်
           if (b.date !== todayStr) {
             updateDoc(doc(db, 'bookings', docSnap.id), {
               status: 'completed',
@@ -459,7 +524,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
             return;
           }
 
-          // (ခ) Admin Clock-In သီးသန့်ဖြစ်ပြီး သတ်မှတ်ချိန်ပြည့်သွားပါက အလိုအလျောက် Auto Clock-Out လုပ်မည်
           if (isStrictlyAdminClockIn(b) && now >= expectedEndMs) {
             updateDoc(doc(db, 'bookings', docSnap.id), {
               status: 'completed',
@@ -473,7 +537,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
 
           myActiveCandidates.push(b);
         } else if (b.date === todayStr && (b.status === 'approved' || b.status === 'payment_checking')) {
-          // Online Booking (Admin Approve လုပ်ပြီးသော်လည်း POS မှ ဘောင်ချာမထုတ်ရသေးသဖြင့် စောင့်ဆိုင်းနေသော ပွဲများ)
           myUpcomingToday.push(b);
         }
       });
@@ -521,7 +584,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
     if (rosterData?.updatedAt) localStorage.setItem('shangrila_roster_last_seen', rosterData.updatedAt.toString());
   };
 
-  // 🌟 ဝန်ထမ်းမှ ဝန်ဆောင်မှုပြီးဆုံးကြောင်း နှိပ်သည့်အခါ အချိန်မည်မျှကျော်သွားသည် (Overtime) ကို အတိအကျ တွက်ချက်သိမ်းဆည်းပေးခြင်း 🌟
   const handleCompleteServiceSession = async () => {
     if (!activeSession || !activeSession.id || stoppingSession) return;
     if (!window.confirm('ဝန်ဆောင်မှု ပြီးဆုံးကြောင်း အတည်ပြုပါသလား? (Confirm Service Completed)')) return;
@@ -833,7 +895,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
             </div>
           )}
 
-          {/* Today's Upcoming Online Bookings (Waiting for POS Receipt Print to Start Timer!) */}
+          {/* Today's Upcoming Online Bookings */}
           {upcomingBookings.length > 0 && (
             <div className="bg-gray-50 p-4 sm:p-5 rounded-2xl border border-gray-200 space-y-3">
               <div className="flex items-center justify-between">
@@ -866,7 +928,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                           <span className="font-bold text-xs sm:text-sm text-gray-800">{ub.service}</span>
                         </div>
                         <div className="text-[11px] text-gray-500 mt-1">
-                          Customer: <strong className="text-gray-700">{ub.name}</strong> • သတ်မှတ်ချိန်: <strong>{dur.totalMins} Mins</strong>
+                          Customer: <strong className="text-gray-700">{ub.name}</strong> • သတ်မှတ်ချိန်: <strong>{formatMinsToHrMinBurmese(dur.totalMins)}</strong>
                         </div>
                       </div>
                       <StatusBadge status={ub.status} />
@@ -883,7 +945,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
 }
 
 // ============================================================================
-// 🌟 ACTIVE SESSION DISPLAY (Distinguishes Admin Auto-Out vs POS/Online Manual Complete) 🌟
+// 🌟 ACTIVE SESSION DISPLAY (AM/PM, Hours & Mins Support, Centered Button Icon) 🌟
 // ============================================================================
 function ActiveSessionDisplay({
   session,
@@ -911,13 +973,11 @@ function ActiveSessionDisplay({
 
   const [nowMillis, setNowMillis] = useState<number>(Date.now());
 
-  // Live 1-second ticker + Auto Clock-Out trigger if strictly Admin Clock-In
   useEffect(() => {
     const intervalId = setInterval(() => {
       const currentNow = Date.now();
       setNowMillis(currentNow);
 
-      // Admin Clock-In ဖြစ်ပြီး အချိန်ပြည့်သွားပါက အလိုအလျောက် Auto Clock-Out လုပ်မည်
       if (isAdminAutoSession && currentNow >= accurateExpectedEndMillis && session.id) {
         updateDoc(doc(db, 'bookings', session.id), {
           status: 'completed',
@@ -937,8 +997,21 @@ function ActiveSessionDisplay({
 
   const progressPercent = Math.min(100, Math.max(0, Math.round((elapsedSeconds / (totalServiceSeconds || 1)) * 100)));
 
-  const startTimeFormatted = new Date(accurateStartMillis).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const expectedEndFormatted = new Date(accurateExpectedEndMillis).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // 🌟 ပုံ (၁) - စတင်ချိန်နှင့် ပြီးဆုံးရမည့်ချိန်ကို AM / PM ဖြင့် ပြသခြင်း 🌟
+  const startTimeFormatted = formatTimeAMPM(accurateStartMillis);
+  const expectedEndFormatted = formatTimeAMPM(accurateExpectedEndMillis);
+
+  // 🌟 ပုံ (၁) နှင့် ပုံ (၃) - ကျန်ရှိချိန်နှင့် အချိန်ပိုအတွက် နာရီ၊ မိနစ် Format 🌟
+  const remainingDisplay = formatTimerDisplay(remainingSeconds);
+  const overtimeDisplay = formatTimerDisplay(overtimeSeconds);
+
+  // ကြာမြင့်ချိန် (Elapsed) အား ၁ နာရီကျော်ပါက နာရီ၊ မိနစ် ဖြင့်ပြသခြင်း
+  const elapsedDisplayStr =
+    elapsedSeconds >= 3600
+      ? `${Math.floor(elapsedSeconds / 3600)} နာရီ ${Math.floor((elapsedSeconds % 3600) / 60)} မိနစ်`
+      : `${formatSecondsMMSS(elapsedSeconds)} မိနစ်`;
+
+  const totalDurationLabel = formatMinsToHrMinBurmese(durationInfo.totalMins);
 
   const cleanServiceTitle = (session.service || 'Spa Service').replace(/\(\d+\s*Mins\)/gi, '').trim();
 
@@ -967,9 +1040,13 @@ function ActiveSessionDisplay({
 
         <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-1.5 bg-[#D4AF37] text-[#123524] px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider shadow-sm">
-              <Timer className="w-3.5 h-3.5" />
-              သတ်မှတ်ချိန်: {durationInfo.totalMins} မိနစ် ({durationInfo.totalMins >= 60 && durationInfo.totalMins % 60 === 0 ? `${durationInfo.totalMins / 60} နာရီ` : `${durationInfo.totalMins} Mins`})
+            {/* 🌟 ပုံ (၁) - ၁ နာရီကျော်သော ဝန်ဆောင်မှုများအား နာရီ၊ မိနစ် ဖြင့် အတိအကျ ပြသခြင်း 🌟 */}
+            <div className="inline-flex items-center gap-1.5 bg-[#D4AF37] text-[#123524] px-3 py-1 rounded-lg text-xs font-black tracking-wide shadow-sm">
+              <Timer className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>
+                သတ်မှတ်ချိန်: {totalDurationLabel}
+                {durationInfo.totalMins >= 60 ? ` (${durationInfo.totalMins} မိနစ်)` : ''}
+              </span>
             </div>
             <h3 className="text-xl sm:text-2xl font-serif font-black text-white leading-snug pt-1">
               {cleanServiceTitle}
@@ -984,17 +1061,31 @@ function ActiveSessionDisplay({
             </div>
           </div>
 
-          <div className="bg-black/30 backdrop-blur-xs px-5 py-4 rounded-2xl border border-white/15 text-center sm:text-right min-w-[195px]">
+          {/* 🌟 ပုံ (၁) နှင့် ပုံ (၃) - ကျန်ရှိချိန် နှင့် အချိန်ပို (မိနစ် / နာရီ၊ မိနစ် တွဲလျက်) 🌟 */}
+          <div className="bg-black/30 backdrop-blur-xs px-5 py-4 rounded-2xl border border-white/15 text-center sm:text-right min-w-[215px]">
             {remainingSeconds > 0 ? (
               <>
                 <div className="text-[10px] font-extrabold text-[#D4AF37] uppercase tracking-widest mb-1">
                   ကျန်ရှိချိန် (REMAINING TIME)
                 </div>
-                <div className="text-4xl sm:text-5xl font-mono font-black text-white tracking-tight">
-                  {formatSecondsMMSS(remainingSeconds)}
+                <div className="flex items-baseline justify-center sm:justify-end gap-1.5">
+                  <span
+                    className={`${
+                      remainingSeconds >= 3600 ? 'text-2xl sm:text-3xl font-sans' : 'text-4xl sm:text-5xl font-mono'
+                    } font-black text-white tracking-tight`}
+                  >
+                    {remainingDisplay.mainText}
+                  </span>
+                  {remainingDisplay.unitText && (
+                    <span className="text-sm sm:text-base font-black text-[#D4AF37]">
+                      {remainingDisplay.unitText}
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10px] font-bold text-gray-300 mt-1">
-                  မိနစ် : စက္ကန့် ({Math.ceil(remainingSeconds / 60)} မိနစ် ကျန်)
+                  {remainingSeconds >= 3600
+                    ? `${remainingDisplay.subText} ကျန်ရှိပါသည်`
+                    : `မိနစ် : စက္ကန့် (${remainingDisplay.subText} ကျန်)`}
                 </div>
               </>
             ) : (
@@ -1002,23 +1093,47 @@ function ActiveSessionDisplay({
                 <div className="text-[10px] font-extrabold text-red-400 uppercase tracking-widest mb-1 flex items-center justify-center sm:justify-end gap-1">
                   <AlertTriangle className="w-3.5 h-3.5" /> အချိန်ပို (OVERTIME)
                 </div>
-                <div className="text-4xl sm:text-5xl font-mono font-black text-red-400 tracking-tight">
-                  +{formatSecondsMMSS(overtimeSeconds)}
+                <div className="flex items-baseline justify-center sm:justify-end gap-1.5">
+                  <span
+                    className={`${
+                      overtimeSeconds >= 3600 ? 'text-2xl sm:text-3xl font-sans' : 'text-4xl sm:text-5xl font-mono'
+                    } font-black text-red-400 tracking-tight`}
+                  >
+                    +{overtimeDisplay.mainText}
+                  </span>
+                  {overtimeDisplay.unitText && (
+                    <span className="text-sm sm:text-base font-black text-red-400">
+                      {overtimeDisplay.unitText}
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10px] font-bold text-red-300 mt-1">
-                  သတ်မှတ်ချိန်ထက် ကျော်လွန်နေပါသည်
+                  သတ်မှတ်ချိန်ထက် {formatSecondsToBurmeseWords(overtimeSeconds)} ကျော်လွန်နေပါသည်
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        <div className="mt-6 space-y-1.5">
-          <div className="flex justify-between text-[11px] font-bold text-gray-300">
-            <span>စတင်ချိန်: <strong className="text-white">{startTimeFormatted}</strong></span>
-            <span>ကြာမြင့်ချိန်: <strong className="text-[#D4AF37]">{formatSecondsMMSS(elapsedSeconds)} / {durationInfo.totalMins}:00</strong></span>
-            <span>ပြီးဆုံးရမည့်ချိန်: <strong className="text-white">{expectedEndFormatted}</strong></span>
+        {/* 🌟 ပုံ (၁) - စတင်ချိန် (AM/PM)၊ ကြာမြင့်ချိန် (နာရီ/မိနစ်) နှင့် ပြီးဆုံးရမည့်ချိန် (AM/PM) 🌟 */}
+        <div className="mt-6 space-y-2">
+          <div className="grid grid-cols-3 gap-2 text-[11px] font-bold text-gray-300 items-end">
+            <div className="text-left">
+              <span className="block text-[10px] text-gray-400">စတင်ချိန်:</span>
+              <strong className="text-white text-xs sm:text-sm font-mono">{startTimeFormatted}</strong>
+            </div>
+            <div className="text-center">
+              <span className="block text-[10px] text-gray-400">ကြာမြင့်ချိန်:</span>
+              <strong className="text-[#D4AF37] text-[11px] sm:text-xs">
+                {elapsedDisplayStr} / {totalDurationLabel}
+              </strong>
+            </div>
+            <div className="text-right">
+              <span className="block text-[10px] text-gray-400">ပြီးဆုံးရမည့်ချိန်:</span>
+              <strong className="text-white text-xs sm:text-sm font-mono">{expectedEndFormatted}</strong>
+            </div>
           </div>
+
           <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden p-0.5 border border-white/10">
             <div
               className={`h-full rounded-full transition-all duration-700 ${
@@ -1041,14 +1156,29 @@ function ActiveSessionDisplay({
         </div>
       </div>
 
+      {/* 🌟 ပုံ (၂) - အတည်ပြုရန်ခလုတ်တွင် Icon နှင့် စာသား တစ်သားတည်း ကပ်လျက် လှပစွာ ပေါ်စေရန် ပြင်ဆင်ချက် 🌟 */}
       <button
         type="button"
         disabled={stopping}
         onClick={onStop}
-        className="w-full py-4 sm:py-5 bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-2xl font-black shadow-xl flex items-center justify-center mx-auto transition active:scale-[0.99] text-sm sm:text-base tracking-wide border-2 border-emerald-400/30 disabled:opacity-50"
+        className="w-full py-3.5 sm:py-4 px-5 bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-2xl font-black shadow-xl flex flex-col items-center justify-center mx-auto transition active:scale-[0.99] border-2 border-emerald-400/30 disabled:opacity-50"
       >
-        <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 mr-2.5 text-yellow-300" />
-        {stopping ? 'သိမ်းဆည်းနေပါသည်...' : 'ဝန်ဆောင်မှု ပြီးဆုံးကြောင်း အတည်ပြုမည် (Complete Service)'}
+        {stopping ? (
+          <div className="flex items-center justify-center gap-2 text-sm sm:text-base">
+            <CheckCircle2 className="w-5 h-5 text-yellow-300 animate-spin flex-shrink-0" />
+            <span>သိမ်းဆည်းနေပါသည်...</span>
+          </div>
+        ) : (
+          <>
+            <div className="inline-flex items-center justify-center gap-2 text-sm sm:text-base leading-snug">
+              <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-300 flex-shrink-0" />
+              <span>ဝန်ဆောင်မှု ပြီးဆုံးကြောင်း အတည်ပြုမည်</span>
+            </div>
+            <span className="text-xs sm:text-sm font-extrabold text-emerald-100 mt-0.5 tracking-wide">
+              (Complete Service)
+            </span>
+          </>
+        )}
       </button>
     </div>
   );
@@ -1105,13 +1235,16 @@ function StaffDailyHistoryTab({ loggedInStaff, appData }: { loggedInStaff: Thera
         <div className="space-y-3">
           {history.map((b) => {
             const dur = extractAccurateServiceDurationMins(b, appData);
+            const startDisplay = b.startTimeMillis ? formatTimeAMPM(b.startTimeMillis) : b.time;
+            const endDisplay = b.actualEndTimeMillis ? formatTimeAMPM(b.actualEndTimeMillis) : '-';
+
             return (
               <div key={b.id} className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <span className="font-bold text-sm text-[#123524] block">{b.service}</span>
                     <span className="text-[10px] font-black text-amber-800 bg-amber-100 px-2 py-0.5 rounded mt-1 inline-block">
-                      သတ်မှတ်ချိန်: {dur.totalMins} Mins
+                      သတ်မှတ်ချိန်: {formatMinsToHrMinBurmese(dur.totalMins)}
                     </span>
                   </div>
                   <span
@@ -1122,14 +1255,14 @@ function StaffDailyHistoryTab({ loggedInStaff, appData }: { loggedInStaff: Thera
                     {b.status}
                   </span>
                 </div>
-                <div className="flex justify-between items-center text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200/70">
+                <div className="flex flex-wrap justify-between items-center gap-2 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200/70">
                   <span>Customer: <strong>{b.name}</strong></span>
-                  <span>စတင်ချိန်: <strong>{b.time}</strong></span>
+                  <span>အချိန်: <strong className="font-mono text-gray-700">{startDisplay} - {endDisplay}</strong></span>
                   <span className="font-black text-[#123524]">{formatPrice(b.totalPrice)}</span>
                 </div>
                 {b.status === 'completed' && b.overtimeSeconds !== undefined && b.overtimeSeconds > 60 && (
                   <div className="mt-2 text-[10px] text-red-600 font-bold bg-red-50 p-1.5 rounded text-right">
-                    အချိန်ပို (Overtime): +{Math.floor(b.overtimeSeconds / 60)} မိနစ် {b.overtimeSeconds % 60} စက္ကန့်
+                    အချိန်ပို (Overtime): +{formatSecondsToBurmeseWords(b.overtimeSeconds)}
                   </div>
                 )}
               </div>
@@ -1330,11 +1463,12 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData; loggedI
               .map((p) => (
                 <div key={p.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex justify-between items-center text-xs">
                   <span className="text-gray-600 font-mono font-semibold">
-                    {new Date(p.outTimeMillis).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -{' '}
-                    {p.inTimeMillis ? new Date(p.inTimeMillis).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    {formatTimeAMPM(p.outTimeMillis)} - {p.inTimeMillis ? formatTimeAMPM(p.inTimeMillis) : ''}
                   </span>
                   {p.overtimeSeconds && p.overtimeSeconds > 0 ? (
-                    <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded">Late +{Math.floor(p.overtimeSeconds / 60)} mins</span>
+                    <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded">
+                      Late +{formatSecondsToBurmeseWords(p.overtimeSeconds)}
+                    </span>
                   ) : (
                     <span className="text-green-600 font-bold bg-green-50 px-2 py-1 rounded">On Time</span>
                   )}
@@ -1367,6 +1501,9 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
     return () => clearInterval(intervalId);
   }, [pass.expectedInTimeMillis]);
 
+  const remDisplay = formatTimerDisplay(remainingTime || 0);
+  const overDisplay = formatTimerDisplay(overtimeSecs);
+
   return (
     <div className="bg-white py-8 rounded-2xl text-center animate-fade-in mt-4 border border-gray-100 shadow-sm px-4">
       <div className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-700 text-[10px] font-bold uppercase tracking-wider rounded-full mb-6 border border-purple-200 animate-pulse">
@@ -1374,14 +1511,26 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
       </div>
 
       {remainingTime !== null && remainingTime > 0 ? (
-        <div className="mb-8">
-          <div className="text-xs font-bold text-gray-400 uppercase mb-2">REMAINING TIME</div>
-          <div className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{formatSecondsMMSS(remainingTime)}</div>
+        <div className="mb-6">
+          <div className="text-xs font-bold text-gray-400 uppercase mb-2">ကျန်ရှိချိန် (REMAINING TIME)</div>
+          <div className="flex items-baseline justify-center gap-1.5">
+            <span className="text-5xl font-mono font-bold text-gray-800 tracking-tighter">{remDisplay.mainText}</span>
+            {remDisplay.unitText && <span className="text-base font-black text-purple-600">{remDisplay.unitText}</span>}
+          </div>
+          <div className="text-xs font-bold text-gray-500 mt-2">
+            ထွက်ချိန်: {formatTimeAMPM(pass.outTimeMillis)} • ပြန်ဝင်ရမည့်ချိန်: {formatTimeAMPM(pass.expectedInTimeMillis)}
+          </div>
         </div>
       ) : (
-        <div className="mb-8">
-          <div className="text-xs font-bold text-red-500 uppercase mb-2 animate-bounce">LATE (OVERTIME)</div>
-          <div className="text-5xl font-mono font-bold text-red-600 tracking-tighter">+{formatSecondsMMSS(overtimeSecs)}</div>
+        <div className="mb-6">
+          <div className="text-xs font-bold text-red-500 uppercase mb-2 animate-bounce">အချိန်ပို (LATE / OVERTIME)</div>
+          <div className="flex items-baseline justify-center gap-1.5">
+            <span className="text-4xl sm:text-5xl font-mono font-bold text-red-600 tracking-tighter">+{overDisplay.mainText}</span>
+            {overDisplay.unitText && <span className="text-base font-black text-red-600">{overDisplay.unitText}</span>}
+          </div>
+          <div className="text-xs font-bold text-red-500 mt-2">
+            သတ်မှတ်ချိန်ထက် {formatSecondsToBurmeseWords(overtimeSecs)} ကျော်လွန်နေပါသည်
+          </div>
         </div>
       )}
 
@@ -1392,7 +1541,7 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
         onClick={onReturn}
         className="w-full sm:w-auto sm:px-16 py-4 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-[#1a4a32] transition border border-[#1a4a32] mx-auto text-sm disabled:opacity-50"
       >
-        <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 mr-2" /> {locating ? 'Checking Location...' : 'Clock In (Return)'}
+        <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0" /> {locating ? 'Checking Location...' : 'Clock In (Return)'}
       </button>
     </div>
   );
@@ -1403,7 +1552,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState<'leaderboard' | 'my_stats'>('leaderboard');
   const todayStr = getLocalTodayStr();
-  const currentYearMonth = todayStr.substring(0, 7); // e.g. "2026-10"
+  const currentYearMonth = todayStr.substring(0, 7);
 
   useEffect(() => {
     const q = query(collection(db, 'bookings'));
@@ -1467,8 +1616,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     bookings.forEach((b: any) => {
       if (!b || b.status === 'cancelled') return;
       const rawTx = parseSafeStr(b.txId).trim().toUpperCase();
-      const rawPay = String(b.paymentMethod || '').trim().toLowerCase();
-      const rawDisc = parseSafeStr(b.discountLabel).trim().toLowerCase();
       const rawService = String(b.service || '').trim();
       const totalAmt = parseSafeNum(b.totalPrice);
 
@@ -1707,7 +1854,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
           <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-5 sm:p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
             
-            {/* 🌟 FIX: Long Therapist Name Wrapping Properly 🌟 */}
             <h3 className="text-[#D4AF37] font-bold text-[10px] sm:text-xs tracking-wider uppercase mb-5 flex items-center text-center px-1 leading-relaxed">
               <Target className="w-4 h-4 mr-1.5 flex-shrink-0" /> 
               <span>MONTHLY TARGET ({loggedInStaff.name.toUpperCase()})</span>
@@ -1738,7 +1884,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
               </svg>
             </div>
 
-            {/* 🌟 FIX: Compact Grid Boxes with responsive text sizing 🌟 */}
             <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full mt-7">
               <div className="bg-white/10 p-2 sm:p-3 rounded-xl border border-white/10 text-center min-w-0">
                 <div className="text-[8px] sm:text-[9px] text-gray-300 font-bold uppercase tracking-wider mb-0.5">Target</div>
