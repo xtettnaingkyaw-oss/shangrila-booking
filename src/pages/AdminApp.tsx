@@ -2261,7 +2261,7 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   );
 }
 
-function function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }: { bookings: Booking[], allBookings?: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
+function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }: { bookings: Booking[], allBookings?: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
   const [view, setView] = useState<'dashboard' | 'service' | 'outpass' | 'performance'>('dashboard');
   const [outpasses, setOutpasses] = useState<OutPass[]>([]);
   const [serviceDateFilter, setServiceDateFilter] = useState<'today' | 'all'>('today');
