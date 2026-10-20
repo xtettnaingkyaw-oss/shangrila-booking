@@ -16,6 +16,7 @@ import { StaffPenaltyView } from './PenaltySystem';
 import { NewEmployeeOnboardingForm, StaffProfileView } from './OnboardingSystem';
 import { StaffEmployeeHandbookReader } from './EmployeeHandbookSystem';
 import { calculateBookingCommissionForStaff, getStaffSeniority } from './StaffPayrollSystem';
+import { calculateBookingCommissionForStaff, getStaffSeniority, StaffPaySlipView } from './StaffPayrollSystem';
 
 const formatPrice = (price: any) => {
   const num = Number(price);
@@ -468,7 +469,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
   const [loading, setLoading] = useState(true);
   const [stoppingSession, setStoppingSession] = useState(false);
 
-  const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials' | 'roster' | 'profile' | 'handbook'>('service');
+  const [staffTab, setStaffTab] = useState<'service' | 'history' | 'outpass' | 'performance' | 'financials' | 'roster' | 'payslip' | 'profile' | 'handbook'>('service');
   const [showMoreTabs, setShowMoreTabs] = useState(false);
 
   const [rosterData, setRosterData] = useState<any>(null);
@@ -675,7 +676,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
           <button
             onClick={() => setShowMoreTabs(!showMoreTabs)}
             className={`relative flex-1 px-3 py-2 text-[10px] sm:text-xs font-bold rounded-lg transition flex items-center justify-center ${
-              ['history', 'financials', 'roster', 'profile', 'handbook'].includes(staffTab) || showMoreTabs
+              ['history', 'financials', 'roster', 'payslip', 'profile', 'handbook'].includes(staffTab) || showMoreTabs
                 ? 'bg-gray-200 text-[#123524] shadow-inner'
                 : 'text-gray-500 hover:bg-gray-100'
             }`}
@@ -740,6 +741,23 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
 
             <button
               onClick={() => {
+                setStaffTab('payslip');
+                setShowMoreTabs(false);
+              }}
+              className={`px-4 py-3 text-xs font-bold text-left rounded-lg transition flex items-center justify-between ${
+                staffTab === 'payslip' ? 'bg-yellow-50 text-[#123524]' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <span className="flex items-center">
+                <Award className="w-4 h-4 mr-2 text-[#D4AF37]" /> Pay Slip
+              </span>
+              <span className="text-[9px] font-black bg-[#123524] text-[#D4AF37] px-1.5 py-0.5 rounded">
+                5th
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
                 setStaffTab('profile');
                 setShowMoreTabs(false);
               }}
@@ -769,6 +787,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
       {staffTab === 'outpass' && <StaffOutPassTab appData={appData} loggedInStaff={liveStaff} />}
       {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={liveStaff} />}
       {staffTab === 'financials' && <StaffPenaltyView therapistName={liveStaff.name} />}
+      {staffTab === 'payslip' && <StaffPaySlipView loggedInStaff={liveStaff} therapists={appData.therapists} />}
       {staffTab === 'profile' && <StaffProfileView staff={liveStaff} />}
       {staffTab === 'handbook' && <StaffEmployeeHandbookReader staffId={liveStaff.id} staffName={liveStaff.name} />}
 
