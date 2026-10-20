@@ -1648,7 +1648,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
   }, [isSameStaffMember, loggedInStaff.name, loggedInStaff.id]);
 
   const BASE_DAILY_TARGET = Number(localStorage.getItem('shangrila_daily_target')) || 150000;
-  const COMMISSION_PCT = Number(localStorage.getItem('shangrila_commission_pct')) || 20;
 
   const [yStr, mStr] = currentYearMonth.split('-');
   const yearNum = parseInt(yStr, 10) || 2026;
@@ -1667,7 +1666,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     return Array.from(new Map(list.filter((t) => t.name && t.name.trim() !== '').map((t) => [t.name.trim(), t])).values());
   }, [globalAppData?.therapists]);
 
-  // 🌟 Transform All Valid Bookings into Staff Sales Entries (For Both Current Month & Last Month Comparison) 🌟
+  // 🌟 Transform All Valid Bookings into Staff Sales Entries (Using Exact Excel Commission Rates!) 🌟
   const allLiveSalesEntries = useMemo(() => {
     const entries: {
       date: string;
@@ -1706,33 +1705,35 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
       if (splitNames.length === 0) return;
 
       const shareAmt = Math.round(totalAmt / splitNames.length);
-      const staffSeniority = getStaffSeniority(canonicalName, uniqueTherapists);
-      const shareComm = calculateBookingCommissionForStaff(b, staffSeniority, splitNames.length).totalCommission;
 
       splitNames.forEach((tNameRaw) => {
         const matchedProfile = uniqueTherapists.find((tp) => isSameStaffMember(tNameRaw, tp.name, tp.id));
-        const canonicalName = matchedProfile ? matchedProfile.name.trim() : tNameRaw.trim();
+        const finalStaffName = matchedProfile ? matchedProfile.name.trim() : tNameRaw.trim();
+
+        // 🌟 Excel ဖိုင်ပါ Senior/Junior နှင့် ဝန်ဆောင်မှုအလိုက် နှုန်းထားအတိအကျဖြင့် ကော်မရှင်တွက်ချက်ခြင်း 🌟
+        const staffSeniority = getStaffSeniority(finalStaffName, uniqueTherapists);
+        const exactCommResult = calculateBookingCommissionForStaff(b, staffSeniority, splitNames.length);
 
         entries.push({
           date: bDate,
           yearMonth: bDate.substring(0, 7),
-          staffName: canonicalName,
-          shortLabel: getShortStaffLabel(canonicalName),
+          staffName: finalStaffName,
+          shortLabel: getShortStaffLabel(finalStaffName),
           salesAmount: shareAmt,
-          commissionAmount: shareComm,
+          commissionAmount: exactCommResult.totalCommission,
           serviceName: rawService
         });
       });
     });
     return entries;
-  }, [bookings, COMMISSION_PCT, uniqueTherapists, isSameStaffMember, getShortStaffLabel]);
+  }, [bookings, uniqueTherapists, isSameStaffMember, getShortStaffLabel]);
 
   // Current Month Entries Only
   const currentMonthEntries = useMemo(() => {
     return allLiveSalesEntries.filter((e) => e.yearMonth === currentYearMonth);
   }, [allLiveSalesEntries, currentYearMonth]);
 
-  // 🌟 Live Comparison Calculations (Last Month vs This Month — Same as Admin Screenshot 1) 🌟
+  // Live Comparison Calculations (Last Month vs This Month)
   const comparisonStats = useMemo(() => {
     const sumEntries = (predicate: (e: typeof allLiveSalesEntries[0]) => boolean) => {
       let total = 0;
@@ -1833,6 +1834,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
   const myTotalSales = myEntries.reduce((s, e) => s + e.salesAmount, 0);
   const myTotalComm = myEntries.reduce((s, e) => s + e.commissionAmount, 0);
   const myTotalSections = myEntries.length;
+  const mySeniority = getStaffSeniority(loggedInStaff.name, uniqueTherapists);
 
   const pastDays = allMonthDates.filter((d) => d <= todayStr);
   const workedDaysSet = new Set(myEntries.map((e) => e.date));
@@ -1939,11 +1941,8 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
             </div>
           </div>
 
-          {/* =========================================================================
-              🌟 2. LAST MONTH VS THIS MONTH COMPARISON CARDS (AUTO LIVE — NO DATE FILTER) 🌟
-             ========================================================================= */}
+          {/* 2. LAST MONTH VS THIS MONTH COMPARISON CARDS */}
           <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-            {/* (A) Up to Today Comparison */}
             <div className="bg-blue-50/50 p-3.5 sm:p-4 rounded-xl border border-blue-100">
               <div className="text-xs font-bold text-blue-900 mb-2.5 flex items-center justify-between gap-2 flex-wrap">
                 <span className="flex items-center">
@@ -1980,7 +1979,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
               </div>
             </div>
 
-            {/* (B) Same Day / Yesterday Comparison */}
             <div className="bg-purple-50/50 p-3.5 sm:p-4 rounded-xl border border-purple-100">
               <div className="text-xs font-bold text-purple-900 mb-2.5 flex items-center">
                 <Clock className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
@@ -2011,7 +2009,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
               </div>
             </div>
 
-            {/* (C) Today's Live Shop Target */}
             <div className="bg-yellow-50/60 p-3.5 sm:p-4 rounded-xl border border-yellow-200">
               <div className="text-xs font-bold text-yellow-900 mb-2.5 flex items-center">
                 <Target className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
@@ -2039,7 +2036,6 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
               </div>
             </div>
 
-            {/* (D) Full Month Total Summary Row */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
               <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 text-center">
                 <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">
@@ -2172,16 +2168,21 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
           </div>
 
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center">
-              <Award className="w-4 h-4 mr-2 text-yellow-600" /> Financial Summary ({loggedInStaff.name})
+            <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center justify-between">
+              <span className="flex items-center">
+                <Award className="w-4 h-4 mr-2 text-yellow-600" /> Financial Summary ({loggedInStaff.name})
+              </span>
+              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                {mySeniority} Rate
+              </span>
             </h3>
             <div className="space-y-3">
               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-xs font-semibold text-gray-600">Total Commissions ({COMMISSION_PCT}%)</span>
+                <span className="text-xs font-semibold text-gray-600">Total Service Commissions ({myTotalSections} Sec)</span>
                 <span className="font-bold text-[#123524]">{formatPrice(myTotalComm)}</span>
               </div>
               <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                <span className="text-xs font-bold text-yellow-800">Final Expected Pay</span>
+                <span className="text-xs font-bold text-yellow-800">Final Expected Commission Pay</span>
                 <span className="font-black text-yellow-700 text-lg">{formatPrice(myTotalComm)}</span>
               </div>
             </div>
@@ -2265,7 +2266,12 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                       {item.services.map((s: any, sIdx: number) => (
                         <div key={sIdx} className="flex justify-between items-center text-xs font-semibold text-gray-800 gap-2">
                           <span className="leading-snug flex-1">• {s.serviceName}</span>
-                          <span className="font-bold text-[#123524] whitespace-nowrap flex-shrink-0">{formatPrice(s.salesAmount)}</span>
+                          <span className="font-bold text-[#123524] whitespace-nowrap flex-shrink-0">
+                            {formatPrice(s.salesAmount)}{' '}
+                            <span className="text-[10px] text-emerald-700 font-black">
+                              (+{formatPrice(s.commissionAmount)})
+                            </span>
+                          </span>
                         </div>
                       ))}
                     </div>
