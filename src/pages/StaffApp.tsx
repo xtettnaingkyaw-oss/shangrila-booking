@@ -1538,6 +1538,7 @@ function OutPassActiveDisplay({ pass, onReturn, locating, locError }: { pass: Ou
 }
 
 function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfile }) {
+  const { appData: globalAppData } = useAppStore();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState<'leaderboard' | 'my_stats'>('leaderboard');
@@ -1580,11 +1581,47 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     return decryptText(v) || v;
   };
 
-  const getShortStaffLabel = useCallback((name: string) => {
-    const numMatch = String(name || '').match(/no[-\s]*(\d+)/i) || String(name || '').match(/(\d+)/);
-    if (numMatch) return `No-${numMatch[1]}`;
-    return String(name || '').trim();
+  // 🌟 Helper: ဝန်ထမ်းနံပါတ် အတိအကျ ဆွဲထုတ်ခြင်း (No-1 !== No-10) 🌟
+  const extractExactStaffNumber = useCallback((str: string): number | null => {
+    const clean = String(str || '').trim().toLowerCase();
+    if (!clean || clean.startsWith('therapist_')) return null;
+    const noMatch = clean.match(/no[-\s]*0*(\d+)\b/i);
+    if (noMatch) return parseInt(noMatch[1], 10);
+    const sglMatch = clean.match(/sgl[-\s]*0*(\d+)\b/i);
+    if (sglMatch) return parseInt(sglMatch[1], 10);
+    const numMatch = clean.match(/\b0*(\d+)\b/);
+    if (numMatch) return parseInt(numMatch[1], 10);
+    return null;
   }, []);
+
+  const getShortStaffLabel = useCallback((name: string) => {
+    const exactNum = extractExactStaffNumber(name);
+    if (exactNum !== null) return `No-${exactNum}`;
+    return String(name || '').trim();
+  }, [extractExactStaffNumber]);
+
+  // 🌟 STRICT EXACT MATCH: No-1 သည် No-1 သီးသန့်သာ ဖြစ်ရမည် (No-10, No-12, No-13 လုံးဝ မပါဝင်စေရ) 🌟
+  const isSameStaffMember = useCallback((nameA: string, nameB: string, idB?: string): boolean => {
+    const cleanA = String(nameA || '').trim().toLowerCase();
+    const cleanB = String(nameB || '').trim().toLowerCase();
+    const cleanIdB = String(idB || '').trim().toLowerCase();
+
+    if (!cleanA || !cleanB) return false;
+    if (cleanA === cleanB || (cleanIdB && cleanA === cleanIdB)) return true;
+
+    const numA = extractExactStaffNumber(cleanA);
+    const numB = extractExactStaffNumber(cleanB);
+
+    if (numA !== null && numB !== null) {
+      return numA === numB;
+    }
+
+    return false;
+  }, [extractExactStaffNumber]);
+
+  const checkIsMe = useCallback((staffName: string) => {
+    return isSameStaffMember(staffName, loggedInStaff.name, loggedInStaff.id);
+  }, [isSameStaffMember, loggedInStaff.name, loggedInStaff.id]);
 
   const BASE_DAILY_TARGET = Number(localStorage.getItem('shangrila_daily_target')) || 150000;
   const COMMISSION_PCT = Number(localStorage.getItem('shangrila_commission_pct')) || 20;
@@ -1600,6 +1637,11 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
   }
 
   const monthlyTotalTarget = daysInMonth * BASE_DAILY_TARGET;
+
+  const uniqueTherapists = useMemo(() => {
+    const list = globalAppData?.therapists || [];
+    return Array.from(new Map(list.filter((t) => t.name && t.name.trim() !== '').map((t) => [t.name.trim(), t])).values());
+  }, [globalAppData?.therapists]);
 
   const liveSalesEntries = useMemo(() => {
     const entries: any[] = [];
@@ -1633,10 +1675,14 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
       const shareComm = Math.round((shareAmt * COMMISSION_PCT) / 100);
 
       splitNames.forEach((tNameRaw) => {
+        // Registered therapist နှင့် တိကျစွာ တိုက်စစ်မည်
+        const matchedProfile = uniqueTherapists.find((tp) => isSameStaffMember(tNameRaw, tp.name, tp.id));
+        const canonicalName = matchedProfile ? matchedProfile.name.trim() : tNameRaw.trim();
+
         entries.push({
           date: bDate,
-          staffName: tNameRaw,
-          shortLabel: getShortStaffLabel(tNameRaw),
+          staffName: canonicalName,
+          shortLabel: getShortStaffLabel(canonicalName),
           salesAmount: shareAmt,
           commissionAmount: shareComm,
           serviceName: rawService
@@ -1644,7 +1690,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
       });
     });
     return entries;
-  }, [bookings, currentYearMonth, COMMISSION_PCT, getShortStaffLabel]);
+  }, [bookings, currentYearMonth, COMMISSION_PCT, uniqueTherapists, isSameStaffMember, getShortStaffLabel]);
 
   const sortedPerformers = useMemo(() => {
     const map = new Map<string, { staffName: string; shortLabel: string; actualSales: number; sectionsCount: number; commission: number }>();
@@ -1673,13 +1719,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     return sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map((p) => p.actualSales), 1) : 1;
   }, [sortedPerformers]);
 
-  const checkIsMe = useCallback((staffName: string) => {
-    const cleanStaff = staffName.trim().toLowerCase();
-    const myName = loggedInStaff.name.trim().toLowerCase();
-    const myId = String(loggedInStaff.id || '').trim().toLowerCase();
-    return cleanStaff === myName || cleanStaff === myId || cleanStaff.includes(myName) || myName.includes(cleanStaff);
-  }, [loggedInStaff]);
-
+  // 🌟 ဝင်ရောက်ထားသော ဝန်ထမ်း၏ ကိုယ်ပိုင်စာရင်း သီးသန့်ကိုသာ ဆွဲထုတ်ခြင်း 🌟
   const myEntries = useMemo(() => {
     return liveSalesEntries.filter((e) => checkIsMe(e.staffName));
   }, [liveSalesEntries, checkIsMe]);
@@ -1740,7 +1780,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
           onClick={() => setSubTab('my_stats')}
           className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${subTab === 'my_stats' ? 'bg-white shadow text-[#123524]' : 'text-gray-500'}`}
         >
-          <TrendingUp className="w-3.5 h-3.5 inline mr-1.5" /> My Stats
+          <TrendingUp className="w-3.5 h-3.5 inline mr-1.5" /> My Stats ({myTotalSections} Sec)
         </button>
       </div>
 
@@ -1752,10 +1792,10 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
           </div>
 
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
-            <div className="flex items-end space-x-3 h-52 pb-2 pt-14 min-w-max border-b border-gray-100">
+            <div className="flex items-end space-x-3.5 h-56 pb-2 pt-16 min-w-max border-b border-gray-100 px-2">
               {sortedPerformers.map((p, idx) => {
                 const actualSales = p.actualSales;
-                const heightPercent = Math.max(5, (actualSales / maxActual) * 100);
+                const heightPercent = Math.max(6, (actualSales / maxActual) * 100);
                 const isMe = checkIsMe(p.staffName);
                 const metPercent = monthlyTotalTarget > 0 ? (actualSales / monthlyTotalTarget) * 100 : 0;
 
@@ -1766,27 +1806,26 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                 else if (idx === 3 && actualSales > 0) barColor = 'bg-gradient-to-t from-orange-400 to-orange-300 shadow-sm';
                 else if (idx === 4 && actualSales > 0) barColor = 'bg-gradient-to-t from-blue-400 to-blue-300 shadow-sm';
 
-                if (isMe && idx > 4 && actualSales > 0) barColor = 'bg-gradient-to-t from-green-400 to-green-500 shadow-sm';
+                if (isMe && idx > 4 && actualSales > 0) barColor = 'bg-gradient-to-t from-green-500 to-emerald-400 shadow-sm';
 
                 return (
-                  <div key={idx} className="flex flex-col justify-end items-center group w-12 h-full">
-                    <div className="text-[9px] font-bold text-gray-500 mb-2 opacity-0 group-hover:opacity-100 transition-opacity -rotate-45 whitespace-nowrap z-10">
-                      {formatPrice(actualSales)}
-                    </div>
-
+                  <div key={idx} className="flex flex-col justify-end items-center group w-12 h-full relative">
                     <div
-                      className={`w-8 rounded-t-md relative transition-all duration-1000 ease-out flex justify-center ${barColor} ${
-                        isMe ? 'ring-2 ring-offset-1 ring-[#D4AF37]' : ''
+                      className={`w-8 rounded-t-md relative transition-all duration-700 ease-out flex justify-center ${barColor} ${
+                        isMe ? 'ring-2 ring-offset-2 ring-[#D4AF37]' : ''
                       }`}
                       style={{ height: `${heightPercent}%` }}
                     >
-                      {idx === 0 && actualSales > 0 && <Crown className="w-6 h-6 text-[#D4AF37] absolute -top-12 animate-bounce" />}
-                      <span className={`absolute -top-5 text-[9px] font-bold ${idx === 0 ? 'text-[#123524]' : idx === 1 ? 'text-yellow-600' : 'text-gray-600'}`}>
+                      {idx === 0 && actualSales > 0 && <Crown className="w-6 h-6 text-[#D4AF37] absolute -top-11 animate-bounce" />}
+                      <span className={`absolute -top-5 text-[9px] font-black ${idx === 0 ? 'text-[#123524]' : idx === 1 ? 'text-yellow-600' : 'text-gray-600'}`}>
                         {metPercent.toFixed(0)}%
                       </span>
                     </div>
 
-                    <span className={`text-[10px] font-bold mt-2 ${isMe ? 'text-[#D4AF37]' : 'text-gray-600'}`}>{p.shortLabel}</span>
+                    <span className={`text-[10px] font-black mt-2 ${isMe ? 'text-[#123524] underline decoration-[#D4AF37] decoration-2' : 'text-gray-600'}`}>
+                      {p.shortLabel}
+                    </span>
+                    <span className="text-[8px] font-bold text-gray-400">{p.sectionsCount} Sec</span>
                   </div>
                 );
               })}
@@ -1808,7 +1847,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                 <div
                   key={idx}
                   className={`flex items-center p-3 sm:p-4 rounded-xl border transition-all ${
-                    isMe ? 'bg-yellow-50/50 border-[#D4AF37] shadow-md scale-[1.02]' : 'bg-white border-gray-100 shadow-sm'
+                    isMe ? 'bg-yellow-50/70 border-2 border-[#D4AF37] shadow-md' : 'bg-white border-gray-100 shadow-sm'
                   }`}
                 >
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mr-3 flex-shrink-0 ${badgeClass}`}>
@@ -1820,7 +1859,11 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
                       <span className="text-[9px] font-black bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded whitespace-nowrap">
                         {p.sectionsCount} Sec
                       </span>
-                      {isMe && <span className="text-[8px] bg-[#123524] text-[#D4AF37] px-1.5 py-0.5 rounded uppercase tracking-wider font-black">YOU</span>}
+                      {isMe && (
+                        <span className="text-[8px] bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded uppercase tracking-wider font-black shadow-2xs">
+                          YOU
+                        </span>
+                      )}
                     </div>
                     <div className="text-[10px] text-gray-500 font-semibold mt-0.5 truncate">
                       Target: {formatPrice(monthlyTotalTarget)}
@@ -1843,9 +1886,9 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
         <div className="space-y-6">
           <div className="bg-gradient-to-br from-[#123524] to-[#1a4a32] p-5 sm:p-6 rounded-2xl shadow-lg relative overflow-hidden flex flex-col items-center">
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#D4AF37] opacity-10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-            
+
             <h3 className="text-[#D4AF37] font-bold text-[10px] sm:text-xs tracking-wider uppercase mb-5 flex items-center text-center px-1 leading-relaxed">
-              <Target className="w-4 h-4 mr-1.5 flex-shrink-0" /> 
+              <Target className="w-4 h-4 mr-1.5 flex-shrink-0" />
               <span>MONTHLY TARGET ({loggedInStaff.name.toUpperCase()})</span>
             </h3>
 
@@ -1892,7 +1935,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
             <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center">
-              <Award className="w-4 h-4 mr-2 text-yellow-600" /> Financial Summary
+              <Award className="w-4 h-4 mr-2 text-yellow-600" /> Financial Summary ({loggedInStaff.name})
             </h3>
             <div className="space-y-3">
               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
