@@ -1900,3 +1900,554 @@ export function AdminStaffPayrollManager({
     </div>
   );
 }
+// ============================================================================
+// 🌟 3. STAFF APP PAY SLIP & PAYROLL HISTORY VIEW (RELEASED ON 5TH OF MONTH) 🌟
+// ============================================================================
+
+export function StaffPaySlipView({
+  loggedInStaff,
+  therapists = []
+}: {
+  loggedInStaff: TherapistProfile;
+  therapists?: TherapistProfile[];
+}) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-12
+  const currentDay = now.getDate();
+
+  const formatYM = (y: number, m: number) => {
+    const dt = new Date(y, m - 1, 1);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const formatReadableMonth = (ym: string) => {
+    const [y, m] = ym.split('-').map(Number);
+    if (!y || !m) return ym;
+    return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  const formatShortMonth = (ym: string) => {
+    const [y, m] = ym.split('-').map(Number);
+    if (!y || !m) return ym;
+    return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+  };
+
+  // Previous month (e.g. If today is Oct 2026 -> "2026-09")
+  const prevMonthYM = useMemo(() => formatYM(currentYear, currentMonth - 1), [currentYear, currentMonth]);
+  // Two months ago (e.g. If today is Oct 1-4, 2026 -> "2026-08" is the latest released by date)
+  const twoMonthsAgoYM = useMemo(() => formatYM(currentYear, currentMonth - 2), [currentYear, currentMonth]);
+
+  // Rule: Previous month's salary is settled on the 5th of the current month
+  const isAfterOrOn5th = currentDay >= 5;
+
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [penalties, setPenalties] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [prevMonthAdminDoc, setPrevMonthAdminDoc] = useState<any>(null);
+
+  // Selected Month for viewing Pay Slip
+  const [selectedPayMonth, setSelectedPayMonth] = useState<string>(() =>
+    isAfterOrOn5th ? prevMonthYM : twoMonthsAgoYM
+  );
+
+  const [payrollDocData, setPayrollDocData] = useState<{
+    defaultWifiFee: number;
+    adjustments: Record<string, StaffMonthlyPayrollAdjustment>;
+    seniorityOverrides: Record<string, StaffSeniority>;
+  }>({ defaultWifiFee: 10000, adjustments: {}, seniorityOverrides: {} });
+
+  // Listen to prevMonth's payroll doc so if Admin marks it as "PAID" early (before the 5th), it unlocks immediately
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', `payroll_${prevMonthYM}`), (snap) => {
+      if (snap.exists()) {
+        setPrevMonthAdminDoc(snap.data());
+      } else {
+        setPrevMonthAdminDoc(null);
+      }
+    });
+    return () => unsub();
+  }, [prevMonthYM]);
+
+  // Check if Admin already marked previous month as Paid for this staff
+  const isPrevMonthEarlySettledByAdmin = useMemo(() => {
+    if (!prevMonthAdminDoc?.adjustments) return false;
+    const adjMap = prevMonthAdminDoc.adjustments;
+    for (const key of Object.keys(adjMap)) {
+      if (isSameStaffMember(key, loggedInStaff.name, loggedInStaff.id)) {
+        if (adjMap[key]?.isPaidSettled) return true;
+      }
+    }
+    return false;
+  }, [prevMonthAdminDoc, loggedInStaff.name, loggedInStaff.id]);
+
+  // Effective unlock status for previous month (Unlocked if today >= 5th OR Admin marked as Paid)
+  const isPrevMonthUnlocked = isAfterOrOn5th || isPrevMonthEarlySettledByAdmin;
+
+  // Build list of available historical months (Up to 12 past released months)
+  const availableHistoryMonths = useMemo(() => {
+    const list: string[] = [];
+    const startOffset = isPrevMonthUnlocked ? 1 : 2;
+    for (let i = startOffset; i <= 12; i++) {
+      list.push(formatYM(currentYear, currentMonth - i));
+    }
+    return list;
+  }, [currentYear, currentMonth, isPrevMonthUnlocked]);
+
+  // Keep selectedPayMonth valid when unlock state updates
+  useEffect(() => {
+    if (availableHistoryMonths.length > 0 && !availableHistoryMonths.includes(selectedPayMonth)) {
+      setSelectedPayMonth(availableHistoryMonths[0]);
+    }
+  }, [availableHistoryMonths, selectedPayMonth]);
+
+  // 1. Fetch Bookings & Penalties
+  useEffect(() => {
+    const unsubBookings = onSnapshot(collection(db, 'bookings'), (snap) => {
+      const arr: Booking[] = [];
+      snap.forEach((d) => {
+        const raw = d.data();
+        arr.push({
+          id: d.id,
+          ...raw,
+          name: decryptText(raw.name) || raw.name,
+          phone: decryptText(raw.phone) || raw.phone,
+          txId: decryptText(raw.txId) || raw.txId,
+          specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
+        } as Booking);
+      });
+      setBookings(arr);
+      setLoading(false);
+    });
+
+    const unsubPenalties = onSnapshot(collection(db, 'penalties'), (snap) => {
+      const list: any[] = [];
+      snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+      setPenalties(list);
+    });
+
+    return () => {
+      unsubBookings();
+      unsubPenalties();
+    };
+  }, []);
+
+  // 2. Fetch Payroll Adjustments for Selected Pay Month
+  useEffect(() => {
+    if (!selectedPayMonth) return;
+    const unsub = onSnapshot(doc(db, 'settings', `payroll_${selectedPayMonth}`), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as any;
+        const wifiFee = data.defaultWifiFee !== undefined ? Number(data.defaultWifiFee) : 10000;
+        setPayrollDocData({
+          defaultWifiFee: isNaN(wifiFee) ? 10000 : wifiFee,
+          adjustments: data.adjustments || {},
+          seniorityOverrides: data.seniorityOverrides || {}
+        });
+      } else {
+        setPayrollDocData({ defaultWifiFee: 10000, adjustments: {}, seniorityOverrides: {} });
+      }
+    });
+    return () => unsub();
+  }, [selectedPayMonth]);
+
+  const parseSafeNum = (v: any): number => {
+    if (v === undefined || v === null || v === '') return 0;
+    if (typeof v === 'number') return isNaN(v) ? 0 : v;
+    const s = String(v).trim();
+    const dec = decryptText(s);
+    const n = Number(dec || s);
+    return isNaN(n) ? 0 : n;
+  };
+
+  const parseSafeStr = (v: any): string => {
+    if (!v) return '';
+    if (typeof v !== 'string') return String(v);
+    return decryptText(v) || v;
+  };
+
+  // Compute Pay Slip Details for Logged-in Staff for `selectedPayMonth`
+  const myPaySlipData = useMemo(() => {
+    const staffNum = extractExactStaffNumber(loggedInStaff.name);
+    const shortId = staffNum !== null ? `SGL-${String(staffNum).padStart(3, '0')}` : loggedInStaff.id;
+
+    // Check seniority override
+    let matchedSeniorityOverride: Record<string, StaffSeniority> = { ...payrollDocData.seniorityOverrides };
+    const seniority = getStaffSeniority(loggedInStaff.name, therapists, matchedSeniorityOverride);
+
+    let sectionsCount = 0;
+    let totalSalesAmount = 0;
+    let totalServiceCommission = 0;
+    const serviceSummaryMap = new Map<
+      string,
+      { ruleName: string; category: string; count: number; totalComm: number }
+    >();
+
+    bookings.forEach((b: any) => {
+      if (!b || b.status === 'cancelled') return;
+
+      const rawTx = parseSafeStr(b.txId).trim().toUpperCase();
+      const rawService = String(b.service || '').trim();
+      const totalAmt = parseSafeNum(b.totalPrice);
+
+      if (
+        totalAmt <= 0 ||
+        rawTx === 'ADMIN' ||
+        rawTx === 'CASH' ||
+        Boolean(b.isAdminClockIn) ||
+        Boolean(b.isStaffClockIn) ||
+        rawService.toLowerCase().includes('walk-in reward redemption')
+      ) {
+        return;
+      }
+
+      const bDate = String(b.date || '').trim();
+      if (!bDate.startsWith(selectedPayMonth)) return;
+
+      const rawTherapistStr = String(b.therapist || '').trim();
+      if (!rawTherapistStr || rawTherapistStr === '-' || rawTherapistStr.toLowerCase().includes('any available')) return;
+
+      const splitNames = rawTherapistStr.split(/&|,|\+/).map((s) => s.trim()).filter(Boolean);
+      if (splitNames.length === 0) return;
+
+      const isAssignedToMe = splitNames.some((tNameRaw) =>
+        isSameStaffMember(tNameRaw, loggedInStaff.name, loggedInStaff.id)
+      );
+      if (!isAssignedToMe) return;
+
+      const salesShare = Math.round(totalAmt / splitNames.length);
+      const commResult = calculateBookingCommissionForStaff(b, seniority, splitNames.length);
+
+      sectionsCount += 1;
+      totalSalesAmount += salesShare;
+      totalServiceCommission += commResult.totalCommission;
+
+      commResult.itemsBreakdown.forEach((it) => {
+        const existing = serviceSummaryMap.get(it.matchedRuleName);
+        if (existing) {
+          existing.count += it.qty;
+          existing.totalComm += it.totalCommission;
+        } else {
+          serviceSummaryMap.set(it.matchedRuleName, {
+            ruleName: it.matchedRuleName,
+            category: it.category,
+            count: it.qty,
+            totalComm: it.totalCommission
+          });
+        }
+      });
+    });
+
+    // Find Adjustment entry for this staff
+    let myAdj: StaffMonthlyPayrollAdjustment | undefined = payrollDocData.adjustments[loggedInStaff.name.trim()];
+    if (!myAdj) {
+      const foundKey = Object.keys(payrollDocData.adjustments).find((k) =>
+        isSameStaffMember(k, loggedInStaff.name, loggedInStaff.id)
+      );
+      if (foundKey) myAdj = payrollDocData.adjustments[foundKey];
+    }
+
+    // Extract WiFi fee & custom deductions
+    const rawCustomList = myAdj?.customDeductions || [];
+    const wifiItemInList = rawCustomList.find(
+      (d) => d.reason.toLowerCase().includes('wifi') || d.id === 'default_wifi'
+    );
+    const otherCustomDeductions = rawCustomList.filter(
+      (d) => !d.reason.toLowerCase().includes('wifi') && d.id !== 'default_wifi'
+    );
+
+    let wifiFee = payrollDocData.defaultWifiFee;
+    if (myAdj?.wifiFeeOverride !== undefined && myAdj?.wifiFeeOverride !== null) {
+      wifiFee = Number(myAdj.wifiFeeOverride);
+    } else if (wifiItemInList) {
+      wifiFee = Number(wifiItemInList.amount) || 0;
+    }
+    wifiFee = Math.max(0, wifiFee);
+
+    // System Fines & Loans for this staff in selectedPayMonth
+    const myPenalties = penalties.filter((p) => {
+      if (!isSameStaffMember(p.therapistName || '', loggedInStaff.name, loggedInStaff.id)) return false;
+      const pDate = String(p.date || '');
+      return pDate.startsWith(selectedPayMonth) && !p.isPaid;
+    });
+
+    const systemFinesList = myPenalties.filter((p) => p.type !== 'loan');
+    const systemLoansList = myPenalties.filter((p) => p.type === 'loan');
+
+    const systemFinesTotal = systemFinesList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const systemLoansTotal = systemLoansList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    // Build unified deduction items list for display
+    const allDeductionLines: { id: string; label: string; amount: number }[] = [];
+    if (wifiFee > 0) {
+      allDeductionLines.push({
+        id: 'default_wifi',
+        label: 'ဖြတ်တောက်ငွေ — လစဉ် WIFI ကြေး',
+        amount: wifiFee
+      });
+    }
+    systemFinesList.forEach((f, idx) => {
+      allDeductionLines.push({
+        id: `fine_${f.id || idx}`,
+        label: `ဒဏ်ကြေး — ${f.reason || 'Fine'} (${f.date || ''})`,
+        amount: Number(f.amount) || 0
+      });
+    });
+    systemLoansList.forEach((l, idx) => {
+      allDeductionLines.push({
+        id: `loan_${l.id || idx}`,
+        label: `ကြိုထုတ်ချေးငွေ — ${l.reason || 'Advance Loan'} (${l.date || ''})`,
+        amount: Number(l.amount) || 0
+      });
+    });
+    otherCustomDeductions.forEach((cd) => {
+      allDeductionLines.push({
+        id: cd.id,
+        label: `ဖြတ်တောက်ငွေ — ${cd.reason}`,
+        amount: Number(cd.amount) || 0
+      });
+    });
+
+    const totalDeductions = allDeductionLines.reduce((sum, item) => sum + item.amount, 0);
+    const baseSalary = myAdj?.baseSalary || 0;
+    const bonus = myAdj?.bonus || 0;
+    const grossPay = baseSalary + totalServiceCommission + bonus;
+    const netPayable = grossPay - totalDeductions;
+
+    return {
+      shortId,
+      seniority,
+      sectionsCount,
+      totalSalesAmount,
+      totalServiceCommission,
+      serviceBreakdownList: Array.from(serviceSummaryMap.values()).sort((a, b) => b.totalComm - a.totalComm),
+      baseSalary,
+      bonus,
+      allDeductionLines,
+      totalDeductions,
+      grossPay,
+      netPayable,
+      isPaidSettled: Boolean(myAdj?.isPaidSettled),
+      settledAt: myAdj?.settledAt || null
+    };
+  }, [bookings, penalties, payrollDocData, selectedPayMonth, loggedInStaff, therapists]);
+
+  if (loading) {
+    return (
+      <div className="text-center py-20 text-[#D4AF37] font-bold animate-pulse text-xs uppercase tracking-widest">
+        Loading Official Pay Slip...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5 animate-fade-in mt-4">
+      {/* =========================================================================
+          1. TOP PAYDAY NOTICE & HISTORICAL MONTH SWITCHER
+         ========================================================================= */}
+      <div className="bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] p-5 rounded-2xl text-white shadow-md border border-[#D4AF37]/40 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+          <div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#D4AF37] text-[#0B2419]">
+              Official Monthly Pay Slip
+            </span>
+            <h3 className="text-base sm:text-lg font-serif font-black text-white mt-1.5">
+              လစာ နှင့် ကော်မရှင် စာရင်းချုပ် (Pay Slip)
+            </h3>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] text-gray-300 font-bold block">Payday Policy</span>
+            <span className="text-xs font-black text-[#D4AF37]">လဆန်း (၅) ရက်နေ့တိုင်း</span>
+          </div>
+        </div>
+
+        {/* Notice if today is between 1st and 4th of the month and previous month is not yet unlocked */}
+        {!isPrevMonthUnlocked && (
+          <div className="bg-amber-500/20 border border-amber-400/40 p-3 rounded-xl text-xs text-amber-200 font-bold leading-relaxed">
+            ⏳ <strong>{formatReadableMonth(prevMonthYM)}</strong> အတွက် လစာစာရင်းချုပ် (Pay Slip) ကို လစာထုတ်ရက်ဖြစ်သော{' '}
+            <strong className="text-white underline">ယခုလ (၅) ရက်နေ့</strong> ရောက်ရှိချိန်တွင် စတင်ထုတ်ပြန်ပေးပါမည်။ အောက်တွင် ပြီးခဲ့သောလများ၏ Pay Slip History များကို ကြည့်ရှုနိုင်ပါသည်။
+          </div>
+        )}
+
+        {/* Quick Month History Pills + Dropdown */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-extrabold text-[#D4AF37] uppercase tracking-wider">
+              ကြည့်ရှုလိုသော လစာလ ရွေးချယ်ရန် (Pay Slip History):
+            </label>
+            <select
+              value={selectedPayMonth}
+              onChange={(e) => setSelectedPayMonth(e.target.value)}
+              className="bg-black/30 text-white border border-[#D4AF37]/40 rounded-lg px-2.5 py-1 text-xs font-black outline-none"
+            >
+              {availableHistoryMonths.map((ym) => (
+                <option key={ym} value={ym} className="text-gray-900 font-bold">
+                  {formatReadableMonth(ym)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+            {availableHistoryMonths.slice(0, 6).map((ym) => {
+              const isSelected = selectedPayMonth === ym;
+              return (
+                <button
+                  key={ym}
+                  type="button"
+                  onClick={() => setSelectedPayMonth(ym)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition border ${
+                    isSelected
+                      ? 'bg-[#D4AF37] text-[#0B2419] border-[#D4AF37] shadow-sm'
+                      : 'bg-white/10 text-gray-200 border-white/10 hover:bg-white/20'
+                  }`}
+                >
+                  {formatShortMonth(ym)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          2. STAFF SUMMARY HEADER ROW (MATCHING SCREENSHOT DESIGN)
+         ========================================================================= */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-xs font-black bg-gray-100 text-gray-700 px-2.5 py-1.5 rounded-lg border border-gray-200">
+            {myPaySlipData.shortId}
+          </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-black text-base text-[#123524]">{loggedInStaff.name}</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                  myPaySlipData.seniority === 'Senior'
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-blue-50 text-blue-700 border-blue-200'
+                }`}
+              >
+                {myPaySlipData.seniority === 'Senior' ? '★ SENIOR' : 'JUNIOR'}
+              </span>
+            </div>
+            <div className="text-[11px] text-gray-500 font-semibold mt-0.5">
+              Sales: {formatPrice(myPaySlipData.totalSalesAmount)} • Month: <strong>{selectedPayMonth}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 ml-auto">
+          <div className="text-center bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
+            <div className="text-[9px] font-bold text-emerald-700 uppercase">Sections</div>
+            <div className="text-xs font-black text-[#123524]">{myPaySlipData.sectionsCount} Sec</div>
+          </div>
+
+          <span
+            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase border ${
+              myPaySlipData.isPaidSettled
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                : 'bg-gray-100 text-gray-600 border-gray-300'
+            }`}
+          >
+            {myPaySlipData.isPaidSettled ? '✓ ရှင်းပြီး (PAID)' : 'စာရင်းချုပ်'}
+          </span>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          3. MAIN PAY SLIP CARD (EXACTLY MATCHING SCREENSHOT — WITHOUT UNIT RATE COLUMN!)
+         ========================================================================= */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+        {/* Card Header */}
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3.5 gap-2">
+          <div>
+            <h4 className="font-black text-xs sm:text-sm text-[#123524] leading-snug">
+              ၁။ ဝန်ဆောင်မှုအမျိုးအစားအလိုက် ရရှိသော ကော်မရှင် စာရင်းချုပ်
+            </h4>
+            <p className="text-[11px] text-gray-500 font-semibold mt-0.5">
+              {loggedInStaff.name} ({myPaySlipData.seniority} Rate) — {selectedPayMonth}
+            </p>
+          </div>
+          <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 whitespace-nowrap">
+            Total: {formatPrice(myPaySlipData.totalServiceCommission)}
+          </span>
+        </div>
+
+        {/* Service Breakdown Table (3 Columns: SERVICE NAME | အကြိမ်ရေ | စုစုပေါင်း — Unit Rate Removed!) */}
+        {myPaySlipData.serviceBreakdownList.length === 0 ? (
+          <div className="py-10 text-center text-gray-400 font-bold text-xs border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+            {formatReadableMonth(selectedPayMonth)} အတွက် ကော်မရှင်မှတ်တမ်း မရှိပါ။
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-[10px] sm:text-[11px] text-gray-400 font-extrabold uppercase tracking-wider">
+                  <th className="py-2.5 pr-2">SERVICE NAME</th>
+                  <th className="py-2.5 px-2 text-center whitespace-nowrap">အကြိမ်ရေ</th>
+                  <th className="py-2.5 pl-2 text-right whitespace-nowrap">စုစုပေါင်း</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 font-semibold">
+                {myPaySlipData.serviceBreakdownList.map((s, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50/80 transition">
+                    <td className="py-3 pr-2 font-bold text-gray-800 leading-snug">{s.ruleName}</td>
+                    <td className="py-3 px-2 text-center whitespace-nowrap">
+                      <span className="bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-lg font-black text-xs text-[#123524]">
+                        {s.count} Sec
+                      </span>
+                    </td>
+                    <td className="py-3 pl-2 text-right font-black text-emerald-700 whitespace-nowrap">
+                      {formatPrice(s.totalComm)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Financial Additions & Deductions Breakdown */}
+        <div className="pt-4 border-t-2 border-dashed border-gray-200 space-y-2 text-xs sm:text-sm">
+          <div className="flex justify-between items-center text-gray-700 font-bold">
+            <span>စုစုပေါင်း ကော်မရှင် (Service Commissions):</span>
+            <strong className="text-emerald-700 font-black">+{formatPrice(myPaySlipData.totalServiceCommission)}</strong>
+          </div>
+
+          {myPaySlipData.baseSalary > 0 && (
+            <div className="flex justify-between items-center text-gray-700 font-bold">
+              <span>အခြေခံလစာ (Base Salary):</span>
+              <strong className="text-[#123524] font-black">+{formatPrice(myPaySlipData.baseSalary)}</strong>
+            </div>
+          )}
+
+          {myPaySlipData.bonus > 0 && (
+            <div className="flex justify-between items-center text-blue-700 font-bold">
+              <span>အပိုဆုကြေး (Extra Bonus):</span>
+              <strong className="font-black">+{formatPrice(myPaySlipData.bonus)}</strong>
+            </div>
+          )}
+
+          {/* All Deductions (WiFi Fee, Fines, Loans, Custom Deductions) */}
+          {myPaySlipData.allDeductionLines.map((ded) => (
+            <div key={ded.id} className="flex justify-between items-start gap-3 text-red-600 font-bold">
+              <span className="leading-snug">{ded.label}:</span>
+              <strong className="font-black whitespace-nowrap">-{formatPrice(ded.amount)}</strong>
+            </div>
+          ))}
+
+          {/* Final Net Payable Highlight Row */}
+          <div className="flex justify-between items-center pt-3.5 mt-2 border-t border-gray-200">
+            <span className="text-xs sm:text-sm font-black text-[#123524] uppercase tracking-wide">
+              အသားတင် ပေးချေရမည့်ငွေ (NET PAYABLE):
+            </span>
+            <span className="text-base sm:text-lg font-black text-[#123524] bg-yellow-100 px-3.5 py-1.5 rounded-xl border-2 border-[#D4AF37] shadow-2xs whitespace-nowrap">
+              {formatPrice(myPaySlipData.netPayable)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
