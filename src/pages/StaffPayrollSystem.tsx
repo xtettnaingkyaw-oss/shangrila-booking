@@ -5,7 +5,7 @@ import { decryptText } from '../security';
 import { Booking, TherapistProfile, formatPrice } from '../shared';
 import {
   Banknote, Download, User, Award, Trash2, Search, FileSpreadsheet,
-  Sliders, Wifi, RotateCcw, Edit3, Check
+  Sliders, Wifi, RotateCcw, Edit3, Check, Calendar, Clock, ChevronDown
 } from 'lucide-react';
 
 // ============================================================================
@@ -417,7 +417,6 @@ export function AdminStaffPayrollManager({
   };
 
   // 🌟 Helper to get effective WiFi Fee for a staff member 🌟
-  // Also migrates any manually added "လစဉ် WIFI ကြေး" inside customDeductions so it never duplicates!
   const getStaffEffectiveWifiAndCleanDeductions = (
     staffName: string,
     adj?: StaffMonthlyPayrollAdjustment
@@ -440,7 +439,7 @@ export function AdminStaffPayrollManager({
     return { wifiFee: Math.max(0, wifiFee), otherCustomDeductions };
   };
 
-  // 🌟 1-Click Global Default WiFi Fee Changer (Applies to all staff using default) 🌟
+  // 🌟 1-Click Global Default WiFi Fee Changer 🌟
   const handleUpdateGlobalWifiFee = async (newFeeAmount: number, resetIndividualOverrides: boolean = false) => {
     const cleanFee = Math.max(0, Math.round(newFeeAmount));
     setCustomGlobalWifiInput(String(cleanFee));
@@ -562,7 +561,6 @@ export function AdminStaffPayrollManager({
       return;
     }
 
-    // If user typed WiFi, update the WiFi override directly instead of duplicating
     if (newDedReason.trim().toLowerCase().includes('wifi')) {
       await handleSetIndividualWifiFee(editingStaffName, amt);
       setNewDedReason('');
@@ -654,7 +652,7 @@ export function AdminStaffPayrollManager({
     );
   };
 
-  // 🌟 FIXED: Toggle Paid / Settled Status (Reversible between Paid & Unpaid without Firestore undefined error!) 🌟
+  // Toggle Paid / Settled Status
   const handleToggleSettledStatus = async (staffName: string, currentSettled: boolean) => {
     if (currentSettled) {
       const ok = window.confirm(
@@ -671,7 +669,6 @@ export function AdminStaffPayrollManager({
     };
 
     const nextSettled = !currentSettled;
-    // IMPORTANT: Firestore rejects `undefined`, so we use `null` when reverting to unpaid!
     const updatedAdj: StaffMonthlyPayrollAdjustment = {
       ...prev,
       isPaidSettled: nextSettled,
@@ -696,7 +693,7 @@ export function AdminStaffPayrollManager({
     }
   };
 
-  // 🌟 3. Compute Comprehensive Payroll Data for Each Staff Member 🌟
+  // Compute Comprehensive Payroll Data for Each Staff Member
   const staffPayrollRows = useMemo(() => {
     const map = new Map<
       string,
@@ -823,7 +820,6 @@ export function AdminStaffPayrollManager({
       });
     });
 
-    // Combine with Fines, Loans, Default Monthly WiFi Fee, and Custom Deductions
     const finalRows = Array.from(map.values()).map((row) => {
       const myPenalties = penalties.filter((p) => {
         if (!isSameStaffMember(p.therapistName || '', row.staffName, row.staffId)) return false;
@@ -851,7 +847,6 @@ export function AdminStaffPayrollManager({
       const otherCustomTotal = otherCustomDeductions.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
       const customDeductionsTotal = wifiFee + otherCustomTotal;
 
-      // Combined display list including Default WiFi Fee (if > 0)
       const allCustomDeductionLabels: { id: string; reason: string; amount: number; isWifi: boolean; date?: string }[] = [];
       if (wifiFee > 0) {
         allCustomDeductionLabels.push({
@@ -914,7 +909,6 @@ export function AdminStaffPayrollManager({
     );
   }, [staffPayrollRows, searchQuery]);
 
-  // Global Totals for Executive Cards
   const globalTotals = useMemo(() => {
     return filteredRows.reduce(
       (acc, r) => {
@@ -937,7 +931,6 @@ export function AdminStaffPayrollManager({
     );
   }, [filteredRows]);
 
-  // Export Full Monthly Payroll CSV (Excel)
   const handleExportPayrollExcel = () => {
     const summaryHeaders = [
       'Staff ID',
@@ -1002,7 +995,6 @@ export function AdminStaffPayrollManager({
     link.click();
   };
 
-  // Export Detailed Service-by-Service Log
   const handleExportDetailedServiceLogsExcel = () => {
     const headers = [
       'Date',
@@ -1073,9 +1065,7 @@ export function AdminStaffPayrollManager({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* =========================================================================
-          MODAL 1: OFFICIAL EXCEL COMMISSION RATE REFERENCE TABLE
-         ========================================================================= */}
+      {/* MODAL 1: OFFICIAL EXCEL COMMISSION RATE REFERENCE TABLE */}
       {showRateReferenceModal && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-[#D4AF37]/40 my-auto max-h-[90vh] flex flex-col">
@@ -1161,9 +1151,7 @@ export function AdminStaffPayrollManager({
         </div>
       )}
 
-      {/* =========================================================================
-          MODAL 2: CUSTOM DEDUCTIONS, 1-CLICK WIFI FEE, BONUS & BASE SALARY MANAGER
-         ========================================================================= */}
+      {/* MODAL 2: CUSTOM DEDUCTIONS, 1-CLICK WIFI FEE, BONUS & BASE SALARY MANAGER */}
       {editingStaffRow && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#D4AF37]/40 my-auto space-y-5 animate-fade-in">
@@ -1184,7 +1172,6 @@ export function AdminStaffPayrollManager({
               </button>
             </div>
 
-            {/* 1. Base Salary & Bonus */}
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 space-y-3">
               <div className="text-xs font-black text-[#123524] uppercase tracking-wider">
                 ၁။ အခြေခံလစာ နှင့် အပိုဆုကြေး (Base Salary & Bonus)
@@ -1223,7 +1210,6 @@ export function AdminStaffPayrollManager({
               </button>
             </div>
 
-            {/* 2. System Fines & Loans Info */}
             <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 space-y-1.5">
               <div className="text-[11px] font-black text-amber-900 flex justify-between">
                 <span>Penalty & Loans Tab မှ ဒဏ်ကြေးနှင့် ကြိုထုတ်ငွေ:</span>
@@ -1235,7 +1221,6 @@ export function AdminStaffPayrollManager({
               </div>
             </div>
 
-            {/* 🌟 3. DEFAULT MONTHLY WIFI FEE (1-CLICK AMOUNT CHANGER) 🌟 */}
             <div className="bg-red-50/50 p-4 rounded-2xl border border-red-200 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black text-[#123524] flex items-center gap-1.5">
@@ -1281,7 +1266,6 @@ export function AdminStaffPayrollManager({
               </div>
             </div>
 
-            {/* 4. Other Custom Deductions Manager */}
             <div className="space-y-3">
               <div className="text-xs font-black text-red-700 uppercase tracking-wider">
                 ၂။ အခြား ဖြတ်တောက်ငွေများ စိတ်ကြိုက်ထည့်ရန် (Custom Deductions)
@@ -1312,7 +1296,6 @@ export function AdminStaffPayrollManager({
                 </button>
               </form>
 
-              {/* Existing Custom Deductions List (With 1-Click Inline Edit) */}
               <div className="space-y-1.5 max-h-40 overflow-y-auto">
                 {editingStaffRow.customDeductions.length === 0 ? (
                   <div className="text-center py-3 text-[11px] text-gray-400 font-semibold border border-dashed border-gray-200 rounded-xl">
@@ -1386,7 +1369,6 @@ export function AdminStaffPayrollManager({
               </div>
             </div>
 
-            {/* Summary Footer inside Modal */}
             <div className="pt-3 border-t border-gray-200 flex items-center justify-between">
               <div>
                 <div className="text-[10px] font-bold text-gray-400 uppercase">အသားတင် ပေးချေရမည့်လစာ (Net Payable)</div>
@@ -1404,9 +1386,7 @@ export function AdminStaffPayrollManager({
         </div>
       )}
 
-      {/* =========================================================================
-          TOP EXECUTIVE HEADER & CONTROLS
-         ========================================================================= */}
+      {/* TOP EXECUTIVE HEADER & CONTROLS */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-gray-100 pb-4">
           <div>
@@ -1449,7 +1429,6 @@ export function AdminStaffPayrollManager({
           </div>
         </div>
 
-        {/* Filter Bar: Month Picker, Search & Global 1-Click Default WiFi Fee */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-end">
           <div className="lg:col-span-3">
             <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
@@ -1479,7 +1458,6 @@ export function AdminStaffPayrollManager({
             </div>
           </div>
 
-          {/* 🌟 1-CLICK GLOBAL DEFAULT MONTHLY WIFI FEE BAR 🌟 */}
           <div className="lg:col-span-5 bg-red-50/60 border border-red-200 p-2.5 rounded-xl">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] font-black text-red-800 uppercase flex items-center gap-1">
@@ -1528,7 +1506,6 @@ export function AdminStaffPayrollManager({
           </div>
         </div>
 
-        {/* 5 Summary Executive KPI Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-2">
           <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200">
             <div className="text-[10px] font-bold text-gray-500 uppercase">Total Completed Sections</div>
@@ -1553,9 +1530,7 @@ export function AdminStaffPayrollManager({
         </div>
       </div>
 
-      {/* =========================================================================
-          MAIN PAYROLL TABLE & EXPANDABLE SERVICE-BY-SERVICE BREAKDOWN
-         ========================================================================= */}
+      {/* MAIN PAYROLL TABLE */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1050px]">
@@ -1579,7 +1554,6 @@ export function AdminStaffPayrollManager({
                 return (
                   <React.Fragment key={row.staffName}>
                     <tr className={`hover:bg-gray-50/90 transition ${isExpanded ? 'bg-yellow-50/40' : ''}`}>
-                      {/* 1. Staff ID & Name */}
                       <td className="p-3.5">
                         <div className="flex items-center gap-2.5">
                           <span className="font-mono text-[10px] font-black bg-gray-100 text-gray-700 px-2 py-1 rounded border border-gray-200">
@@ -1594,7 +1568,6 @@ export function AdminStaffPayrollManager({
                         </div>
                       </td>
 
-                      {/* 2. Seniority Badge */}
                       <td className="p-3.5 text-center">
                         <button
                           type="button"
@@ -1610,14 +1583,12 @@ export function AdminStaffPayrollManager({
                         </button>
                       </td>
 
-                      {/* 3. Completed Sections */}
                       <td className="p-3.5 text-center">
                         <span className="font-black text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg">
                           {row.sectionsCount} Sec
                         </span>
                       </td>
 
-                      {/* 4. Exact Service Commission */}
                       <td className="p-3.5 text-right">
                         <div className="font-black text-sm text-emerald-700">
                           {formatPrice(row.totalServiceCommission)}
@@ -1631,7 +1602,6 @@ export function AdminStaffPayrollManager({
                         </button>
                       </td>
 
-                      {/* 5. Base Salary & Bonus */}
                       <td className="p-3.5 text-right">
                         <div className="font-bold text-gray-800">{formatPrice(row.baseSalary + row.bonus)}</div>
                         {(row.baseSalary > 0 || row.bonus > 0) && (
@@ -1641,7 +1611,6 @@ export function AdminStaffPayrollManager({
                         )}
                       </td>
 
-                      {/* 6. System Fines & Loans */}
                       <td className="p-3.5 text-right">
                         <div
                           className={`font-bold ${
@@ -1657,7 +1626,6 @@ export function AdminStaffPayrollManager({
                         )}
                       </td>
 
-                      {/* 🌟 7. WiFi & Custom Deductions (Clickable for quick 1-click edit) 🌟 */}
                       <td className="p-3.5 text-right">
                         <button
                           type="button"
@@ -1685,14 +1653,12 @@ export function AdminStaffPayrollManager({
                         </button>
                       </td>
 
-                      {/* 8. Final Net Payable */}
                       <td className="p-3.5 text-right">
                         <div className={`text-sm font-black ${row.netPayable >= 0 ? 'text-[#123524]' : 'text-red-600'}`}>
                           {formatPrice(row.netPayable)}
                         </div>
                       </td>
 
-                      {/* 🌟 9. Reversible Paid / Unpaid Status Button 🌟 */}
                       <td className="p-3.5 text-center">
                         <button
                           type="button"
@@ -1712,7 +1678,6 @@ export function AdminStaffPayrollManager({
                         </button>
                       </td>
 
-                      {/* 10. Actions */}
                       <td className="p-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
@@ -1735,14 +1700,10 @@ export function AdminStaffPayrollManager({
                       </td>
                     </tr>
 
-                    {/* =====================================================================
-                        EXPANDED ROW: DETAILED SERVICE-BY-SERVICE COMMISSION BREAKDOWN & SLIP
-                       ===================================================================== */}
                     {isExpanded && (
                       <tr className="bg-gradient-to-b from-yellow-50/50 to-gray-50/80 border-b-2 border-[#D4AF37]/40">
                         <td colSpan={10} className="p-5">
                           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                            {/* Left 5 Cols: Service-by-Service Summary Table */}
                             <div className="lg:col-span-5 bg-white p-4 rounded-2xl border border-gray-200 shadow-2xs space-y-3">
                               <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
                                 <div>
@@ -1791,7 +1752,6 @@ export function AdminStaffPayrollManager({
                                 </table>
                               )}
 
-                              {/* Deductions & Net Pay Slip Box */}
                               <div className="pt-3 border-t border-dashed border-gray-200 space-y-1.5 text-xs">
                                 <div className="flex justify-between text-gray-600">
                                   <span>စုစုပေါင်း ကော်မရှင် (Service Commissions):</span>
@@ -1836,7 +1796,6 @@ export function AdminStaffPayrollManager({
                               </div>
                             </div>
 
-                            {/* Right 7 Cols: Chronological Daily Service Commission Logs */}
                             <div className="lg:col-span-7 bg-white p-4 rounded-2xl border border-gray-200 shadow-2xs flex flex-col">
                               <div className="flex items-center justify-between border-b border-gray-100 pb-2.5 mb-3">
                                 <h4 className="font-black text-xs text-[#123524] uppercase tracking-wider">
@@ -1900,8 +1859,9 @@ export function AdminStaffPayrollManager({
     </div>
   );
 }
+
 // ============================================================================
-// 🌟 3. STAFF APP PAY SLIP & PAYROLL HISTORY VIEW (RELEASED ON 5TH OF MONTH) 🌟
+// 🌟 3. STAFF APP PAY SLIP & PAYROLL HISTORY VIEW (CLEAN DROPDOWN & REFINED UI) 🌟
 // ============================================================================
 
 export function StaffPaySlipView({
@@ -1927,18 +1887,12 @@ export function StaffPaySlipView({
     return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
   };
 
-  const formatShortMonth = (ym: string) => {
-    const [y, m] = ym.split('-').map(Number);
-    if (!y || !m) return ym;
-    return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
-  };
-
   // Previous month (e.g. If today is Oct 2026 -> "2026-09")
   const prevMonthYM = useMemo(() => formatYM(currentYear, currentMonth - 1), [currentYear, currentMonth]);
   // Two months ago (e.g. If today is Oct 1-4, 2026 -> "2026-08" is the latest released by date)
   const twoMonthsAgoYM = useMemo(() => formatYM(currentYear, currentMonth - 2), [currentYear, currentMonth]);
 
-  // Rule: Previous month's salary is settled on the 5th of the current month
+  // Rule: Previous month's salary is settled between the 5th and 15th of the current month
   const isAfterOrOn5th = currentDay >= 5;
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -1946,7 +1900,7 @@ export function StaffPaySlipView({
   const [loading, setLoading] = useState<boolean>(true);
   const [prevMonthAdminDoc, setPrevMonthAdminDoc] = useState<any>(null);
 
-  // Selected Month for viewing Pay Slip
+  // Auto-selected target month for viewing Pay Slip
   const [selectedPayMonth, setSelectedPayMonth] = useState<string>(() =>
     isAfterOrOn5th ? prevMonthYM : twoMonthsAgoYM
   );
@@ -1994,7 +1948,7 @@ export function StaffPaySlipView({
     return list;
   }, [currentYear, currentMonth, isPrevMonthUnlocked]);
 
-  // Keep selectedPayMonth valid when unlock state updates
+  // Automatically select the latest unlocked month whenever unlock state updates
   useEffect(() => {
     if (availableHistoryMonths.length > 0 && !availableHistoryMonths.includes(selectedPayMonth)) {
       setSelectedPayMonth(availableHistoryMonths[0]);
@@ -2071,8 +2025,7 @@ export function StaffPaySlipView({
     const staffNum = extractExactStaffNumber(loggedInStaff.name);
     const shortId = staffNum !== null ? `SGL-${String(staffNum).padStart(3, '0')}` : loggedInStaff.id;
 
-    // Check seniority override
-    let matchedSeniorityOverride: Record<string, StaffSeniority> = { ...payrollDocData.seniorityOverrides };
+    const matchedSeniorityOverride: Record<string, StaffSeniority> = { ...payrollDocData.seniorityOverrides };
     const seniority = getStaffSeniority(loggedInStaff.name, therapists, matchedSeniorityOverride);
 
     let sectionsCount = 0;
@@ -2174,9 +2127,6 @@ export function StaffPaySlipView({
     const systemFinesList = myPenalties.filter((p) => p.type !== 'loan');
     const systemLoansList = myPenalties.filter((p) => p.type === 'loan');
 
-    const systemFinesTotal = systemFinesList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    const systemLoansTotal = systemLoansList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-
     // Build unified deduction items list for display
     const allDeductionLines: { id: string; label: string; amount: number }[] = [];
     if (wifiFee > 0) {
@@ -2241,23 +2191,33 @@ export function StaffPaySlipView({
   }
 
   return (
-    <div className="space-y-5 animate-fade-in mt-4">
+    <div className="space-y-4 animate-fade-in mt-3">
       {/* =========================================================================
-          1. TOP PAYDAY NOTICE & HISTORICAL MONTH SWITCHER
+          🌟 1. EXECUTIVE PAY SLIP HEADER CARD (CLEAN SINGLE DROPDOWN, NO CLUTTER) 🌟
          ========================================================================= */}
-      <div className="bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] p-5 rounded-2xl text-white shadow-md border border-[#D4AF37]/40 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
-          <div>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#D4AF37] text-[#0B2419]">
-              Official Monthly Pay Slip
+      <div className="bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] p-5 sm:p-6 rounded-3xl text-white shadow-xl border border-[#D4AF37]/40 space-y-4 relative overflow-hidden">
+        <div className="absolute -top-12 -right-12 w-36 h-36 bg-[#D4AF37] opacity-10 rounded-full blur-2xl pointer-events-none" />
+
+        {/* Title & Payday Policy Banner */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 border-b border-white/10 pb-4">
+          <div className="space-y-1.5">
+            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#D4AF37] text-[#0B2419] shadow-2xs">
+              <Award className="w-3 h-3" /> Official Monthly Pay Slip
             </span>
-            <h3 className="text-base sm:text-lg font-serif font-black text-white mt-1.5">
+            <h3 className="text-base sm:text-lg font-extrabold text-white leading-snug">
               လစာ နှင့် ကော်မရှင် စာရင်းချုပ် (Pay Slip)
             </h3>
           </div>
-          <div className="text-right">
-            <span className="text-[10px] text-gray-300 font-bold block">Payday Policy</span>
-            <span className="text-xs font-black text-[#D4AF37]">လဆန်း (၅) ရက်နေ့တိုင်း</span>
+
+          {/* 🌟 ပုံ (၂) - Payday Policy: လစဉ် (၅) ရက်နေ့မှ (၁၅) ရက်နေ့အတွင်း 🌟 */}
+          <div className="bg-black/30 border border-[#D4AF37]/40 rounded-2xl px-3.5 py-2.5 sm:text-right flex-shrink-0">
+            <div className="text-[10px] text-emerald-200/85 font-bold uppercase tracking-wider flex items-center sm:justify-end gap-1">
+              <Calendar className="w-3 h-3 text-[#D4AF37] flex-shrink-0" />
+              <span>Payday Policy (လစာထုတ်ရက်)</span>
+            </div>
+            <div className="text-xs sm:text-sm font-black text-[#D4AF37] mt-0.5 whitespace-nowrap">
+              လစဉ် (၅) ရက်နေ့မှ (၁၅) ရက်နေ့အတွင်း
+            </div>
           </div>
         </div>
 
@@ -2265,64 +2225,47 @@ export function StaffPaySlipView({
         {!isPrevMonthUnlocked && (
           <div className="bg-amber-500/20 border border-amber-400/40 p-3 rounded-xl text-xs text-amber-200 font-bold leading-relaxed">
             ⏳ <strong>{formatReadableMonth(prevMonthYM)}</strong> အတွက် လစာစာရင်းချုပ် (Pay Slip) ကို လစာထုတ်ရက်ဖြစ်သော{' '}
-            <strong className="text-white underline">ယခုလ (၅) ရက်နေ့</strong> ရောက်ရှိချိန်တွင် စတင်ထုတ်ပြန်ပေးပါမည်။ အောက်တွင် ပြီးခဲ့သောလများ၏ Pay Slip History များကို ကြည့်ရှုနိုင်ပါသည်။
+            <strong className="text-white underline">လစဉ် (၅) ရက်နေ့မှ (၁၅) ရက်နေ့အတွင်း</strong> စတင်ထုတ်ပြန်ပေးပါမည်။
           </div>
         )}
 
-        {/* Quick Month History Pills + Dropdown */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-[10px] font-extrabold text-[#D4AF37] uppercase tracking-wider">
-              ကြည့်ရှုလိုသော လစာလ ရွေးချယ်ရန် (Pay Slip History):
-            </label>
+        {/* 🌟 ပုံ (၂) - ခလုတ်တန်းအပိုများကို ဖယ်ရှားပြီး Dropdown တစ်ခုတည်းဖြင့် Auto ရွေးချယ်ထားပေးခြင်း 🌟 */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-0.5">
+          <label className="text-xs font-bold text-gray-200 flex items-center">
+            <Clock className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37] flex-shrink-0" />
+            <span>ကြည့်ရှုလိုသော လစာလ ရွေးချယ်ရန် :</span>
+          </label>
+
+          <div className="relative w-full sm:w-60">
             <select
               value={selectedPayMonth}
               onChange={(e) => setSelectedPayMonth(e.target.value)}
-              className="bg-black/30 text-white border border-[#D4AF37]/40 rounded-lg px-2.5 py-1 text-xs font-black outline-none"
+              className="w-full pl-4 pr-9 py-2.5 bg-black/40 hover:bg-black/50 text-[#D4AF37] border border-[#D4AF37]/55 rounded-xl text-xs sm:text-sm font-black outline-none focus:border-[#D4AF37] appearance-none cursor-pointer transition shadow-inner"
             >
               {availableHistoryMonths.map((ym) => (
-                <option key={ym} value={ym} className="text-gray-900 font-bold">
-                  {formatReadableMonth(ym)}
+                <option key={ym} value={ym} className="bg-[#123524] text-white font-bold">
+                  {formatReadableMonth(ym)} ({ym})
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-            {availableHistoryMonths.slice(0, 6).map((ym) => {
-              const isSelected = selectedPayMonth === ym;
-              return (
-                <button
-                  key={ym}
-                  type="button"
-                  onClick={() => setSelectedPayMonth(ym)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition border ${
-                    isSelected
-                      ? 'bg-[#D4AF37] text-[#0B2419] border-[#D4AF37] shadow-sm'
-                      : 'bg-white/10 text-gray-200 border-white/10 hover:bg-white/20'
-                  }`}
-                >
-                  {formatShortMonth(ym)}
-                </button>
-              );
-            })}
+            <ChevronDown className="w-4 h-4 text-[#D4AF37] absolute right-3 top-3 pointer-events-none" />
           </div>
         </div>
       </div>
 
       {/* =========================================================================
-          2. STAFF SUMMARY HEADER ROW (MATCHING SCREENSHOT DESIGN)
+          🌟 2. STAFF SUMMARY HEADER ROW (CLEAN, NO AWKWARD LINE BREAKS) 🌟
          ========================================================================= */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-xs font-black bg-gray-100 text-gray-700 px-2.5 py-1.5 rounded-lg border border-gray-200">
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-gray-200 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="font-mono text-xs font-black bg-gray-100 text-[#123524] px-3 py-2 rounded-xl border border-gray-200 flex-shrink-0">
             {myPaySlipData.shortId}
           </span>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-black text-base text-[#123524]">{loggedInStaff.name}</span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-black text-base text-[#123524] truncate">{loggedInStaff.name}</span>
               <span
-                className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border flex-shrink-0 ${
                   myPaySlipData.seniority === 'Senior'
                     ? 'bg-amber-100 text-amber-900 border-amber-300'
                     : 'bg-blue-50 text-blue-700 border-blue-200'
@@ -2331,23 +2274,26 @@ export function StaffPaySlipView({
                 {myPaySlipData.seniority === 'Senior' ? '★ SENIOR' : 'JUNIOR'}
               </span>
             </div>
-            <div className="text-[11px] text-gray-500 font-semibold mt-0.5">
-              Sales: {formatPrice(myPaySlipData.totalSalesAmount)} • Month: <strong>{selectedPayMonth}</strong>
+            <div className="text-xs text-gray-500 font-semibold mt-0.5 truncate">
+              Sales: <strong className="text-gray-800">{formatPrice(myPaySlipData.totalSalesAmount)}</strong> • Month:{' '}
+              <strong className="text-[#123524]">{selectedPayMonth}</strong>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 ml-auto">
-          <div className="text-center bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
-            <div className="text-[9px] font-bold text-emerald-700 uppercase">Sections</div>
-            <div className="text-xs font-black text-[#123524]">{myPaySlipData.sectionsCount} Sec</div>
+        <div className="flex items-center gap-2.5 ml-auto">
+          <div className="text-center bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-xl">
+            <div className="text-[9px] font-extrabold text-emerald-700 uppercase">Sections</div>
+            <div className="text-xs sm:text-sm font-black text-[#123524] whitespace-nowrap">
+              {myPaySlipData.sectionsCount} Sec
+            </div>
           </div>
 
           <span
-            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase border ${
+            className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase border whitespace-nowrap ${
               myPaySlipData.isPaidSettled
                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                : 'bg-gray-100 text-gray-600 border-gray-300'
+                : 'bg-gray-100 text-gray-700 border-gray-200'
             }`}
           >
             {myPaySlipData.isPaidSettled ? '✓ ရှင်းပြီး (PAID)' : 'စာရင်းချုပ်'}
@@ -2356,25 +2302,25 @@ export function StaffPaySlipView({
       </div>
 
       {/* =========================================================================
-          3. MAIN PAY SLIP CARD (EXACTLY MATCHING SCREENSHOT — WITHOUT UNIT RATE COLUMN!)
+          🌟 3. MAIN PAY SLIP CARD (BALANCED TYPOGRAPHY & ALIGNMENT) 🌟
          ========================================================================= */}
-      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-xs border border-gray-200 space-y-4">
         {/* Card Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 pb-3.5 gap-2">
-          <div>
+        <div className="flex flex-wrap items-center justify-between border-b border-gray-100 pb-3.5 gap-2.5">
+          <div className="min-w-0 flex-1">
             <h4 className="font-black text-xs sm:text-sm text-[#123524] leading-snug">
-              ၁။ ဝန်ဆောင်မှုအမျိုးအစားအလိုက် ရရှိသော ကော်မရှင် စာရင်းချုပ်
+              ၁။ ဝန်ဆောင်မှုအမျိုးအစားအလိုက် ရရှိသော ကော်မရှင်စာရင်းချုပ်
             </h4>
             <p className="text-[11px] text-gray-500 font-semibold mt-0.5">
-              {loggedInStaff.name} ({myPaySlipData.seniority} Rate) — {selectedPayMonth}
+              {loggedInStaff.name} ({myPaySlipData.seniority} Rate) — {formatReadableMonth(selectedPayMonth)}
             </p>
           </div>
-          <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 whitespace-nowrap">
+          <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-3.5 py-1.5 rounded-xl border border-emerald-200 whitespace-nowrap flex-shrink-0">
             Total: {formatPrice(myPaySlipData.totalServiceCommission)}
           </span>
         </div>
 
-        {/* Service Breakdown Table (3 Columns: SERVICE NAME | အကြိမ်ရေ | စုစုပေါင်း — Unit Rate Removed!) */}
+        {/* Service Breakdown Table (3 Columns: SERVICE NAME | အကြိမ်ရေ | စုစုပေါင်း) */}
         {myPaySlipData.serviceBreakdownList.length === 0 ? (
           <div className="py-10 text-center text-gray-400 font-bold text-xs border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
             {formatReadableMonth(selectedPayMonth)} အတွက် ကော်မရှင်မှတ်တမ်း မရှိပါ။
@@ -2409,42 +2355,55 @@ export function StaffPaySlipView({
         )}
 
         {/* Financial Additions & Deductions Breakdown */}
-        <div className="pt-4 border-t-2 border-dashed border-gray-200 space-y-2 text-xs sm:text-sm">
-          <div className="flex justify-between items-center text-gray-700 font-bold">
+        <div className="pt-4 border-t-2 border-dashed border-gray-200 space-y-2.5 text-xs sm:text-sm">
+          <div className="flex justify-between items-center text-gray-700 font-bold p-2.5 rounded-xl bg-emerald-50/50 border border-emerald-100">
             <span>စုစုပေါင်း ကော်မရှင် (Service Commissions):</span>
-            <strong className="text-emerald-700 font-black">+{formatPrice(myPaySlipData.totalServiceCommission)}</strong>
+            <strong className="text-emerald-700 font-black whitespace-nowrap">
+              +{formatPrice(myPaySlipData.totalServiceCommission)}
+            </strong>
           </div>
 
           {myPaySlipData.baseSalary > 0 && (
-            <div className="flex justify-between items-center text-gray-700 font-bold">
+            <div className="flex justify-between items-center text-gray-700 font-bold p-2.5 rounded-xl bg-gray-50">
               <span>အခြေခံလစာ (Base Salary):</span>
-              <strong className="text-[#123524] font-black">+{formatPrice(myPaySlipData.baseSalary)}</strong>
+              <strong className="text-[#123524] font-black whitespace-nowrap">
+                +{formatPrice(myPaySlipData.baseSalary)}
+              </strong>
             </div>
           )}
 
           {myPaySlipData.bonus > 0 && (
-            <div className="flex justify-between items-center text-blue-700 font-bold">
+            <div className="flex justify-between items-center text-blue-700 font-bold p-2.5 rounded-xl bg-blue-50/50 border border-blue-100">
               <span>အပိုဆုကြေး (Extra Bonus):</span>
-              <strong className="font-black">+{formatPrice(myPaySlipData.bonus)}</strong>
+              <strong className="font-black whitespace-nowrap">+{formatPrice(myPaySlipData.bonus)}</strong>
             </div>
           )}
 
           {/* All Deductions (WiFi Fee, Fines, Loans, Custom Deductions) */}
-          {myPaySlipData.allDeductionLines.map((ded) => (
-            <div key={ded.id} className="flex justify-between items-start gap-3 text-red-600 font-bold">
-              <span className="leading-snug">{ded.label}:</span>
-              <strong className="font-black whitespace-nowrap">-{formatPrice(ded.amount)}</strong>
+          {myPaySlipData.allDeductionLines.length > 0 && (
+            <div className="p-3 rounded-xl bg-red-50/50 border border-red-100 space-y-2">
+              {myPaySlipData.allDeductionLines.map((ded) => (
+                <div key={ded.id} className="flex justify-between items-start gap-3 text-red-600 font-bold text-xs">
+                  <span className="leading-snug">{ded.label}:</span>
+                  <strong className="font-black whitespace-nowrap">-{formatPrice(ded.amount)}</strong>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
 
-          {/* Final Net Payable Highlight Row */}
-          <div className="flex justify-between items-center pt-3.5 mt-2 border-t border-gray-200">
-            <span className="text-xs sm:text-sm font-black text-[#123524] uppercase tracking-wide">
-              အသားတင် ပေးချေရမည့်ငွေ (NET PAYABLE):
-            </span>
-            <span className="text-base sm:text-lg font-black text-[#123524] bg-yellow-100 px-3.5 py-1.5 rounded-xl border-2 border-[#D4AF37] shadow-2xs whitespace-nowrap">
+          {/* Final Net Payable Highlight Banner */}
+          <div className="mt-3 p-4 rounded-2xl bg-gradient-to-r from-[#123524] to-[#1a4a32] text-white flex flex-wrap items-center justify-between gap-2 shadow-md border border-[#D4AF37]/40">
+            <div>
+              <div className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-wider">
+                အသားတင် ပေးချေရမည့်ငွေ (NET PAYABLE)
+              </div>
+              <div className="text-[11px] text-gray-300 font-medium mt-0.5">
+                လစဉ် (၅) ရက်နေ့မှ (၁၅) ရက်နေ့အတွင်း ထုတ်ပေးပါသည်
+              </div>
+            </div>
+            <div className="text-lg sm:text-xl font-black text-[#D4AF37] whitespace-nowrap ml-auto">
               {formatPrice(myPaySlipData.netPayable)}
-            </span>
+            </div>
           </div>
         </div>
       </div>
