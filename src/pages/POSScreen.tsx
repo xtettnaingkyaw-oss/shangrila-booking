@@ -769,7 +769,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     const parsedItems: CartItem[] = serviceParts.map((part, idx) => {
       let rawPart = part;
       let qty = 1;
-      const qtyMatch = rawPart.match(/\(x(\d+)\)$/i) \vert{}\vert{} rawPart.match(/\s+x(\d+)$/i);
+      const qtyMatch = rawPart.match(/\(x(\d+)\)$/i) || rawPart.match(/\s+x(\d+)$/i);
       if (qtyMatch) {
         qty = parseInt(qtyMatch[1], 10) || 1;
         rawPart = rawPart.replace(qtyMatch[0], '').trim();
