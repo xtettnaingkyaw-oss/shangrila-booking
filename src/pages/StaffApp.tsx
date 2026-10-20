@@ -15,6 +15,7 @@ import { useAppStore } from '../AppDataContext';
 import { StaffPenaltyView } from './PenaltySystem';
 import { NewEmployeeOnboardingForm, StaffProfileView } from './OnboardingSystem';
 import { StaffEmployeeHandbookReader } from './EmployeeHandbookSystem';
+import { calculateBookingCommissionForStaff, getStaffSeniority } from './StaffPayrollSystem';
 
 const formatPrice = (price: any) => {
   const num = Number(price);
@@ -1705,7 +1706,8 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
       if (splitNames.length === 0) return;
 
       const shareAmt = Math.round(totalAmt / splitNames.length);
-      const shareComm = Math.round((shareAmt * COMMISSION_PCT) / 100);
+      const staffSeniority = getStaffSeniority(canonicalName, uniqueTherapists);
+      const shareComm = calculateBookingCommissionForStaff(b, staffSeniority, splitNames.length).totalCommission;
 
       splitNames.forEach((tNameRaw) => {
         const matchedProfile = uniqueTherapists.find((tp) => isSameStaffMember(tNameRaw, tp.name, tp.id));
