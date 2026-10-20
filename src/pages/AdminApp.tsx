@@ -12,6 +12,7 @@ import { useAppStore } from '../AppDataContext';
 import { AdminPenaltyManager } from './PenaltySystem';
 import AdminSalesSummaryView from './AdminSalesSummaryView';
 import { AdminEmployeeHandbookManager } from './EmployeeHandbookSystem';
+import { AdminStaffPayrollManager, calculateBookingCommissionForStaff, getStaffSeniority, isSameStaffMember } from './StaffPayrollSystem';
 import { BookOpen } from 'lucide-react';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -98,7 +99,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
   const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
-  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'reports' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook'>('sales_summary');
+  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'reports' | 'payroll' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook'>('sales_summary');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -299,6 +300,14 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           subLabel: 'In-Room & Performance',
           icon: BarChart2,
           visible: hasAccess('reports'),
+          badge: 0
+        },
+        {
+          id: 'payroll',
+          label: 'Staff Pay Roll',
+          subLabel: 'Commissions & Net Salary',
+          icon: Banknote,
+          visible: hasAccess('reports') || hasAccess('penalties'),
           badge: 0
         },
         {
@@ -670,6 +679,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
             {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
             {tab === 'points' && hasAccess('points') && <AdminPointManagement adminRole={adminRole} appData={appData} />}
             {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
+            {tab === 'payroll' && (hasAccess('reports') || hasAccess('penalties')) && (<AdminStaffPayrollManager bookings={bookings} therapists={appData.therapists} adminRole={adminRole} />)}
             {tab === 'penalties' && hasAccess('penalties') && <AdminPenaltyManager therapists={appData.therapists} />}
             {tab === 'roster' && hasAccess('settings') && <DutyRosterSystem therapists={appData.therapists} />}
             {tab === 'hr' && hasAccess('settings') && <AdminHRManagement />}
@@ -5523,39 +5533,31 @@ function AdminStaffPerformanceView({ therapists, bookings = [] }: { therapists: 
       if (splitNames.length === 0) return;
 
       const shareAmt = Math.round(totalAmt / splitNames.length);
-      const shareComm = Math.round((shareAmt * commissionPercent) / 100);
 
-      splitNames.forEach((tNameRaw) => {
-        // Match against registered therapists by name or number
-        const tNumMatch = tNameRaw.match(/\d+/);
-        const tNum = tNumMatch ? parseInt(tNumMatch[0], 10) : null;
+   splitNames.forEach((tNameRaw) => {
+     const matchedProfile = uniqueTherapists.find((tp) => isSameStaffMember(tNameRaw, tp.name, tp.id));
+     const finalName = matchedProfile ? matchedProfile.name : tNameRaw;
+     const finalId = matchedProfile ? matchedProfile.id : tNameRaw;
 
-        const matchedProfile = uniqueTherapists.find((tp) => {
-          const tpNameLower = tp.name.trim().toLowerCase();
-          if (tpNameLower === tNameRaw.toLowerCase()) return true;
-          const tpNumMatch = tpNameLower.match(/\d+/);
-          const tpNum = tpNumMatch ? parseInt(tpNumMatch[0], 10) : null;
-          return tNum !== null && tpNum !== null && tNum === tpNum;
-        });
+     // 🌟 Excel ဖိုင်ပါ Senior/Junior နှင့် Service တစ်ခုချင်းစီ၏ နှုန်းထားအတိအကျဖြင့် တွက်ချက်ခြင်း 🌟
+     const staffSeniority = getStaffSeniority(finalName, uniqueTherapists);
+     const exactCommResult = calculateBookingCommissionForStaff(b, staffSeniority, splitNames.length);
 
-        const finalName = matchedProfile ? matchedProfile.name : tNameRaw;
-        const finalId = matchedProfile ? matchedProfile.id : tNameRaw;
-
-        entries.push({
-          bookingId: b.id || '',
-          date: bDate,
-          yearMonth: bDate.substring(0, 7),
-          year: bDate.substring(0, 4),
-          staffId: finalId,
-          staffName: finalName,
-          shortLabel: getShortStaffLabel(finalName),
-          serviceName: rawService,
-          customerName: parseSafeStr(b.name) || 'Walk-in Guest',
-          salesAmount: shareAmt,
-          commissionAmount: shareComm,
-          source: isPos ? 'POS' : 'Online'
-        });
-      });
+     entries.push({
+       bookingId: b.id || '',
+       date: bDate,
+       yearMonth: bDate.substring(0, 7),
+       year: bDate.substring(0, 4),
+       staffId: finalId,
+       staffName: finalName,
+       shortLabel: getShortStaffLabel(finalName),
+       serviceName: rawService,
+       customerName: parseSafeStr(b.name) || 'Walk-in Guest',
+       salesAmount: shareAmt,
+       commissionAmount: exactCommResult.totalCommission,
+       source: isPos ? 'POS' : 'Online'
+     });
+   });
     });
 
     return entries;
@@ -6684,24 +6686,29 @@ function AdminStaffPerformanceView({ therapists, bookings = [] }: { therapists: 
                 </div>
               </div>
 
-              {/* Financial Summary */}
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center">
-                  <Award className="w-4 h-4 mr-2 text-yellow-600" /> Financial Summary ({individualStats.staffName})
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <span className="text-xs font-semibold text-gray-600">
-                      Total Commissions ({commissionPercent}%)
-                    </span>
-                    <span className="font-bold text-[#123524]">{formatPrice(individualStats.totalMyComm)}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                    <span className="text-xs font-bold text-yellow-800">Final Expected Commission Pay</span>
-                    <span className="font-black text-yellow-700 text-lg">{formatPrice(individualStats.totalMyComm)}</span>
-                  </div>
-                </div>
-              </div>
+              {/* Financial Summary (Exact Excel Service Rates) */}
+           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+             <h3 className="font-bold text-gray-800 text-sm mb-4 flex items-center justify-between">
+               <span className="flex items-center">
+                 <Award className="w-4 h-4 mr-2 text-yellow-600" /> Financial Summary ({individualStats.staffName})
+               </span>
+               <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                 {getStaffSeniority(individualStats.staffName, uniqueTherapists)} Rate (Excel Standard)
+               </span>
+             </h3>
+             <div className="space-y-3">
+               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                 <span className="text-xs font-semibold text-gray-600">
+                   Total Service Commissions ({individualStats.totalMySections} Sec — Exact Service Rates)
+                 </span>
+                 <span className="font-bold text-[#123524]">{formatPrice(individualStats.totalMyComm)}</span>
+               </div>
+               <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                 <span className="text-xs font-bold text-yellow-800">Final Expected Commission Pay</span>
+                 <span className="font-black text-yellow-700 text-lg">{formatPrice(individualStats.totalMyComm)}</span>
+               </div>
+             </div>
+           </div>
 
               {/* Attendance Summary */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
