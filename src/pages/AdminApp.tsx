@@ -748,7 +748,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
     return formatted;
   };
 
-  // 🌟 STRICT FILTER: Customer Web App မှ တင်ထားသော Online Booking အစစ်များကိုသာ ယူမည် (POS, Staff Clock-In, Admin Clock-In, 0 Ks Reward အားလုံး ဖယ်ထုတ်သည်) 🌟
+  // 🌟 STRICT FILTER: Customer Web App မှ တင်ထားသော Online Booking အစစ်များ (POS မှ Add-on / VVIP Upgrade လုပ်ထားသည့် Online Booking များအပါအဝင်) 🌟
   const onlineOnlyBookings = useMemo(() => {
     return bookings.filter((b: any) => {
       const rawTx = String(b.txId || '').trim();
@@ -760,7 +760,12 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
       const rawTime = String(b.time || '').trim().toLowerCase();
       const priceNum = Number(b.totalPrice) || 0;
 
-      // 1. POS Walk-in ဘောင်ချာများ (SL-...) ကို ဖယ်ထုတ်မည်
+      // ✅ အကယ်၍ မူလကတည်းက Online Booking ဖြစ်ကြောင်း သတ်မှတ်ထားပါက (POS မှ ပြင်ဆင်ထားသော်လည်း) Online Bookings ထဲတွင်သာ အမြဲပြသမည်
+      if (Boolean(b.isOnlineBooking) || Boolean(b.onlineBookingId)) {
+        return true;
+      }
+
+      // 1. သီးသန့် POS Walk-in ဘောင်ချာအသစ်များ (SL-...) ကိုသာ ဖယ်ထုတ်မည်
       if (
         rawTxUpper.startsWith('SL-') ||
         rawPay.includes('shop pos') ||
@@ -770,18 +775,20 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         return false;
       }
 
-      // 2. ဝန်ထမ်းများ Staff App မှ နှိပ်ထားသော Clock-In များ၊ Admin Manual Clock-In များနှင့် 0 Ks Reward များကို အပြီးတိုင် ဖယ်ထုတ်မည်
+      // 2. Staff Clock-In / Admin Clock-In နှင့် 0 Ks Reward များကို ဖယ်ထုတ်မည်
       const isStaffClockInOrNonSale =
         rawTxUpper === 'ADMIN' ||
         rawTxUpper === 'CASH' ||
         rawTx === '' ||
         rawTx === '-' ||
-        rawName.includes('walk-in') ||
+        rawName === 'walk-in (admin manual)' ||
         rawPay.includes('cash payment in shop') ||
+        rawPay.includes('admin clock') ||
         rawService.includes('walk-in reward redemption') ||
         rawTime === 'walk-in' ||
         priceNum <= 0 ||
-        Boolean(b.isStaffClockIn);
+        Boolean(b.isStaffClockIn) ||
+        Boolean(b.isAdminClockIn);
 
       return !isStaffClockInOrNonSale;
     });
@@ -7008,15 +7015,20 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
         return decryptText(val) || val;
     };
 
-    // 🌟 STRICT FILTER: POS Terminal မှ ရိုက်သွင်းထားသော (SL-...) ဘောင်ချာအစစ်များကိုသာ ယူမည် (Staff Clock-In များ လုံးဝ မယူပါ) 🌟
+    // 🌟 STRICT FILTER: ဆိုင်တွင် တိုက်ရိုက်လာသော POS Walk-in (SL-...) ဘောင်ချာအစစ်များကိုသာ ယူမည် (Online Booking များကို လုံးဝ မယူပါ) 🌟
     const posSales = useMemo(() => {
         return bookings.filter((b: any) => {
+            // ❌ Online Booking ဖြစ်ပါက POS Walk-in Sales ထဲတွင် လုံးဝ မပြပါ
+            if (Boolean(b.isOnlineBooking) || Boolean(b.onlineBookingId)) return false;
+
             const rawTx = safeParseText(b.txId).trim().toUpperCase();
             const rawPay = String(b.paymentMethod || '').trim();
             const rawDisc = safeParseText(b.discountLabel).trim();
+            const rawNote = safeParseText(b.specialRequest).trim();
 
-            // Staff Clock-In ('CASH' / 'ADMIN') နှင့် 0 Ks Reward များကို လုံးဝ မယူပါ
             if (rawTx === 'ADMIN' || rawTx === 'CASH') return false;
+            // Online Booking မှ ပြောင်းလဲထားသော မှတ်တမ်းအဟောင်းများကိုလည်း POS Sales ထဲ မပြပါ
+            if (rawNote.includes('Online Booking TxID:')) return false;
 
             const isStrictPosBill =
                 rawTx.startsWith('SL-') ||
