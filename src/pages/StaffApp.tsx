@@ -750,9 +750,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
               <span className="flex items-center">
                 <Award className="w-4 h-4 mr-2 text-[#D4AF37]" /> Pay Slip
               </span>
-              <span className="text-[9px] font-black bg-[#123524] text-[#D4AF37] px-1.5 py-0.5 rounded">
-                5th
-              </span>
             </button>
 
             <button
