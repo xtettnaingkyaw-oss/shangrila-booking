@@ -2582,14 +2582,12 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
     }
   };
 
-  const getTodayServiceStats = (tName: string) => {
-    const cleanTarget = String(tName || '').trim().toLowerCase();
+const getTodayServiceStats = (tName: string) => {
+    const cleanTarget = tName.trim().toLowerCase();
     const tBookings = bookings.filter((b) => {
-      if (b.date !== todayStr || (b.status !== 'completed' && b.status !== 'in_progress')) return false;
-      const assigned = String(b.therapist || '')
-        .split(/&|,|\+/)
-        .map((s) => s.trim().toLowerCase());
-      return assigned.includes(cleanTarget) || String(b.therapist || '').toLowerCase().includes(cleanTarget);
+      if (!b.therapist || b.date !== todayStr || (b.status !== 'completed' && b.status !== 'in_progress')) return false;
+      const assignedList = String(b.therapist).split(/&|,|\+/).map((s) => s.trim().toLowerCase());
+      return assignedList.includes(cleanTarget);
     });
     return {
       count: tBookings.length,
