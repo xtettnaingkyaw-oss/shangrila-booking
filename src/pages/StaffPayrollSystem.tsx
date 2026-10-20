@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { decryptText } from '../security';
 import { Booking, TherapistProfile, formatPrice } from '../shared';
 import {
-  Banknote, Download, Calendar, User, Award, AlertCircle, PlusCircle,
-  Trash2, CheckCircle, Search, FileSpreadsheet, Printer, ShieldCheck,
-  Sparkles, ChevronDown, ChevronUp, DollarSign,Sliders
+  Banknote, Download, User, Award, Trash2, Search, FileSpreadsheet,
+  Sliders, Wifi, RotateCcw, Edit3, Check
 } from 'lucide-react';
 
 // ============================================================================
@@ -62,7 +61,6 @@ export const getStaffSeniority = (
     return seniorityOverrides[`No-${num}`];
   }
 
-  // Check HR Onboarding Job Position if available
   const matchedProfile = therapists.find((t) => isSameStaffMember(cleanName, t.name, t.id));
   const jobPos = String(matchedProfile?.onboardingData?.jobPosition || '').toLowerCase();
   if (jobPos.includes('senior')) return 'Senior';
@@ -84,7 +82,6 @@ export interface ParsedServiceCommissionItem {
   isVipRoom: boolean;
 }
 
-// Evaluate a single service item string and return exact commission from Excel rules
 export const calculateSingleItemCommission = (
   rawSegment: string,
   seniority: StaffSeniority,
@@ -94,7 +91,6 @@ export const calculateSingleItemCommission = (
   if (!text) return null;
   const lower = text.toLowerCase();
 
-  // Ignore non-commissionable retail/add-on items
   if (
     lower.includes('sterilized single-use towel') ||
     lower.includes('single-use towel') ||
@@ -107,11 +103,9 @@ export const calculateSingleItemCommission = (
     return null;
   }
 
-  // Extract quantity multiplier if e.g. "(x2)" or "x2"
   const qtyMatch = text.match(/\(x(\d+)\)/i) || text.match(/\bx(\d+)\b/i);
   const qty = qtyMatch ? Math.max(1, parseInt(qtyMatch[1], 10)) : 1;
 
-  // Detect VIP / VVIP Room upgrade on this item or booking
   const isVip =
     hasBookingLevelVip ||
     lower.includes('vvip') ||
@@ -192,7 +186,6 @@ export const calculateSingleItemCommission = (
   } else if (lower.includes('four hands') || lower.includes('4 hands')) {
     matchedRuleName = is90Min ? 'Four Hands Massage 90 Min' : 'Four Hands Massage 60 Min';
     category = 'Massage';
-    // Excel specifies 3,500 Ks (60 Min) & 5,000 Ks (90 Min) per therapist!
     unitComm = is90Min ? 5000 : 3500;
   } else if (lower.includes('body butter')) {
     if (is90Min) {
@@ -245,7 +238,6 @@ export const calculateSingleItemCommission = (
   };
 };
 
-// Calculate exact commission for an entire Booking for a specific Therapist
 export const calculateBookingCommissionForStaff = (
   booking: any,
   seniority: StaffSeniority,
@@ -262,7 +254,6 @@ export const calculateBookingCommissionForStaff = (
 
   const itemsBreakdown: ParsedServiceCommissionItem[] = [];
 
-  // If POS structured items array exists
   if (Array.isArray(booking?.posItems) && booking.posItems.length > 0) {
     booking.posItems.forEach((pItem: any) => {
       const label = `${pItem.name || ''} (${pItem.duration || ''}) ${pItem.isVvip ? '+ VVIP' : ''}`;
@@ -282,7 +273,6 @@ export const calculateBookingCommissionForStaff = (
       }
     });
   } else {
-    // Parse comma-separated service string
     const segments = serviceStr
       .split(',')
       .map((s) => s.trim())
@@ -292,7 +282,6 @@ export const calculateBookingCommissionForStaff = (
       const res = calculateSingleItemCommission(seg, seniority, hasBookingLevelVip);
       if (res) {
         const isFourHands = res.matchedRuleName.toLowerCase().includes('four hands');
-        // Note: In Excel, Four Hands rate (3,500 / 5,000) is ALREADY the per-staff rate!
         const perStaffComm = isFourHands
           ? res.totalCommission
           : Math.round(res.totalCommission / Math.max(1, therapistShareCount));
@@ -323,11 +312,14 @@ interface CustomDeductionItem {
 interface StaffMonthlyPayrollAdjustment {
   baseSalary: number;
   bonus: number;
+  wifiFeeOverride?: number | null; // null/undefined = use global default WiFi fee
   customDeductions: CustomDeductionItem[];
   isPaidSettled: boolean;
-  settledAt?: number;
+  settledAt?: number | null;
   note?: string;
 }
+
+const WIFI_PRESETS = [0, 5000, 10000, 15000, 20000];
 
 export function AdminStaffPayrollManager({
   bookings,
@@ -338,7 +330,12 @@ export function AdminStaffPayrollManager({
   therapists: TherapistProfile[];
   adminRole: string;
 }) {
-  const todayStr = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0');
+  const todayStr =
+    new Date().getFullYear() +
+    '-' +
+    String(new Date().getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(new Date().getDate()).padStart(2, '0');
   const currentYearMonth = todayStr.substring(0, 7);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
@@ -353,12 +350,20 @@ export function AdminStaffPayrollManager({
   const [bonusInput, setBonusInput] = useState<string>('');
   const [baseSalaryInput, setBaseSalaryInput] = useState<string>('');
 
-  // Firestore synced states: Penalties/Loans & Payroll Adjustments & Seniority Overrides
+  // Inline Editing State for Custom Deduction Amount inside Modal
+  const [editingDedId, setEditingDedId] = useState<string | null>(null);
+  const [editingDedAmtValue, setEditingDedAmtValue] = useState<string>('');
+
+  // Global Default Monthly WiFi Fee Input State
+  const [customGlobalWifiInput, setCustomGlobalWifiInput] = useState<string>('10000');
+
+  // Firestore synced states: Penalties/Loans & Payroll Adjustments & Seniority Overrides & Global WiFi Fee
   const [penalties, setPenalties] = useState<any[]>([]);
   const [payrollDocData, setPayrollDocData] = useState<{
+    defaultWifiFee: number;
     adjustments: Record<string, StaffMonthlyPayrollAdjustment>;
     seniorityOverrides: Record<string, StaffSeniority>;
-  }>({ adjustments: {}, seniorityOverrides: {} });
+  }>({ defaultWifiFee: 10000, adjustments: {}, seniorityOverrides: {} });
 
   // 1. Listen to Penalties & Loans Collection
   useEffect(() => {
@@ -375,12 +380,16 @@ export function AdminStaffPayrollManager({
     const unsub = onSnapshot(doc(db, 'settings', `payroll_${selectedMonth}`), (snap) => {
       if (snap.exists()) {
         const data = snap.data() as any;
+        const wifiFee = data.defaultWifiFee !== undefined ? Number(data.defaultWifiFee) : 10000;
         setPayrollDocData({
+          defaultWifiFee: isNaN(wifiFee) ? 10000 : wifiFee,
           adjustments: data.adjustments || {},
           seniorityOverrides: data.seniorityOverrides || {}
         });
+        setCustomGlobalWifiInput(String(isNaN(wifiFee) ? 10000 : wifiFee));
       } else {
-        setPayrollDocData({ adjustments: {}, seniorityOverrides: {} });
+        setPayrollDocData({ defaultWifiFee: 10000, adjustments: {}, seniorityOverrides: {} });
+        setCustomGlobalWifiInput('10000');
       }
     });
     return () => unsub();
@@ -407,6 +416,92 @@ export function AdminStaffPayrollManager({
     return decryptText(v) || v;
   };
 
+  // 🌟 Helper to get effective WiFi Fee for a staff member 🌟
+  // Also migrates any manually added "လစဉ် WIFI ကြေး" inside customDeductions so it never duplicates!
+  const getStaffEffectiveWifiAndCleanDeductions = (
+    staffName: string,
+    adj?: StaffMonthlyPayrollAdjustment
+  ): { wifiFee: number; otherCustomDeductions: CustomDeductionItem[] } => {
+    const rawList = adj?.customDeductions || [];
+    const wifiItemInList = rawList.find(
+      (d) => d.reason.toLowerCase().includes('wifi') || d.id === 'default_wifi'
+    );
+    const otherCustomDeductions = rawList.filter(
+      (d) => !d.reason.toLowerCase().includes('wifi') && d.id !== 'default_wifi'
+    );
+
+    let wifiFee = payrollDocData.defaultWifiFee;
+    if (adj?.wifiFeeOverride !== undefined && adj?.wifiFeeOverride !== null) {
+      wifiFee = Number(adj.wifiFeeOverride);
+    } else if (wifiItemInList) {
+      wifiFee = Number(wifiItemInList.amount) || 0;
+    }
+
+    return { wifiFee: Math.max(0, wifiFee), otherCustomDeductions };
+  };
+
+  // 🌟 1-Click Global Default WiFi Fee Changer (Applies to all staff using default) 🌟
+  const handleUpdateGlobalWifiFee = async (newFeeAmount: number, resetIndividualOverrides: boolean = false) => {
+    const cleanFee = Math.max(0, Math.round(newFeeAmount));
+    setCustomGlobalWifiInput(String(cleanFee));
+
+    const nextAdjustments = { ...payrollDocData.adjustments };
+    if (resetIndividualOverrides) {
+      Object.keys(nextAdjustments).forEach((sName) => {
+        const cleanedList = (nextAdjustments[sName].customDeductions || []).filter(
+          (d) => !d.reason.toLowerCase().includes('wifi') && d.id !== 'default_wifi'
+        );
+        nextAdjustments[sName] = {
+          ...nextAdjustments[sName],
+          wifiFeeOverride: null,
+          customDeductions: cleanedList
+        };
+      });
+    }
+
+    await setDoc(
+      doc(db, 'settings', `payroll_${selectedMonth}`),
+      {
+        defaultWifiFee: cleanFee,
+        adjustments: nextAdjustments,
+        updatedAt: Date.now()
+      },
+      { merge: true }
+    );
+  };
+
+  // 🌟 1-Click Individual Staff WiFi Fee Changer 🌟
+  const handleSetIndividualWifiFee = async (staffName: string, newWifiAmt: number) => {
+    const cleanAmt = Math.max(0, Math.round(newWifiAmt));
+    const prev = payrollDocData.adjustments[staffName] || {
+      baseSalary: 0,
+      bonus: 0,
+      customDeductions: [],
+      isPaidSettled: false
+    };
+    const cleanedCustom = (prev.customDeductions || []).filter(
+      (d) => !d.reason.toLowerCase().includes('wifi') && d.id !== 'default_wifi'
+    );
+
+    const updatedAdj: StaffMonthlyPayrollAdjustment = {
+      ...prev,
+      wifiFeeOverride: cleanAmt,
+      customDeductions: cleanedCustom
+    };
+
+    await setDoc(
+      doc(db, 'settings', `payroll_${selectedMonth}`),
+      {
+        adjustments: {
+          ...payrollDocData.adjustments,
+          [staffName]: updatedAdj
+        },
+        updatedAt: Date.now()
+      },
+      { merge: true }
+    );
+  };
+
   // Toggle Senior / Junior for a therapist
   const handleToggleSeniority = async (staffName: string, currentLevel: StaffSeniority) => {
     const nextLevel: StaffSeniority = currentLevel === 'Senior' ? 'Junior' : 'Senior';
@@ -428,6 +523,7 @@ export function AdminStaffPayrollManager({
     setBaseSalaryInput(String(currentAdj?.baseSalary || 0));
     setNewDedReason('');
     setNewDedAmount('');
+    setEditingDedId(null);
   };
 
   // Save Base Salary & Bonus
@@ -466,6 +562,14 @@ export function AdminStaffPayrollManager({
       return;
     }
 
+    // If user typed WiFi, update the WiFi override directly instead of duplicating
+    if (newDedReason.trim().toLowerCase().includes('wifi')) {
+      await handleSetIndividualWifiFee(editingStaffName, amt);
+      setNewDedReason('');
+      setNewDedAmount('');
+      return;
+    }
+
     const prev = payrollDocData.adjustments[editingStaffName] || {
       baseSalary: 0,
       bonus: 0,
@@ -480,11 +584,15 @@ export function AdminStaffPayrollManager({
       date: todayStr
     };
 
+    const cleanedPrevList = (prev.customDeductions || []).filter(
+      (d) => !d.reason.toLowerCase().includes('wifi') && d.id !== 'default_wifi'
+    );
+
     const updatedAdj: StaffMonthlyPayrollAdjustment = {
       ...prev,
       baseSalary: Math.max(0, Number(baseSalaryInput) || prev.baseSalary || 0),
       bonus: Math.max(0, Number(bonusInput) || prev.bonus || 0),
-      customDeductions: [...(prev.customDeductions || []), newItem]
+      customDeductions: [...cleanedPrevList, newItem]
     };
 
     await setDoc(
@@ -501,6 +609,28 @@ export function AdminStaffPayrollManager({
 
     setNewDedReason('');
     setNewDedAmount('');
+  };
+
+  // Update an existing Custom Deduction's Amount inline
+  const handleUpdateCustomDeductionAmount = async (staffName: string, dedId: string, newAmt: number) => {
+    const prev = payrollDocData.adjustments[staffName];
+    if (!prev) return;
+    const cleanAmt = Math.max(0, Math.round(newAmt));
+    const updatedList = (prev.customDeductions || []).map((d) =>
+      d.id === dedId ? { ...d, amount: cleanAmt } : d
+    );
+    await setDoc(
+      doc(db, 'settings', `payroll_${selectedMonth}`),
+      {
+        adjustments: {
+          ...payrollDocData.adjustments,
+          [staffName]: { ...prev, customDeductions: updatedList }
+        },
+        updatedAt: Date.now()
+      },
+      { merge: true }
+    );
+    setEditingDedId(null);
   };
 
   // Delete Custom Deduction Item
@@ -524,30 +654,46 @@ export function AdminStaffPayrollManager({
     );
   };
 
-  // Toggle Paid / Settled Status
+  // 🌟 FIXED: Toggle Paid / Settled Status (Reversible between Paid & Unpaid without Firestore undefined error!) 🌟
   const handleToggleSettledStatus = async (staffName: string, currentSettled: boolean) => {
+    if (currentSettled) {
+      const ok = window.confirm(
+        `${staffName} ၏ လစာအား "မရှင်းရသေး (Unpaid)" အဖြစ် ပြန်လည်ပြောင်းလဲမည်မှာ သေချာပါသလား?`
+      );
+      if (!ok) return;
+    }
+
     const prev = payrollDocData.adjustments[staffName] || {
       baseSalary: 0,
       bonus: 0,
       customDeductions: [],
       isPaidSettled: false
     };
+
+    const nextSettled = !currentSettled;
+    // IMPORTANT: Firestore rejects `undefined`, so we use `null` when reverting to unpaid!
     const updatedAdj: StaffMonthlyPayrollAdjustment = {
       ...prev,
-      isPaidSettled: !currentSettled,
-      settledAt: !currentSettled ? Date.now() : undefined
+      isPaidSettled: nextSettled,
+      settledAt: nextSettled ? Date.now() : null
     };
-    await setDoc(
-      doc(db, 'settings', `payroll_${selectedMonth}`),
-      {
-        adjustments: {
-          ...payrollDocData.adjustments,
-          [staffName]: updatedAdj
+
+    try {
+      await setDoc(
+        doc(db, 'settings', `payroll_${selectedMonth}`),
+        {
+          adjustments: {
+            ...payrollDocData.adjustments,
+            [staffName]: updatedAdj
+          },
+          updatedAt: Date.now()
         },
-        updatedAt: Date.now()
-      },
-      { merge: true }
-    );
+        { merge: true }
+      );
+    } catch (err) {
+      console.error('Error toggling paid status:', err);
+      alert('Status ပြောင်းလဲရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    }
   };
 
   // 🌟 3. Compute Comprehensive Payroll Data for Each Staff Member 🌟
@@ -576,7 +722,6 @@ export function AdminStaffPayrollManager({
       }
     >();
 
-    // Initialize all registered therapists
     uniqueTherapists.forEach((t) => {
       const num = extractExactStaffNumber(t.name);
       const shortId = num !== null ? `SGL-${String(num).padStart(3, '0')}` : t.id;
@@ -594,7 +739,6 @@ export function AdminStaffPayrollManager({
       });
     });
 
-    // Process all valid bookings in the selected month
     bookings.forEach((b: any) => {
       if (!b || b.status === 'cancelled') return;
 
@@ -650,7 +794,6 @@ export function AdminStaffPayrollManager({
         staffEntry.totalSalesAmount += salesShare;
         staffEntry.totalServiceCommission += commResult.totalCommission;
 
-        // Aggregate per-service breakdown
         commResult.itemsBreakdown.forEach((it) => {
           const existing = staffEntry.serviceSummaryMap.get(it.matchedRuleName);
           if (existing) {
@@ -680,9 +823,8 @@ export function AdminStaffPayrollManager({
       });
     });
 
-    // Combine with Fines, Loans, and Custom Deductions
+    // Combine with Fines, Loans, Default Monthly WiFi Fee, and Custom Deductions
     const finalRows = Array.from(map.values()).map((row) => {
-      // System Penalties & Loans for this therapist in selectedMonth (or unpaid)
       const myPenalties = penalties.filter((p) => {
         if (!isSameStaffMember(p.therapistName || '', row.staffName, row.staffId)) return false;
         const pDate = String(p.date || '');
@@ -704,7 +846,31 @@ export function AdminStaffPayrollManager({
         isPaidSettled: false
       };
 
-      const customDeductionsTotal = (adj.customDeductions || []).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+      const { wifiFee, otherCustomDeductions } = getStaffEffectiveWifiAndCleanDeductions(row.staffName, adj);
+
+      const otherCustomTotal = otherCustomDeductions.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+      const customDeductionsTotal = wifiFee + otherCustomTotal;
+
+      // Combined display list including Default WiFi Fee (if > 0)
+      const allCustomDeductionLabels: { id: string; reason: string; amount: number; isWifi: boolean; date?: string }[] = [];
+      if (wifiFee > 0) {
+        allCustomDeductionLabels.push({
+          id: 'default_wifi',
+          reason: 'လစဉ် WIFI ကြေး',
+          amount: wifiFee,
+          isWifi: true
+        });
+      }
+      otherCustomDeductions.forEach((d) => {
+        allCustomDeductionLabels.push({
+          id: d.id,
+          reason: d.reason,
+          amount: Number(d.amount) || 0,
+          isWifi: false,
+          date: d.date
+        });
+      });
+
       const totalDeductions = systemFinesTotal + systemLoansTotal + customDeductionsTotal;
       const grossPay = (adj.baseSalary || 0) + row.totalServiceCommission + (adj.bonus || 0);
       const netPayable = grossPay - totalDeductions;
@@ -715,20 +881,21 @@ export function AdminStaffPayrollManager({
         bookingLogs: row.bookingLogs.sort((a, b) => b.date.localeCompare(a.date)),
         baseSalary: adj.baseSalary || 0,
         bonus: adj.bonus || 0,
+        wifiFee,
         systemFinesTotal,
         systemLoansTotal,
         myPenalties,
-        customDeductions: adj.customDeductions || [],
+        customDeductions: otherCustomDeductions,
+        allCustomDeductionLabels,
         customDeductionsTotal,
         totalDeductions,
         grossPay,
         netPayable,
         isPaidSettled: Boolean(adj.isPaidSettled),
-        settledAt: adj.settledAt
+        settledAt: adj.settledAt || null
       };
     });
 
-    // Sort by Staff Number (No-1, No-2, ...)
     return finalRows.sort((a, b) => {
       const nA = extractExactStaffNumber(a.staffName) ?? 999;
       const nB = extractExactStaffNumber(b.staffName) ?? 999;
@@ -770,7 +937,7 @@ export function AdminStaffPayrollManager({
     );
   }, [filteredRows]);
 
-  // 🌟 4. Export Full Monthly Payroll & Service Breakdown CSV (Excel) 🌟
+  // Export Full Monthly Payroll CSV (Excel)
   const handleExportPayrollExcel = () => {
     const summaryHeaders = [
       'Staff ID',
@@ -785,7 +952,8 @@ export function AdminStaffPayrollManager({
       'Gross Pay (Ks)',
       'System Fines (Ks)',
       'Staff Loans / Advances (Ks)',
-      'Custom Deductions (Ks)',
+      'Monthly WiFi Fee (Ks)',
+      'Other Custom Deductions (Ks)',
       'Custom Deduction Reasons',
       'Total Deductions (Ks)',
       'NET PAYABLE SALARY (Ks)',
@@ -794,7 +962,10 @@ export function AdminStaffPayrollManager({
     ];
 
     const summaryRows = filteredRows.map((r) => {
-      const customReasonsStr = r.customDeductions.map((d) => `${d.reason} (${d.amount} Ks)`).join(' | ');
+      const customReasonsStr = r.allCustomDeductionLabels
+        .map((d) => `${d.reason} (${d.amount} Ks)`)
+        .join(' | ');
+      const otherDedAmt = r.customDeductions.reduce((s, d) => s + (Number(d.amount) || 0), 0);
       const serviceBreakdownStr = r.serviceBreakdownList
         .map((s) => `${s.ruleName}: ${s.count}x (${s.totalComm} Ks)`)
         .join(' ; ');
@@ -812,7 +983,8 @@ export function AdminStaffPayrollManager({
         r.grossPay,
         r.systemFinesTotal,
         r.systemLoansTotal,
-        r.customDeductionsTotal,
+        r.wifiFee,
+        otherDedAmt,
         `"${customReasonsStr || '-'}"`,
         r.totalDeductions,
         r.netPayable,
@@ -830,7 +1002,7 @@ export function AdminStaffPayrollManager({
     link.click();
   };
 
-  // Export Detailed Service-by-Service Log for a Single Staff or All Staff
+  // Export Detailed Service-by-Service Log
   const handleExportDetailedServiceLogsExcel = () => {
     const headers = [
       'Date',
@@ -927,9 +1099,12 @@ export function AdminStaffPayrollManager({
 
             <div className="overflow-y-auto flex-1 pr-1 space-y-4 text-xs">
               <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl text-[#123524]">
-                <div className="font-black text-xs uppercase tracking-wider mb-1">Senior Therapists (Excel SGL-001, SGL-012, SGL-014):</div>
+                <div className="font-black text-xs uppercase tracking-wider mb-1">
+                  Senior Therapists (Excel SGL-001, SGL-012, SGL-014):
+                </div>
                 <p className="text-[11px] font-semibold text-gray-700">
-                  ပုံမှန် Massage, Scrub နှင့် Waxing များတွင် Junior နှင့် Senior ကော်မရှင်တူညီပြီး၊ <strong>Outcall Services (၄) မျိုး</strong> တွင် Senior Therapist များက ပိုမိုမြင့်မားသော ကော်မရှင်နှုန်းထား ရရှိပါသည်။ (ဇယားထဲတွင်လည်း Senior/Junior ခလုတ်ကို တိုက်ရိုက်ပြောင်းလဲနိုင်ပါသည်)။
+                  ပုံမှန် Massage, Scrub နှင့် Waxing များတွင် Junior နှင့် Senior ကော်မရှင်တူညီပြီး၊{' '}
+                  <strong>Outcall Services (၄) မျိုး</strong> တွင် Senior Therapist များက ပိုမိုမြင့်မားသော ကော်မရှင်နှုန်းထား ရရှိပါသည်။
                 </p>
               </div>
 
@@ -987,7 +1162,7 @@ export function AdminStaffPayrollManager({
       )}
 
       {/* =========================================================================
-          MODAL 2: CUSTOM DEDUCTIONS, BONUS & BASE SALARY MANAGER
+          MODAL 2: CUSTOM DEDUCTIONS, 1-CLICK WIFI FEE, BONUS & BASE SALARY MANAGER
          ========================================================================= */}
       {editingStaffRow && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -1060,7 +1235,53 @@ export function AdminStaffPayrollManager({
               </div>
             </div>
 
-            {/* 3. Custom Deductions Manager */}
+            {/* 🌟 3. DEFAULT MONTHLY WIFI FEE (1-CLICK AMOUNT CHANGER) 🌟 */}
+            <div className="bg-red-50/50 p-4 rounded-2xl border border-red-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-[#123524] flex items-center gap-1.5">
+                  <Wifi className="w-4 h-4 text-red-600" />
+                  လစဉ် WIFI ကြေး (Default ဖြတ်တောက်ငွေ)
+                </span>
+                <span className="text-xs font-black text-red-600 bg-white px-2.5 py-1 rounded-lg border border-red-200">
+                  -{formatPrice(editingStaffRow.wifiFee)}
+                </span>
+              </div>
+
+              <div className="text-[10px] font-bold text-gray-500">
+                One-Click ပမာဏ ပြောင်းရန် (နှိပ်လိုက်သည်နှင့် ချက်ချင်းပြောင်းပါမည်):
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                {WIFI_PRESETS.map((presetAmt) => {
+                  const isActive = editingStaffRow.wifiFee === presetAmt;
+                  return (
+                    <button
+                      key={presetAmt}
+                      type="button"
+                      onClick={() => handleSetIndividualWifiFee(editingStaffRow.staffName, presetAmt)}
+                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black transition border ${
+                        isActive
+                          ? 'bg-red-600 text-white border-red-600 shadow-xs'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-red-400'
+                      }`}
+                    >
+                      {presetAmt === 0 ? '0 Ks (ကင်းလွတ်ခွင့်)' : `${presetAmt.toLocaleString()} Ks`}
+                    </button>
+                  );
+                })}
+
+                <input
+                  type="number"
+                  step={1000}
+                  value={editingStaffRow.wifiFee}
+                  onChange={(e) => handleSetIndividualWifiFee(editingStaffRow.staffName, Number(e.target.value) || 0)}
+                  className="w-24 p-1.5 bg-white border border-red-300 rounded-xl text-xs font-black text-red-600 text-center outline-none focus:border-red-600"
+                  title="စိတ်ကြိုက် WiFi ကြေး ရိုက်ထည့်ရန်"
+                />
+              </div>
+            </div>
+
+            {/* 4. Other Custom Deductions Manager */}
             <div className="space-y-3">
               <div className="text-xs font-black text-red-700 uppercase tracking-wider">
                 ၂။ အခြား ဖြတ်တောက်ငွေများ စိတ်ကြိုက်ထည့်ရန် (Custom Deductions)
@@ -1091,34 +1312,76 @@ export function AdminStaffPayrollManager({
                 </button>
               </form>
 
-              {/* Existing Custom Deductions List */}
+              {/* Existing Custom Deductions List (With 1-Click Inline Edit) */}
               <div className="space-y-1.5 max-h-40 overflow-y-auto">
                 {editingStaffRow.customDeductions.length === 0 ? (
-                  <div className="text-center py-4 text-[11px] text-gray-400 font-semibold border border-dashed border-gray-200 rounded-xl">
-                    အခြားဖြတ်တောက်ငွေ ထည့်သွင်းထားခြင်း မရှိပါ။
+                  <div className="text-center py-3 text-[11px] text-gray-400 font-semibold border border-dashed border-gray-200 rounded-xl">
+                    WiFi ကြေးမှလွဲ၍ အခြားဖြတ်တောက်ငွေ ထည့်သွင်းထားခြင်း မရှိပါ။
                   </div>
                 ) : (
-                  editingStaffRow.customDeductions.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between p-2.5 bg-red-50/60 border border-red-200 rounded-xl text-xs"
-                    >
-                      <div>
-                        <span className="font-bold text-gray-800">{item.reason}</span>
-                        <span className="text-[10px] text-gray-400 ml-2">({item.date})</span>
+                  editingStaffRow.customDeductions.map((item) => {
+                    const isEditingThis = editingDedId === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between p-2.5 bg-red-50/60 border border-red-200 rounded-xl text-xs gap-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="font-bold text-gray-800">{item.reason}</span>
+                          <span className="text-[10px] text-gray-400 ml-2">({item.date})</span>
+                        </div>
+
+                        {isEditingThis ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              autoFocus
+                              value={editingDedAmtValue}
+                              onChange={(e) => setEditingDedAmtValue(e.target.value)}
+                              className="w-24 px-2 py-1 bg-white border border-red-400 rounded-lg text-xs font-black text-red-600 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateCustomDeductionAmount(
+                                  editingStaffRow.staffName,
+                                  item.id,
+                                  Number(editingDedAmtValue) || 0
+                                )
+                              }
+                              className="p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+                              title="Save Amount"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingDedId(item.id);
+                                setEditingDedAmtValue(String(item.amount));
+                              }}
+                              title="နှိပ်၍ ငွေပမာဏ ချက်ချင်းပြင်ရန်"
+                              className="font-black text-red-600 hover:bg-red-100 px-2 py-1 rounded-lg flex items-center gap-1 transition"
+                            >
+                              <span>-{formatPrice(item.amount)}</span>
+                              <Edit3 className="w-3 h-3 text-gray-400" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCustomDeduction(editingStaffRow.staffName, item.id)}
+                              className="p-1 text-red-500 hover:bg-red-100 rounded"
+                              title="Delete Deduction"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-red-600">-{formatPrice(item.amount)}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveCustomDeduction(editingStaffRow.staffName, item.id)}
-                          className="p-1 text-red-500 hover:bg-red-100 rounded"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -1157,7 +1420,7 @@ export function AdminStaffPayrollManager({
               </h2>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Staff Commession Rate.xlsx ပါ ဝန်ဆောင်မှုတစ်ခုချင်းစီ၏ နှုန်းထားအတိအကျဖြင့် တွက်ချက်ထားပြီး၊ ဒဏ်ကြေး/ကြိုထုတ်ငွေနှင့် အခြားဖြတ်တောက်ငွေများ နှုတ်၍ လကုန်လစာ တန်းရှင်းနိုင်ပါသည်
+              Staff Commession Rate.xlsx ပါ ဝန်ဆောင်မှုတစ်ခုချင်းစီ၏ နှုန်းထားအတိအကျဖြင့် တွက်ချက်ထားပြီး၊ လစဉ် WiFi ကြေး၊ ဒဏ်ကြေးနှင့် အခြားဖြတ်တောက်ငွေများ နှုတ်၍ လကုန်လစာ တန်းရှင်းနိုင်ပါသည်
             </p>
           </div>
 
@@ -1186,9 +1449,9 @@ export function AdminStaffPayrollManager({
           </div>
         </div>
 
-        {/* Filter Bar: Month Picker & Staff Search */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 items-end">
-          <div>
+        {/* Filter Bar: Month Picker, Search & Global 1-Click Default WiFi Fee */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-end">
+          <div className="lg:col-span-3">
             <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
               လစာထုတ်မည့် လ ရွေးချယ်ရန် (Payroll Month)
             </label>
@@ -1200,7 +1463,7 @@ export function AdminStaffPayrollManager({
             />
           </div>
 
-          <div className="sm:col-span-2">
+          <div className="lg:col-span-4">
             <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
               ဝန်ထမ်း ရှာဖွေရန် (Search Staff / ID / Seniority)
             </label>
@@ -1216,10 +1479,51 @@ export function AdminStaffPayrollManager({
             </div>
           </div>
 
-          <div className="bg-yellow-50/80 border border-[#D4AF37]/40 p-2.5 rounded-xl text-center">
-            <div className="text-[9px] font-extrabold text-yellow-800 uppercase">Senior Therapists (Outcall Bonus)</div>
-            <div className="text-[11px] font-black text-[#123524] mt-0.5">
-              { staffPayrollRows.filter((r) => r.seniority === 'Senior').map((r) => r.staffName.replace('Therapist ', '')).join(', ') || 'None' }
+          {/* 🌟 1-CLICK GLOBAL DEFAULT MONTHLY WIFI FEE BAR 🌟 */}
+          <div className="lg:col-span-5 bg-red-50/60 border border-red-200 p-2.5 rounded-xl">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-black text-red-800 uppercase flex items-center gap-1">
+                <Wifi className="w-3.5 h-3.5 text-red-600" />
+                ဝန်ထမ်းအားလုံး၏ Default လစဉ် WiFi ကြေး (1-Click Change):
+              </span>
+              <button
+                type="button"
+                onClick={() => handleUpdateGlobalWifiFee(payrollDocData.defaultWifiFee, true)}
+                className="text-[9px] font-bold text-blue-700 hover:underline flex items-center gap-0.5"
+                title="ဝန်ထမ်းအားလုံးကို Default WiFi ကြေးအတိုင်း ပြန်ညှိမည်"
+              >
+                <RotateCcw className="w-2.5 h-2.5" /> Apply to All
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {WIFI_PRESETS.map((amt) => {
+                const isSelected = payrollDocData.defaultWifiFee === amt;
+                return (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => handleUpdateGlobalWifiFee(amt, true)}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-black transition border ${
+                      isSelected
+                        ? 'bg-red-600 text-white border-red-600 shadow-2xs'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-red-400'
+                    }`}
+                  >
+                    {amt === 0 ? '0 Ks' : `${(amt / 1000).toFixed(0)}k`}
+                  </button>
+                );
+              })}
+              <div className="flex items-center gap-1 ml-auto">
+                <input
+                  type="number"
+                  step={1000}
+                  value={customGlobalWifiInput}
+                  onChange={(e) => setCustomGlobalWifiInput(e.target.value)}
+                  onBlur={() => handleUpdateGlobalWifiFee(Number(customGlobalWifiInput) || 0, false)}
+                  className="w-20 px-2 py-1 bg-white border border-red-300 rounded-lg text-[11px] font-black text-red-700 text-center outline-none"
+                />
+                <span className="text-[10px] font-bold text-red-700">Ks</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1239,7 +1543,7 @@ export function AdminStaffPayrollManager({
             <div className="text-lg font-black text-emerald-800 mt-1">{formatPrice(globalTotals.totalCommission)}</div>
           </div>
           <div className="p-3.5 rounded-2xl bg-red-50/70 border border-red-200">
-            <div className="text-[10px] font-bold text-red-700 uppercase">Total Fines, Loans & Deductions</div>
+            <div className="text-[10px] font-bold text-red-700 uppercase">Total Fines, WiFi & Deductions</div>
             <div className="text-lg font-black text-red-600 mt-1">-{formatPrice(globalTotals.totalDeductions)}</div>
           </div>
           <div className="col-span-2 sm:col-span-1 p-3.5 rounded-2xl bg-gradient-to-br from-[#123524] to-[#1a4a32] text-white border border-[#D4AF37]/50 shadow-sm">
@@ -1263,9 +1567,9 @@ export function AdminStaffPayrollManager({
                 <th className="p-3.5 text-right">Service Commission</th>
                 <th className="p-3.5 text-right">Salary / Bonus</th>
                 <th className="p-3.5 text-right">Fines & Loans</th>
-                <th className="p-3.5 text-right">Custom Deductions</th>
+                <th className="p-3.5 text-right">WiFi & Custom Deductions</th>
                 <th className="p-3.5 text-right">Net Payable</th>
-                <th className="p-3.5 text-center">Status</th>
+                <th className="p-3.5 text-center">Status (နှိပ်၍ပြောင်းရန်)</th>
                 <th className="p-3.5 text-right">Actions</th>
               </tr>
             </thead>
@@ -1290,7 +1594,7 @@ export function AdminStaffPayrollManager({
                         </div>
                       </td>
 
-                      {/* 2. Seniority Badge (Clickable to Toggle Senior/Junior) */}
+                      {/* 2. Seniority Badge */}
                       <td className="p-3.5 text-center">
                         <button
                           type="button"
@@ -1339,7 +1643,11 @@ export function AdminStaffPayrollManager({
 
                       {/* 6. System Fines & Loans */}
                       <td className="p-3.5 text-right">
-                        <div className={`font-bold ${row.systemFinesTotal + row.systemLoansTotal > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                        <div
+                          className={`font-bold ${
+                            row.systemFinesTotal + row.systemLoansTotal > 0 ? 'text-red-600' : 'text-gray-400'
+                          }`}
+                        >
                           -{formatPrice(row.systemFinesTotal + row.systemLoansTotal)}
                         </div>
                         {(row.systemFinesTotal > 0 || row.systemLoansTotal > 0) && (
@@ -1349,16 +1657,32 @@ export function AdminStaffPayrollManager({
                         )}
                       </td>
 
-                      {/* 7. Custom Deductions */}
+                      {/* 🌟 7. WiFi & Custom Deductions (Clickable for quick 1-click edit) 🌟 */}
                       <td className="p-3.5 text-right">
-                        <div className={`font-bold ${row.customDeductionsTotal > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                          -{formatPrice(row.customDeductionsTotal)}
-                        </div>
-                        {row.customDeductions.length > 0 && (
-                          <div className="text-[9px] text-gray-500 truncate max-w-[140px] ml-auto" title={row.customDeductions.map((d) => d.reason).join(', ')}>
-                            {row.customDeductions.map((d) => d.reason).join(', ')}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleOpenAdjustmentModal(row.staffName, payrollDocData.adjustments[row.staffName])
+                          }
+                          title="နှိပ်၍ WiFi ကြေး နှင့် အခြားဖြတ်တောက်ငွေများ ပြင်ဆင်ရန်"
+                          className="text-right group ml-auto block"
+                        >
+                          <div
+                            className={`font-black group-hover:underline ${
+                              row.customDeductionsTotal > 0 ? 'text-red-600' : 'text-gray-400'
+                            }`}
+                          >
+                            -{formatPrice(row.customDeductionsTotal)}
                           </div>
-                        )}
+                          {row.allCustomDeductionLabels.length > 0 && (
+                            <div
+                              className="text-[9px] text-gray-500 truncate max-w-[160px] ml-auto"
+                              title={row.allCustomDeductionLabels.map((d) => `${d.reason} (${formatPrice(d.amount)})`).join(', ')}
+                            >
+                              {row.allCustomDeductionLabels.map((d) => d.reason).join(', ')}
+                            </div>
+                          )}
+                        </button>
                       </td>
 
                       {/* 8. Final Net Payable */}
@@ -1368,18 +1692,23 @@ export function AdminStaffPayrollManager({
                         </div>
                       </td>
 
-                      {/* 9. Paid / Unpaid Status */}
+                      {/* 🌟 9. Reversible Paid / Unpaid Status Button 🌟 */}
                       <td className="p-3.5 text-center">
                         <button
                           type="button"
                           onClick={() => handleToggleSettledStatus(row.staffName, row.isPaidSettled)}
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase transition ${
+                          title={
                             row.isPaidSettled
-                              ? 'bg-emerald-600 text-white shadow-2xs'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-300'
+                              ? 'နှိပ်ပါက "မရှင်းရသေး (Unpaid)" သို့ ပြန်ပြောင်းပါမည်'
+                              : 'နှိပ်ပါက "ရှင်းပြီး (Paid)" အဖြစ် သတ်မှတ်ပါမည်'
+                          }
+                          className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition cursor-pointer ${
+                            row.isPaidSettled
+                              ? 'bg-emerald-600 hover:bg-amber-600 text-white shadow-xs'
+                              : 'bg-gray-100 text-gray-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-gray-300'
                           }`}
                         >
-                          {row.isPaidSettled ? '✓ ရှင်းပြီး (Paid)' : 'မရှင်းရသေး'}
+                          {row.isPaidSettled ? '✓ ရှင်းပြီး (PAID)' : 'မရှင်းရသေး'}
                         </button>
                       </td>
 
@@ -1492,7 +1821,7 @@ export function AdminStaffPayrollManager({
                                     <strong>-{formatPrice(row.systemLoansTotal)}</strong>
                                   </div>
                                 )}
-                                {row.customDeductions.map((cd) => (
+                                {row.allCustomDeductionLabels.map((cd) => (
                                   <div key={cd.id} className="flex justify-between text-red-600">
                                     <span>ဖြတ်တောက်ငွေ — {cd.reason}:</span>
                                     <strong>-{formatPrice(cd.amount)}</strong>
