@@ -74,6 +74,8 @@ interface OfflineSaleRecord {
   expectedEndTimeMillis?: number;
   cashierId?: string;
   cashierName?: string;
+  editingOnlineBookingId?: string;
+  originalOnlineTxId?: string;
 }
 
 export interface PosUserAccount {
@@ -709,7 +711,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     [liveOnlineBookings]
   );
 
-  // 🌟 Convert Online Booking into POS Printable Receipt Format 🌟
+  // 🌟 လက်ရှိ ပြင်ဆင်နေသော Online Booking ကို မှတ်သားထားမည့် State 🌟
+  const [editingOnlineBooking, setEditingOnlineBooking] = useState<any | null>(null);
+
+  // 🌟 Convert Online Booking into POS Printable Receipt Format (With VVIP Upgrade Lookup!) 🌟
   const convertOnlineBookingToReceipt = (b: any): OfflineSaleRecord => {
     const total = Number(b.totalPrice) || 0;
     const subTotal = Number(b.originalPrice) > total ? Number(b.originalPrice) : total;
@@ -719,30 +724,117 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     const balDue = isDepDue ? Number(b.balanceDue) || 0 : 0;
     const cleanPayMethod = (b.paymentMethod || 'Online Pay').split('(')[0].trim();
 
+    // အကယ်၍ ယခင် POS မှ ပြင်ဆင်ထားသော posItems အသေးစိတ်ရှိပါက ၎င်းကို တိုက်ရိုက်ပြန်သုံးမည်
+    if (Array.isArray(b.posItems) && b.posItems.length > 0) {
+      return {
+        localId: `online_${b.id}`,
+        firestoreDocId: b.id,
+        editingOnlineBookingId: b.id,
+        originalOnlineTxId: b.txId || '',
+        invoiceNo: b.txId || `OB-${String(b.id).slice(-4).toUpperCase()}`,
+        createdAt: b.createdAt || Date.now(),
+        date: b.date || getLocalTodayStr(),
+        time: b.time || 'Online',
+        customerName: b.name || 'Online Guest',
+        customerPhone: b.phone || '',
+        customerVipTier: b.vipTierName,
+        therapistName: b.therapist || 'Assigned Therapist',
+        items: b.posItems,
+        subTotal,
+        discountType: 'percent',
+        discountValue: Number(b.discountPercent) || 0,
+        discountAmount: discAmt,
+        discountReason: b.discountLabel || (discAmt > 0 ? 'Online Promo' : ''),
+        totalPrice: total,
+        paymentMethod: cleanPayMethod,
+        paymentStatus: isDepDue ? 'deposit_only' : 'paid_in_full',
+        depositPaid: depPaid,
+        balanceDue: balDue,
+        cashReceived: depPaid,
+        changeDue: 0,
+        serviceStatus: b.status === 'completed' ? 'completed' : 'in_progress',
+        pointsEarned: Math.floor(total / 35000),
+        note: b.specialRequest || '',
+        synced: true
+      };
+    }
+
     const serviceParts = String(b.service || 'Spa Service')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const allMenuItems = (localAppData?.categories || []).flatMap((c) => c.items || []);
+
     const parsedItems: CartItem[] = serviceParts.map((part, idx) => {
-      const isVvip = part.toLowerCase().includes('vvip');
-      const durMatch = part.match(/\(([^)]+)\)/);
-      const cleanName = part.replace(/\s*\([^)]*\)/g, '').replace('+ VVIP Upgrade', '').replace('+ VVIP', '').trim();
+      let rawPart = part;
+      let qty = 1;
+      const qtyMatch = rawPart.match(/\(x(\d+)\)$/i) \vert{}\vert{} rawPart.match(/\s+x(\d+)$/i);
+      if (qtyMatch) {
+        qty = parseInt(qtyMatch[1], 10) || 1;
+        rawPart = rawPart.replace(qtyMatch[0], '').trim();
+      }
+
+      const isVvip = rawPart.toLowerCase().includes('vvip');
+      const durMatch = rawPart.match(/\(([^)]+)\)/);
+      const durationStr = durMatch ? durMatch[1].trim() : undefined;
+      const cleanName = rawPart
+        .replace(/\s*\([^)]*\)/g, '')
+        .replace(/\+\s*VVIP\s*Upgrade/gi, '')
+        .replace(/\+\s*VVIP/gi, '')
+        .trim();
+
+      // 🌟 Menu ထဲမှ မူလဈေးနှုန်း နှင့် VVIP Room ဈေးနှုန်းကို တိုက်ဆိုင်ရှာဖွေပေးခြင်း (ဆိုင်ရောက်မှ VVIP Upgrade နှိပ်နိုင်ရန်!) 🌟
+      const matchedMenu = allMenuItems.find((m) => {
+        const nameMatch = m.name.trim().toLowerCase() === cleanName.toLowerCase();
+        if (!nameMatch) return false;
+        if (durationStr && m.duration) {
+          return m.duration.trim().toLowerCase() === durationStr.toLowerCase();
+        }
+        return true;
+      });
+
+      const fallbackUnitPrice =
+        serviceParts.length === 1
+          ? Math.round(subTotal / qty)
+          : Math.round(subTotal / serviceParts.length);
+
+      const basePrice = matchedMenu ? Number(matchedMenu.price) || fallbackUnitPrice : fallbackUnitPrice;
+      const vvipFull = matchedMenu ? Number(matchedMenu.vvipPrice) || 0 : 0;
+      const vvipExtra = vvipFull > basePrice ? vvipFull - basePrice : 10000; // Menu တွင်မတွေ့ပါက Default +10,000 Ks
+      const vvipIncluded = matchedMenu ? !!matchedMenu.vvipIncluded : false;
+
+      // အကယ်၍ Online ကတည်းက VVIP ပါပြီးသားဖြစ်ပြီး matchedMenu မတွေ့ပါက basePrice ထဲမှ vvipExtra နှုတ်ထားပေးမည်
+      const effectiveBasePrice =
+        isVvip && !matchedMenu && basePrice > vvipExtra ? basePrice - vvipExtra : basePrice;
+
+      const isExtraAddOn =
+        cleanName.toLowerCase().includes('towel') ||
+        cleanName.toLowerCase().includes('oil (bottle)') ||
+        cleanName.toLowerCase().includes('underwear') ||
+        cleanName.toLowerCase().includes('drink');
+
       return {
         cartId: `ob_${b.id}_${idx}`,
-        id: `ob_${idx}`,
-        name: cleanName || part,
-        duration: durMatch ? durMatch[1] : undefined,
-        price: serviceParts.length === 1 ? subTotal : Math.round(subTotal / serviceParts.length),
+        id: matchedMenu?.id || `ob_${idx}`,
+        name: cleanName || rawPart,
+        duration: durationStr || matchedMenu?.duration,
+        price: effectiveBasePrice,
         isVvipUpgrade: isVvip,
-        qty: 1
+        vvipExtraPrice: isExtraAddOn ? 0 : vvipExtra,
+        vvipIncluded,
+        isCustomItem: isExtraAddOn,
+        discountEligible: !isExtraAddOn,
+        qty
       };
     });
 
     return {
       localId: `online_${b.id}`,
       firestoreDocId: b.id,
-      invoiceNo: b.txId ? `OB-${b.txId}` : `OB-${String(b.id).slice(-4).toUpperCase()}`,
+      editingOnlineBookingId: b.id,
+      originalOnlineTxId: b.txId || '',
+      invoiceNo: b.txId || `OB-${String(b.id).slice(-4).toUpperCase()}`,
       createdAt: b.createdAt || Date.now(),
       date: b.date || getLocalTodayStr(),
       time: b.time || 'Online',
@@ -765,22 +857,58 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       changeDue: 0,
       serviceStatus: b.status === 'completed' ? 'completed' : 'in_progress',
       pointsEarned: Math.floor(total / 35000),
-      note: b.specialRequest || 'Online Booking',
+      note: b.specialRequest || '',
       synced: true
     };
   };
 
-  // 🌟 Load Online Booking into POS Register Cart (To add Extra Items / VVIP Upgrade at Shop) 🌟
+  // 🌟 Load Online Booking into POS Register Cart (Preserves Therapist, Date, Time, TxID & Services!) 🌟
   const handleLoadOnlineBookingToPosCart = (b: any) => {
     const rec = convertOnlineBookingToReceipt(b);
+    setEditingOnlineBooking(b); // မူလ Online Booking ဖြစ်ကြောင်း မှတ်ထားမည်
     setCart(rec.items);
-    setCustomerName(b.name || 'Online Guest');
+    setCustomerName((b.name || 'Online Guest').replace(/\s*\(Walk-in\)$/i, '').trim());
     setCustomerPhone(b.phone || '');
-    if (b.discountPercent && b.discountPercent > 0) {
+
+    // ✅ မူလ ရွေးချယ်ထားသော Therapist (ဥပမာ - Therapist No-1) ကို မပျောက်စေဘဲ အလိုအလျောက် ပြန်ရွေးပေးခြင်း!
+    const rawTherapistStr = String(b.therapist || '').trim();
+    const splitTNames = rawTherapistStr
+      .split(/&|,|\+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const allTherapists = localAppData?.therapists || [];
+
+    const findMatchingTherapist = (nameStr?: string): TherapistProfile | null => {
+      if (!nameStr || nameStr.toLowerCase().includes('any available')) return null;
+      const exact = allTherapists.find((t) => t.name.trim().toLowerCase() === nameStr.toLowerCase());
+      if (exact) return exact;
+      const numMatch = nameStr.match(/\d+/);
+      if (numMatch) {
+        const byNum = allTherapists.find((t) => {
+          const tNum = t.name.match(/\d+/);
+          return tNum && tNum[0] === numMatch[0];
+        });
+        if (byNum) return byNum;
+      }
+      return { id: nameStr, name: nameStr, images: [], order: 0 };
+    };
+
+    setTherapist1(findMatchingTherapist(splitTNames[0]));
+    setTherapist2(findMatchingTherapist(splitTNames[1]));
+
+    // ✅ မူလ Booking ၏ ရက်စွဲကို ဆက်ထိန်းထားမည်
+    if (b.date) setSaleDate(b.date);
+
+    // ✅ မူလ Discount ကို ဆက်ထိန်းထားမည်
+    if (b.discountPercent && Number(b.discountPercent) > 0) {
       setDiscountType('percent');
       setDiscountValue(Number(b.discountPercent));
       setDiscountReason(b.discountLabel || `Online Promo (${b.discountPercent}% OFF)`);
+    } else {
+      setDiscountValue(0);
+      setDiscountReason('No Discount');
     }
+
     const cleanMethod = (b.paymentMethod || 'KBZ PAY').split('(')[0].trim();
     setPaymentMethod(cleanMethod);
     if (b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0) {
@@ -789,11 +917,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     } else {
       setOnlinePayMode('full');
     }
-    setSpecialNote(`Online Booking TxID: ${b.txId || '-'}`);
+    setSpecialNote(b.specialRequest || '');
     setActivePosView('register');
     setPosStep(1);
   };
-
   // 🌟 Set 50% Deposit or Custom Deposit for Online Booking directly from POS 🌟
   const handlePosSetOnlineDeposit = async (b: any, depAmount: number) => {
     const total = Number(b.totalPrice) || 0;
@@ -1549,6 +1676,52 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       )
       .join(', ');
 
+    // 🌟 အကယ်၍ Online Booking ကို POS မှ ပြင်ဆင်ခြင်း (Add-on / VVIP Upgrade) ဖြစ်ပါက မူလ Online Booking ထဲမှာပဲ Update လုပ်မည်! 🌟
+    if (record.editingOnlineBookingId) {
+      const onlinePaySummary =
+        record.paymentStatus === 'deposit_only'
+          ? `${record.paymentMethod} (စရံ: ${formatPrice(record.depositPaid)} | ကျန်ငွေ: ${formatPrice(record.balanceDue)})`
+          : record.paymentMethod;
+
+      const cleanOnlineDiscLabel = (record.discountReason || '')
+        .replace('[Shop Walk-in Sale]', '')
+        .replace('[Shop Walk-in]', '')
+        .trim();
+
+      const onlineUpdatePayload: any = {
+        name: encryptText(record.customerName.replace(/\s*\(Walk-in\)$/i, '').trim()),
+        phone: encryptText(record.customerPhone || ''),
+        service: serviceSummary,
+        therapist: record.therapistName || 'Any Available Therapist',
+        date: record.date,
+        paymentMethod: onlinePaySummary,
+        paymentStatus: record.paymentStatus,
+        depositPaid: Number(record.depositPaid) || 0,
+        balanceDue: Number(record.balanceDue) || 0,
+        txId: encryptText(record.originalOnlineTxId || record.invoiceNo),
+        totalPrice: Number(record.totalPrice) || 0,
+        originalPrice: encryptText(record.subTotal.toString()),
+        discountPercent: encryptText(
+          record.discountType === 'percent'
+            ? record.discountValue.toString()
+            : Math.round((record.discountAmount / (record.subTotal || 1)) * 100).toString()
+        ),
+        discountLabel: encryptText(cleanOnlineDiscLabel),
+        specialRequest: encryptText(record.note || ''),
+        status: record.serviceStatus,
+        isOnlineBooking: true,
+        posItems: record.items,
+        cashierId: currentPosUser?.id || '',
+        cashierName: encryptText(currentPosUser?.displayName || 'POS Staff'),
+        ...(record.startTimeMillis && { startTimeMillis: record.startTimeMillis }),
+        ...(record.expectedEndTimeMillis && { expectedEndTimeMillis: record.expectedEndTimeMillis })
+      };
+
+      await updateDoc(doc(db, 'bookings', record.editingOnlineBookingId), onlineUpdatePayload);
+      return record.editingOnlineBookingId;
+    }
+
+    // 🌟 သာမန် Walk-in POS Sale အသစ်ဖြစ်မှသာ အောက်ပါအတိုင်း ဘောင်ချာအသစ် (`SL-...`) ဆောက်မည် 🌟
     const discountLabelText =
       record.discountAmount > 0
         ? `[Shop Walk-in] ${record.discountReason || 'Discount'} (${
@@ -2152,18 +2325,21 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
     if (totalMins <= 0) totalMins = 60;
     const expectedEndTimeMillis = startTimeMillis + totalMins * 60 * 1000;
 
-    const combinedTherapist =
+   const combinedTherapist =
       therapist1 && therapist2
         ? `${therapist1.name} & ${therapist2.name}`
         : therapist1
         ? therapist1.name
-        : 'Any Available Therapist';
+        : editingOnlineBooking?.therapist || 'Any Available Therapist';
 
     const isDepositSale = isOnlinePaymentSelected && onlinePayMode === 'deposit' && balanceDueNum > 0;
 
     const newRecord: OfflineSaleRecord = {
-      localId: `pos_${now}_${Math.random().toString(36).slice(2, 7)}`,
-      invoiceNo: generateInvoiceNo(),
+      localId: editingOnlineBooking ? `online_${editingOnlineBooking.id}` : `pos_${now}_${Math.random().toString(36).slice(2, 7)}`,
+      firestoreDocId: editingOnlineBooking?.id,
+      editingOnlineBookingId: editingOnlineBooking?.id,
+      originalOnlineTxId: editingOnlineBooking?.txId || '',
+      invoiceNo: editingOnlineBooking?.txId || generateInvoiceNo(),
       createdAt: now,
       date: saleDate,
       time: format12Hour(saleTime),
@@ -2210,8 +2386,11 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       updateOfflineQueue([...offlineQueue, newRecord]);
     }
 
-    addToLocalHistory(newRecord);
+    if (!editingOnlineBooking) {
+      addToLocalHistory(newRecord);
+    }
     setActiveReceipt(newRecord);
+    setEditingOnlineBooking(null);
     setSavingSale(false);
   };
 
@@ -2632,6 +2811,7 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
   };
 
   const startNewSale = () => {
+    setEditingOnlineBooking(null);
     setCart([]);
     setTherapist1(null);
     setTherapist2(null);
