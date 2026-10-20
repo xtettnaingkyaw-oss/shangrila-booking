@@ -15,7 +15,6 @@ import { useAppStore } from '../AppDataContext';
 import { StaffPenaltyView } from './PenaltySystem';
 import { NewEmployeeOnboardingForm, StaffProfileView } from './OnboardingSystem';
 import { StaffEmployeeHandbookReader } from './EmployeeHandbookSystem';
-import { calculateBookingCommissionForStaff, getStaffSeniority } from './StaffPayrollSystem';
 import { calculateBookingCommissionForStaff, getStaffSeniority, StaffPaySlipView } from './StaffPayrollSystem';
 
 const formatPrice = (price: any) => {
