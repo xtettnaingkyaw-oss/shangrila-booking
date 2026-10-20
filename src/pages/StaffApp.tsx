@@ -899,7 +899,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
                   </p>
                 </div>
                 <span className="bg-[#123524] text-[#D4AF37] text-[10px] font-black px-2.5 py-0.5 rounded-full">
-                  {upcomingBookings.length} ပွဲ
+                  {upcomingBookings.length} Sec
                 </span>
               </div>
               <div className="space-y-2">
