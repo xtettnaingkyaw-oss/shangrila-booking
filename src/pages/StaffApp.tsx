@@ -1543,7 +1543,30 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState<'leaderboard' | 'my_stats'>('leaderboard');
   const todayStr = getLocalTodayStr();
-  const currentYearMonth = todayStr.substring(0, 7);
+  const currentYearMonth = todayStr.substring(0, 7); // e.g. "2026-10"
+
+  const getPrevYearMonth = (ym: string) => {
+    const [y, m] = ym.split('-').map(Number);
+    if (!y || !m) return currentYearMonth;
+    const d = new Date(y, m - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const getYesterdayDateStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const getSameDayInMonth = (ym: string, dayNum: number) => {
+    const [y, m] = ym.split('-').map(Number);
+    if (!y || !m) return `${ym}-01`;
+    const maxDay = new Date(y, m, 0).getDate();
+    const safeDay = Math.min(Math.max(1, dayNum), maxDay);
+    return `${ym}-${String(safeDay).padStart(2, '0')}`;
+  };
+
+  const prevYearMonth = useMemo(() => getPrevYearMonth(currentYearMonth), [currentYearMonth]);
 
   useEffect(() => {
     const q = query(collection(db, 'bookings'));
@@ -1581,7 +1604,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     return decryptText(v) || v;
   };
 
-  // 🌟 Helper: ဝန်ထမ်းနံပါတ် အတိအကျ ဆွဲထုတ်ခြင်း (No-1 !== No-10) 🌟
+  // 🌟 ဝန်ထမ်းနံပါတ် အတိအကျ ဆွဲထုတ်ခြင်း (No-1 !== No-10) 🌟
   const extractExactStaffNumber = useCallback((str: string): number | null => {
     const clean = String(str || '').trim().toLowerCase();
     if (!clean || clean.startsWith('therapist_')) return null;
@@ -1643,8 +1666,18 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     return Array.from(new Map(list.filter((t) => t.name && t.name.trim() !== '').map((t) => [t.name.trim(), t])).values());
   }, [globalAppData?.therapists]);
 
-  const liveSalesEntries = useMemo(() => {
-    const entries: any[] = [];
+  // 🌟 Transform All Valid Bookings into Staff Sales Entries (For Both Current Month & Last Month Comparison) 🌟
+  const allLiveSalesEntries = useMemo(() => {
+    const entries: {
+      date: string;
+      yearMonth: string;
+      staffName: string;
+      shortLabel: string;
+      salesAmount: number;
+      commissionAmount: number;
+      serviceName: string;
+    }[] = [];
+
     bookings.forEach((b: any) => {
       if (!b || b.status === 'cancelled') return;
       const rawTx = parseSafeStr(b.txId).trim().toUpperCase();
@@ -1663,7 +1696,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
       }
 
       const bDate = String(b.date || '').trim();
-      if (!bDate.startsWith(currentYearMonth)) return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(bDate)) return;
 
       const rawTherapistStr = String(b.therapist || '').trim();
       if (!rawTherapistStr || rawTherapistStr === '-' || rawTherapistStr.toLowerCase().includes('any available')) return;
@@ -1675,12 +1708,12 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
       const shareComm = Math.round((shareAmt * COMMISSION_PCT) / 100);
 
       splitNames.forEach((tNameRaw) => {
-        // Registered therapist နှင့် တိကျစွာ တိုက်စစ်မည်
         const matchedProfile = uniqueTherapists.find((tp) => isSameStaffMember(tNameRaw, tp.name, tp.id));
         const canonicalName = matchedProfile ? matchedProfile.name.trim() : tNameRaw.trim();
 
         entries.push({
           date: bDate,
+          yearMonth: bDate.substring(0, 7),
           staffName: canonicalName,
           shortLabel: getShortStaffLabel(canonicalName),
           salesAmount: shareAmt,
@@ -1690,12 +1723,83 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
       });
     });
     return entries;
-  }, [bookings, currentYearMonth, COMMISSION_PCT, uniqueTherapists, isSameStaffMember, getShortStaffLabel]);
+  }, [bookings, COMMISSION_PCT, uniqueTherapists, isSameStaffMember, getShortStaffLabel]);
+
+  // Current Month Entries Only
+  const currentMonthEntries = useMemo(() => {
+    return allLiveSalesEntries.filter((e) => e.yearMonth === currentYearMonth);
+  }, [allLiveSalesEntries, currentYearMonth]);
+
+  // 🌟 Live Comparison Calculations (Last Month vs This Month — Same as Admin Screenshot 1) 🌟
+  const comparisonStats = useMemo(() => {
+    const sumEntries = (predicate: (e: typeof allLiveSalesEntries[0]) => boolean) => {
+      let total = 0;
+      let count = 0;
+      allLiveSalesEntries.forEach((e) => {
+        if (predicate(e)) {
+          total += e.salesAmount;
+          count += 1;
+        }
+      });
+      return { total, count };
+    };
+
+    const formatMonthTitle = (ym: string) => {
+      const [y, m] = ym.split('-').map(Number);
+      if (!y || !m) return ym;
+      return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+    };
+
+    const currentDayOfMonth = parseInt(todayStr.split('-')[2] || '20', 10);
+    const cutoffA = getSameDayInMonth(prevYearMonth, currentDayOfMonth);
+    const cutoffB = getSameDayInMonth(currentYearMonth, currentDayOfMonth);
+
+    const upToDayA = sumEntries((e) => e.yearMonth === prevYearMonth && e.date <= cutoffA);
+    const upToDayB = sumEntries((e) => e.yearMonth === currentYearMonth && e.date <= cutoffB);
+
+    const fullMonthA = sumEntries((e) => e.yearMonth === prevYearMonth);
+    const fullMonthB = sumEntries((e) => e.yearMonth === currentYearMonth);
+
+    const yestDateB = getYesterdayDateStr();
+    const yestDayNum = parseInt(yestDateB.split('-')[2] || '1', 10);
+    const sameDayMonthA = getSameDayInMonth(prevYearMonth, yestDayNum);
+    const sameDayMonthB = getSameDayInMonth(currentYearMonth, yestDayNum);
+
+    const dayStatsA = sumEntries((e) => e.date === sameDayMonthA);
+    const dayStatsB = sumEntries((e) => e.date === sameDayMonthB);
+
+    const todayStats = sumEntries((e) => e.date === todayStr);
+    const activeStaffCount = Math.max(1, uniqueTherapists.length);
+    const shopDailyTarget = activeStaffCount * BASE_DAILY_TARGET;
+
+    return {
+      labelA: formatMonthTitle(prevYearMonth),
+      labelB: formatMonthTitle(currentYearMonth),
+      currentDayOfMonth,
+      upToTodayA: upToDayA.total,
+      upToTodayB: upToDayB.total,
+      upToTodayDiff: upToDayB.total - upToDayA.total,
+      sameDayDateA: sameDayMonthA,
+      sameDayDateB: sameDayMonthB,
+      sameDayA: dayStatsA.total,
+      sameDayB: dayStatsB.total,
+      sameDayDiff: dayStatsB.total - dayStatsA.total,
+      fullTotalA: fullMonthA.total,
+      fullTotalB: fullMonthB.total,
+      fullCountA: fullMonthA.count,
+      fullCountB: fullMonthB.count,
+      fullDiff: fullMonthB.total - fullMonthA.total,
+      growthPct: fullMonthA.total > 0 ? ((fullMonthB.total - fullMonthA.total) / fullMonthA.total) * 100 : 0,
+      todayActual: todayStats.total,
+      activeStaffCount,
+      shopDailyTarget
+    };
+  }, [allLiveSalesEntries, prevYearMonth, currentYearMonth, todayStr, uniqueTherapists.length, BASE_DAILY_TARGET]);
 
   const sortedPerformers = useMemo(() => {
     const map = new Map<string, { staffName: string; shortLabel: string; actualSales: number; sectionsCount: number; commission: number }>();
 
-    liveSalesEntries.forEach((e) => {
+    currentMonthEntries.forEach((e) => {
       const key = e.staffName.trim();
       if (!map.has(key)) {
         map.set(key, {
@@ -1713,16 +1817,16 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
     });
 
     return Array.from(map.values()).sort((a, b) => b.actualSales - a.actualSales);
-  }, [liveSalesEntries]);
+  }, [currentMonthEntries]);
 
   const maxActual = useMemo(() => {
     return sortedPerformers.length > 0 ? Math.max(...sortedPerformers.map((p) => p.actualSales), 1) : 1;
   }, [sortedPerformers]);
 
-  // 🌟 ဝင်ရောက်ထားသော ဝန်ထမ်း၏ ကိုယ်ပိုင်စာရင်း သီးသန့်ကိုသာ ဆွဲထုတ်ခြင်း 🌟
+  // ဝင်ရောက်ထားသော ဝန်ထမ်း၏ ကိုယ်ပိုင်စာရင်း သီးသန့်ကိုသာ ဆွဲထုတ်ခြင်း
   const myEntries = useMemo(() => {
-    return liveSalesEntries.filter((e) => checkIsMe(e.staffName));
-  }, [liveSalesEntries, checkIsMe]);
+    return currentMonthEntries.filter((e) => checkIsMe(e.staffName));
+  }, [currentMonthEntries, checkIsMe]);
 
   const myTotalSales = myEntries.reduce((s, e) => s + e.salesAmount, 0);
   const myTotalComm = myEntries.reduce((s, e) => s + e.commissionAmount, 0);
@@ -1791,7 +1895,8 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
             <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Shangri-La Hall of Fame (Live Synced)</p>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-8 overflow-x-auto">
+          {/* 1. Bar Chart Card */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
             <div className="flex items-end space-x-3.5 h-56 pb-2 pt-16 min-w-max border-b border-gray-100 px-2">
               {sortedPerformers.map((p, idx) => {
                 const actualSales = p.actualSales;
@@ -1832,6 +1937,137 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
             </div>
           </div>
 
+          {/* =========================================================================
+              🌟 2. LAST MONTH VS THIS MONTH COMPARISON CARDS (AUTO LIVE — NO DATE FILTER) 🌟
+             ========================================================================= */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+            {/* (A) Up to Today Comparison */}
+            <div className="bg-blue-50/50 p-3.5 sm:p-4 rounded-xl border border-blue-100">
+              <div className="text-xs font-bold text-blue-900 mb-2.5 flex items-center justify-between gap-2 flex-wrap">
+                <span className="flex items-center">
+                  <Calendar className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
+                  ၁ ရက်နေ့မှ {comparisonStats.currentDayOfMonth} ရက်နေ့အထိ (Up to Day {comparisonStats.currentDayOfMonth})
+                </span>
+                <span className="text-[10px] font-black bg-white px-2.5 py-0.5 rounded-full border border-blue-200 text-blue-700">
+                  Growth: {comparisonStats.growthPct >= 0 ? '+' : ''}
+                  {comparisonStats.growthPct.toFixed(1)}%
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-center">
+                <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-blue-200">
+                  <div className="text-[9px] text-gray-500 font-bold uppercase">{comparisonStats.labelA}</div>
+                  <div className="text-xs sm:text-sm font-bold text-gray-800 mt-0.5">{formatPrice(comparisonStats.upToTodayA)}</div>
+                </div>
+                <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-blue-200">
+                  <div className="text-[9px] text-blue-700 font-bold uppercase">{comparisonStats.labelB}</div>
+                  <div className="text-xs sm:text-sm font-black text-[#123524] mt-0.5">{formatPrice(comparisonStats.upToTodayB)}</div>
+                </div>
+                <div
+                  className={`p-2.5 sm:p-3 rounded-lg border text-center ${
+                    comparisonStats.upToTodayDiff >= 0
+                      ? 'bg-green-50 border-green-200 text-green-700'
+                      : 'bg-red-50 border-red-200 text-red-700'
+                  }`}
+                >
+                  <div className="text-[9px] font-bold uppercase">DIFFERENCE (ကွာခြားချက်)</div>
+                  <div className="text-xs sm:text-sm font-black mt-0.5">
+                    {comparisonStats.upToTodayDiff >= 0 ? '+' : ''}
+                    {formatPrice(comparisonStats.upToTodayDiff)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* (B) Same Day / Yesterday Comparison */}
+            <div className="bg-purple-50/50 p-3.5 sm:p-4 rounded-xl border border-purple-100">
+              <div className="text-xs font-bold text-purple-900 mb-2.5 flex items-center">
+                <Clock className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
+                နေ့ချင်းအလိုက် နှိုင်းယှဉ်ချက် ({comparisonStats.sameDayDateA} vs {comparisonStats.sameDayDateB})
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-center">
+                <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-purple-200">
+                  <div className="text-[9px] text-gray-500 font-bold uppercase">{comparisonStats.sameDayDateA}</div>
+                  <div className="text-xs sm:text-sm font-bold text-gray-800 mt-0.5">{formatPrice(comparisonStats.sameDayA)}</div>
+                </div>
+                <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-purple-200">
+                  <div className="text-[9px] text-purple-700 font-bold uppercase">{comparisonStats.sameDayDateB}</div>
+                  <div className="text-xs sm:text-sm font-black text-[#123524] mt-0.5">{formatPrice(comparisonStats.sameDayB)}</div>
+                </div>
+                <div
+                  className={`p-2.5 sm:p-3 rounded-lg border text-center ${
+                    comparisonStats.sameDayDiff >= 0
+                      ? 'bg-green-50 border-green-200 text-green-700'
+                      : 'bg-red-50 border-red-200 text-red-700'
+                  }`}
+                >
+                  <div className="text-[9px] font-bold uppercase">DAY DIFFERENCE</div>
+                  <div className="text-xs sm:text-sm font-black mt-0.5">
+                    {comparisonStats.sameDayDiff >= 0 ? '+' : ''}
+                    {formatPrice(comparisonStats.sameDayDiff)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* (C) Today's Live Shop Target */}
+            <div className="bg-yellow-50/60 p-3.5 sm:p-4 rounded-xl border border-yellow-200">
+              <div className="text-xs font-bold text-yellow-900 mb-2.5 flex items-center">
+                <Target className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" />
+                Today's Live Shop Target ({todayStr})
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-center">
+                <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-yellow-200">
+                  <div className="text-[9px] text-gray-500 font-bold uppercase">TODAY ACTUAL SALES</div>
+                  <div className="text-xs sm:text-sm font-black text-[#123524] mt-0.5">{formatPrice(comparisonStats.todayActual)}</div>
+                </div>
+                <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-yellow-200">
+                  <div className="text-[9px] text-yellow-700 font-bold uppercase">
+                    SHOP DAILY TARGET ({comparisonStats.activeStaffCount} STAFF)
+                  </div>
+                  <div className="text-xs sm:text-sm font-black text-[#123524] mt-0.5">{formatPrice(comparisonStats.shopDailyTarget)}</div>
+                </div>
+                <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-yellow-200">
+                  <div className="text-[9px] text-yellow-700 font-bold uppercase">TODAY ACHIEVEMENT</div>
+                  <div className="text-xs sm:text-sm font-black text-yellow-700 mt-0.5">
+                    {comparisonStats.shopDailyTarget > 0
+                      ? `${Math.round((comparisonStats.todayActual / comparisonStats.shopDailyTarget) * 100)}%`
+                      : '0%'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* (D) Full Month Total Summary Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 text-center">
+                <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">
+                  {comparisonStats.labelA} TOTAL ({comparisonStats.fullCountA} SEC)
+                </div>
+                <div className="text-xs sm:text-sm font-bold text-gray-800">{formatPrice(comparisonStats.fullTotalA)}</div>
+              </div>
+              <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200 text-center">
+                <div className="text-[9px] text-yellow-700 font-bold uppercase tracking-wider mb-1">
+                  {comparisonStats.labelB} TOTAL ({comparisonStats.fullCountB} SEC)
+                </div>
+                <div className="text-xs sm:text-sm font-black text-[#123524]">{formatPrice(comparisonStats.fullTotalB)}</div>
+              </div>
+              <div
+                className={`p-3 rounded-xl border text-center ${
+                  comparisonStats.fullDiff >= 0
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : 'bg-red-50 border-red-200 text-red-700'
+                }`}
+              >
+                <div className="text-[9px] font-bold uppercase tracking-wider mb-1">FULL PERIOD DIFFERENCE</div>
+                <div className="text-xs sm:text-sm font-black">
+                  {comparisonStats.fullDiff >= 0 ? '+' : ''}
+                  {formatPrice(comparisonStats.fullDiff)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Detailed Performers List */}
           <div className="space-y-3">
             {sortedPerformers.map((p, idx) => {
               const isMe = checkIsMe(p.staffName);
