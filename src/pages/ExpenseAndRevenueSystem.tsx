@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   collection,
   doc,
@@ -42,7 +42,93 @@ import {
 } from 'lucide-react';
 
 // ============================================================================
-// 🌟 1. CUSTOMIZABLE EXPENSE CATEGORIES & SPA SUPPLY PRESETS 🌟
+// 🌟 1. SEARCHABLE ICON LIBRARY (65+ CURATED SPA & BUSINESS ICONS) 🌟
+// ============================================================================
+
+export interface IconOption {
+  emoji: string;
+  label: string;
+  keywords: string;
+}
+
+export const EXPENSE_ICON_LIBRARY: IconOption[] = [
+  // Transportation & Travel
+  { emoji: '🚕', label: 'Taxi / ကားခ', keywords: 'taxi cab car transport သွားလာရေး တက္ကစီ ကားခကြေး' },
+  { emoji: '🚗', label: 'Car / ကြိုပို့ကား', keywords: 'car auto vehicle transport ကား သွားလာရေး' },
+  { emoji: '🛵', label: 'Motorbike / ဆိုင်ကယ်', keywords: 'scooter bike delivery ဆိုင်ကယ် ကယ်ရီ ပို့ဆောင်ရေး' },
+  { emoji: '⛽', label: 'Fuel / ဆီဖိုး', keywords: 'fuel gas petrol diesel စက်သုံးဆီ ဓာတ်ဆီ ဒီဇယ် မီးစက်ဆီ' },
+  { emoji: '✈️', label: 'Travel / ခရီးစရိတ်', keywords: 'flight travel trip outcall ခရီးစရိတ် ပြင်ဦးလွင်' },
+  { emoji: '🚌', label: 'Bus / ကားဂိတ်တန်ဆာခ', keywords: 'bus express gate cargo ကားဂိတ် တန်ဆာခ' },
+
+  // Spa Supplies & Consumables
+  { emoji: '🧴', label: 'Lotion / အနှိပ်ဆီ', keywords: 'lotion oil bottle shampoo soap ဆိုင်သုံးပစ္စည်း အနှိပ်ဆီ ခေါင်းလျှော်ရည်' },
+  { emoji: '🧼', label: 'Soap / ဆပ်ပြာ', keywords: 'soap wash clean hygiene ဆပ်ပြာ ရေချိုးဆပ်ပြာ သန့်ရှင်းရေး' },
+  { emoji: '🧖‍♂️', label: 'Spa / သဘက်', keywords: 'spa towel massage steam သဘက် အနှိပ် ပေါင်းခန်း' },
+  { emoji: '🕯️', label: 'Candle / Aroma', keywords: 'candle aroma scent wax ဖယောင်းတိုင် အမွှေးနံ့သာ waxing' },
+  { emoji: '🧺', label: 'Laundry / လျှော်ဖွပ်ခ', keywords: 'laundry basket towel wash လျှော်ဖွပ်ခ အဝတ်လျှော် အမှိုက်အိတ်' },
+  { emoji: '🧹', label: 'Cleaning / သန့်ရှင်းရေး', keywords: 'broom clean trash bag တံမြက်စည်း အမှိုက်အိတ် သန့်ရှင်းရေး' },
+  { emoji: '🧻', label: 'Tissue / တစ်ရှူး', keywords: 'tissue paper roll towel တစ်ရှူး စက္ကူ' },
+  { emoji: '🪒', label: 'Waxing / Shaving', keywords: 'razor wax shaving ဓား waxing ပစ္စည်း' },
+  { emoji: '💊', label: 'Medicine / ဆေးဝါး', keywords: 'medicine first aid health ဆေးဝါး ကျန်းမာရေး' },
+
+  // Utilities, Rent & Maintenance
+  { emoji: '🏠', label: 'Shop Rent / ဆိုင်ခန်းငှားခ', keywords: 'house shop rent building ဆိုင်ခန်းငှားခ အိမ်လခ' },
+  { emoji: '⚡', label: 'Electricity / မီးမီတာ', keywords: 'electricity power epc light မီးမီတာ လျှပ်စစ်' },
+  { emoji: '💧', label: 'Water / ရေမီတာ', keywords: 'water drop drinking bill ရေမီတာ သောက်ရေသန့်' },
+  { emoji: '🌐', label: 'WiFi / အင်တာနက်', keywords: 'wifi internet network bill အင်တာနက် ဝိုင်ဖိုင် ဖုန်းဘေလ်' },
+  { emoji: '❄️', label: 'Aircon / အဲကွန်း', keywords: 'aircon ac cold cooling အဲကွန်း ပြုပြင်ခ' },
+  { emoji: '🔧', label: 'Repair / ပြုပြင်ထိန်းသိမ်း', keywords: 'wrench tool repair maintenance ပြုပြင်ရေး လက်သမား ရေပိုက်' },
+  { emoji: '💡', label: 'Light / မီးသီးမီးချောင်း', keywords: 'bulb light lamp မီးသီး မီးချောင်း လျှပ်စစ်ပစ္စည်း' },
+  { emoji: '🛋️', label: 'Furniture / ပရိဘောဂ', keywords: 'sofa bed chair furniture ပရိဘောဂ ကုတင် ထိုင်ခုံ' },
+
+  // Food, Meals & Hospitality
+  { emoji: '🍱', label: 'Staff Meal / ထမင်းဘူး', keywords: 'bento food staff meal lunch ဝန်ထမ်းစားစရိတ် ထမင်းဖိုး ဟင်းဖိုး' },
+  { emoji: '☕', label: 'Coffee / မိမိစားစရိတ်', keywords: 'coffee tea drink owner hospitality ကော်ဖီ လက်ဖက်ရည် မိမိစားစရိတ် ဧည့်ခံ' },
+  { emoji: '🍜', label: 'Noodles / မုန့်ဖိုး', keywords: 'noodle soup breakfast snack မနက်စာ မုန့်ဖိုး စားစရိတ်' },
+  { emoji: '🥤', label: 'Drinks / အအေး', keywords: 'drink juice water cup အအေး ဧည့်ခံစရိတ်' },
+  { emoji: '🎂', label: 'Birthday / ပွဲစရိတ်', keywords: 'cake birthday party celebration မွေးနေ့ ပွဲစရိတ် မုန့်ကျွေး' },
+
+  // Marketing, Office & Finance
+  { emoji: '📢', label: 'Marketing / ကြော်ငြာ', keywords: 'marketing ads boost promotion facebook tiktok ကြော်ငြာ မားကတ်တင်း' },
+  { emoji: '🎥', label: 'Video / Content', keywords: 'video camera tiktok shoot রိုက်ကူးရေး ဓာတ်ပုံ ဒီဇိုင်း' },
+  { emoji: '🎁', label: 'Gift / လက်ဆောင်', keywords: 'gift present giveaway bonus လက်ဆောင် ပရိုမိုးရှင်း' },
+  { emoji: '🖨️', label: 'Print / ဘောင်ချာစာအုပ်', keywords: 'print paper voucher vinyl ဘောင်ချာ စာရေးကိရိယာ ဗီနိုင်း' },
+  { emoji: '🏛️', label: 'Tax / အခွန်အခ', keywords: 'tax license government municipal အခွန် လိုင်စင် စည်ပင်' },
+  { emoji: '💳', label: 'Debt / အကြွေးဆပ်', keywords: 'credit card debt loan pay အကြွေး ချေးငွေ ဘဏ်' },
+  { emoji: '💼', label: 'Salary / လစာ', keywords: 'briefcase salary payroll bonus လစာ ကော်မရှင် ဝန်ထမ်း' },
+  { emoji: '👑', label: 'Executive / CEO', keywords: 'crown vip ceo manager ဒါရိုက်တာ မန်နေဂျာ' },
+  { emoji: '🤝', label: 'Commission / ပွဲစားခ', keywords: 'handshake partner agent प्वဲစားခ ကော်မရှင် လက်ဆောင်' },
+  { emoji: '🙏', label: 'Donation / အလှူအတန်း', keywords: 'pray donation charity merit အလှူ ကုသိုလ် ပရဟိတ' },
+  { emoji: '📦', label: 'Package / ပါဆယ်', keywords: 'box parcel delivery stock ပစ္စည်း ပါဆယ် ကုန်ပစ္စည်း' },
+  { emoji: '📌', label: 'General / အထွေထွေ', keywords: 'pin general other misc အထွေထွေ အခြား' }
+];
+
+// Auto-suggest matching icon when user types category title
+export function suggestEmojiForTitle(title: string): string | null {
+  const clean = title.toLowerCase().trim();
+  if (!clean) return null;
+  if (clean.includes('taxi') || clean.includes('တက္ကစီ') || clean.includes('ကားခ') || clean.includes('transport')) return '🚕';
+  if (clean.includes('ဆိုင်ကယ်') || clean.includes('bike') || clean.includes('delivery') || clean.includes('ပို့ဆောင်')) return '🛵';
+  if (clean.includes('ဆီ') && (clean.includes('မီးစက်') || clean.includes('ဓာတ်ဆီ') || clean.includes('ဒီဇယ်') || clean.includes('fuel'))) return '⛽';
+  if (clean.includes('အနှိပ်ဆီ') || clean.includes('lotion') || clean.includes('oil') || clean.includes('ဆိုင်သုံး')) return '🧴';
+  if (clean.includes('ဆပ်ပြာ') || clean.includes('soap') || clean.includes('shampoo')) return '🧼';
+  if (clean.includes('မီး') || clean.includes('electric') || clean.includes('epc')) return '⚡';
+  if (clean.includes('ရေ') || clean.includes('water')) return '💧';
+  if (clean.includes('ငှား') || clean.includes('rent')) return '🏠';
+  if (clean.includes('အခွန်') || clean.includes('tax') || clean.includes('လိုင်စင်')) return '🏛️';
+  if (clean.includes('market') || clean.includes('ကြော်ငြာ') || clean.includes('boost') || clean.includes('ads')) return '📢';
+  if (clean.includes('ထမင်း') || clean.includes('ဝန်ထမ်းစား') || clean.includes('meal') || clean.includes('food')) return '🍱';
+  if (clean.includes('ကော်ဖီ') || clean.includes('မိမိစား') || clean.includes('coffee') || clean.includes('ဧည့်ခံ')) return '☕';
+  if (clean.includes('အကြွေး') || clean.includes('debt') || clean.includes('loan')) return '💳';
+  if (clean.includes('wifi') || clean.includes('အင်တာနက်') || clean.includes('internet')) return '🌐';
+  if (clean.includes('aircon') || clean.includes('အဲကွန်း')) return '❄️';
+  if (clean.includes('အလှူ') || clean.includes('donation')) return '🙏';
+  if (clean.includes('ပြုပြင်') || clean.includes('repair')) return '🔧';
+  return null;
+}
+
+// ============================================================================
+// 🌟 2. DEFAULT EXPENSE CATEGORIES 🌟
 // ============================================================================
 
 export type ExpenseCategoryId = string;
@@ -623,7 +709,7 @@ export function useMonthlyFinancialEngine(
 }
 
 // ============================================================================
-// 🌟 2. ADMIN EXPENSE MANAGER COMPONENT (CLEAN LUXURY SPA UI + CUSTOMIZABLE CATEGORIES & PRESETS) 🌟
+// 🌟 3. ADMIN EXPENSE MANAGER COMPONENT (SLEEK CUSTOM DROPDOWN + SEARCHABLE ICON PICKER) 🌟
 // ============================================================================
 
 export function AdminExpenseManager({
@@ -651,18 +737,38 @@ export function AdminExpenseManager({
   const [expNote, setExpNote] = useState<string>('');
   const [isSavingExpense, setIsSavingExpense] = useState<boolean>(false);
 
+  // 🌟 Custom Luxury Category Dropdown Popover States 🌟
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState<boolean>(false);
+  const [dropdownSearchQuery, setDropdownSearchQuery] = useState<string>('');
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close custom dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
+        setIsCategoryDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Quick Items Inline Customization States
   const [isEditingQuickItems, setIsEditingQuickItems] = useState<boolean>(false);
   const [showAddQuickItemInput, setShowAddQuickItemInput] = useState<boolean>(false);
   const [newQuickItemText, setNewQuickItemText] = useState<string>('');
 
-  // Category Management Modal States
+  // Category & Searchable Icon Manager Modal States
   const [showCategoryManagerModal, setShowCategoryManagerModal] = useState<boolean>(false);
-  const [newCatEmoji, setNewCatEmoji] = useState<string>('🛍️');
+  const [newCatEmoji, setNewCatEmoji] = useState<string>('🚕');
   const [newCatTitle, setNewCatTitle] = useState<string>('');
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editingCatTitle, setEditingCatTitle] = useState<string>('');
   const [editingCatEmoji, setEditingCatEmoji] = useState<string>('');
+
+  // Searchable Icon Picker State (used for both New Category and Editing Category)
+  const [iconPickerTarget, setIconPickerTarget] = useState<'new' | 'edit' | null>(null);
+  const [iconSearchQuery, setIconSearchQuery] = useState<string>('');
 
   // Executive Salaries (CEO & Manager) States
   const [showSalaryEditor, setShowSalaryEditor] = useState<boolean>(false);
@@ -702,11 +808,34 @@ export function AdminExpenseManager({
     return categories.find((c) => c.id === expCategory) || categories[0] || DEFAULT_EXPENSE_CATEGORIES[0];
   }, [categories, expCategory]);
 
+  // Filtered Categories inside Custom Dropdown
+  const filteredDropdownCategories = useMemo(() => {
+    const q = dropdownSearchQuery.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.subTitle.toLowerCase().includes(q) ||
+        c.quickPresets.some((p) => p.toLowerCase().includes(q))
+    );
+  }, [categories, dropdownSearchQuery]);
+
+  // Filtered Icons inside Icon Picker
+  const filteredIconLibrary = useMemo(() => {
+    const q = iconSearchQuery.trim().toLowerCase();
+    if (!q) return EXPENSE_ICON_LIBRARY;
+    return EXPENSE_ICON_LIBRARY.filter(
+      (ic) =>
+        ic.label.toLowerCase().includes(q) ||
+        ic.keywords.toLowerCase().includes(q) ||
+        ic.emoji.includes(q)
+    );
+  }, [iconSearchQuery]);
+
   // ============================================================================
   // 🌟 CATEGORY & QUICK ITEMS CRUD FUNCTIONS 🌟
   // ============================================================================
 
-  // 1. Add a new Quick Item into the currently selected Category
   const handleAddQuickPresetItem = async () => {
     const clean = newQuickItemText.trim();
     if (!clean || !selectedCategoryMeta) return;
@@ -727,7 +856,6 @@ export function AdminExpenseManager({
     setShowAddQuickItemInput(false);
   };
 
-  // 2. Remove a Quick Item from the currently selected Category
   const handleRemoveQuickPresetItem = async (presetToRemove: string) => {
     if (!selectedCategoryMeta) return;
     const updatedCategories = categories.map((cat) =>
@@ -738,12 +866,12 @@ export function AdminExpenseManager({
     await saveCustomCategories(updatedCategories);
   };
 
-  // 3. Add a Brand New Category
   const handleAddNewCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanTitle = newCatTitle.trim();
     if (!cleanTitle) return;
 
+    const autoEmoji = suggestEmojiForTitle(cleanTitle);
     const theme = COLOR_THEMES[categories.length % COLOR_THEMES.length];
     const newCat: ExpenseCategoryMeta = {
       id: `cat_${Date.now()}`,
@@ -751,7 +879,7 @@ export function AdminExpenseManager({
       subTitle: 'Custom Category',
       badgeColor: theme.badgeColor,
       barColor: theme.barColor,
-      iconEmoji: newCatEmoji.trim() || '📌',
+      iconEmoji: newCatEmoji.trim() || autoEmoji || '📌',
       quickPresets: [cleanTitle]
     };
 
@@ -759,10 +887,10 @@ export function AdminExpenseManager({
     await saveCustomCategories(nextList);
     setExpCategory(newCat.id);
     setNewCatTitle('');
-    setNewCatEmoji('🛍️');
+    setNewCatEmoji('🚕');
+    setIconPickerTarget(null);
   };
 
-  // 4. Save Edited Category Name & Emoji
   const handleSaveEditedCategory = async (catId: string) => {
     const cleanTitle = editingCatTitle.trim();
     if (!cleanTitle) return;
@@ -773,9 +901,9 @@ export function AdminExpenseManager({
     );
     await saveCustomCategories(nextList);
     setEditingCatId(null);
+    setIconPickerTarget(null);
   };
 
-  // 5. Delete a Category
   const handleDeleteCategory = async (catId: string, title: string) => {
     if (categories.length <= 1) {
       alert('အနည်းဆုံး Category (၁) ခု ရှိရပါမည်။');
@@ -786,7 +914,6 @@ export function AdminExpenseManager({
     await saveCustomCategories(nextList);
   };
 
-  // 6. Reset to Default Categories
   const handleResetDefaultCategories = async () => {
     if (!window.confirm('မူလ Default Category (၁၀) မျိုးနှင့် Quick Items များအတိုင်း ပြန်ထားမည်မှာ သေချာပါသလား?')) {
       return;
@@ -794,7 +921,6 @@ export function AdminExpenseManager({
     await saveCustomCategories(DEFAULT_EXPENSE_CATEGORIES);
   };
 
-  // Save CEO & Manager Monthly Salaries
   const handleSaveExecutiveSalaries = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingExecSalary(true);
@@ -819,7 +945,6 @@ export function AdminExpenseManager({
     }
   };
 
-  // Add New Daily / Monthly Expense
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     const amt = Math.max(0, Number(expAmount) || 0);
@@ -893,7 +1018,6 @@ export function AdminExpenseManager({
     return operationalRows.sort((a, b) => b.total - a.total);
   }, [categories, monthExpenses, grandTotalAllOutflow]);
 
-  // Filtered Expenses for Table
   const filteredExpenses = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return monthExpenses.filter((e) => {
@@ -975,106 +1099,242 @@ export function AdminExpenseManager({
   return (
     <div className="space-y-5 animate-fade-in">
       {/* =========================================================================
-          MODAL 1: CATEGORY & QUICK ITEMS MANAGER (အတိုးအလျှော့ စိတ်ကြိုက်ပြင်ဆင်ရန်)
+          MODAL 1: CATEGORY & SEARCHABLE ICON MANAGER (အမည် နှင့် Icon စိတ်ကြိုက်ရှာဖွေပြင်ဆင်ရန်)
          ========================================================================= */}
       {showCategoryManagerModal && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-[#D4AF37]/40 my-auto max-h-[90vh] flex flex-col space-y-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-[#D4AF37]/40 my-auto max-h-[92vh] flex flex-col space-y-4 animate-fade-in">
             <div className="flex justify-between items-center border-b border-gray-200 pb-3.5">
               <div>
                 <h3 className="text-base sm:text-lg font-black text-[#123524] flex items-center">
                   <Settings className="w-5 h-5 mr-2 text-[#D4AF37]" />
-                  Expense Categories စိတ်ကြိုက် ပြင်ဆင်ရန်
+                  Expense Categories & Icon Picker (စိတ်ကြိုက် ပြင်ဆင်ရန်)
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Category ခေါင်းစဉ်အသစ် ထပ်တိုးခြင်း၊ အမည်ပြင်ခြင်း နှင့် မလိုအပ်သော Category များကို ဖျက်နိုင်ပါသည်
+                  Category အသစ်ထည့်ခြင်း၊ အမည်ပြင်ခြင်း နှင့် သက်ဆိုင်ရာ Icon များကို စာရိုက်ရှာပြီး ပြောင်းလဲနိုင်ပါသည်
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowCategoryManagerModal(false)}
+                onClick={() => {
+                  setShowCategoryManagerModal(false);
+                  setIconPickerTarget(null);
+                  setEditingCatId(null);
+                }}
                 className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 text-xs font-black"
               >
                 ✕ Close
               </button>
             </div>
 
-            {/* Add New Category Form */}
+            {/* Add New Category Form with Icon Trigger */}
             <form
               onSubmit={handleAddNewCategory}
-              className="bg-gray-50 p-3.5 rounded-2xl border border-gray-200 flex flex-col sm:flex-row gap-2"
+              className="bg-gray-50 p-3.5 rounded-2xl border border-gray-200 space-y-2.5"
             >
-              <input
-                type="text"
-                value={newCatEmoji}
-                onChange={(e) => setNewCatEmoji(e.target.value)}
-                placeholder="🛍️"
-                className="w-14 p-2.5 bg-white border border-gray-300 rounded-xl text-center text-sm outline-none focus:border-[#123524]"
-                title="Emoji Icon"
-              />
-              <input
-                type="text"
-                required
-                value={newCatTitle}
-                onChange={(e) => setNewCatTitle(e.target.value)}
-                placeholder="Category ခေါင်းစဉ်အသစ် ရိုက်ထည့်ပါ (ဥပမာ - အလှူအတန်း / ပွဲစရိတ်)"
-                className="flex-1 p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2.5 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black whitespace-nowrap hover:bg-[#1a4a32] transition"
-              >
-                + Category ထည့်မည်
-              </button>
+              <div className="text-[10px] font-extrabold text-[#123524] uppercase tracking-wider">
+                Category အသစ် ထပ်တိုးရန် (Add New Category):
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIconPickerTarget(iconPickerTarget === 'new' ? null : 'new');
+                    setIconSearchQuery('');
+                  }}
+                  className="px-3 py-2.5 bg-white border-2 border-[#D4AF37] rounded-xl flex items-center justify-center gap-1.5 hover:bg-yellow-50 transition shadow-2xs flex-shrink-0"
+                  title="Click to search and choose Icon"
+                >
+                  <span className="text-lg">{newCatEmoji}</span>
+                  <span className="text-[11px] font-black text-[#123524]">Icon ရွေးရန်</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+                </button>
+
+                <input
+                  type="text"
+                  required
+                  value={newCatTitle}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewCatTitle(val);
+                    const suggested = suggestEmojiForTitle(val);
+                    if (suggested) setNewCatEmoji(suggested);
+                  }}
+                  placeholder="ဥပမာ - Transportation Charges (Taxi) / ကားခ..."
+                  className="flex-1 p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2.5 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black whitespace-nowrap hover:bg-[#1a4a32] transition shadow-xs"
+                >
+                  + Category ထည့်မည်
+                </button>
+              </div>
+
+              {/* Searchable Icon Picker Drawer for New Category */}
+              {iconPickerTarget === 'new' && (
+                <div className="bg-white p-3.5 rounded-2xl border-2 border-[#123524]/20 shadow-md space-y-2.5 animate-fade-in">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={iconSearchQuery}
+                        onChange={(e) => setIconSearchQuery(e.target.value)}
+                        placeholder="Icon ရှာရန် (ဥပမာ - taxi, ကား, food, မီး, ရေ, ဆီ, wifi, gift)..."
+                        className="w-full pl-8 pr-7 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                      />
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+                      {iconSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setIconSearchQuery('')}
+                          className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIconPickerTarget(null)}
+                      className="px-2.5 py-1.5 bg-gray-100 rounded-lg text-[11px] font-bold text-gray-600"
+                    >
+                      ပိတ်မည်
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-44 overflow-y-auto p-1">
+                    {filteredIconLibrary.map((ic, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setNewCatEmoji(ic.emoji);
+                          setIconPickerTarget(null);
+                        }}
+                        className={`p-2 rounded-xl border text-left flex items-center gap-2 transition ${
+                          newCatEmoji === ic.emoji
+                            ? 'bg-[#123524] text-[#D4AF37] border-[#123524] font-black'
+                            : 'bg-gray-50/70 hover:bg-yellow-50 border-gray-200 text-gray-700 font-bold'
+                        }`}
+                      >
+                        <span className="text-base">{ic.emoji}</span>
+                        <span className="text-[10px] truncate">{ic.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </form>
 
-            {/* Existing Categories List */}
+            {/* Existing Categories List (With Searchable Icon Picker for Editing!) */}
             <div className="overflow-y-auto flex-1 space-y-2 pr-1">
               {categories.map((cat) => {
                 const isEditing = editingCatId === cat.id;
                 return (
                   <div
                     key={cat.id}
-                    className="p-3 rounded-xl bg-white border border-gray-200 flex items-center justify-between gap-2 shadow-2xs"
+                    className={`p-3 rounded-2xl border transition ${
+                      isEditing ? 'bg-yellow-50/50 border-[#123524] shadow-sm' : 'bg-white border-gray-200'
+                    }`}
                   >
                     {isEditing ? (
-                      <div className="flex items-center gap-2 flex-1">
-                        <input
-                          type="text"
-                          value={editingCatEmoji}
-                          onChange={(e) => setEditingCatEmoji(e.target.value)}
-                          className="w-12 p-1.5 bg-gray-50 border border-gray-300 rounded-lg text-center text-sm"
-                        />
-                        <input
-                          type="text"
-                          autoFocus
-                          value={editingCatTitle}
-                          onChange={(e) => setEditingCatTitle(e.target.value)}
-                          className="flex-1 p-1.5 bg-gray-50 border border-[#123524] rounded-lg text-xs font-bold text-[#123524] outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleSaveEditedCategory(cat.id)}
-                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-black flex items-center gap-1"
-                        >
-                          <Check className="w-3.5 h-3.5" /> Save
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingCatId(null)}
-                          className="px-2 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold"
-                        >
-                          ✕
-                        </button>
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIconPickerTarget(iconPickerTarget === 'edit' ? null : 'edit');
+                              setIconSearchQuery('');
+                            }}
+                            className="px-3 py-2 bg-white border-2 border-[#D4AF37] rounded-xl flex items-center gap-1.5 shadow-2xs hover:bg-yellow-50"
+                            title="Icon ပြောင်းရန် နှိပ်ပါ"
+                          >
+                            <span className="text-lg">{editingCatEmoji}</span>
+                            <span className="text-[11px] font-black text-[#123524]">Icon ရွေးရန်</span>
+                            <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+                          </button>
+
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingCatTitle}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setEditingCatTitle(val);
+                              const suggested = suggestEmojiForTitle(val);
+                              if (suggested) setEditingCatEmoji(suggested);
+                            }}
+                            className="flex-1 min-w-[180px] p-2 bg-white border border-[#123524] rounded-xl text-xs font-bold text-[#123524] outline-none"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditedCategory(cat.id)}
+                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-xs"
+                          >
+                            <Check className="w-3.5 h-3.5" /> Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCatId(null);
+                              setIconPickerTarget(null);
+                            }}
+                            className="px-2.5 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* Searchable Icon Library when Editing Category */}
+                        {iconPickerTarget === 'edit' && (
+                          <div className="bg-white p-3 rounded-xl border border-gray-300 space-y-2 animate-fade-in">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                autoFocus
+                                value={iconSearchQuery}
+                                onChange={(e) => setIconSearchQuery(e.target.value)}
+                                placeholder="Icon ရှာရန် (ဥပမာ - taxi, ကား, ဆိုင်ကယ်, ထမင်း, မီး, ရေ, ဆီ)..."
+                                className="w-full pl-8 pr-7 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                              />
+                              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+                            </div>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-44 overflow-y-auto p-1">
+                              {filteredIconLibrary.map((ic, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCatEmoji(ic.emoji);
+                                    setIconPickerTarget(null);
+                                  }}
+                                  className={`p-2 rounded-xl border text-left flex items-center gap-2 transition ${
+                                    editingCatEmoji === ic.emoji
+                                      ? 'bg-[#123524] text-[#D4AF37] border-[#123524] font-black'
+                                      : 'bg-gray-50 hover:bg-yellow-50 border-gray-200 text-gray-700 font-bold'
+                                  }`}
+                                >
+                                  <span className="text-base">{ic.emoji}</span>
+                                  <span className="text-[10px] truncate">{ic.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
-                      <>
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="text-base">{cat.iconEmoji}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-9 h-9 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-lg flex-shrink-0">
+                            {cat.iconEmoji}
+                          </span>
                           <div className="min-w-0">
                             <div className="text-xs font-black text-gray-800 truncate">{cat.title}</div>
                             <div className="text-[10px] text-gray-400 font-semibold">
-                              Quick Items: {cat.quickPresets.length} ခု
+                              အသေးစိတ် ခေါင်းစဉ် (Quick Items): {cat.quickPresets.length} ခု
                             </div>
                           </div>
                         </div>
@@ -1085,21 +1345,23 @@ export function AdminExpenseManager({
                               setEditingCatId(cat.id);
                               setEditingCatTitle(cat.title);
                               setEditingCatEmoji(cat.iconEmoji);
+                              setIconPickerTarget('edit');
+                              setIconSearchQuery('');
                             }}
-                            className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-bold flex items-center gap-1"
+                            className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#123524] border border-amber-200 text-[11px] font-black flex items-center gap-1 transition"
                           >
-                            <Edit3 className="w-3 h-3" /> ပြင်ရန်
+                            <Edit3 className="w-3 h-3" /> Icon / အမည်ပြင်ရန်
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteCategory(cat.id, cat.title)}
-                            className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600"
+                            className="p-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 transition"
                             title="Delete Category"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                      </>
+                      </div>
                     )}
                   </div>
                 );
@@ -1116,7 +1378,11 @@ export function AdminExpenseManager({
               </button>
               <button
                 type="button"
-                onClick={() => setShowCategoryManagerModal(false)}
+                onClick={() => {
+                  setShowCategoryManagerModal(false);
+                  setIconPickerTarget(null);
+                  setEditingCatId(null);
+                }}
                 className="px-5 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black"
               >
                 Done (ပြီးပြီ)
@@ -1261,7 +1527,7 @@ export function AdminExpenseManager({
               onClick={() => setShowCategoryManagerModal(true)}
               className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition"
             >
-              <Settings className="w-3.5 h-3.5 text-[#123524]" /> Category ပြင်ဆင်ရန်
+              <Settings className="w-3.5 h-3.5 text-[#123524]" /> Category & Icon ပြင်ရန်
             </button>
 
             <button
@@ -1441,63 +1707,164 @@ export function AdminExpenseManager({
       </div>
 
       {/* =========================================================================
-          2. ADD NEW EXPENSE FORM (VISUAL CATEGORY GRID + CUSTOMIZABLE QUICK ITEMS) & BREAKDOWN
+          2. ADD NEW EXPENSE FORM (CUSTOM SLEEK DROPDOWN + QUICK ITEMS) & BREAKDOWN
          ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 6 Cols: Clean Modern Add Expense Card (No Native Dropdown Clutter!) */}
-        <div className="lg:col-span-6 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+        {/* Left 5 Cols: Compact & Clean Add Expense Form */}
+        <div className="lg:col-span-5 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
             <div>
               <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
                 <PlusCircle className="w-4 h-4 mr-2 text-[#D4AF37]" />
-                အသုံးစရိတ်အသစ် ထည့်သွင်းရန် (Add Expense)
+                အသုံးစရိတ်အသစ် ထည့်သွင်းရန်
               </h3>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                Category နှင့် အသင့်ပါသော ပစ္စည်းအမည်များကို စိတ်ကြိုက် အတိုးအလျှော့ ပြုလုပ်နိုင်ပါသည်
+                Category နှင့် အသေးစိတ်ခေါင်းစဉ်များကို စိတ်ကြိုက် ရွေးချယ်ပြင်ဆင်နိုင်ပါသည်
               </p>
             </div>
             <button
               type="button"
               onClick={() => setShowCategoryManagerModal(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#123524] text-[11px] font-black flex items-center gap-1 transition"
+              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#123524] border border-amber-200 text-[11px] font-black flex items-center gap-1 transition"
             >
               <Settings className="w-3.5 h-3.5 text-[#D4AF37]" />
-              <span>+ Category အတိုး/အလျှော့</span>
+              <span>Category / Icon ပြင်ရန်</span>
             </button>
           </div>
 
           <form onSubmit={handleAddExpense} className="space-y-4">
-            {/* Step 1: Visual Category Pill Grid (Replaces messy native <select> dropdown!) */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
-                  ၁။ အသုံးစရိတ် အမျိုးအစား ရွေးချယ်ပါ (Select Category) *
-                </label>
-                <span className="text-[10px] font-bold text-[#123524]">
-                  ရွေးထားသည်: {selectedCategoryMeta?.iconEmoji} {selectedCategoryMeta?.title}
-                </span>
-              </div>
+            {/* 🌟 Step 1: Sleek Custom Luxury Dropdown (Replaces bulky grid & native black select!) 🌟 */}
+            <div ref={categoryDropdownRef} className="relative">
+              <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+                ၁။ အသုံးစရိတ် အမျိုးအစား ရွေးချယ်ပါ (Select Category) *
+              </label>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
-                {categories.map((cat) => {
-                  const isSelected = expCategory === cat.id;
-                  return (
+              {/* Trigger Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
+                  setDropdownSearchQuery('');
+                }}
+                className="w-full p-3 bg-gradient-to-r from-[#0B2419]/5 via-yellow-50/40 to-white border-2 border-[#D4AF37]/60 hover:border-[#123524] rounded-xl flex items-center justify-between transition shadow-2xs"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="w-9 h-9 rounded-xl bg-[#123524] text-[#D4AF37] flex items-center justify-center text-lg shadow-xs flex-shrink-0">
+                    {selectedCategoryMeta?.iconEmoji || '📌'}
+                  </span>
+                  <div className="text-left min-w-0">
+                    <div className="text-xs sm:text-sm font-black text-[#123524] truncate">
+                      {selectedCategoryMeta?.title}
+                    </div>
+                    <div className="text-[10px] font-semibold text-gray-500 truncate">
+                      အသင့်ရွေးချယ်စရာ {selectedCategoryMeta?.quickPresets.length || 0} မျိုး ပါဝင်သည်
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 pl-2 flex-shrink-0">
+                  <span className="text-[10px] font-bold text-[#123524] bg-[#D4AF37]/25 px-2 py-0.5 rounded-md">
+                    ပြောင်းရန်
+                  </span>
+                  {isCategoryDropdownOpen ? (
+                    <ChevronUp className="w-4 h-4 text-[#123524]" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-[#123524]" />
+                  )}
+                </div>
+              </button>
+
+              {/* Floating Custom Popover Menu */}
+              {isCategoryDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-2 z-50 bg-white rounded-2xl shadow-2xl border-2 border-[#123524]/20 overflow-hidden animate-fade-in">
+                  {/* Search inside Dropdown */}
+                  <div className="p-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={dropdownSearchQuery}
+                        onChange={(e) => setDropdownSearchQuery(e.target.value)}
+                        placeholder="Category အမည်ရှာရန်..."
+                        className="w-full pl-8 pr-7 py-1.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                      />
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2" />
+                      {dropdownSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setDropdownSearchQuery('')}
+                          className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Clean Scrollable Options */}
+                  <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 p-1.5">
+                    {filteredDropdownCategories.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-gray-400 font-bold">
+                        ရှာဖွေထားသော Category မတွေ့ပါ။
+                      </div>
+                    ) : (
+                      filteredDropdownCategories.map((cat) => {
+                        const isSelected = expCategory === cat.id;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => {
+                              setExpCategory(cat.id);
+                              setIsCategoryDropdownOpen(false);
+                            }}
+                            className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-left transition ${
+                              isSelected
+                                ? 'bg-[#123524] text-[#D4AF37] font-black shadow-xs'
+                                : 'hover:bg-yellow-50/70 text-gray-800 font-bold'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0 ${
+                                  isSelected ? 'bg-white/15' : 'bg-gray-100'
+                                }`}
+                              >
+                                {cat.iconEmoji}
+                              </span>
+                              <div className="min-w-0">
+                                <div className="text-xs truncate">{cat.title}</div>
+                                <div
+                                  className={`text-[10px] truncate ${
+                                    isSelected ? 'text-gray-300 font-medium' : 'text-gray-400 font-medium'
+                                  }`}
+                                >
+                                  {cat.quickPresets.slice(0, 3).join(' • ') || cat.subTitle}
+                                </div>
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-[#D4AF37] flex-shrink-0" />}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Footer inside Dropdown to Add / Edit Categories & Icons */}
+                  <div className="p-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
                     <button
-                      key={cat.id}
                       type="button"
-                      onClick={() => setExpCategory(cat.id)}
-                      className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2 ${
-                        isSelected
-                          ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm font-black scale-[1.01]'
-                          : 'bg-gray-50/80 text-gray-700 border-gray-200 hover:border-[#D4AF37] hover:bg-white font-bold'
-                      }`}
+                      onClick={() => {
+                        setIsCategoryDropdownOpen(false);
+                        setShowCategoryManagerModal(true);
+                      }}
+                      className="w-full py-2 px-3 bg-[#123524]/10 hover:bg-[#123524] text-[#123524] hover:text-[#D4AF37] rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition"
                     >
-                      <span className="text-base flex-shrink-0">{cat.iconEmoji}</span>
-                      <span className="text-[11px] leading-snug truncate">{cat.title}</span>
+                      <Settings className="w-3.5 h-3.5" />
+                      <span>+ Category အသစ်ထည့်ရန် / Icon ပြောင်းရန်</span>
                     </button>
-                  );
-                })}
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Step 2: Customizable Quick-Pick Items Box */}
@@ -1505,7 +1872,7 @@ export function AdminExpenseManager({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[10px] font-extrabold text-[#123524] uppercase flex items-center gap-1">
                   <span>{selectedCategoryMeta?.iconEmoji}</span>
-                  <span>{selectedCategoryMeta?.title} — အမြန်ရွေးချယ်ရန် (Quick Items):</span>
+                  <span>အမြန်ရွေးချယ်ရန် (Quick Items):</span>
                 </span>
 
                 <div className="flex items-center gap-1.5">
@@ -1530,7 +1897,6 @@ export function AdminExpenseManager({
                 </div>
               </div>
 
-              {/* Inline Add Quick Item Input */}
               {showAddQuickItemInput && (
                 <div className="flex gap-1.5 pt-1 animate-fade-in">
                   <input
@@ -1567,7 +1933,6 @@ export function AdminExpenseManager({
                 </div>
               )}
 
-              {/* Quick Items Chips */}
               <div className="flex flex-wrap gap-1.5">
                 {selectedCategoryMeta?.quickPresets.length === 0 ? (
                   <span className="text-[11px] text-gray-400 font-semibold py-1">
@@ -1619,7 +1984,7 @@ export function AdminExpenseManager({
                   required
                   value={expTitle}
                   onChange={(e) => setExpTitle(e.target.value)}
-                  placeholder="ဥပမာ - အနှိပ်ဆီ ၅ ဘူး / လစဉ် မီးမီတာခ..."
+                  placeholder="ဥပမာ - အနှိပ်ဆီ ၅ ဘူး / Taxi ခ..."
                   className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
                 />
               </div>
@@ -1697,8 +2062,8 @@ export function AdminExpenseManager({
           </form>
         </div>
 
-        {/* Right 6 Cols: Category-by-Category Breakdown with Visual Progress Bars */}
-        <div className="lg:col-span-6 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+        {/* Right 7 Cols: Category-by-Category Breakdown with Visual Progress Bars */}
+        <div className="lg:col-span-7 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
             <div>
               <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
@@ -1720,7 +2085,7 @@ export function AdminExpenseManager({
             )}
           </div>
 
-          <div className="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
+          <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
             {/* 1. Payroll & Executive Salaries Bar (Auto-Synced) */}
             <div
               onClick={() => setShowPayrollBreakdownModal(true)}
@@ -1933,7 +2298,7 @@ export function AdminExpenseManager({
 }
 
 // ============================================================================
-// 🌟 3. ADMIN REVENUE & NET PROFIT DASHBOARD COMPONENT 🌟
+// 🌟 4. ADMIN REVENUE & NET PROFIT DASHBOARD COMPONENT 🌟
 // ============================================================================
 
 export function AdminRevenueProfitDashboard({
