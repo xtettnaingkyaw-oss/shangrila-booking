@@ -4,7 +4,6 @@ import {
   doc,
   onSnapshot,
   addDoc,
-  updateDoc,
   deleteDoc,
   setDoc,
   query,
@@ -16,13 +15,11 @@ import { Booking, TherapistProfile, formatPrice } from '../shared';
 import {
   calculateBookingCommissionForStaff,
   getStaffSeniority,
-  isSameStaffMember,
-  extractExactStaffNumber
+  isSameStaffMember
 } from './StaffPayrollSystem';
 import {
   Wallet,
   TrendingUp,
-  TrendingDown,
   PieChart,
   PlusCircle,
   Trash2,
@@ -30,38 +27,28 @@ import {
   Calendar,
   Search,
   Banknote,
-  Crown,
-  UserCheck,
-  Sparkles,
-  CheckCircle,
-  AlertCircle,
-  Filter,
-  Layers,
   ArrowUpRight,
   ArrowDownRight,
   Save,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Settings,
+  Edit3,
+  Plus,
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Check
 } from 'lucide-react';
 
 // ============================================================================
-// 🌟 1. EXPENSE CATEGORIES & SPA SUPPLY PRESETS 🌟
+// 🌟 1. CUSTOMIZABLE EXPENSE CATEGORIES & SPA SUPPLY PRESETS 🌟
 // ============================================================================
 
-export type ExpenseCategoryId =
-  | 'spa_supplies'
-  | 'shop_rent'
-  | 'electricity'
-  | 'water_bill'
-  | 'tax_license'
-  | 'marketing'
-  | 'staff_meals'
-  | 'owner_meals'
-  | 'debt_payment'
-  | 'maintenance_other';
+export type ExpenseCategoryId = string;
 
 export interface ExpenseCategoryMeta {
-  id: ExpenseCategoryId;
+  id: string;
   title: string;
   subTitle: string;
   badgeColor: string;
@@ -70,31 +57,31 @@ export interface ExpenseCategoryMeta {
   quickPresets: string[];
 }
 
-export const EXPENSE_CATEGORIES: ExpenseCategoryMeta[] = [
+export const DEFAULT_EXPENSE_CATEGORIES: ExpenseCategoryMeta[] = [
   {
     id: 'spa_supplies',
-    title: 'ဆိုင်သုံးပစ္စည်း ဝယ်ယူစရိတ် (Spa Supplies)',
-    subTitle: 'အနှိပ်ဆီ၊ ရေချိုးဆပ်ပြာ၊ ခေါင်းလျှော်ရည်၊ အမှိုက်အိတ်၊ Waxing ပစ္စည်း',
+    title: 'ဆိုင်သုံးပစ္စည်းများ',
+    subTitle: 'Spa Supplies & Consumables',
     badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
     barColor: 'bg-emerald-600',
     iconEmoji: '🧴',
     quickPresets: [
       'အနှိပ်ဆီ (Massage Oil)',
-      'ရေချိုးဆပ်ပြာ (Body Wash / Soap)',
+      'ရေချိုးဆပ်ပြာ (Body Wash)',
       'ခေါင်းလျှော်ရည် (Shampoo)',
       'အမှိုက်အိတ် (Trash Bags)',
-      'Waxing ပစ္စည်းများ (Wax Beans / Strips)',
+      'Waxing ပစ္စည်းများ',
       'Body Scrub ပစ္စည်းများ',
-      'Body Butter / Aroma Lotion',
-      'တစ်ခါသုံးသဘက် (Sterilized Towels)',
-      'တစ်ခါသုံးဘောင်းဘီ (Disposable Underwear)',
-      'တစ်ရှူး၊ အရက်ပြန် နှင့် သန့်ရှင်းရေးသုံးပစ္စည်း'
+      'Body Butter / Lotion',
+      'တစ်ခါသုံးသဘက် (Towels)',
+      'Disposable Underwear',
+      'တစ်ရှူး / အရက်ပြန် / သန့်ရှင်းရေး'
     ]
   },
   {
     id: 'shop_rent',
-    title: 'ဆိုင်ခန်းငှားခ (Shop Rent)',
-    subTitle: 'လစဉ် သို့မဟုတ် နှစ်စဉ် ဆိုင်ခန်းငှားရမ်းခ',
+    title: 'ဆိုင်ခန်းငှားခ',
+    subTitle: 'Shop Rent & Lease',
     badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200',
     barColor: 'bg-indigo-600',
     iconEmoji: '🏠',
@@ -102,8 +89,8 @@ export const EXPENSE_CATEGORIES: ExpenseCategoryMeta[] = [
   },
   {
     id: 'electricity',
-    title: 'မီးမီတာခ / မီးစက်ဆီ (Electricity & Fuel)',
-    subTitle: 'EPC မီးမီတာခ၊ ဒီဇယ်/ဓာတ်ဆီ နှင့် အင်ဗာတာ/ဘက်ထရီ',
+    title: 'မီးမီတာ / မီးစက်ဆီ',
+    subTitle: 'Electricity & Generator Fuel',
     badgeColor: 'bg-amber-50 text-amber-900 border-amber-300',
     barColor: 'bg-amber-500',
     iconEmoji: '⚡',
@@ -111,17 +98,17 @@ export const EXPENSE_CATEGORIES: ExpenseCategoryMeta[] = [
   },
   {
     id: 'water_bill',
-    title: 'ရေမီတာခ / သောက်ရေသန့် (Water Bill)',
-    subTitle: 'စည်ပင်ရေမီတာခ၊ ရေသန့်ဘူး နှင့် ရေပန့်စရိတ်',
+    title: 'ရေမီတာ / သောက်ရေသန့်',
+    subTitle: 'Water Bill & Drinking Water',
     badgeColor: 'bg-cyan-50 text-cyan-800 border-cyan-200',
     barColor: 'bg-cyan-600',
     iconEmoji: '💧',
-    quickPresets: ['လစဉ် ရေမီတာခ', 'သောက်ရေသန့်ဘူးဖိုး (Drinking Water)', 'ရေစစ် / ရေပိုက်ပြုပြင်ခ']
+    quickPresets: ['လစဉ် ရေမီတာခ', 'သောက်ရေသန့်ဘူးဖိုး', 'ရေစစ် / ရေပိုက်ပြုပြင်ခ']
   },
   {
     id: 'tax_license',
-    title: 'အခွန်အခနှင့် လိုင်စင်ကြေး (Tax & Fees)',
-    subTitle: 'စည်ပင်ခွန်၊ ဝင်ငွေခွန်၊ ဆိုင်းဘုတ်ခွန် နှင့် လိုင်စင်ကြေးများ',
+    title: 'အခွန်အခနှင့် လိုင်စင်ကြေး',
+    subTitle: 'Tax & Municipal License',
     badgeColor: 'bg-purple-50 text-purple-800 border-purple-200',
     barColor: 'bg-purple-600',
     iconEmoji: '🏛️',
@@ -129,22 +116,22 @@ export const EXPENSE_CATEGORIES: ExpenseCategoryMeta[] = [
   },
   {
     id: 'marketing',
-    title: 'Marketing စရိတ် (Ads & Promotions)',
-    subTitle: 'Facebook/TikTok Boost, ဒီဇိုင်း, ဗီနိုင်း, ပရိုမိုးရှင်း လက်ဆောင်',
+    title: 'Marketing စရိတ်',
+    subTitle: 'Social Media Ads & Promotions',
     badgeColor: 'bg-pink-50 text-pink-800 border-pink-200',
     barColor: 'bg-pink-600',
     iconEmoji: '📢',
     quickPresets: [
       'TikTok / Facebook Boost Ads',
-      'ဘောင်ချာစာအုပ် / လိပ်စာကတ် / Vinyl Print',
-      'Customer Giveaway / လက်ဆောင်ပစ္စည်း',
-      'Content / Video ရိုက်ကူးရေးစရိတ်'
+      'ဘောင်ချာစာအုပ် / လိပ်စာကတ် / Vinyl',
+      'Customer Giveaway လက်ဆောင်',
+      'Content / Video ရိုက်ကူးရေး'
     ]
   },
   {
     id: 'staff_meals',
-    title: 'ဝန်ထမ်း စားစရိတ် / သက်သာချောင်ချိရေး (Staff Meals)',
-    subTitle: 'ဝန်ထမ်း ထမင်းဖိုး၊ မုန့်ဖိုး၊ ဆေးဝါး နှင့် ဝန်ထမ်းကြိုပို့စရိတ်',
+    title: 'ဝန်ထမ်း စားစရိတ် / သက်သာ',
+    subTitle: 'Staff Meals & Welfare',
     badgeColor: 'bg-orange-50 text-orange-800 border-orange-200',
     barColor: 'bg-orange-500',
     iconEmoji: '🍱',
@@ -157,21 +144,21 @@ export const EXPENSE_CATEGORIES: ExpenseCategoryMeta[] = [
   },
   {
     id: 'owner_meals',
-    title: 'နေ့စဉ် မိမိစားစရိတ် / ဧည့်ခံစရိတ် (Owner & Hospitality)',
-    subTitle: 'နေ့စဉ် မိမိစားစရိတ်၊ ဧည့်သည် ကော်ဖီ/မုန့် ဧည့်ခံစရိတ်',
+    title: 'နေ့စဉ် မိမိစားစရိတ် / ဧည့်ခံ',
+    subTitle: 'Owner Daily Meals & Hospitality',
     badgeColor: 'bg-teal-50 text-teal-800 border-teal-200',
     barColor: 'bg-teal-600',
     iconEmoji: '☕',
     quickPresets: [
-      'နေ့စဉ် မိမိစားစရိတ် (Owner Daily Meal)',
+      'နေ့စဉ် မိမိစားစရိတ်',
       'ဧည့်သည် ဧည့်ခံ ကော်ဖီ / အအေး / မုန့်ဖိုး',
       'သွားလာရေး / ဆီဖိုး'
     ]
   },
   {
     id: 'debt_payment',
-    title: 'အကြွေးပေးငွေ / ပေးရန်ကျန်ငွေချေခြင်း (Debt Payment)',
-    subTitle: 'ပစ္စည်းဖိုးအကြွေးဆပ်ခြင်း သို့မဟုတ် ချေးငွေပြန်ဆပ်ခြင်း',
+    title: 'အကြွေးပေးငွေ',
+    subTitle: 'Debt & Credit Repayment',
     badgeColor: 'bg-rose-50 text-rose-800 border-rose-200',
     barColor: 'bg-rose-600',
     iconEmoji: '💳',
@@ -179,8 +166,8 @@ export const EXPENSE_CATEGORIES: ExpenseCategoryMeta[] = [
   },
   {
     id: 'maintenance_other',
-    title: 'ပြုပြင်ထိန်းသိမ်းစရိတ်နှင့် အထွေထွေ (Maintenance & Misc)',
-    subTitle: 'Aircon ပြင်ခ၊ အင်တာနက် WiFi ဘေလ်၊ ပရိဘောဂ နှင့် အထွေထွေ',
+    title: 'ပြုပြင်ထိန်းသိမ်း / အထွေထွေ',
+    subTitle: 'Maintenance & General Misc',
     badgeColor: 'bg-slate-100 text-slate-800 border-slate-300',
     barColor: 'bg-slate-600',
     iconEmoji: '🔧',
@@ -191,6 +178,19 @@ export const EXPENSE_CATEGORIES: ExpenseCategoryMeta[] = [
       'အထွေထွေ အသုံးစရိတ်'
     ]
   }
+];
+
+const COLOR_THEMES = [
+  { badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200', barColor: 'bg-emerald-600' },
+  { badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200', barColor: 'bg-indigo-600' },
+  { badgeColor: 'bg-amber-50 text-amber-900 border-amber-300', barColor: 'bg-amber-500' },
+  { badgeColor: 'bg-cyan-50 text-cyan-800 border-cyan-200', barColor: 'bg-cyan-600' },
+  { badgeColor: 'bg-purple-50 text-purple-800 border-purple-200', barColor: 'bg-purple-600' },
+  { badgeColor: 'bg-pink-50 text-pink-800 border-pink-200', barColor: 'bg-pink-600' },
+  { badgeColor: 'bg-orange-50 text-orange-800 border-orange-200', barColor: 'bg-orange-500' },
+  { badgeColor: 'bg-teal-50 text-teal-800 border-teal-200', barColor: 'bg-teal-600' },
+  { badgeColor: 'bg-rose-50 text-rose-800 border-rose-200', barColor: 'bg-rose-600' },
+  { badgeColor: 'bg-slate-100 text-slate-800 border-slate-300', barColor: 'bg-slate-600' }
 ];
 
 export interface ExpenseRecord {
@@ -217,7 +217,7 @@ const getLocalTodayStr = () => {
 };
 
 // ============================================================================
-// 🌟 SHARED HOOK: CALCULATE MONTHLY PAYROLL, REVENUE & EXPENSES 🌟
+// 🌟 SHARED HOOK: CALCULATE MONTHLY PAYROLL, REVENUE, EXPENSES & CUSTOM CATEGORIES 🌟
 // ============================================================================
 
 export function useMonthlyFinancialEngine(
@@ -227,6 +227,8 @@ export function useMonthlyFinancialEngine(
 ) {
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [penalties, setPenalties] = useState<any[]>([]);
+  const [categories, setCategories] = useState<ExpenseCategoryMeta[]>(DEFAULT_EXPENSE_CATEGORIES);
+
   const [payrollDoc, setPayrollDoc] = useState<{
     defaultWifiFee: number;
     adjustments: Record<string, any>;
@@ -242,10 +244,31 @@ export function useMonthlyFinancialEngine(
     ceoSalary: 0,
     managerSalary: 0,
     ceoName: 'CEO',
-    managerName: 'Manager'
+    managerName: 'Spa Manager'
   });
 
-  // 1. Real-time Expenses Listener
+  // 1. Real-time Custom Expense Categories Listener (`settings/expense_categories`)
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'expense_categories'), (snap) => {
+      if (snap.exists() && Array.isArray(snap.data()?.list) && snap.data()!.list.length > 0) {
+        setCategories(snap.data()!.list);
+      } else {
+        setCategories(DEFAULT_EXPENSE_CATEGORIES);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const saveCustomCategories = async (newList: ExpenseCategoryMeta[]) => {
+    setCategories(newList);
+    await setDoc(
+      doc(db, 'settings', 'expense_categories'),
+      { list: newList, updatedAt: Date.now() },
+      { merge: true }
+    );
+  };
+
+  // 2. Real-time Expenses Listener
   useEffect(() => {
     const q = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
@@ -257,7 +280,7 @@ export function useMonthlyFinancialEngine(
           id: d.id,
           date: dateStr,
           yearMonth: dateStr.substring(0, 7),
-          category: (raw.category as ExpenseCategoryId) || 'maintenance_other',
+          category: String(raw.category || 'maintenance_other'),
           title: String(raw.title || ''),
           amount: Number(raw.amount) || 0,
           paymentMethod: String(raw.paymentMethod || 'Cash'),
@@ -270,7 +293,7 @@ export function useMonthlyFinancialEngine(
     return () => unsub();
   }, []);
 
-  // 2. Real-time Penalties Listener
+  // 3. Real-time Penalties Listener
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'penalties'), (snap) => {
       const list: any[] = [];
@@ -280,7 +303,7 @@ export function useMonthlyFinancialEngine(
     return () => unsub();
   }, []);
 
-  // 3. Real-time Payroll & Executive Salaries Listener for Selected Month
+  // 4. Real-time Payroll & Executive Salaries Listener for Selected Month
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', `payroll_${selectedMonth}`), (snap) => {
       if (snap.exists()) {
@@ -335,7 +358,7 @@ export function useMonthlyFinancialEngine(
     );
   }, [therapists]);
 
-  // 4. Calculate Staff Payroll Summary & Revenue for `selectedMonth`
+  // 5. Calculate Staff Payroll Summary & Revenue for `selectedMonth`
   const monthlyCalculations = useMemo(() => {
     let onlineSalesTotal = 0;
     let onlineBookingsCount = 0;
@@ -367,7 +390,6 @@ export function useMonthlyFinancialEngine(
       });
     });
 
-    // Daily Revenue Map
     const dailyRevenueMap = new Map<
       string,
       { online: number; pos: number; totalRevenue: number; count: number }
@@ -386,7 +408,6 @@ export function useMonthlyFinancialEngine(
       const totalAmt = parseSafeNum(b.totalPrice);
       const origAmt = parseSafeNum(b.originalPrice) || totalAmt;
 
-      // Skip Admin/Staff non-sale clock-ins
       if (
         totalAmt <= 0 ||
         rawTx === 'ADMIN' ||
@@ -442,7 +463,6 @@ export function useMonthlyFinancialEngine(
         paymentMethodMap.set(pmUpper, { method: cleanMethodName, amount: totalAmt, count: 1 });
       }
 
-      // Daily Revenue aggregation
       if (!dailyRevenueMap.has(bDate)) {
         dailyRevenueMap.set(bDate, { online: 0, pos: 0, totalRevenue: 0, count: 0 });
       }
@@ -452,7 +472,6 @@ export function useMonthlyFinancialEngine(
       dEntry.totalRevenue += totalAmt;
       dEntry.count += 1;
 
-      // Therapist Commission Calculation
       const rawTherapistStr = String(b.therapist || '').trim();
       if (!rawTherapistStr || rawTherapistStr === '-' || rawTherapistStr.toLowerCase().includes('any available')) {
         return;
@@ -486,7 +505,6 @@ export function useMonthlyFinancialEngine(
       });
     });
 
-    // Compute Each Therapist's Net Payable Salary (Matching Staff Pay Roll Tab)
     let totalTherapistNetPayroll = 0;
     let totalTherapistGrossCommission = 0;
     let totalTherapistBaseAndBonus = 0;
@@ -573,7 +591,6 @@ export function useMonthlyFinancialEngine(
     };
   }, [bookings, uniqueTherapists, selectedMonth, payrollDoc, penalties]);
 
-  // 5. Filter Recorded Expenses for Selected Month
   const monthExpenses = useMemo(() => {
     return expenses.filter((e) => e.yearMonth === selectedMonth);
   }, [expenses, selectedMonth]);
@@ -592,6 +609,8 @@ export function useMonthlyFinancialEngine(
       : 0;
 
   return {
+    categories,
+    saveCustomCategories,
     expenses,
     monthExpenses,
     totalOperationalExpenses,
@@ -604,7 +623,7 @@ export function useMonthlyFinancialEngine(
 }
 
 // ============================================================================
-// 🌟 2. ADMIN EXPENSE MANAGER COMPONENT (TAB 1) 🌟
+// 🌟 2. ADMIN EXPENSE MANAGER COMPONENT (CLEAN LUXURY SPA UI + CUSTOMIZABLE CATEGORIES & PRESETS) 🌟
 // ============================================================================
 
 export function AdminExpenseManager({
@@ -625,14 +644,28 @@ export function AdminExpenseManager({
 
   // Add Expense Form States
   const [expDate, setExpDate] = useState<string>(todayStr);
-  const [expCategory, setExpCategory] = useState<ExpenseCategoryId>('spa_supplies');
+  const [expCategory, setExpCategory] = useState<string>('spa_supplies');
   const [expTitle, setExpTitle] = useState<string>('');
   const [expAmount, setExpAmount] = useState<string>('');
   const [expPaymentMethod, setExpPaymentMethod] = useState<string>('Cash');
   const [expNote, setExpNote] = useState<string>('');
   const [isSavingExpense, setIsSavingExpense] = useState<boolean>(false);
 
-  // Executive Salaries (CEO & Manager) Modal/Input States
+  // Quick Items Inline Customization States
+  const [isEditingQuickItems, setIsEditingQuickItems] = useState<boolean>(false);
+  const [showAddQuickItemInput, setShowAddQuickItemInput] = useState<boolean>(false);
+  const [newQuickItemText, setNewQuickItemText] = useState<string>('');
+
+  // Category Management Modal States
+  const [showCategoryManagerModal, setShowCategoryManagerModal] = useState<boolean>(false);
+  const [newCatEmoji, setNewCatEmoji] = useState<string>('🛍️');
+  const [newCatTitle, setNewCatTitle] = useState<string>('');
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatTitle, setEditingCatTitle] = useState<string>('');
+  const [editingCatEmoji, setEditingCatEmoji] = useState<string>('');
+
+  // Executive Salaries (CEO & Manager) States
+  const [showSalaryEditor, setShowSalaryEditor] = useState<boolean>(false);
   const [ceoSalaryInput, setCeoSalaryInput] = useState<string>('0');
   const [managerSalaryInput, setManagerSalaryInput] = useState<string>('0');
   const [ceoNameInput, setCeoNameInput] = useState<string>('CEO');
@@ -641,12 +674,21 @@ export function AdminExpenseManager({
   const [showPayrollBreakdownModal, setShowPayrollBreakdownModal] = useState<boolean>(false);
 
   const {
+    categories,
+    saveCustomCategories,
     monthExpenses,
     totalOperationalExpenses,
     payrollDoc,
     monthlyCalculations,
     grandTotalAllOutflow
   } = useMonthlyFinancialEngine(selectedMonth, bookings, therapists);
+
+  // Keep selected category valid if categories change
+  useEffect(() => {
+    if (categories.length > 0 && !categories.some((c) => c.id === expCategory)) {
+      setExpCategory(categories[0].id);
+    }
+  }, [categories, expCategory]);
 
   // Sync CEO & Manager Salary inputs when month changes
   useEffect(() => {
@@ -657,10 +699,102 @@ export function AdminExpenseManager({
   }, [payrollDoc.ceoSalary, payrollDoc.managerSalary, payrollDoc.ceoName, payrollDoc.managerName]);
 
   const selectedCategoryMeta = useMemo(() => {
-    return EXPENSE_CATEGORIES.find((c) => c.id === expCategory) || EXPENSE_CATEGORIES[0];
-  }, [expCategory]);
+    return categories.find((c) => c.id === expCategory) || categories[0] || DEFAULT_EXPENSE_CATEGORIES[0];
+  }, [categories, expCategory]);
 
-  // Save CEO & Manager Monthly Salaries into `settings/payroll_${selectedMonth}`
+  // ============================================================================
+  // 🌟 CATEGORY & QUICK ITEMS CRUD FUNCTIONS 🌟
+  // ============================================================================
+
+  // 1. Add a new Quick Item into the currently selected Category
+  const handleAddQuickPresetItem = async () => {
+    const clean = newQuickItemText.trim();
+    if (!clean || !selectedCategoryMeta) return;
+    if (selectedCategoryMeta.quickPresets.includes(clean)) {
+      setNewQuickItemText('');
+      setShowAddQuickItemInput(false);
+      return;
+    }
+
+    const updatedCategories = categories.map((cat) =>
+      cat.id === selectedCategoryMeta.id
+        ? { ...cat, quickPresets: [...cat.quickPresets, clean] }
+        : cat
+    );
+    await saveCustomCategories(updatedCategories);
+    setExpTitle(clean);
+    setNewQuickItemText('');
+    setShowAddQuickItemInput(false);
+  };
+
+  // 2. Remove a Quick Item from the currently selected Category
+  const handleRemoveQuickPresetItem = async (presetToRemove: string) => {
+    if (!selectedCategoryMeta) return;
+    const updatedCategories = categories.map((cat) =>
+      cat.id === selectedCategoryMeta.id
+        ? { ...cat, quickPresets: cat.quickPresets.filter((p) => p !== presetToRemove) }
+        : cat
+    );
+    await saveCustomCategories(updatedCategories);
+  };
+
+  // 3. Add a Brand New Category
+  const handleAddNewCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanTitle = newCatTitle.trim();
+    if (!cleanTitle) return;
+
+    const theme = COLOR_THEMES[categories.length % COLOR_THEMES.length];
+    const newCat: ExpenseCategoryMeta = {
+      id: `cat_${Date.now()}`,
+      title: cleanTitle,
+      subTitle: 'Custom Category',
+      badgeColor: theme.badgeColor,
+      barColor: theme.barColor,
+      iconEmoji: newCatEmoji.trim() || '📌',
+      quickPresets: [cleanTitle]
+    };
+
+    const nextList = [...categories, newCat];
+    await saveCustomCategories(nextList);
+    setExpCategory(newCat.id);
+    setNewCatTitle('');
+    setNewCatEmoji('🛍️');
+  };
+
+  // 4. Save Edited Category Name & Emoji
+  const handleSaveEditedCategory = async (catId: string) => {
+    const cleanTitle = editingCatTitle.trim();
+    if (!cleanTitle) return;
+    const nextList = categories.map((c) =>
+      c.id === catId
+        ? { ...c, title: cleanTitle, iconEmoji: editingCatEmoji.trim() || c.iconEmoji }
+        : c
+    );
+    await saveCustomCategories(nextList);
+    setEditingCatId(null);
+  };
+
+  // 5. Delete a Category
+  const handleDeleteCategory = async (catId: string, title: string) => {
+    if (categories.length <= 1) {
+      alert('အနည်းဆုံး Category (၁) ခု ရှိရပါမည်။');
+      return;
+    }
+    if (!window.confirm(`"${title}" Category ကို ဖျက်မည်မှာ သေချာပါသလား?`)) return;
+    const nextList = categories.filter((c) => c.id !== catId);
+    await saveCustomCategories(nextList);
+  };
+
+  // 6. Reset to Default Categories
+  const handleResetDefaultCategories = async () => {
+    if (!window.confirm('မူလ Default Category (၁၀) မျိုးနှင့် Quick Items များအတိုင်း ပြန်ထားမည်မှာ သေချာပါသလား?')) {
+      return;
+    }
+    await saveCustomCategories(DEFAULT_EXPENSE_CATEGORIES);
+  };
+
+  // Save CEO & Manager Monthly Salaries
   const handleSaveExecutiveSalaries = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingExecSalary(true);
@@ -676,6 +810,7 @@ export function AdminExpenseManager({
         },
         { merge: true }
       );
+      setShowSalaryEditor(false);
       alert(`✅ ${selectedMonth} အတွက် CEO လစာနှင့် Manager လစာ သတ်မှတ်သိမ်းဆည်းပြီးပါပြီ။`);
     } catch (err) {
       alert('လစာ သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
@@ -707,7 +842,6 @@ export function AdminExpenseManager({
         createdAt: Date.now()
       });
 
-      // If user added an expense for a different month, switch view to that month automatically
       if (targetDate.substring(0, 7) !== selectedMonth) {
         setSelectedMonth(targetDate.substring(0, 7));
       }
@@ -733,10 +867,10 @@ export function AdminExpenseManager({
     await deleteDoc(doc(db, 'expenses', id));
   };
 
-  // Category Breakdown Summary (10 Expense Categories + 1 Auto-Synced Payroll Category)
+  // Category Breakdown Summary
   const categoryBreakdownList = useMemo(() => {
-    const map = new Map<ExpenseCategoryId, { total: number; count: number }>();
-    EXPENSE_CATEGORIES.forEach((c) => map.set(c.id, { total: 0, count: 0 }));
+    const map = new Map<string, { total: number; count: number }>();
+    categories.forEach((c) => map.set(c.id, { total: 0, count: 0 }));
 
     monthExpenses.forEach((e) => {
       const entry = map.get(e.category) || { total: 0, count: 0 };
@@ -745,7 +879,7 @@ export function AdminExpenseManager({
       map.set(e.category, entry);
     });
 
-    const operationalRows = EXPENSE_CATEGORIES.map((meta) => {
+    const operationalRows = categories.map((meta) => {
       const st = map.get(meta.id) || { total: 0, count: 0 };
       const pct = grandTotalAllOutflow > 0 ? (st.total / grandTotalAllOutflow) * 100 : 0;
       return {
@@ -757,15 +891,15 @@ export function AdminExpenseManager({
     });
 
     return operationalRows.sort((a, b) => b.total - a.total);
-  }, [monthExpenses, grandTotalAllOutflow]);
+  }, [categories, monthExpenses, grandTotalAllOutflow]);
 
-  // Filtered Expenses for Table & Daily Grouping
+  // Filtered Expenses for Table
   const filteredExpenses = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return monthExpenses.filter((e) => {
       if (activeCategoryFilter !== 'all' && e.category !== activeCategoryFilter) return false;
       if (q) {
-        const catMeta = EXPENSE_CATEGORIES.find((c) => c.id === e.category);
+        const catMeta = categories.find((c) => c.id === e.category);
         const match =
           e.title.toLowerCase().includes(q) ||
           e.note.toLowerCase().includes(q) ||
@@ -775,9 +909,8 @@ export function AdminExpenseManager({
       }
       return true;
     });
-  }, [monthExpenses, activeCategoryFilter, searchQuery]);
+  }, [monthExpenses, activeCategoryFilter, searchQuery, categories]);
 
-  // Export Monthly Expenses + Payroll to Excel (CSV)
   const handleExportExpensesExcel = () => {
     const headers = [
       'Date',
@@ -789,7 +922,7 @@ export function AdminExpenseManager({
     ];
 
     const rows: any[] = filteredExpenses.map((e) => {
-      const catMeta = EXPENSE_CATEGORIES.find((c) => c.id === e.category);
+      const catMeta = categories.find((c) => c.id === e.category);
       return [
         `"${e.date}"`,
         `"${catMeta?.title || e.category}"`,
@@ -800,7 +933,6 @@ export function AdminExpenseManager({
       ];
     });
 
-    // Append Auto-Synced Payroll & Executive Salaries Rows
     rows.push([
       `"${selectedMonth}-30"`,
       `"ဝန်ထမ်းလစာနှင့် ကော်မရှင် (Staff Payroll Auto-Synced)"`,
@@ -841,9 +973,161 @@ export function AdminExpenseManager({
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
       {/* =========================================================================
-          MODAL: STAFF PAYROLL & EXECUTIVE SALARY BREAKDOWN
+          MODAL 1: CATEGORY & QUICK ITEMS MANAGER (အတိုးအလျှော့ စိတ်ကြိုက်ပြင်ဆင်ရန်)
+         ========================================================================= */}
+      {showCategoryManagerModal && (
+        <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-[#D4AF37]/40 my-auto max-h-[90vh] flex flex-col space-y-4 animate-fade-in">
+            <div className="flex justify-between items-center border-b border-gray-200 pb-3.5">
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-[#123524] flex items-center">
+                  <Settings className="w-5 h-5 mr-2 text-[#D4AF37]" />
+                  Expense Categories စိတ်ကြိုက် ပြင်ဆင်ရန်
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Category ခေါင်းစဉ်အသစ် ထပ်တိုးခြင်း၊ အမည်ပြင်ခြင်း နှင့် မလိုအပ်သော Category များကို ဖျက်နိုင်ပါသည်
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCategoryManagerModal(false)}
+                className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 text-xs font-black"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Add New Category Form */}
+            <form
+              onSubmit={handleAddNewCategory}
+              className="bg-gray-50 p-3.5 rounded-2xl border border-gray-200 flex flex-col sm:flex-row gap-2"
+            >
+              <input
+                type="text"
+                value={newCatEmoji}
+                onChange={(e) => setNewCatEmoji(e.target.value)}
+                placeholder="🛍️"
+                className="w-14 p-2.5 bg-white border border-gray-300 rounded-xl text-center text-sm outline-none focus:border-[#123524]"
+                title="Emoji Icon"
+              />
+              <input
+                type="text"
+                required
+                value={newCatTitle}
+                onChange={(e) => setNewCatTitle(e.target.value)}
+                placeholder="Category ခေါင်းစဉ်အသစ် ရိုက်ထည့်ပါ (ဥပမာ - အလှူအတန်း / ပွဲစရိတ်)"
+                className="flex-1 p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2.5 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black whitespace-nowrap hover:bg-[#1a4a32] transition"
+              >
+                + Category ထည့်မည်
+              </button>
+            </form>
+
+            {/* Existing Categories List */}
+            <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+              {categories.map((cat) => {
+                const isEditing = editingCatId === cat.id;
+                return (
+                  <div
+                    key={cat.id}
+                    className="p-3 rounded-xl bg-white border border-gray-200 flex items-center justify-between gap-2 shadow-2xs"
+                  >
+                    {isEditing ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="text"
+                          value={editingCatEmoji}
+                          onChange={(e) => setEditingCatEmoji(e.target.value)}
+                          className="w-12 p-1.5 bg-gray-50 border border-gray-300 rounded-lg text-center text-sm"
+                        />
+                        <input
+                          type="text"
+                          autoFocus
+                          value={editingCatTitle}
+                          onChange={(e) => setEditingCatTitle(e.target.value)}
+                          className="flex-1 p-1.5 bg-gray-50 border border-[#123524] rounded-lg text-xs font-bold text-[#123524] outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEditedCategory(cat.id)}
+                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-black flex items-center gap-1"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCatId(null)}
+                          className="px-2 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-base">{cat.iconEmoji}</span>
+                          <div className="min-w-0">
+                            <div className="text-xs font-black text-gray-800 truncate">{cat.title}</div>
+                            <div className="text-[10px] text-gray-400 font-semibold">
+                              Quick Items: {cat.quickPresets.length} ခု
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCatId(cat.id);
+                              setEditingCatTitle(cat.title);
+                              setEditingCatEmoji(cat.iconEmoji);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[11px] font-bold flex items-center gap-1"
+                          >
+                            <Edit3 className="w-3 h-3" /> ပြင်ရန်
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(cat.id, cat.title)}
+                            className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600"
+                            title="Delete Category"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-3 border-t border-gray-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={handleResetDefaultCategories}
+                className="text-xs font-bold text-gray-500 hover:text-[#123524] flex items-center gap-1"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> မူလ Default စာရင်းအတိုင်း ပြန်ထားမည်
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCategoryManagerModal(false)}
+                className="px-5 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black"
+              >
+                Done (ပြီးပြီ)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 2: STAFF PAYROLL & EXECUTIVE SALARY BREAKDOWN
          ========================================================================= */}
       {showPayrollBreakdownModal && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -947,7 +1231,7 @@ export function AdminExpenseManager({
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-gray-100 pb-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-800 border border-red-200">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#123524]/10 text-[#123524]">
                 Shop Expense & Payroll Tracker
               </span>
               <h2 className="text-lg sm:text-xl font-black text-[#123524] flex items-center">
@@ -956,14 +1240,14 @@ export function AdminExpenseManager({
               </h2>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              ဆိုင်အသုံးစရိတ် (၁၀) မျိုး၊ ဝန်ထမ်းလစာ (Staff Payroll)၊ CEO လစာ နှင့် Manager လစာများကို Category အလိုက် စနစ်တကျ မှတ်သားစစ်ဆေးနိုင်ပါသည်
+              ဆိုင်အသုံးစရိတ်များ၊ ဝန်ထမ်းလစာ (Staff Payroll)၊ CEO လစာ နှင့် Manager လစာများကို Category အလိုက် စိတ်ကြိုက် ပြင်ဆင်မှတ်သားနိုင်ပါသည်
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
             <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-300">
               <Calendar className="w-4 h-4 text-[#D4AF37]" />
-              <span className="text-[11px] font-bold text-gray-500">လ ရွေးချယ်ရန်:</span>
+              <span className="text-[11px] font-bold text-gray-500">လ ရွေးရန်:</span>
               <input
                 type="month"
                 value={selectedMonth}
@@ -974,271 +1258,361 @@ export function AdminExpenseManager({
 
             <button
               type="button"
+              onClick={() => setShowCategoryManagerModal(true)}
+              className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition"
+            >
+              <Settings className="w-3.5 h-3.5 text-[#123524]" /> Category ပြင်ဆင်ရန်
+            </button>
+
+            <button
+              type="button"
               onClick={handleExportExpensesExcel}
               className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs"
             >
-              <Download className="w-4 h-4" /> Export Expenses Excel
+              <Download className="w-3.5 h-3.5" /> Export Excel
             </button>
           </div>
         </div>
 
         {/* 4 Top Summary KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
           <div className="p-4 rounded-2xl bg-red-50/60 border border-red-200">
             <div className="text-[10px] font-extrabold text-red-800 uppercase tracking-wider">
-              ၁။ ဆိုင်အသုံးစရိတ် စုစုပေါင်း (Operational Expenses)
+              ၁။ ဆိုင်အသုံးစရိတ် (Operational)
             </div>
-            <div className="text-xl font-black text-red-600 mt-1">
+            <div className="text-lg sm:text-xl font-black text-red-600 mt-1">
               {formatPrice(totalOperationalExpenses)}
             </div>
             <div className="text-[10px] font-bold text-gray-500 mt-1">
-              မှတ်တမ်းအရေအတွက်: {monthExpenses.length} ကြိမ်
+              မှတ်တမ်း: {monthExpenses.length} ကြိမ်
             </div>
           </div>
 
           <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200">
             <div className="text-[10px] font-extrabold text-amber-900 uppercase tracking-wider flex items-center justify-between">
-              <span>၂။ ဝန်ထမ်းလစာ စုစုပေါင်း (Staff Net Payroll)</span>
-              <span className="bg-amber-200/80 text-amber-900 px-1.5 py-0.5 rounded text-[9px] font-black">
-                Auto-Sync
+              <span>၂။ ဝန်ထမ်းလစာ (Staff Payroll)</span>
+              <span className="bg-amber-200/80 text-amber-900 px-1.5 py-0.2 rounded text-[8px] font-black">
+                Auto
               </span>
             </div>
-            <div className="text-xl font-black text-[#123524] mt-1">
+            <div className="text-lg sm:text-xl font-black text-[#123524] mt-1">
               {formatPrice(monthlyCalculations.totalTherapistNetPayroll)}
             </div>
             <div className="text-[10px] font-bold text-amber-800 mt-1">
-              Therapists: {monthlyCalculations.therapistPayrollList.length} ဦး ({monthlyCalculations.totalBookingsCount}{' '}
-              Sec)
+              ဝန်ထမ်း {monthlyCalculations.therapistPayrollList.length} ဦး ({monthlyCalculations.totalBookingsCount} Sec)
             </div>
           </div>
 
           <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200">
             <div className="text-[10px] font-extrabold text-blue-900 uppercase tracking-wider">
-              ၃။ CEO + Manager လစာ (Executive Salaries)
+              ၃။ CEO + Manager လစာ
             </div>
-            <div className="text-xl font-black text-blue-900 mt-1">
+            <div className="text-lg sm:text-xl font-black text-blue-900 mt-1">
               {formatPrice(payrollDoc.ceoSalary + payrollDoc.managerSalary)}
             </div>
-            <div className="text-[10px] font-bold text-blue-700 mt-1">
+            <div className="text-[10px] font-bold text-blue-700 mt-1 truncate">
               CEO: {formatPrice(payrollDoc.ceoSalary)} | Mgr: {formatPrice(payrollDoc.managerSalary)}
             </div>
           </div>
 
           <div className="p-4 rounded-2xl bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] text-white border border-[#D4AF37]/50 shadow-sm">
             <div className="text-[10px] font-extrabold text-[#D4AF37] uppercase tracking-wider">
-              ၄။ တစ်လစာ စုစုပေါင်း ထွက်ငွေချုပ် (Total Outflow)
+              ၄။ စုစုပေါင်း ထွက်ငွေချုပ် (Total Outflow)
             </div>
-            <div className="text-xl font-black text-white mt-1">
+            <div className="text-lg sm:text-xl font-black text-white mt-1">
               {formatPrice(grandTotalAllOutflow)}
             </div>
-            <div className="text-[10px] font-semibold text-emerald-200 mt-1">
-              အသုံးစရိတ် + ဝန်ထမ်းလစာ + CEO/Manager လစာ
+            <div className="text-[10px] font-semibold text-emerald-200 mt-1 truncate">
+              အသုံးစရိတ် + လစာအားလုံးပေါင်း
             </div>
           </div>
+        </div>
+
+        {/* Sleek Collapsible Executive Payroll Bar */}
+        <div className="bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white p-4 rounded-2xl border border-[#D4AF37]/40">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center text-lg">
+                💼
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs sm:text-sm font-black text-white">
+                    ဝန်ထမ်းလစာ + CEO + Manager လစာ စာရင်းချုပ် ({selectedMonth})
+                  </span>
+                  <span className="bg-[#D4AF37] text-[#0B2419] text-[9px] font-black px-2 py-0.5 rounded uppercase">
+                    Payroll Category
+                  </span>
+                </div>
+                <div className="text-[11px] text-gray-300 mt-0.5">
+                  Therapists Net: <strong className="text-[#D4AF37]">{formatPrice(monthlyCalculations.totalTherapistNetPayroll)}</strong> •{' '}
+                  {payrollDoc.ceoName}: <strong className="text-white">{formatPrice(payrollDoc.ceoSalary)}</strong> •{' '}
+                  {payrollDoc.managerName}: <strong className="text-white">{formatPrice(payrollDoc.managerSalary)}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={() => setShowSalaryEditor(!showSalaryEditor)}
+                className="px-3 py-2 bg-[#D4AF37] hover:bg-yellow-400 text-[#0B2419] rounded-xl text-xs font-black flex items-center gap-1 transition"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>CEO / Manager လစာ သတ်မှတ်ရန်</span>
+                {showSalaryEditor ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPayrollBreakdownModal(true)}
+                className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition"
+              >
+                စာရင်းအသေးစိတ်
+              </button>
+            </div>
+          </div>
+
+          {showSalaryEditor && (
+            <form
+              onSubmit={handleSaveExecutiveSalaries}
+              className="mt-4 pt-4 border-t border-white/15 grid grid-cols-1 md:grid-cols-12 gap-3 items-end animate-fade-in"
+            >
+              <div className="md:col-span-5">
+                <label className="block text-[10px] font-extrabold text-[#D4AF37] uppercase mb-1">
+                  CEO အမည် နှင့် လစာ (Ks)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={ceoNameInput}
+                    onChange={(e) => setCeoNameInput(e.target.value)}
+                    placeholder="CEO"
+                    className="w-28 p-2.5 bg-black/30 border border-white/20 rounded-xl text-xs font-bold text-white outline-none"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step={10000}
+                    value={ceoSalaryInput}
+                    onChange={(e) => setCeoSalaryInput(e.target.value)}
+                    placeholder="0"
+                    className="flex-1 p-2.5 bg-white text-[#123524] rounded-xl text-xs font-black outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="md:col-span-5">
+                <label className="block text-[10px] font-extrabold text-[#D4AF37] uppercase mb-1">
+                  Manager အမည် နှင့် လစာ (Ks)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={managerNameInput}
+                    onChange={(e) => setManagerNameInput(e.target.value)}
+                    placeholder="Spa Manager"
+                    className="w-32 p-2.5 bg-black/30 border border-white/20 rounded-xl text-xs font-bold text-white outline-none"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step={10000}
+                    value={managerSalaryInput}
+                    onChange={(e) => setManagerSalaryInput(e.target.value)}
+                    placeholder="0"
+                    className="flex-1 p-2.5 bg-white text-[#123524] rounded-xl text-xs font-black outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                <button
+                  type="submit"
+                  disabled={isSavingExecSalary}
+                  className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black uppercase shadow-md transition flex items-center justify-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSavingExecSalary ? '...' : 'Save'}</span>
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
 
       {/* =========================================================================
-          2. PAYROLL & EXECUTIVE SALARY CATEGORY CARD (CEO, MANAGER & STAFF PAYROLL)
+          2. ADD NEW EXPENSE FORM (VISUAL CATEGORY GRID + CUSTOMIZABLE QUICK ITEMS) & BREAKDOWN
          ========================================================================= */}
-      <div className="bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white p-5 sm:p-6 rounded-2xl shadow-md border border-[#D4AF37]/50 space-y-4">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 border-b border-white/10 pb-3.5">
-          <div>
-            <span className="inline-flex items-center gap-1.5 bg-[#D4AF37] text-[#0B2419] text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full">
-              💼 Auto-Synced Payroll Expense Category
-            </span>
-            <h3 className="text-base sm:text-lg font-black text-white mt-1.5">
-              ဝန်ထမ်းလစာ (Staff Pay Roll) နှင့် CEO / Manager လစာ သတ်မှတ်ချက် ({selectedMonth})
-            </h3>
-            <p className="text-xs text-gray-300 mt-0.5">
-              Staff Pay Roll Tab မှ ဝန်ထမ်းအားလုံး၏ အသားတင်ပေးချေရမည့်လစာကို အလိုအလျောက် ဆွဲယူထားပြီး CEO နှင့် Manager လစာကိုပါ ဤနေရာတွင် သတ်မှတ်နိုင်ပါသည်
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2.5 self-end lg:self-center">
-            <div className="bg-black/30 border border-[#D4AF37]/40 px-4 py-2 rounded-xl text-right">
-              <div className="text-[10px] font-bold text-gray-300 uppercase">စုစုပေါင်း လစာစရိတ် (Total Payroll)</div>
-              <div className="text-base sm:text-lg font-black text-[#D4AF37]">
-                {formatPrice(monthlyCalculations.totalCombinedPayroll)}
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left 6 Cols: Clean Modern Add Expense Card (No Native Dropdown Clutter!) */}
+        <div className="lg:col-span-6 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div>
+              <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
+                <PlusCircle className="w-4 h-4 mr-2 text-[#D4AF37]" />
+                အသုံးစရိတ်အသစ် ထည့်သွင်းရန် (Add Expense)
+              </h3>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                Category နှင့် အသင့်ပါသော ပစ္စည်းအမည်များကို စိတ်ကြိုက် အတိုးအလျှော့ ပြုလုပ်နိုင်ပါသည်
+              </p>
             </div>
             <button
               type="button"
-              onClick={() => setShowPayrollBreakdownModal(true)}
-              className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-[#D4AF37] border border-[#D4AF37]/40 rounded-xl text-xs font-black transition whitespace-nowrap"
+              onClick={() => setShowCategoryManagerModal(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#123524] text-[11px] font-black flex items-center gap-1 transition"
             >
-              စာရင်းအသေးစိတ် ကြည့်ရန်
+              <Settings className="w-3.5 h-3.5 text-[#D4AF37]" />
+              <span>+ Category အတိုး/အလျှော့</span>
             </button>
           </div>
-        </div>
 
-        <form onSubmit={handleSaveExecutiveSalaries} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-          <div className="md:col-span-3 bg-white/5 p-3 rounded-xl border border-white/10">
-            <div className="text-[10px] font-bold text-emerald-300 uppercase">
-              ၁။ Therapists Net Payroll ({monthlyCalculations.therapistPayrollList.length} ဦး)
-            </div>
-            <div className="text-base font-black text-white mt-1">
-              {formatPrice(monthlyCalculations.totalTherapistNetPayroll)}
-            </div>
-            <div className="text-[10px] text-gray-300 mt-0.5">
-              ရှင်းပြီး: {monthlyCalculations.settledTherapistsCount} ဦး / စုစုပေါင်း{' '}
-              {monthlyCalculations.therapistPayrollList.length} ဦး
-            </div>
-          </div>
-
-          <div className="md:col-span-3">
-            <label className="block text-[10px] font-extrabold text-[#D4AF37] uppercase mb-1">
-              ၂။ CEO လစာ သတ်မှတ်ရန် (CEO Salary - Ks)
-            </label>
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                value={ceoNameInput}
-                onChange={(e) => setCeoNameInput(e.target.value)}
-                placeholder="CEO"
-                className="w-24 p-2.5 bg-black/30 border border-white/20 rounded-xl text-xs font-bold text-white outline-none focus:border-[#D4AF37]"
-              />
-              <input
-                type="number"
-                min={0}
-                step={10000}
-                value={ceoSalaryInput}
-                onChange={(e) => setCeoSalaryInput(e.target.value)}
-                placeholder="0"
-                className="flex-1 min-w-0 p-2.5 bg-white text-[#123524] rounded-xl text-xs font-black outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="md:col-span-4">
-            <label className="block text-[10px] font-extrabold text-[#D4AF37] uppercase mb-1">
-              ၃။ Manager လစာ သတ်မှတ်ရန် (Manager Salary - Ks)
-            </label>
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                value={managerNameInput}
-                onChange={(e) => setManagerNameInput(e.target.value)}
-                placeholder="Manager"
-                className="w-28 p-2.5 bg-black/30 border border-white/20 rounded-xl text-xs font-bold text-white outline-none focus:border-[#D4AF37]"
-              />
-              <input
-                type="number"
-                min={0}
-                step={10000}
-                value={managerSalaryInput}
-                onChange={(e) => setManagerSalaryInput(e.target.value)}
-                placeholder="0"
-                className="flex-1 min-w-0 p-2.5 bg-white text-[#123524] rounded-xl text-xs font-black outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="md:col-span-2">
-            <button
-              type="submit"
-              disabled={isSavingExecSalary}
-              className="w-full py-2.5 px-4 bg-[#D4AF37] hover:bg-yellow-400 text-[#0B2419] rounded-xl text-xs font-black uppercase shadow-md transition flex items-center justify-center gap-1.5"
-            >
-              <Save className="w-4 h-4" />
-              <span>{isSavingExecSalary ? 'Saving...' : 'Save Salaries'}</span>
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* =========================================================================
-          3. ADD NEW EXPENSE FORM + CATEGORY BREAKDOWN PROGRESS CARDS
-         ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 5 Cols: Add Expense Form with Smart Quick Chips */}
-        <div className="lg:col-span-5 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-          <div className="border-b border-gray-100 pb-3">
-            <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
-              <PlusCircle className="w-4 h-4 mr-2 text-[#D4AF37]" />
-              အသုံးစရိတ်အသစ် ထည့်သွင်းရန် (Add Daily / Monthly Expense)
-            </h3>
-            <p className="text-[11px] text-gray-500 mt-0.5">
-              Category ရွေးချယ်ပြီး အသင့်ပါသော ပစ္စည်းအမည်များကို တစ်ချက်နှိပ်၍ မြန်ဆန်စွာ ထည့်သွင်းနိုင်ပါသည်
-            </p>
-          </div>
-
-          <form onSubmit={handleAddExpense} className="space-y-3.5">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  နေ့ရက် (Date) *
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={expDate}
-                  onChange={(e) => setExpDate(e.target.value)}
-                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#D4AF37]"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  ငွေပေးချေမှုစနစ် (Payment)
-                </label>
-                <select
-                  value={expPaymentMethod}
-                  onChange={(e) => setExpPaymentMethod(e.target.value)}
-                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#D4AF37]"
-                >
-                  <option value="Cash">Cash (ငွေသား)</option>
-                  <option value="KBZ PAY">KBZ PAY</option>
-                  <option value="Wave PAY">Wave PAY</option>
-                  <option value="AYA PAY">AYA PAY</option>
-                  <option value="Bank Transfer">Bank Transfer</option>
-                </select>
-              </div>
-            </div>
-
+          <form onSubmit={handleAddExpense} className="space-y-4">
+            {/* Step 1: Visual Category Pill Grid (Replaces messy native <select> dropdown!) */}
             <div>
-              <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                အသုံးစရိတ် အမျိုးအစား (Select Category) *
-              </label>
-              <select
-                value={expCategory}
-                onChange={(e) => setExpCategory(e.target.value as ExpenseCategoryId)}
-                className="w-full p-2.5 bg-yellow-50/70 border border-[#D4AF37]/60 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#123524]"
-              >
-                {EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.iconEmoji} {c.title}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
+                  ၁။ အသုံးစရိတ် အမျိုးအစား ရွေးချယ်ပါ (Select Category) *
+                </label>
+                <span className="text-[10px] font-bold text-[#123524]">
+                  ရွေးထားသည်: {selectedCategoryMeta?.iconEmoji} {selectedCategoryMeta?.title}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1">
+                {categories.map((cat) => {
+                  const isSelected = expCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setExpCategory(cat.id)}
+                      className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2 ${
+                        isSelected
+                          ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm font-black scale-[1.01]'
+                          : 'bg-gray-50/80 text-gray-700 border-gray-200 hover:border-[#D4AF37] hover:bg-white font-bold'
+                      }`}
+                    >
+                      <span className="text-base flex-shrink-0">{cat.iconEmoji}</span>
+                      <span className="text-[11px] leading-snug truncate">{cat.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Quick-Pick Preset Chips for Selected Category */}
-            <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-1.5">
-              <div className="text-[10px] font-extrabold text-gray-500 uppercase">
-                အမြန်ရွေးချယ်ရန် ({selectedCategoryMeta.iconEmoji} Quick Items):
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {selectedCategoryMeta.quickPresets.map((preset, idx) => (
+            {/* Step 2: Customizable Quick-Pick Items Box */}
+            <div className="bg-gray-50/90 p-3.5 rounded-2xl border border-gray-200 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[10px] font-extrabold text-[#123524] uppercase flex items-center gap-1">
+                  <span>{selectedCategoryMeta?.iconEmoji}</span>
+                  <span>{selectedCategoryMeta?.title} — အမြန်ရွေးချယ်ရန် (Quick Items):</span>
+                </span>
+
+                <div className="flex items-center gap-1.5">
                   <button
-                    key={idx}
                     type="button"
-                    onClick={() => setExpTitle(preset)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
-                      expTitle === preset
-                        ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-2xs'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-[#D4AF37]'
+                    onClick={() => setShowAddQuickItemInput(!showAddQuickItemInput)}
+                    className="px-2 py-1 rounded-lg bg-[#123524] text-[#D4AF37] text-[10px] font-black flex items-center gap-0.5 hover:bg-[#1a4a32] transition"
+                  >
+                    <Plus className="w-3 h-3" /> အသစ်ထည့်
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingQuickItems(!isEditingQuickItems)}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-black border transition ${
+                      isEditingQuickItems
+                        ? 'bg-red-600 text-white border-red-600'
+                        : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
                     }`}
                   >
-                    + {preset}
+                    {isEditingQuickItems ? '✓ ပြီးပြီ' : 'ဖျက်ရန် / ပြင်ရန်'}
                   </button>
-                ))}
+                </div>
+              </div>
+
+              {/* Inline Add Quick Item Input */}
+              {showAddQuickItemInput && (
+                <div className="flex gap-1.5 pt-1 animate-fade-in">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newQuickItemText}
+                    onChange={(e) => setNewQuickItemText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddQuickPresetItem();
+                      }
+                    }}
+                    placeholder="အသေးစိတ် ခေါင်းစဉ်အသစ် ရိုက်ထည့်ပါ..."
+                    className="flex-1 p-2 bg-white border border-[#123524] rounded-xl text-xs font-bold text-gray-800 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddQuickPresetItem}
+                    className="px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddQuickItemInput(false);
+                      setNewQuickItemText('');
+                    }}
+                    className="px-2.5 py-2 bg-gray-200 text-gray-600 rounded-xl text-xs font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Quick Items Chips */}
+              <div className="flex flex-wrap gap-1.5">
+                {selectedCategoryMeta?.quickPresets.length === 0 ? (
+                  <span className="text-[11px] text-gray-400 font-semibold py-1">
+                    အသင့်ရွေးချယ်စရာ ခေါင်းစဉ်မရှိသေးပါ။ "+ အသစ်ထည့်" ကိုနှိပ်၍ ထည့်နိုင်ပါသည်။
+                  </span>
+                ) : (
+                  selectedCategoryMeta?.quickPresets.map((preset, idx) => {
+                    const isSelectedChip = expTitle === preset;
+                    return (
+                      <div key={idx} className="inline-flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => setExpTitle(preset)}
+                          className={`px-2.5 py-1.5 text-[11px] font-bold border transition ${
+                            isEditingQuickItems ? 'rounded-l-lg' : 'rounded-lg'
+                          } ${
+                            isSelectedChip
+                              ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-2xs'
+                              : 'bg-white text-gray-700 border-gray-200 hover:border-[#D4AF37]'
+                          }`}
+                        >
+                          + {preset}
+                        </button>
+                        {isEditingQuickItems && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveQuickPresetItem(preset)}
+                            className="px-1.5 py-1.5 bg-red-100 hover:bg-red-600 text-red-600 hover:text-white border border-l-0 border-red-200 rounded-r-lg text-[11px] font-black transition"
+                            title="ဖျက်မည်"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
+            {/* Step 3: Item Name & Amount */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
               <div className="sm:col-span-7">
                 <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  အသုံးစရိတ် အကြောင်းအရာ (Item Name) *
+                  ၂။ အသုံးစရိတ် အကြောင်းအရာ (Item Name) *
                 </label>
                 <input
                   type="text"
@@ -1252,7 +1626,7 @@ export function AdminExpenseManager({
 
               <div className="sm:col-span-5">
                 <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  ကုန်ကျငွေ ပမာဏ (Amount - Ks) *
+                  ၃။ ကုန်ကျငွေ ပမာဏ (Amount - Ks) *
                 </label>
                 <input
                   type="number"
@@ -1266,23 +1640,56 @@ export function AdminExpenseManager({
               </div>
             </div>
 
-            <div>
-              <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                မှတ်ချက် / အသေးစိတ် (Optional Note)
-              </label>
-              <input
-                type="text"
-                value={expNote}
-                onChange={(e) => setExpNote(e.target.value)}
-                placeholder="ဥပမာ - ဘောင်ချာနံပါတ် / ဆိုင်အမည် / အရေအတွက်..."
-                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 outline-none focus:border-[#123524]"
-              />
+            {/* Step 4: Date, Payment Method & Note */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+              <div className="sm:col-span-4">
+                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                  နေ့ရက် (Date)
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={expDate}
+                  onChange={(e) => setExpDate(e.target.value)}
+                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-4">
+                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={expPaymentMethod}
+                  onChange={(e) => setExpPaymentMethod(e.target.value)}
+                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none"
+                >
+                  <option value="Cash">Cash (ငွေသား)</option>
+                  <option value="KBZ PAY">KBZ PAY</option>
+                  <option value="Wave PAY">Wave PAY</option>
+                  <option value="AYA PAY">AYA PAY</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-4">
+                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                  မှတ်ချက် (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={expNote}
+                  onChange={(e) => setExpNote(e.target.value)}
+                  placeholder="ဆိုင်အမည် / အရေအတွက်..."
+                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 outline-none"
+                />
+              </div>
             </div>
 
             <button
               type="submit"
               disabled={isSavingExpense}
-              className="w-full py-3 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-wider shadow-md hover:opacity-95 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-wider shadow-md hover:opacity-95 transition flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <PlusCircle className="w-4 h-4" />
               <span>{isSavingExpense ? 'သိမ်းဆည်းနေပါသည်...' : 'အသုံးစရိတ် သိမ်းဆည်းမည် (Save Expense)'}</span>
@@ -1290,8 +1697,8 @@ export function AdminExpenseManager({
           </form>
         </div>
 
-        {/* Right 7 Cols: Category-by-Category Breakdown with Visual Progress Bars */}
-        <div className="lg:col-span-7 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+        {/* Right 6 Cols: Category-by-Category Breakdown with Visual Progress Bars */}
+        <div className="lg:col-span-6 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
             <div>
               <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
@@ -1299,7 +1706,7 @@ export function AdminExpenseManager({
                 Category အလိုက် ကုန်ကျစရိတ် စာရင်းချုပ် ({selectedMonth})
               </h3>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                မည်သည့်အပိုင်းတွင် မည်မျှကုန်ကျနေသည်ကို တစ်ချက်ကြည့်ရုံဖြင့် သိရှိနိုင်ပြီး Category တစ်ခုချင်းစီကို နှိပ်၍ စစ်ကြည့်နိုင်ပါသည်
+                Category တစ်ခုချင်းစီကို နှိပ်၍ အောက်ပါစာရင်းဇယားတွင် သီးသန့် စစ်ကြည့်နိုင်ပါသည်
               </p>
             </div>
             {activeCategoryFilter !== 'all' && (
@@ -1308,12 +1715,12 @@ export function AdminExpenseManager({
                 onClick={() => setActiveCategoryFilter('all')}
                 className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-black"
               >
-                အားလုံး ပြန်ကြည့်မည် (Show All)
+                အားလုံး ပြန်ကြည့်မည်
               </button>
             )}
           </div>
 
-          <div className="space-y-2.5 max-h-[540px] overflow-y-auto pr-1">
+          <div className="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
             {/* 1. Payroll & Executive Salaries Bar (Auto-Synced) */}
             <div
               onClick={() => setShowPayrollBreakdownModal(true)}
@@ -1324,11 +1731,11 @@ export function AdminExpenseManager({
                   <span>💼</span>
                   <span>ဝန်ထမ်းလစာ + CEO + Manager လစာ (Payroll Auto-Synced)</span>
                 </div>
-                <div className="text-right">
+                <div className="text-right whitespace-nowrap">
                   <span className="font-black text-sm text-[#123524]">
                     {formatPrice(monthlyCalculations.totalCombinedPayroll)}
                   </span>
-                  <span className="text-[10px] font-bold text-amber-800 ml-2">
+                  <span className="text-[10px] font-bold text-amber-800 ml-1.5">
                     (
                     {grandTotalAllOutflow > 0
                       ? ((monthlyCalculations.totalCombinedPayroll / grandTotalAllOutflow) * 100).toFixed(1)
@@ -1367,15 +1774,15 @@ export function AdminExpenseManager({
                 >
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <div className="min-w-0">
-                      <div className="font-bold text-gray-800 flex items-center gap-1.5 truncate">
-                        <span>{cat.iconEmoji}</span>
+                      <div className="font-bold text-gray-800 flex items-center gap-2 truncate">
+                        <span className="text-sm">{cat.iconEmoji}</span>
                         <span className="truncate">{cat.title}</span>
                         <span className="text-[10px] font-black bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600">
                           {cat.count} ကြိမ်
                         </span>
                       </div>
                     </div>
-                    <div className="text-right flex-shrink-0">
+                    <div className="text-right flex-shrink-0 whitespace-nowrap">
                       <span className={`font-black text-sm ${cat.total > 0 ? 'text-red-600' : 'text-gray-400'}`}>
                         {formatPrice(cat.total)}
                       </span>
@@ -1398,7 +1805,7 @@ export function AdminExpenseManager({
       </div>
 
       {/* =========================================================================
-          4. DETAILED EXPENSE RECORDS TABLE (FILTERABLE & SEARCHABLE)
+          3. DETAILED EXPENSE RECORDS TABLE (FILTERABLE & SEARCHABLE)
          ========================================================================= */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 border-b border-gray-100 pb-4">
@@ -1422,7 +1829,7 @@ export function AdminExpenseManager({
               className="p-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-[#123524] outline-none"
             >
               <option value="all">Category အားလုံး ({monthExpenses.length})</option>
-              {EXPENSE_CATEGORIES.map((c) => (
+              {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.iconEmoji} {c.title}
                 </option>
@@ -1472,7 +1879,7 @@ export function AdminExpenseManager({
                 </tr>
               ) : (
                 filteredExpenses.map((exp) => {
-                  const catMeta = EXPENSE_CATEGORIES.find((c) => c.id === exp.category);
+                  const catMeta = categories.find((c) => c.id === exp.category);
                   return (
                     <tr key={exp.id} className="hover:bg-gray-50/80 transition">
                       <td className="p-3.5 font-mono font-bold text-gray-700 whitespace-nowrap">{exp.date}</td>
@@ -1482,8 +1889,8 @@ export function AdminExpenseManager({
                             catMeta?.badgeColor || 'bg-gray-100 text-gray-700 border-gray-200'
                           }`}
                         >
-                          <span>{catMeta?.iconEmoji}</span>
-                          <span>{catMeta?.title.split('(')[0].trim() || exp.category}</span>
+                          <span>{catMeta?.iconEmoji || '📌'}</span>
+                          <span>{catMeta?.title || exp.category}</span>
                         </span>
                       </td>
                       <td className="p-3.5">
@@ -1526,7 +1933,7 @@ export function AdminExpenseManager({
 }
 
 // ============================================================================
-// 🌟 3. ADMIN REVENUE & NET PROFIT DASHBOARD COMPONENT (TAB 2) 🌟
+// 🌟 3. ADMIN REVENUE & NET PROFIT DASHBOARD COMPONENT 🌟
 // ============================================================================
 
 export function AdminRevenueProfitDashboard({
@@ -1541,6 +1948,7 @@ export function AdminRevenueProfitDashboard({
   const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
 
   const {
+    categories,
     monthExpenses,
     totalOperationalExpenses,
     payrollDoc,
@@ -1550,7 +1958,6 @@ export function AdminRevenueProfitDashboard({
     profitMarginPercent
   } = useMonthlyFinancialEngine(selectedMonth, bookings, therapists);
 
-  // Category Breakdown for Outflow Panel
   const outflowBreakdown = useMemo(() => {
     const items: { label: string; icon: string; amount: number; color: string }[] = [
       {
@@ -1570,7 +1977,7 @@ export function AdminRevenueProfitDashboard({
       });
     }
 
-    EXPENSE_CATEGORIES.forEach((cat) => {
+    categories.forEach((cat) => {
       const sum = monthExpenses
         .filter((e) => e.category === cat.id)
         .reduce((s, e) => s + e.amount, 0);
@@ -1585,9 +1992,8 @@ export function AdminRevenueProfitDashboard({
     });
 
     return items.sort((a, b) => b.amount - a.amount);
-  }, [monthExpenses, monthlyCalculations, payrollDoc]);
+  }, [categories, monthExpenses, monthlyCalculations, payrollDoc]);
 
-  // Daily Cashflow Ledger (Every active day in the month)
   const dailyCashflowRows = useMemo(() => {
     const [y, m] = selectedMonth.split('-').map(Number);
     const daysInMonth = y && m ? new Date(y, m, 0).getDate() : 30;
@@ -1641,7 +2047,7 @@ export function AdminRevenueProfitDashboard({
       ['OUTFLOW (ထွက်ငွေ)', `${payrollDoc.managerName} (Manager Salary)`, payrollDoc.managerSalary, '']
     ];
 
-    EXPENSE_CATEGORIES.forEach((cat) => {
+    categories.forEach((cat) => {
       const sum = monthExpenses
         .filter((e) => e.category === cat.id)
         .reduce((s, e) => s + e.amount, 0);
@@ -1668,9 +2074,6 @@ export function AdminRevenueProfitDashboard({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* =========================================================================
-          1. TOP EXECUTIVE P&L HEADER & MONTH PICKER
-         ========================================================================= */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-gray-100 pb-4">
           <div>
@@ -1710,9 +2113,7 @@ export function AdminRevenueProfitDashboard({
           </div>
         </div>
 
-        {/* 3 Hero Financial Equation Cards: TOTAL INFLOW - TOTAL OUTFLOW = NET PROFIT */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Card 1: Total Revenue (Inflow) */}
           <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-50 to-green-50/40 border-2 border-emerald-200 flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-emerald-900 uppercase tracking-wider">
@@ -1741,7 +2142,6 @@ export function AdminRevenueProfitDashboard({
             </div>
           </div>
 
-          {/* Card 2: Total Outflow (Operational Expenses + Payroll + CEO/Manager) */}
           <div className="p-5 rounded-2xl bg-gradient-to-br from-red-50 to-rose-50/40 border-2 border-red-200 flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-red-900 uppercase tracking-wider">
@@ -1770,7 +2170,6 @@ export function AdminRevenueProfitDashboard({
             </div>
           </div>
 
-          {/* Card 3: NET PROFIT (အသားတင်အမြတ်) */}
           <div
             className={`p-5 rounded-2xl border-2 flex flex-col justify-between shadow-lg ${
               netProfit >= 0
@@ -1802,11 +2201,7 @@ export function AdminRevenueProfitDashboard({
         </div>
       </div>
 
-      {/* =========================================================================
-          2. SIDE-BY-SIDE INFLOW (REVENUE SOURCES) VS OUTFLOW (EXPENSE CATEGORIES)
-         ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left 5 Cols: Revenue Sources & Payment Methods Breakdown */}
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-5">
           <div className="border-b border-gray-100 pb-3">
             <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
@@ -1818,7 +2213,6 @@ export function AdminRevenueProfitDashboard({
             </p>
           </div>
 
-          {/* Channel Split */}
           <div className="space-y-3">
             <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
               <div className="flex justify-between items-center text-xs">
@@ -1867,7 +2261,6 @@ export function AdminRevenueProfitDashboard({
             </div>
           </div>
 
-          {/* Payment Method Split */}
           <div className="pt-3 border-t border-gray-100 space-y-2.5">
             <div className="text-xs font-black text-gray-700 uppercase tracking-wider">
               ငွေပေးချေမှု စနစ်အလိုက် ဝင်ငွေ (By Payment Method)
@@ -1899,7 +2292,6 @@ export function AdminRevenueProfitDashboard({
           </div>
         </div>
 
-        {/* Right 7 Cols: Outflow (Expenses + Payroll) Breakdown */}
         <div className="lg:col-span-7 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
           <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
             <div>
@@ -1944,9 +2336,6 @@ export function AdminRevenueProfitDashboard({
         </div>
       </div>
 
-      {/* =========================================================================
-          3. DAILY CASHFLOW LEDGER (DAY-BY-DAY INFLOW VS EXPENSE)
-         ========================================================================= */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
         <div className="border-b border-gray-100 pb-3">
           <h3 className="text-base font-black text-[#123524]">
