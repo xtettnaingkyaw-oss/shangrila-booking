@@ -2406,20 +2406,60 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
     );
   }, []);
 
-  // 🌟 Helper 2: Service တစ်ခုချင်းစီ၏ မိနစ်ကို တွက်ချက်ပေးသည့် Parser 🌟
+  // 🌟 Helper 2: Service တစ်ခုချင်းစီ၏ မိနစ်ကို တွက်ချက်ပေးသည့် Parser (Towel & Add-ons = 0 Mins) 🌟
   const parseSingleServiceMins = useCallback((text: string): number => {
-    const clean = String(text || '').toLowerCase();
+    const clean = String(text || '').toLowerCase().trim();
+    if (!clean) return 0;
 
+    // 1. ပင်မ ဝန်ဆောင်မှု (Massage, Scrub, Wax, Outcall) ဟုတ်/မဟုတ် စစ်ဆေးခြင်း
+    const hasCoreServiceKeyword =
+      clean.includes('massage') ||
+      clean.includes('scrub') ||
+      clean.includes('wax') ||
+      clean.includes('outcall') ||
+      clean.includes('half day') ||
+      clean.includes('whole night') ||
+      clean.includes('whole day') ||
+      clean.includes('full day');
+
+    // 2. ပင်မဝန်ဆောင်မှု မဟုတ်ဘဲ Towel, Underwear, Bottle, VVIP Upgrade စသည့် Add-on ပစ္စည်းဖြစ်ပါက 0 မိနစ် ပြန်ပေးမည်
+    if (
+      !hasCoreServiceKeyword &&
+      (clean.includes('towel') ||
+        clean.includes('sterilized') ||
+        clean.includes('single-use') ||
+        clean.includes('underwear') ||
+        clean.includes('disposable') ||
+        clean.includes('oil (bottle)') ||
+        clean.includes('bottle') ||
+        clean.includes('carebeau') ||
+        clean.includes('drink') ||
+        clean.includes('coffee') ||
+        clean.includes('water') ||
+        clean.includes('tip') ||
+        clean.includes('vvip room') ||
+        clean === 'vvip' ||
+        clean === 'vip')
+    ) {
+      return 0;
+    }
+
+    // 3. မိနစ် / နာရီ အတိအကျ ပါဝင်ပါက ဖမ်းယူမည်
     const minsMatch = clean.match(/(\d+)\s*(?:mins|min|မိနစ်)/i);
     if (minsMatch) return parseInt(minsMatch[1], 10);
 
     const hrsMatch = clean.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr|နာရီ)/i);
     if (hrsMatch) return Math.round(parseFloat(hrsMatch[1]) * 60);
 
+    // 4. Package အမည်များ စစ်ဆေးခြင်း
     if (clean.includes('whole night') || clean.includes('whole day') || clean.includes('full day')) return 720; // 12 Hrs
     if (clean.includes('half day')) return 360; // 6 Hrs
     if (clean.includes('part time outcall')) return 100; // 100 Mins
+    if (clean.includes('body scrub') && clean.includes('lotion')) return 120; // 120 Mins
+    if (clean.includes('body scrub')) return 60; // 60 Mins
+    if (clean.includes('wax')) return 60; // 60 Mins
 
+    // 5. Menu Category ထဲမှ တိုက်ဆိုင်စစ်ဆေးခြင်း
     if (globalAppData?.categories) {
       for (const cat of globalAppData.categories) {
         for (const item of cat.items || []) {
@@ -2433,10 +2473,6 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
           }
         }
       }
-    }
-
-    if (clean.includes('oil (bottle)') || clean.includes('underwear') || clean.includes('drink') || clean.includes('coffee')) {
-      return 0;
     }
 
     return 60;
