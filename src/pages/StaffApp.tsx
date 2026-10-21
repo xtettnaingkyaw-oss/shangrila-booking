@@ -412,10 +412,24 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
     }
 
     try {
-      let loggedIn = false;
-      let lastErr = null;
       const cleanPassword = password.trim();
+      const decStoredPassword = String(
+        staff.password ? decryptText(staff.password) || staff.password : ''
+      ).trim();
 
+      let loggedIn = false;
+
+      // 1. Admin Settings (Firestore) တွင် သတ်မှတ်ထားသော Password နှင့် တိုက်ရိုက်ကိုက်ညီမှု ရှိ/မရှိ အရင်စစ်ဆေးမည်
+      // (SECURED_ACCOUNT မဟုတ်ဘဲ Admin မှ Password အသစ် ရိုက်ထည့်ပေးထားပါက ချက်ချင်း ဝင်ခွင့်ပြုမည်)
+      if (
+        decStoredPassword &&
+        decStoredPassword !== 'SECURED_ACCOUNT' &&
+        cleanPassword === decStoredPassword
+      ) {
+        loggedIn = true;
+      }
+
+      // 2. Firebase Auth ဖြင့်လည်း စစ်ဆေး/ချိတ်ဆက်ပေးမည်
       const possibleEmails = [
         `${(staff.id || '').replace(/\s+/g, '').toLowerCase()}@shangrila.com`,
         `${(staff.name || '').replace(/\s+/g, '').toLowerCase()}@shangrila.com`
@@ -427,17 +441,16 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
           await signInWithEmailAndPassword(auth, email, cleanPassword);
           loggedIn = true;
           break;
-        } catch (err) {
-          lastErr = err;
+        } catch {
+          // Firebase Auth တွင် Password အဟောင်းဖြစ်နေပါက အပေါ်က Admin Password စစ်ဆေးချက် မှန်ကန်လျှင် ဆက်သွားမည်
         }
       }
 
       if (!loggedIn) {
-        throw lastErr;
+        throw new Error('Invalid credentials');
       }
 
-      const decPassword = staff.password ? decryptText(staff.password) || staff.password : '';
-      onLoginSuccess({ ...staff, password: decPassword });
+      onLoginSuccess({ ...staff, password: cleanPassword });
     } catch (err) {
       console.error('Login Error:', err);
       setError('Invalid Therapist Selection or Password.');
