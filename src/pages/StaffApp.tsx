@@ -127,14 +127,53 @@ export const isStrictlyAdminClockIn = (b: any): boolean => {
   );
 };
 
+// 🌟 အပိုပစ္စည်းများ (Towel, Underwear, Oil Bottle, Drink, VVIP Upgrade) ဟုတ်/မဟုတ် စစ်ဆေးသည့် Helper 🌟
+export const isNonDurationAddonItem = (text: string): boolean => {
+  const clean = String(text || '').toLowerCase().trim();
+  if (!clean) return true;
+
+  // အကယ်၍ Massage, Scrub, Wax, Outcall, Whole Day/Night, Half Day စသည့် ပင်မဝန်ဆောင်မှု စာလုံးပါလျှင် Add-on မဟုတ်ပါ
+  const hasCoreServiceKeyword =
+    clean.includes('massage') ||
+    clean.includes('scrub') ||
+    clean.includes('wax') ||
+    clean.includes('outcall') ||
+    clean.includes('half day') ||
+    clean.includes('whole night') ||
+    clean.includes('whole day');
+
+  if (hasCoreServiceKeyword) return false;
+
+  // အပိုပစ္စည်းများ (Add-ons) ဖြစ်ပါက အချိန် (0 Mins) သတ်မှတ်မည်
+  return (
+    clean.includes('towel') ||
+    clean.includes('sterilized') ||
+    clean.includes('single-use') ||
+    clean.includes('underwear') ||
+    clean.includes('disposable') ||
+    clean.includes('bottle') ||
+    clean.includes('carebeau') ||
+    clean.includes('drink') ||
+    clean.includes('coffee') ||
+    clean.includes('water') ||
+    clean.includes('tip') ||
+    clean.includes('vvip room') ||
+    clean === 'vvip' ||
+    clean === 'vip'
+  );
+};
+
 // 🌟 Service Menu အတိုင်း မိနစ်အတိအကျ တွက်ချက်ပေးသည့် Smart Parser 🌟
 export const extractAccurateServiceDurationMins = (session: any, appData: AppData): { totalMins: number; label: string } => {
   const serviceStr = String(session?.service || '');
 
+  // 1. POS Items Array ပါရှိပါက Item တစ်ခုချင်းစီအလိုက် အတိအကျတွက်မည်
   if (Array.isArray(session?.posItems) && session.posItems.length > 0) {
     let sumMins = 0;
     session.posItems.forEach((item: any) => {
-      const itemMins = parseDurationStringToMins(`${item.name || ''} ${item.duration || ''}`, appData);
+      const itemFullText = `${item.name || ''} ${item.duration || ''}`.trim();
+      if (isNonDurationAddonItem(itemFullText)) return;
+      const itemMins = parseDurationStringToMins(itemFullText, appData);
       if (itemMins > 0) {
         sumMins += itemMins * (Number(item.qty) || 1);
       }
@@ -144,11 +183,15 @@ export const extractAccurateServiceDurationMins = (session: any, appData: AppDat
     }
   }
 
+  // 2. Comma (,) ခံထားသော ဝန်ဆောင်မှုစာသားများကို တစ်ခုချင်းစီ ခွဲခြမ်းစိတ်ဖြာမည်
   const parts = serviceStr.split(',').map((s) => s.trim()).filter(Boolean);
   let totalCalcMins = 0;
 
   for (const part of parts) {
-    const qtyMatch = part.match(/\(x(\d+)\)$/i) || part.match(/\s+x(\d+)$/i);
+    // Towel, Underwear စသည့် အပိုပစ္စည်းများကို အချိန် လုံးဝမပေါင်းပါ
+    if (isNonDurationAddonItem(part)) continue;
+
+    const qtyMatch = part.match(/\(x(\d+)\)$/i) \vert{}\vert{} part.match(/\s+x(\d+)$/i);
     const qty = qtyMatch ? parseInt(qtyMatch[1], 10) || 1 : 1;
     const partMins = parseDurationStringToMins(part, appData);
     totalCalcMins += partMins * qty;
@@ -158,6 +201,7 @@ export const extractAccurateServiceDurationMins = (session: any, appData: AppDat
     return { totalMins: totalCalcMins, label: formatMinsToHrMinBurmese(totalCalcMins) };
   }
 
+  // 3. Fallback: startTimeMillis နှင့် expectedEndTimeMillis ကွာခြားချက်
   if (session?.startTimeMillis && session?.expectedEndTimeMillis && session.expectedEndTimeMillis > session.startTimeMillis) {
     const diffMins = Math.round((session.expectedEndTimeMillis - session.startTimeMillis) / 60000);
     if (diffMins > 0 && diffMins <= 1440) {
@@ -169,17 +213,28 @@ export const extractAccurateServiceDurationMins = (session: any, appData: AppDat
 };
 
 export const parseDurationStringToMins = (text: string, appData: AppData): number => {
-  const clean = text.toLowerCase();
+  const clean = String(text || '').toLowerCase().trim();
+  if (!clean || isNonDurationAddonItem(clean)) return 0;
 
+  // 1. "(60 Mins)", "90 Mins", "120 Mins", "100 Mins" စသည်ဖြင့် မိနစ်အတိအကျ ပါဝင်ပါက ဖမ်းယူမည်
   const minsMatch = clean.match(/(\d+)\s*(?:mins|min|မိနစ်)/i);
   if (minsMatch) return parseInt(minsMatch[1], 10);
 
+  // 2. "6 Hrs", "12 Hrs" စသည်ဖြင့် နာရီအတိအကျ ပါဝင်ပါက မိနစ်ဖွဲ့မည်
   const hrsMatch = clean.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr|နာရီ)/i);
   if (hrsMatch) return Math.round(parseFloat(hrsMatch[1]) * 60);
 
-  if (clean.includes('whole day') || clean.includes('full day')) return 480; // 8 Hours
-  if (clean.includes('whole night') || clean.includes('overnight') || clean.includes('full night')) return 600; // 10 Hours
+  // 3. Outcall / Package အမည်များ စစ်ဆေးခြင်း
+  if (clean.includes('whole night') || clean.includes('whole day')) return 720; // 12 Hours (720 Mins)
+  if (clean.includes('half day')) return 360; // 6 Hours (360 Mins)
+  if (clean.includes('part time outcall')) return 100; // 100 Mins
+  if (clean.includes('body scrub') && clean.includes('lotion')) return 120; // 120 Mins
+  if (clean.includes('body scrub')) return 60; // 60 Mins
 
+  // 4. Waxing ဝန်ဆောင်မှုများအတွက် (Session = 30 Mins သို့မဟုတ် 60 Mins)
+  if (clean.includes('wax')) return 60;
+
+  // 5. Menu Category ထဲမှ တိုက်ဆိုင်စစ်ဆေးခြင်း
   if (appData?.categories) {
     for (const cat of appData.categories) {
       for (const item of cat.items || []) {
@@ -194,6 +249,10 @@ export const parseDurationStringToMins = (text: string, appData: AppData): numbe
       }
     }
   }
+
+  // Default 60 Mins (1 Hour) for standard massage when duration is not explicitly written
+  return 60;
+};
 
   if (clean.includes('oil (bottle)') || clean.includes('underwear') || clean.includes('drink') || clean.includes('coffee')) {
     return 0;
