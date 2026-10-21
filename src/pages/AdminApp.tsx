@@ -13,7 +13,8 @@ import { AdminPenaltyManager } from './PenaltySystem';
 import AdminSalesSummaryView from './AdminSalesSummaryView';
 import { AdminEmployeeHandbookManager } from './EmployeeHandbookSystem';
 import { AdminStaffPayrollManager, calculateBookingCommissionForStaff, getStaffSeniority, isSameStaffMember } from './StaffPayrollSystem';
-import { BookOpen } from 'lucide-react';
+import { AdminExpenseManager, AdminRevenueProfitDashboard } from './ExpenseAndRevenueSystem';
+import { BookOpen, Wallet, PieChart } from 'lucide-react';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -99,7 +100,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
   const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
-  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'reports' | 'payroll' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook'>('sales_summary');
+  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'revenue_dashboard' | 'expenses' | 'reports' | 'payroll' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook'>('sales_summary');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -131,7 +132,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           setAdminRole(r);
           setAdminPermissions(p);
           const isAllowedExtraTab =
-            (p.includes('bookings') && (tab === 'sales_summary' || tab === 'pos_sales')) ||
+            (p.includes('bookings') && (tab === 'sales_summary' || tab === 'pos_sales' || tab === 'revenue_dashboard' || tab === 'expenses')) ||
             (p.includes('admins') && tab === 'pos_users') ||
             (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns' || tab === 'handbook' || tab === 'pos_users'));
           if (r !== 'super_admin' && !p.includes(tab) && !isAllowedExtraTab && p.length > 0) {
@@ -271,6 +272,22 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           subLabel: 'Online + POS Analytics',
           icon: TrendingUp,
           visible: hasAccess('bookings'),
+          badge: 0
+        },
+        {
+          id: 'revenue_dashboard',
+          label: 'Revenue Dashboard',
+          subLabel: 'Inflow, Outflow & Net Profit',
+          icon: PieChart,
+          visible: hasAccess('bookings') || hasAccess('reports'),
+          badge: 0
+        },
+        {
+          id: 'expenses',
+          label: 'Expense Manager',
+          subLabel: 'Daily & Monthly Expenses',
+          icon: Wallet,
+          visible: hasAccess('bookings') || hasAccess('reports'),
           badge: 0
         },
         {
@@ -687,6 +704,8 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
             {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView />}
             {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
             {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
+            {tab === 'revenue_dashboard' && (hasAccess('bookings') || hasAccess('reports')) && <AdminRevenueProfitDashboard bookings={bookings} therapists={appData.therapists} />}
+            {tab === 'expenses' && (hasAccess('bookings') || hasAccess('reports')) && <AdminExpenseManager bookings={bookings} therapists={appData.therapists} adminRole={adminRole} />}
             {tab === 'handbook' && hasAccess('settings') && <AdminEmployeeHandbookManager />}
             {tab === 'pos_users' && (hasAccess('admins') || hasAccess('settings')) && <AdminPOSUsersManager adminRole={adminRole} />}
           </div>
