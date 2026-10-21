@@ -303,6 +303,36 @@ const getLocalTodayStr = () => {
   );
 };
 
+const getYesterdayStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return (
+    d.getFullYear() +
+    '-' +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(d.getDate()).padStart(2, '0')
+  );
+};
+
+const formatReadableDateHeader = (dateStr: string) => {
+  if (!dateStr) return 'Unknown Date';
+  const today = getLocalTodayStr();
+  const yesterday = getYesterdayStr();
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return dateStr;
+  const dt = new Date(y, m - 1, d);
+  const formatted = dt.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+  if (dateStr === today) return `ယနေ့ (Today) — ${formatted}`;
+  if (dateStr === yesterday) return `မနေ့က (Yesterday) — ${formatted}`;
+  return formatted;
+};
+
 // ============================================================================
 // 🌟 SHARED HOOK: CALCULATE MONTHLY PAYROLL, REVENUE, EXPENSES & CUSTOM CATEGORIES 🌟
 // ============================================================================
@@ -335,7 +365,6 @@ export function useMonthlyFinancialEngine(
     managerName: 'Spa Manager'
   });
 
-  // 1. Real-time Custom Expense Categories Listener (`settings/expense_categories`)
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'settings', 'expense_categories'),
@@ -365,8 +394,6 @@ export function useMonthlyFinancialEngine(
     );
   };
 
-  // 🌟 2A. PRIMARY STORAGE: Real-time Listener on `settings/expenses_${selectedMonth}` 🌟
-  // (`settings` collection has full write permissions in Firestore rules, preventing permission errors!)
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'settings', `expenses_${selectedMonth}`),
@@ -399,7 +426,6 @@ export function useMonthlyFinancialEngine(
     return () => unsub();
   }, [selectedMonth]);
 
-  // 2B. OPTIONAL FALLBACK: Also listen to `collection(db, 'expenses')` if any records exist there
   useEffect(() => {
     const q = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(
@@ -424,14 +450,11 @@ export function useMonthlyFinancialEngine(
         });
         setLegacyCollectionExpenses(arr);
       },
-      () => {
-        // Ignore if `expenses` collection is restricted by Firestore security rules
-      }
+      () => {}
     );
     return () => unsub();
   }, []);
 
-  // Merge both sources without duplicates
   const monthExpenses = useMemo(() => {
     const map = new Map<string, ExpenseRecord>();
     legacyCollectionExpenses
@@ -446,7 +469,6 @@ export function useMonthlyFinancialEngine(
     });
   }, [settingsExpenses, legacyCollectionExpenses, selectedMonth]);
 
-  // 3. Real-time Penalties Listener
   useEffect(() => {
     const unsub = onSnapshot(
       collection(db, 'penalties'),
@@ -460,7 +482,6 @@ export function useMonthlyFinancialEngine(
     return () => unsub();
   }, []);
 
-  // 4. Real-time Payroll & Executive Salaries Listener for Selected Month
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'settings', `payroll_${selectedMonth}`),
@@ -519,7 +540,6 @@ export function useMonthlyFinancialEngine(
     );
   }, [therapists]);
 
-  // 5. Calculate Staff Payroll Summary & Revenue for `selectedMonth`
   const monthlyCalculations = useMemo(() => {
     let onlineSalesTotal = 0;
     let onlineBookingsCount = 0;
@@ -779,7 +799,7 @@ export function useMonthlyFinancialEngine(
 }
 
 // ============================================================================
-// 🌟 3. ADMIN EXPENSE MANAGER COMPONENT (MULTI-SELECT QUICK ITEMS + RELIABLE SAVE) 🌟
+// 🌟 3. ADMIN EXPENSE MANAGER COMPONENT (WITH DAILY GROUPING & DATE FILTERS) 🌟
 // ============================================================================
 
 export function AdminExpenseManager({
@@ -792,11 +812,20 @@ export function AdminExpenseManager({
   adminRole: string;
 }) {
   const todayStr = getLocalTodayStr();
+  const yesterdayStr = getYesterdayStr();
   const currentYearMonth = todayStr.substring(0, 7);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // 🌟 Date Filter States for Daily Expense Records 🌟
+  const [dateFilterMode, setDateFilterMode] = useState<
+    'all' | 'today' | 'yesterday' | 'single_date' | 'custom_range'
+  >('all');
+  const [singleDateFilter, setSingleDateFilter] = useState<string>(todayStr);
+  const [fromDate, setFromDate] = useState<string>(`${currentYearMonth}-01`);
+  const [toDate, setToDate] = useState<string>(todayStr);
 
   // Add Expense Form States
   const [expDate, setExpDate] = useState<string>(todayStr);
@@ -900,7 +929,6 @@ export function AdminExpenseManager({
   // 🌟 MULTI-SELECT QUICK ITEMS LOGIC 🌟
   // ============================================================================
 
-  // Parse currently selected items inside `expTitle` (split by comma)
   const selectedItemsList = useMemo(() => {
     return expTitle
       .split(',')
@@ -908,7 +936,6 @@ export function AdminExpenseManager({
       .filter(Boolean);
   }, [expTitle]);
 
-  // Toggle a Quick Preset item on/off (Multi-Select!)
   const handleToggleQuickItem = (preset: string) => {
     const cleanPreset = preset.trim();
     const exists = selectedItemsList.some((item) => item.toLowerCase() === cleanPreset.toLowerCase());
@@ -922,7 +949,6 @@ export function AdminExpenseManager({
     setExpTitle(nextList.join(', '));
   };
 
-  // Select All Quick Items in current category
   const handleSelectAllQuickItems = () => {
     if (!selectedCategoryMeta) return;
     const allPresets = selectedCategoryMeta.quickPresets;
@@ -930,7 +956,6 @@ export function AdminExpenseManager({
     setExpTitle(merged.join(', '));
   };
 
-  // Clear Selected Quick Items
   const handleClearQuickItems = () => {
     setExpTitle('');
   };
@@ -950,7 +975,6 @@ export function AdminExpenseManager({
       );
       await saveCustomCategories(updatedCategories);
     }
-    // Also auto-append into multi-select title
     if (!selectedItemsList.includes(clean)) {
       setExpTitle([...selectedItemsList, clean].join(', '));
     }
@@ -1047,7 +1071,7 @@ export function AdminExpenseManager({
     }
   };
 
-  // 🌟 FIXED & GUARANTEED SAVE EXPENSE: Saves into `settings/expenses_${yearMonth}`! 🌟
+  // Save Expense into `settings/expenses_${yearMonth}`
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     const amt = Math.max(0, Number(expAmount) || 0);
@@ -1159,10 +1183,27 @@ export function AdminExpenseManager({
     return operationalRows.sort((a, b) => b.total - a.total);
   }, [categories, monthExpenses, grandTotalAllOutflow]);
 
+  // 🌟 Filter Expenses by Date Mode, Category, and Search Query 🌟
   const filteredExpenses = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return monthExpenses.filter((e) => {
+      const eDate = e.date || todayStr;
+
+      // 1. Date Filter Check
+      if (dateFilterMode === 'today' && eDate !== todayStr) return false;
+      if (dateFilterMode === 'yesterday' && eDate !== yesterdayStr) return false;
+      if (dateFilterMode === 'single_date' && singleDateFilter && eDate !== singleDateFilter) return false;
+      if (dateFilterMode === 'custom_range') {
+        const start = fromDate && toDate && fromDate > toDate ? toDate : fromDate;
+        const end = fromDate && toDate && fromDate > toDate ? fromDate : toDate;
+        if (start && eDate < start) return false;
+        if (end && eDate > end) return false;
+      }
+
+      // 2. Category Filter Check
       if (activeCategoryFilter !== 'all' && e.category !== activeCategoryFilter) return false;
+
+      // 3. Search Query Check
       if (q) {
         const catMeta = categories.find((c) => c.id === e.category);
         const match =
@@ -1174,7 +1215,56 @@ export function AdminExpenseManager({
       }
       return true;
     });
-  }, [monthExpenses, activeCategoryFilter, searchQuery, categories]);
+  }, [
+    monthExpenses,
+    dateFilterMode,
+    todayStr,
+    yesterdayStr,
+    singleDateFilter,
+    fromDate,
+    toDate,
+    activeCategoryFilter,
+    searchQuery,
+    categories
+  ]);
+
+  // 🌟 Group Filtered Expenses by Date (Just like Sale Reports!) 🌟
+  const groupedExpensesByDate = useMemo(() => {
+    const groupsMap = new Map<
+      string,
+      {
+        date: string;
+        records: ExpenseRecord[];
+        dailyTotalAmount: number;
+        dailyCashTotal: number;
+        dailyDigitalTotal: number;
+      }
+    >();
+
+    filteredExpenses.forEach((exp) => {
+      const dKey = exp.date || todayStr;
+      if (!groupsMap.has(dKey)) {
+        groupsMap.set(dKey, {
+          date: dKey,
+          records: [],
+          dailyTotalAmount: 0,
+          dailyCashTotal: 0,
+          dailyDigitalTotal: 0
+        });
+      }
+      const grp = groupsMap.get(dKey)!;
+      grp.records.push(exp);
+      grp.dailyTotalAmount += exp.amount;
+
+      if ((exp.paymentMethod || 'Cash').toLowerCase().includes('cash')) {
+        grp.dailyCashTotal += exp.amount;
+      } else {
+        grp.dailyDigitalTotal += exp.amount;
+      }
+    });
+
+    return Array.from(groupsMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [filteredExpenses, todayStr]);
 
   const handleExportExpensesExcel = () => {
     const headers = [
@@ -1654,7 +1744,12 @@ export function AdminExpenseManager({
               <input
                 type="month"
                 value={selectedMonth}
-                onChange={(e) => e.target.value && setSelectedMonth(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setSelectedMonth(e.target.value);
+                    setDateFilterMode('all');
+                  }
+                }}
                 className="bg-transparent text-xs font-black text-[#123524] outline-none cursor-pointer"
               />
             </div>
@@ -1844,10 +1939,10 @@ export function AdminExpenseManager({
       </div>
 
       {/* =========================================================================
-          2. ADD NEW EXPENSE FORM (CUSTOM SLEEK DROPDOWN + MULTI-SELECT QUICK ITEMS) & BREAKDOWN
+          2. ADD NEW EXPENSE FORM & CATEGORY BREAKDOWN
          ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 5 Cols: Compact & Clean Add Expense Form */}
+        {/* Left 5 Cols: Add Expense Form */}
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
             <div>
@@ -1870,7 +1965,6 @@ export function AdminExpenseManager({
           </div>
 
           <form onSubmit={handleAddExpense} className="space-y-4">
-            {/* Step 1: Sleek Custom Luxury Dropdown */}
             <div ref={categoryDropdownRef} className="relative">
               <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
                 ၁။ အသုံးစရိတ် အမျိုးအစား ရွေးချယ်ပါ (Select Category) *
@@ -1999,7 +2093,6 @@ export function AdminExpenseManager({
               )}
             </div>
 
-            {/* 🌟 Step 2: MULTI-SELECT Customizable Quick-Pick Items Box 🌟 */}
             <div className="bg-gray-50/90 p-3.5 rounded-2xl border border-gray-200 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -2090,7 +2183,6 @@ export function AdminExpenseManager({
                 </div>
               )}
 
-              {/* Multi-Select Chips */}
               <div className="flex flex-wrap gap-1.5">
                 {selectedCategoryMeta?.quickPresets.length === 0 ? (
                   <span className="text-[11px] text-gray-400 font-semibold py-1">
@@ -2134,7 +2226,6 @@ export function AdminExpenseManager({
               </div>
             </div>
 
-            {/* Step 3: Item Name (Supports Multiple Items) & Amount */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
               <div className="sm:col-span-7">
                 <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
@@ -2166,7 +2257,6 @@ export function AdminExpenseManager({
               </div>
             </div>
 
-            {/* Step 4: Date, Payment Method & Note */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
               <div className="sm:col-span-4">
                 <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
@@ -2329,46 +2419,200 @@ export function AdminExpenseManager({
       </div>
 
       {/* =========================================================================
-          3. DETAILED EXPENSE RECORDS TABLE (FILTERABLE & SEARCHABLE)
+          🌟 3. DATE-GROUPED DAILY EXPENSE RECORDS (SALE REPORT STYLE + DATE FILTER BAR) 🌟
          ========================================================================= */}
-      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 border-b border-gray-100 pb-4">
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+        {/* Top Title & Filtered Total Summary */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-gray-100 pb-4">
           <div>
-            <h3 className="text-base font-black text-[#123524]">
-              နေ့စဉ် အသုံးစရိတ် မှတ်တမ်းစာရင်း ({selectedMonth})
+            <h3 className="text-base sm:text-lg font-black text-[#123524] flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-[#D4AF37]" />
+              <span>နေ့စဉ် အသုံးစရိတ် မှတ်တမ်းစာရင်း ({selectedMonth})</span>
             </h3>
-            <p className="text-xs text-gray-500">
-              စုစုပေါင်း ပြသထားသော အသုံးစရိတ်:{' '}
-              <strong className="text-red-600">
-                {formatPrice(filteredExpenses.reduce((s, e) => s + e.amount, 0))}
-              </strong>{' '}
-              ({filteredExpenses.length} ကြိမ်)
+            <p className="text-xs text-gray-500 mt-0.5">
+              ရက်စွဲတစ်ရက်ချင်းစီအလိုက် တစ်ရက်စာ စုစုပေါင်းအသုံးစရိတ် (Daily Expense Total) နှင့် မှတ်တမ်းအသေးစိတ်
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={activeCategoryFilter}
-              onChange={(e) => setActiveCategoryFilter(e.target.value)}
-              className="p-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-[#123524] outline-none"
-            >
-              <option value="all">Category အားလုံး ({monthExpenses.length})</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.iconEmoji} {c.title}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-2.5 self-end sm:self-center">
+            <div className="bg-red-50 border border-red-200 px-4 py-2 rounded-xl text-right">
+              <span className="text-[10px] font-extrabold text-red-800 uppercase block">
+                စုစုပေါင်း ပြသထားသော အသုံးစရိတ် ({filteredExpenses.length} ကြိမ်)
+              </span>
+              <span className="text-base sm:text-lg font-black text-red-600">
+                -{formatPrice(filteredExpenses.reduce((s, e) => s + e.amount, 0))}
+              </span>
+            </div>
+          </div>
+        </div>
 
-            <div className="relative w-full sm:w-64">
+        {/* 🌟 Date Filter Bar (All, Today, Yesterday, Single Date, From -> To Range) + Category + Search 🌟 */}
+        <div className="flex flex-col gap-3 bg-gray-50/80 p-3.5 rounded-2xl border border-gray-200/90">
+          {/* Row 1: Quick Date Filter Buttons & Date Pickers */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setDateFilterMode('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  dateFilterMode === 'all'
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                ရက်အားလုံး ({monthExpenses.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const todayYm = todayStr.substring(0, 7);
+                  if (selectedMonth !== todayYm) setSelectedMonth(todayYm);
+                  setDateFilterMode('today');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  dateFilterMode === 'today'
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                ယနေ့ (Today)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const yestYm = yesterdayStr.substring(0, 7);
+                  if (selectedMonth !== yestYm) setSelectedMonth(yestYm);
+                  setDateFilterMode('yesterday');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  dateFilterMode === 'yesterday'
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                မနေ့က (Yesterday)
+              </button>
+
+              {/* Single Specific Date Picker */}
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
+                  dateFilterMode === 'single_date'
+                    ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
+                    : 'bg-gray-50 text-gray-700 border-gray-200'
+                }`}
+              >
+                <span className="text-[10px] font-bold opacity-80">ရက်စွဲရွေးရန်:</span>
+                <input
+                  type="date"
+                  value={singleDateFilter}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) return;
+                    setSingleDateFilter(val);
+                    if (val.substring(0, 7) !== selectedMonth) {
+                      setSelectedMonth(val.substring(0, 7));
+                    }
+                    setDateFilterMode('single_date');
+                  }}
+                  className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                    dateFilterMode === 'single_date' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* From Date ➔ To Date Range Picker */}
+            <div
+              className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border transition shadow-2xs ${
+                dateFilterMode === 'custom_range'
+                  ? 'bg-[#123524] text-[#D4AF37] border-[#D4AF37]'
+                  : 'bg-white text-gray-700 border-gray-200'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
+              <div className="flex items-center gap-1.5 text-xs font-bold">
+                <span
+                  className={`text-[10px] uppercase ${
+                    dateFilterMode === 'custom_range' ? 'text-gray-300' : 'text-gray-400'
+                  }`}
+                >
+                  From:
+                </span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFromDate(val);
+                    if (toDate && val > toDate) setToDate(val);
+                    setDateFilterMode('custom_range');
+                  }}
+                  className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                    dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                  }`}
+                />
+              </div>
+
+              <span
+                className={`text-xs font-black ${
+                  dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-gray-400'
+                }`}
+              >
+                ➔
+              </span>
+
+              <div className="flex items-center gap-1.5 text-xs font-bold">
+                <span
+                  className={`text-[10px] uppercase ${
+                    dateFilterMode === 'custom_range' ? 'text-gray-300' : 'text-gray-400'
+                  }`}
+                >
+                  To:
+                </span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setToDate(val);
+                    if (fromDate && val < fromDate) setFromDate(val);
+                    setDateFilterMode('custom_range');
+                  }}
+                  className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                    dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                  }`}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Category Dropdown Filter & Search Input */}
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 pt-2 border-t border-gray-200/60">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-gray-500">Category စစ်ရန်:</span>
+              <select
+                value={activeCategoryFilter}
+                onChange={(e) => setActiveCategoryFilter(e.target.value)}
+                className="p-2 bg-white border border-gray-300 rounded-xl text-xs font-bold text-[#123524] outline-none shadow-2xs"
+              >
+                <option value="all">Category အားလုံး ({monthExpenses.length})</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.iconEmoji} {c.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative w-full sm:w-72">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ပစ္စည်းအမည် / မှတ်ချက် ရှာရန်..."
-                className="w-full pl-8 pr-7 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold outline-none focus:border-[#D4AF37]"
+                placeholder="ပစ္စည်းအမည် / မှတ်ချက် / Payment ရှာရန်..."
+                className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#D4AF37] shadow-2xs"
               />
-              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
               {searchQuery && (
                 <button
                   type="button"
@@ -2382,75 +2626,139 @@ export function AdminExpenseManager({
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full text-left border-collapse min-w-[850px]">
-            <thead>
-              <tr className="bg-[#123524] text-[#D4AF37] text-[11px] uppercase tracking-wider">
-                <th className="p-3.5">နေ့ရက် (Date)</th>
-                <th className="p-3.5">အမျိုးအစား (Category)</th>
-                <th className="p-3.5">အသုံးစရိတ် အကြောင်းအရာ (Description)</th>
-                <th className="p-3.5">Payment Method</th>
-                <th className="p-3.5 text-right">ကုန်ကျငွေ (Amount)</th>
-                <th className="p-3.5 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-xs">
-              {filteredExpenses.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-10 text-center text-gray-400 font-bold">
-                    ရွေးချယ်ထားသောလ ({selectedMonth}) အတွက် အသုံးစရိတ်မှတ်တမ်း မရှိသေးပါ။
-                  </td>
-                </tr>
-              ) : (
-                filteredExpenses.map((exp) => {
-                  const catMeta = categories.find((c) => c.id === exp.category);
-                  return (
-                    <tr key={exp.id} className="hover:bg-gray-50/80 transition">
-                      <td className="p-3.5 font-mono font-bold text-gray-700 whitespace-nowrap">{exp.date}</td>
-                      <td className="p-3.5">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black border ${
-                            catMeta?.badgeColor || 'bg-gray-100 text-gray-700 border-gray-200'
-                          }`}
-                        >
-                          <span>{catMeta?.iconEmoji || '📌'}</span>
-                          <span>{catMeta?.title || exp.category}</span>
+        {/* 🌟 Date-Grouped Daily Expense Cards (Matches Sale Report Look & Feel!) 🌟 */}
+        {groupedExpensesByDate.length === 0 ? (
+          <div className="p-12 text-center text-gray-400 font-bold border border-dashed border-gray-200 rounded-2xl space-y-2">
+            <div>ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် အသုံးစရိတ်မှတ်တမ်း မရှိပါ။</div>
+            {(dateFilterMode !== 'all' || activeCategoryFilter !== 'all' || searchQuery) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDateFilterMode('all');
+                  setActiveCategoryFilter('all');
+                  setSearchQuery('');
+                }}
+                className="text-xs font-black text-[#123524] underline"
+              >
+                ရက်အားလုံး ပြန်ကြည့်မည် (Show All Records)
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {groupedExpensesByDate.map((group) => (
+              <div
+                key={group.date}
+                className="rounded-2xl border border-gray-200 shadow-xs overflow-hidden bg-white"
+              >
+                {/* Daily Header Banner */}
+                <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 sm:px-5 py-3.5 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] shadow-inner">
+                      <Calendar className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-extrabold text-xs sm:text-sm text-[#D4AF37] tracking-wide">
+                        {formatReadableDateHeader(group.date)}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-200 font-semibold mt-0.5">
+                        <span>
+                          အသုံးစရိတ် အရေအတွက်: <strong>{group.records.length} ကြိမ်</strong>
                         </span>
-                      </td>
-                      <td className="p-3.5">
-                        <div className="font-bold text-gray-800 text-sm">{exp.title}</div>
-                        {exp.note && <div className="text-[11px] text-gray-500 mt-0.5">မှတ်ချက်: {exp.note}</div>}
-                      </td>
-                      <td className="p-3.5">
-                        <span className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md font-bold text-[11px]">
-                          {exp.paymentMethod}
+                        <span>•</span>
+                        <span>
+                          Cash: <strong>{formatPrice(group.dailyCashTotal)}</strong>
                         </span>
-                      </td>
-                      <td className="p-3.5 text-right font-black text-sm text-red-600 whitespace-nowrap">
-                        -{formatPrice(exp.amount)}
-                      </td>
-                      <td className="p-3.5 text-right">
-                        <button
-                          type="button"
-                          disabled={adminRole !== 'super_admin'}
-                          onClick={() => handleDeleteExpense(exp)}
-                          className={`p-1.5 rounded-lg transition ${
-                            adminRole === 'super_admin'
-                              ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                              : 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                          }`}
-                          title="Delete Expense"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                        <span>•</span>
+                        <span>
+                          Online Pay: <strong>{formatPrice(group.dailyDigitalTotal)}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 px-4 py-2 rounded-xl border border-[#D4AF37]/40 text-right ml-auto">
+                    <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wider block">
+                      Daily Expense Total (တစ်ရက်စာ စုစုပေါင်း ကုန်ကျငွေ)
+                    </span>
+                    <span className="text-base sm:text-lg font-black text-[#D4AF37]">
+                      -{formatPrice(group.dailyTotalAmount)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Expenses Table inside Date Group */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[820px]">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
+                        <th className="p-3.5">နေ့ရက် (Date)</th>
+                        <th className="p-3.5">အမျိုးအစား (Category)</th>
+                        <th className="p-3.5">အသုံးစရိတ် အကြောင်းအရာ (Description)</th>
+                        <th className="p-3.5">Payment Method</th>
+                        <th className="p-3.5 text-right">ကုန်ကျငွေ (Amount)</th>
+                        <th className="p-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-xs">
+                      {group.records.map((exp) => {
+                        const catMeta = categories.find((c) => c.id === exp.category);
+                        return (
+                          <tr key={exp.id} className="hover:bg-gray-50/80 transition">
+                            <td className="p-3.5 font-mono font-bold text-gray-700 whitespace-nowrap">
+                              {exp.date}
+                            </td>
+                            <td className="p-3.5">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black border ${
+                                  catMeta?.badgeColor || 'bg-gray-100 text-gray-700 border-gray-200'
+                                }`}
+                              >
+                                <span>{catMeta?.iconEmoji || '📌'}</span>
+                                <span>{catMeta?.title || exp.category}</span>
+                              </span>
+                            </td>
+                            <td className="p-3.5 max-w-md">
+                              <div className="font-bold text-gray-800 text-sm leading-snug">{exp.title}</div>
+                              {exp.note && (
+                                <div className="text-[11px] text-gray-500 mt-0.5 font-medium">
+                                  မှတ်ချက်: {exp.note}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3.5">
+                              <span className="bg-gray-100 text-gray-700 border border-gray-200 px-2.5 py-1 rounded-md font-bold text-[11px]">
+                                {exp.paymentMethod}
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-right font-black text-sm text-red-600 whitespace-nowrap">
+                              -{formatPrice(exp.amount)}
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <button
+                                type="button"
+                                disabled={adminRole !== 'super_admin'}
+                                onClick={() => handleDeleteExpense(exp)}
+                                className={`p-1.5 rounded-lg transition ${
+                                  adminRole === 'super_admin'
+                                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                    : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                }`}
+                                title="Delete Expense"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
