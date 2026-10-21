@@ -191,8 +191,15 @@ export const extractAccurateServiceDurationMins = (session: any, appData: AppDat
     // Towel, Underwear စသည့် အပိုပစ္စည်းများကို အချိန် လုံးဝမပေါင်းပါ
     if (isNonDurationAddonItem(part)) continue;
 
-    const qtyMatch = part.match(/\(x(\d+)\)$/i) \vert{}\vert{} part.match(/\s+x(\d+)$/i);
-    const qty = qtyMatch ? parseInt(qtyMatch[1], 10) || 1 : 1;
+    let qty = 1;
+    const parenQtyMatch = part.match(/\(x(\d+)\)$/i);
+    const spaceQtyMatch = part.match(/\s+x(\d+)$/i);
+    if (parenQtyMatch) {
+      qty = parseInt(parenQtyMatch[1], 10) || 1;
+    } else if (spaceQtyMatch) {
+      qty = parseInt(spaceQtyMatch[1], 10) || 1;
+    }
+
     const partMins = parseDurationStringToMins(part, appData);
     totalCalcMins += partMins * qty;
   }
@@ -231,7 +238,7 @@ export const parseDurationStringToMins = (text: string, appData: AppData): numbe
   if (clean.includes('body scrub') && clean.includes('lotion')) return 120; // 120 Mins
   if (clean.includes('body scrub')) return 60; // 60 Mins
 
-  // 4. Waxing ဝန်ဆောင်မှုများအတွက် (Session = 30 Mins သို့မဟုတ် 60 Mins)
+  // 4. Waxing ဝန်ဆောင်မှုများအတွက် (Session = 60 Mins)
   if (clean.includes('wax')) return 60;
 
   // 5. Menu Category ထဲမှ တိုက်ဆိုင်စစ်ဆေးခြင်း
@@ -251,13 +258,6 @@ export const parseDurationStringToMins = (text: string, appData: AppData): numbe
   }
 
   // Default 60 Mins (1 Hour) for standard massage when duration is not explicitly written
-  return 60;
-};
-
-  if (clean.includes('oil (bottle)') || clean.includes('underwear') || clean.includes('drink') || clean.includes('coffee')) {
-    return 0;
-  }
-
   return 60;
 };
 
