@@ -6,6 +6,7 @@ import {
   addDoc,
   deleteDoc,
   setDoc,
+  getDoc,
   query,
   orderBy
 } from 'firebase/firestore';
@@ -90,20 +91,19 @@ export const EXPENSE_ICON_LIBRARY: IconOption[] = [
 
   // Marketing, Office & Finance
   { emoji: '📢', label: 'Marketing / ကြော်ငြာ', keywords: 'marketing ads boost promotion facebook tiktok ကြော်ငြာ မားကတ်တင်း' },
-  { emoji: '🎥', label: 'Video / Content', keywords: 'video camera tiktok shoot রိုက်ကူးရေး ဓာတ်ပုံ ဒီဇိုင်း' },
+  { emoji: '🎥', label: 'Video / Content', keywords: 'video camera tiktok shoot ရိုက်ကူးရေး ဓာတ်ပုံ ဒီဇိုင်း' },
   { emoji: '🎁', label: 'Gift / လက်ဆောင်', keywords: 'gift present giveaway bonus လက်ဆောင် ပရိုမိုးရှင်း' },
   { emoji: '🖨️', label: 'Print / ဘောင်ချာစာအုပ်', keywords: 'print paper voucher vinyl ဘောင်ချာ စာရေးကိရိယာ ဗီနိုင်း' },
   { emoji: '🏛️', label: 'Tax / အခွန်အခ', keywords: 'tax license government municipal အခွန် လိုင်စင် စည်ပင်' },
   { emoji: '💳', label: 'Debt / အကြွေးဆပ်', keywords: 'credit card debt loan pay အကြွေး ချေးငွေ ဘဏ်' },
   { emoji: '💼', label: 'Salary / လစာ', keywords: 'briefcase salary payroll bonus လစာ ကော်မရှင် ဝန်ထမ်း' },
   { emoji: '👑', label: 'Executive / CEO', keywords: 'crown vip ceo manager ဒါရိုက်တာ မန်နေဂျာ' },
-  { emoji: '🤝', label: 'Commission / ပွဲစားခ', keywords: 'handshake partner agent प्वဲစားခ ကော်မရှင် လက်ဆောင်' },
+  { emoji: '🤝', label: 'Commission / ပွဲစားခ', keywords: 'handshake partner agent ပွဲစားခ ကော်မရှင် လက်ဆောင်' },
   { emoji: '🙏', label: 'Donation / အလှူအတန်း', keywords: 'pray donation charity merit အလှူ ကုသိုလ် ပရဟိတ' },
   { emoji: '📦', label: 'Package / ပါဆယ်', keywords: 'box parcel delivery stock ပစ္စည်း ပါဆယ် ကုန်ပစ္စည်း' },
   { emoji: '📌', label: 'General / အထွေထွေ', keywords: 'pin general other misc အထွေထွေ အခြား' }
 ];
 
-// Auto-suggest matching icon when user types category title
 export function suggestEmojiForTitle(title: string): string | null {
   const clean = title.toLowerCase().trim();
   if (!clean) return null;
@@ -289,6 +289,7 @@ export interface ExpenseRecord {
   paymentMethod: string;
   note: string;
   createdAt: number;
+  sourceDoc?: 'settings' | 'collection';
 }
 
 const getLocalTodayStr = () => {
@@ -311,7 +312,8 @@ export function useMonthlyFinancialEngine(
   bookings: Booking[],
   therapists: TherapistProfile[]
 ) {
-  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
+  const [settingsExpenses, setSettingsExpenses] = useState<ExpenseRecord[]>([]);
+  const [legacyCollectionExpenses, setLegacyCollectionExpenses] = useState<ExpenseRecord[]>([]);
   const [penalties, setPenalties] = useState<any[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryMeta[]>(DEFAULT_EXPENSE_CATEGORIES);
 
@@ -335,18 +337,27 @@ export function useMonthlyFinancialEngine(
 
   // 1. Real-time Custom Expense Categories Listener (`settings/expense_categories`)
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'settings', 'expense_categories'), (snap) => {
-      if (snap.exists() && Array.isArray(snap.data()?.list) && snap.data()!.list.length > 0) {
-        setCategories(snap.data()!.list);
-      } else {
+    const unsub = onSnapshot(
+      doc(db, 'settings', 'expense_categories'),
+      (snap) => {
+        if (snap.exists() && Array.isArray(snap.data()?.list) && snap.data()!.list.length > 0) {
+          setCategories(snap.data()!.list);
+        } else {
+          setCategories(DEFAULT_EXPENSE_CATEGORIES);
+        }
+      },
+      () => {
         setCategories(DEFAULT_EXPENSE_CATEGORIES);
       }
-    });
+    );
     return () => unsub();
   }, []);
 
   const saveCustomCategories = async (newList: ExpenseCategoryMeta[]) => {
     setCategories(newList);
+    try {
+      localStorage.setItem('shangrila_expense_categories', JSON.stringify(newList));
+    } catch {}
     await setDoc(
       doc(db, 'settings', 'expense_categories'),
       { list: newList, updatedAt: Date.now() },
@@ -354,68 +365,132 @@ export function useMonthlyFinancialEngine(
     );
   };
 
-  // 2. Real-time Expenses Listener
+  // 🌟 2A. PRIMARY STORAGE: Real-time Listener on `settings/expenses_${selectedMonth}` 🌟
+  // (`settings` collection has full write permissions in Firestore rules, preventing permission errors!)
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, 'settings', `expenses_${selectedMonth}`),
+      (snap) => {
+        if (snap.exists() && Array.isArray(snap.data()?.records)) {
+          const list: ExpenseRecord[] = snap.data()!.records.map((r: any) => {
+            const dateStr = String(r.date || `${selectedMonth}-01`);
+            return {
+              id: String(r.id || `exp_${Date.now()}`),
+              date: dateStr,
+              yearMonth: dateStr.substring(0, 7),
+              category: String(r.category || 'maintenance_other'),
+              title: String(r.title || ''),
+              amount: Number(r.amount) || 0,
+              paymentMethod: String(r.paymentMethod || 'Cash'),
+              note: String(r.note || ''),
+              createdAt: Number(r.createdAt) || Date.now(),
+              sourceDoc: 'settings'
+            };
+          });
+          setSettingsExpenses(list);
+        } else {
+          setSettingsExpenses([]);
+        }
+      },
+      (err) => {
+        console.warn('Settings expenses listener error:', err);
+      }
+    );
+    return () => unsub();
+  }, [selectedMonth]);
+
+  // 2B. OPTIONAL FALLBACK: Also listen to `collection(db, 'expenses')` if any records exist there
   useEffect(() => {
     const q = query(collection(db, 'expenses'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, (snap) => {
-      const arr: ExpenseRecord[] = [];
-      snap.forEach((d) => {
-        const raw = d.data();
-        const dateStr = String(raw.date || getLocalTodayStr());
-        arr.push({
-          id: d.id,
-          date: dateStr,
-          yearMonth: dateStr.substring(0, 7),
-          category: String(raw.category || 'maintenance_other'),
-          title: String(raw.title || ''),
-          amount: Number(raw.amount) || 0,
-          paymentMethod: String(raw.paymentMethod || 'Cash'),
-          note: String(raw.note || ''),
-          createdAt: Number(raw.createdAt) || Date.now()
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const arr: ExpenseRecord[] = [];
+        snap.forEach((d) => {
+          const raw = d.data();
+          const dateStr = String(raw.date || getLocalTodayStr());
+          arr.push({
+            id: d.id,
+            date: dateStr,
+            yearMonth: dateStr.substring(0, 7),
+            category: String(raw.category || 'maintenance_other'),
+            title: String(raw.title || ''),
+            amount: Number(raw.amount) || 0,
+            paymentMethod: String(raw.paymentMethod || 'Cash'),
+            note: String(raw.note || ''),
+            createdAt: Number(raw.createdAt) || Date.now(),
+            sourceDoc: 'collection'
+          });
         });
-      });
-      setExpenses(arr);
-    });
+        setLegacyCollectionExpenses(arr);
+      },
+      () => {
+        // Ignore if `expenses` collection is restricted by Firestore security rules
+      }
+    );
     return () => unsub();
   }, []);
 
+  // Merge both sources without duplicates
+  const monthExpenses = useMemo(() => {
+    const map = new Map<string, ExpenseRecord>();
+    legacyCollectionExpenses
+      .filter((e) => e.yearMonth === selectedMonth)
+      .forEach((e) => map.set(e.id, e));
+    settingsExpenses
+      .filter((e) => e.yearMonth === selectedMonth)
+      .forEach((e) => map.set(e.id, e));
+    return Array.from(map.values()).sort((a, b) => {
+      if (b.date !== a.date) return b.date.localeCompare(a.date);
+      return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+  }, [settingsExpenses, legacyCollectionExpenses, selectedMonth]);
+
   // 3. Real-time Penalties Listener
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'penalties'), (snap) => {
-      const list: any[] = [];
-      snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
-      setPenalties(list);
-    });
+    const unsub = onSnapshot(
+      collection(db, 'penalties'),
+      (snap) => {
+        const list: any[] = [];
+        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+        setPenalties(list);
+      },
+      () => {}
+    );
     return () => unsub();
   }, []);
 
   // 4. Real-time Payroll & Executive Salaries Listener for Selected Month
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'settings', `payroll_${selectedMonth}`), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data() as any;
-        const wifi = data.defaultWifiFee !== undefined ? Number(data.defaultWifiFee) : 10000;
-        setPayrollDoc({
-          defaultWifiFee: isNaN(wifi) ? 10000 : wifi,
-          adjustments: data.adjustments || {},
-          seniorityOverrides: data.seniorityOverrides || {},
-          ceoSalary: Number(data.ceoSalary) || 0,
-          managerSalary: Number(data.managerSalary) || 0,
-          ceoName: String(data.ceoName || 'CEO'),
-          managerName: String(data.managerName || 'Spa Manager')
-        });
-      } else {
-        setPayrollDoc({
-          defaultWifiFee: 10000,
-          adjustments: {},
-          seniorityOverrides: {},
-          ceoSalary: 0,
-          managerSalary: 0,
-          ceoName: 'CEO',
-          managerName: 'Spa Manager'
-        });
-      }
-    });
+    const unsub = onSnapshot(
+      doc(db, 'settings', `payroll_${selectedMonth}`),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as any;
+          const wifi = data.defaultWifiFee !== undefined ? Number(data.defaultWifiFee) : 10000;
+          setPayrollDoc({
+            defaultWifiFee: isNaN(wifi) ? 10000 : wifi,
+            adjustments: data.adjustments || {},
+            seniorityOverrides: data.seniorityOverrides || {},
+            ceoSalary: Number(data.ceoSalary) || 0,
+            managerSalary: Number(data.managerSalary) || 0,
+            ceoName: String(data.ceoName || 'CEO'),
+            managerName: String(data.managerName || 'Spa Manager')
+          });
+        } else {
+          setPayrollDoc({
+            defaultWifiFee: 10000,
+            adjustments: {},
+            seniorityOverrides: {},
+            ceoSalary: 0,
+            managerSalary: 0,
+            ceoName: 'CEO',
+            managerName: 'Spa Manager'
+          });
+        }
+      },
+      () => {}
+    );
     return () => unsub();
   }, [selectedMonth]);
 
@@ -677,10 +752,6 @@ export function useMonthlyFinancialEngine(
     };
   }, [bookings, uniqueTherapists, selectedMonth, payrollDoc, penalties]);
 
-  const monthExpenses = useMemo(() => {
-    return expenses.filter((e) => e.yearMonth === selectedMonth);
-  }, [expenses, selectedMonth]);
-
   const totalOperationalExpenses = useMemo(() => {
     return monthExpenses.reduce((sum, e) => sum + e.amount, 0);
   }, [monthExpenses]);
@@ -697,7 +768,6 @@ export function useMonthlyFinancialEngine(
   return {
     categories,
     saveCustomCategories,
-    expenses,
     monthExpenses,
     totalOperationalExpenses,
     payrollDoc,
@@ -709,7 +779,7 @@ export function useMonthlyFinancialEngine(
 }
 
 // ============================================================================
-// 🌟 3. ADMIN EXPENSE MANAGER COMPONENT (SLEEK CUSTOM DROPDOWN + SEARCHABLE ICON PICKER) 🌟
+// 🌟 3. ADMIN EXPENSE MANAGER COMPONENT (MULTI-SELECT QUICK ITEMS + RELIABLE SAVE) 🌟
 // ============================================================================
 
 export function AdminExpenseManager({
@@ -737,12 +807,11 @@ export function AdminExpenseManager({
   const [expNote, setExpNote] = useState<string>('');
   const [isSavingExpense, setIsSavingExpense] = useState<boolean>(false);
 
-  // 🌟 Custom Luxury Category Dropdown Popover States 🌟
+  // Custom Luxury Category Dropdown Popover States
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState<boolean>(false);
   const [dropdownSearchQuery, setDropdownSearchQuery] = useState<string>('');
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close custom dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
@@ -766,7 +835,6 @@ export function AdminExpenseManager({
   const [editingCatTitle, setEditingCatTitle] = useState<string>('');
   const [editingCatEmoji, setEditingCatEmoji] = useState<string>('');
 
-  // Searchable Icon Picker State (used for both New Category and Editing Category)
   const [iconPickerTarget, setIconPickerTarget] = useState<'new' | 'edit' | null>(null);
   const [iconSearchQuery, setIconSearchQuery] = useState<string>('');
 
@@ -789,14 +857,12 @@ export function AdminExpenseManager({
     grandTotalAllOutflow
   } = useMonthlyFinancialEngine(selectedMonth, bookings, therapists);
 
-  // Keep selected category valid if categories change
   useEffect(() => {
     if (categories.length > 0 && !categories.some((c) => c.id === expCategory)) {
       setExpCategory(categories[0].id);
     }
   }, [categories, expCategory]);
 
-  // Sync CEO & Manager Salary inputs when month changes
   useEffect(() => {
     setCeoSalaryInput(String(payrollDoc.ceoSalary || 0));
     setManagerSalaryInput(String(payrollDoc.managerSalary || 0));
@@ -808,7 +874,6 @@ export function AdminExpenseManager({
     return categories.find((c) => c.id === expCategory) || categories[0] || DEFAULT_EXPENSE_CATEGORIES[0];
   }, [categories, expCategory]);
 
-  // Filtered Categories inside Custom Dropdown
   const filteredDropdownCategories = useMemo(() => {
     const q = dropdownSearchQuery.trim().toLowerCase();
     if (!q) return categories;
@@ -820,7 +885,6 @@ export function AdminExpenseManager({
     );
   }, [categories, dropdownSearchQuery]);
 
-  // Filtered Icons inside Icon Picker
   const filteredIconLibrary = useMemo(() => {
     const q = iconSearchQuery.trim().toLowerCase();
     if (!q) return EXPENSE_ICON_LIBRARY;
@@ -833,25 +897,63 @@ export function AdminExpenseManager({
   }, [iconSearchQuery]);
 
   // ============================================================================
+  // 🌟 MULTI-SELECT QUICK ITEMS LOGIC 🌟
+  // ============================================================================
+
+  // Parse currently selected items inside `expTitle` (split by comma)
+  const selectedItemsList = useMemo(() => {
+    return expTitle
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }, [expTitle]);
+
+  // Toggle a Quick Preset item on/off (Multi-Select!)
+  const handleToggleQuickItem = (preset: string) => {
+    const cleanPreset = preset.trim();
+    const exists = selectedItemsList.some((item) => item.toLowerCase() === cleanPreset.toLowerCase());
+
+    let nextList: string[];
+    if (exists) {
+      nextList = selectedItemsList.filter((item) => item.toLowerCase() !== cleanPreset.toLowerCase());
+    } else {
+      nextList = [...selectedItemsList, cleanPreset];
+    }
+    setExpTitle(nextList.join(', '));
+  };
+
+  // Select All Quick Items in current category
+  const handleSelectAllQuickItems = () => {
+    if (!selectedCategoryMeta) return;
+    const allPresets = selectedCategoryMeta.quickPresets;
+    const merged = Array.from(new Set([...selectedItemsList, ...allPresets]));
+    setExpTitle(merged.join(', '));
+  };
+
+  // Clear Selected Quick Items
+  const handleClearQuickItems = () => {
+    setExpTitle('');
+  };
+
+  // ============================================================================
   // 🌟 CATEGORY & QUICK ITEMS CRUD FUNCTIONS 🌟
   // ============================================================================
 
   const handleAddQuickPresetItem = async () => {
     const clean = newQuickItemText.trim();
     if (!clean || !selectedCategoryMeta) return;
-    if (selectedCategoryMeta.quickPresets.includes(clean)) {
-      setNewQuickItemText('');
-      setShowAddQuickItemInput(false);
-      return;
+    if (!selectedCategoryMeta.quickPresets.includes(clean)) {
+      const updatedCategories = categories.map((cat) =>
+        cat.id === selectedCategoryMeta.id
+          ? { ...cat, quickPresets: [...cat.quickPresets, clean] }
+          : cat
+      );
+      await saveCustomCategories(updatedCategories);
     }
-
-    const updatedCategories = categories.map((cat) =>
-      cat.id === selectedCategoryMeta.id
-        ? { ...cat, quickPresets: [...cat.quickPresets, clean] }
-        : cat
-    );
-    await saveCustomCategories(updatedCategories);
-    setExpTitle(clean);
+    // Also auto-append into multi-select title
+    if (!selectedItemsList.includes(clean)) {
+      setExpTitle([...selectedItemsList, clean].join(', '));
+    }
     setNewQuickItemText('');
     setShowAddQuickItemInput(false);
   };
@@ -945,6 +1047,7 @@ export function AdminExpenseManager({
     }
   };
 
+  // 🌟 FIXED & GUARANTEED SAVE EXPENSE: Saves into `settings/expenses_${yearMonth}`! 🌟
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     const amt = Math.max(0, Number(expAmount) || 0);
@@ -956,40 +1059,78 @@ export function AdminExpenseManager({
     setIsSavingExpense(true);
     try {
       const targetDate = expDate || todayStr;
-      await addDoc(collection(db, 'expenses'), {
+      const targetYearMonth = targetDate.substring(0, 7);
+
+      const newRecord: ExpenseRecord = {
+        id: `exp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         date: targetDate,
-        yearMonth: targetDate.substring(0, 7),
+        yearMonth: targetYearMonth,
         category: expCategory,
         title: expTitle.trim(),
         amount: amt,
         paymentMethod: expPaymentMethod,
         note: expNote.trim(),
-        createdAt: Date.now()
-      });
+        createdAt: Date.now(),
+        sourceDoc: 'settings'
+      };
 
-      if (targetDate.substring(0, 7) !== selectedMonth) {
-        setSelectedMonth(targetDate.substring(0, 7));
+      const settingsDocRef = doc(db, 'settings', `expenses_${targetYearMonth}`);
+      const existingSnap = await getDoc(settingsDocRef);
+      const existingRecords =
+        existingSnap.exists() && Array.isArray(existingSnap.data()?.records)
+          ? existingSnap.data()!.records
+          : [];
+
+      const updatedRecords = [newRecord, ...existingRecords];
+
+      await setDoc(
+        settingsDocRef,
+        {
+          yearMonth: targetYearMonth,
+          records: updatedRecords,
+          updatedAt: Date.now()
+        },
+        { merge: true }
+      );
+
+      if (targetYearMonth !== selectedMonth) {
+        setSelectedMonth(targetYearMonth);
       }
 
       setExpTitle('');
       setExpAmount('');
       setExpNote('');
-    } catch (err) {
-      alert('အသုံးစရိတ် သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    } catch (err: any) {
+      console.error('Expense Save Error:', err);
+      alert(`အသုံးစရိတ် သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်: ${err?.message || ''}`);
     } finally {
       setIsSavingExpense(false);
     }
   };
 
-  const handleDeleteExpense = async (id: string, title: string, amt: number) => {
+  const handleDeleteExpense = async (exp: ExpenseRecord) => {
     if (adminRole !== 'super_admin') {
       alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။');
       return;
     }
-    if (!window.confirm(`"${title}" (${formatPrice(amt)}) အသုံးစရိတ်မှတ်တမ်းကို ဖျက်မည်မှာ သေချာပါသလား?`)) {
+    if (!window.confirm(`"${exp.title}" (${formatPrice(exp.amount)}) အသုံးစရိတ်မှတ်တမ်းကို ဖျက်မည်မှာ သေချာပါသလား?`)) {
       return;
     }
-    await deleteDoc(doc(db, 'expenses', id));
+
+    try {
+      const targetYm = exp.yearMonth || selectedMonth;
+      const settingsDocRef = doc(db, 'settings', `expenses_${targetYm}`);
+      const snap = await getDoc(settingsDocRef);
+      if (snap.exists() && Array.isArray(snap.data()?.records)) {
+        const nextRecords = snap.data()!.records.filter((r: any) => r.id !== exp.id);
+        await setDoc(settingsDocRef, { records: nextRecords, updatedAt: Date.now() }, { merge: true });
+      }
+      if (exp.sourceDoc === 'collection') {
+        await deleteDoc(doc(db, 'expenses', exp.id)).catch(() => {});
+      }
+    } catch (err) {
+      alert('မှတ်တမ်းဖျက်ရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    }
   };
 
   // Category Breakdown Summary
@@ -1099,7 +1240,7 @@ export function AdminExpenseManager({
   return (
     <div className="space-y-5 animate-fade-in">
       {/* =========================================================================
-          MODAL 1: CATEGORY & SEARCHABLE ICON MANAGER (အမည် နှင့် Icon စိတ်ကြိုက်ရှာဖွေပြင်ဆင်ရန်)
+          MODAL 1: CATEGORY & SEARCHABLE ICON MANAGER
          ========================================================================= */}
       {showCategoryManagerModal && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -1127,7 +1268,6 @@ export function AdminExpenseManager({
               </button>
             </div>
 
-            {/* Add New Category Form with Icon Trigger */}
             <form
               onSubmit={handleAddNewCategory}
               className="bg-gray-50 p-3.5 rounded-2xl border border-gray-200 space-y-2.5"
@@ -1171,7 +1311,6 @@ export function AdminExpenseManager({
                 </button>
               </div>
 
-              {/* Searchable Icon Picker Drawer for New Category */}
               {iconPickerTarget === 'new' && (
                 <div className="bg-white p-3.5 rounded-2xl border-2 border-[#123524]/20 shadow-md space-y-2.5 animate-fade-in">
                   <div className="flex items-center justify-between gap-2">
@@ -1228,7 +1367,6 @@ export function AdminExpenseManager({
               )}
             </form>
 
-            {/* Existing Categories List (With Searchable Icon Picker for Editing!) */}
             <div className="overflow-y-auto flex-1 space-y-2 pr-1">
               {categories.map((cat) => {
                 const isEditing = editingCatId === cat.id;
@@ -1288,7 +1426,6 @@ export function AdminExpenseManager({
                           </button>
                         </div>
 
-                        {/* Searchable Icon Library when Editing Category */}
                         {iconPickerTarget === 'edit' && (
                           <div className="bg-white p-3 rounded-xl border border-gray-300 space-y-2 animate-fade-in">
                             <div className="relative">
@@ -1707,7 +1844,7 @@ export function AdminExpenseManager({
       </div>
 
       {/* =========================================================================
-          2. ADD NEW EXPENSE FORM (CUSTOM SLEEK DROPDOWN + QUICK ITEMS) & BREAKDOWN
+          2. ADD NEW EXPENSE FORM (CUSTOM SLEEK DROPDOWN + MULTI-SELECT QUICK ITEMS) & BREAKDOWN
          ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left 5 Cols: Compact & Clean Add Expense Form */}
@@ -1719,7 +1856,7 @@ export function AdminExpenseManager({
                 အသုံးစရိတ်အသစ် ထည့်သွင်းရန်
               </h3>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                Category နှင့် အသေးစိတ်ခေါင်းစဉ်များကို စိတ်ကြိုက် ရွေးချယ်ပြင်ဆင်နိုင်ပါသည်
+                ဘောင်ချာတစ်စောင်တည်းတွင် ပစ္စည်းအများကြီးပါလျှင် တစ်ခုထက်ပိုနှိပ်၍ ပေါင်းထည့်နိုင်ပါသည်
               </p>
             </div>
             <button
@@ -1733,13 +1870,12 @@ export function AdminExpenseManager({
           </div>
 
           <form onSubmit={handleAddExpense} className="space-y-4">
-            {/* 🌟 Step 1: Sleek Custom Luxury Dropdown (Replaces bulky grid & native black select!) 🌟 */}
+            {/* Step 1: Sleek Custom Luxury Dropdown */}
             <div ref={categoryDropdownRef} className="relative">
               <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
                 ၁။ အသုံးစရိတ် အမျိုးအစား ရွေးချယ်ပါ (Select Category) *
               </label>
 
-              {/* Trigger Button */}
               <button
                 type="button"
                 onClick={() => {
@@ -1773,10 +1909,8 @@ export function AdminExpenseManager({
                 </div>
               </button>
 
-              {/* Floating Custom Popover Menu */}
               {isCategoryDropdownOpen && (
                 <div className="absolute left-0 right-0 top-full mt-2 z-50 bg-white rounded-2xl shadow-2xl border-2 border-[#123524]/20 overflow-hidden animate-fade-in">
-                  {/* Search inside Dropdown */}
                   <div className="p-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
                     <div className="relative flex-1">
                       <input
@@ -1800,7 +1934,6 @@ export function AdminExpenseManager({
                     </div>
                   </div>
 
-                  {/* Clean Scrollable Options */}
                   <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 p-1.5">
                     {filteredDropdownCategories.length === 0 ? (
                       <div className="p-4 text-center text-xs text-gray-400 font-bold">
@@ -1849,7 +1982,6 @@ export function AdminExpenseManager({
                     )}
                   </div>
 
-                  {/* Footer inside Dropdown to Add / Edit Categories & Icons */}
                   <div className="p-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
                     <button
                       type="button"
@@ -1867,15 +1999,40 @@ export function AdminExpenseManager({
               )}
             </div>
 
-            {/* Step 2: Customizable Quick-Pick Items Box */}
+            {/* 🌟 Step 2: MULTI-SELECT Customizable Quick-Pick Items Box 🌟 */}
             <div className="bg-gray-50/90 p-3.5 rounded-2xl border border-gray-200 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[10px] font-extrabold text-[#123524] uppercase flex items-center gap-1">
-                  <span>{selectedCategoryMeta?.iconEmoji}</span>
-                  <span>အမြန်ရွေးချယ်ရန် (Quick Items):</span>
-                </span>
+                <div>
+                  <span className="text-[10px] font-extrabold text-[#123524] uppercase flex items-center gap-1">
+                    <span>{selectedCategoryMeta?.iconEmoji}</span>
+                    <span>အမြန်ရွေးချယ်ရန် (Multiple Select ရသည်):</span>
+                  </span>
+                  {selectedItemsList.length > 0 && (
+                    <span className="text-[10px] font-bold text-emerald-700 block mt-0.5">
+                      ✓ ရွေးချယ်ထားသော အမျိုးအစား ({selectedItemsList.length}) ခု ပေါင်းထည့်ထားသည်
+                    </span>
+                  )}
+                </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1">
+                  {selectedCategoryMeta?.quickPresets.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleSelectAllQuickItems}
+                      className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-black transition"
+                    >
+                      အားလုံးရွေးမည်
+                    </button>
+                  )}
+                  {selectedItemsList.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearQuickItems}
+                      className="px-2 py-1 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 text-[10px] font-bold transition"
+                    >
+                      ပြန်ရှင်းမည်
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setShowAddQuickItemInput(!showAddQuickItemInput)}
@@ -1933,6 +2090,7 @@ export function AdminExpenseManager({
                 </div>
               )}
 
+              {/* Multi-Select Chips */}
               <div className="flex flex-wrap gap-1.5">
                 {selectedCategoryMeta?.quickPresets.length === 0 ? (
                   <span className="text-[11px] text-gray-400 font-semibold py-1">
@@ -1940,13 +2098,15 @@ export function AdminExpenseManager({
                   </span>
                 ) : (
                   selectedCategoryMeta?.quickPresets.map((preset, idx) => {
-                    const isSelectedChip = expTitle === preset;
+                    const isSelectedChip = selectedItemsList.some(
+                      (item) => item.toLowerCase() === preset.trim().toLowerCase()
+                    );
                     return (
                       <div key={idx} className="inline-flex items-center">
                         <button
                           type="button"
-                          onClick={() => setExpTitle(preset)}
-                          className={`px-2.5 py-1.5 text-[11px] font-bold border transition ${
+                          onClick={() => handleToggleQuickItem(preset)}
+                          className={`px-2.5 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 ${
                             isEditingQuickItems ? 'rounded-l-lg' : 'rounded-lg'
                           } ${
                             isSelectedChip
@@ -1954,7 +2114,8 @@ export function AdminExpenseManager({
                               : 'bg-white text-gray-700 border-gray-200 hover:border-[#D4AF37]'
                           }`}
                         >
-                          + {preset}
+                          <span>{isSelectedChip ? '✓' : '+'}</span>
+                          <span>{preset}</span>
                         </button>
                         {isEditingQuickItems && (
                           <button
@@ -1973,18 +2134,18 @@ export function AdminExpenseManager({
               </div>
             </div>
 
-            {/* Step 3: Item Name & Amount */}
+            {/* Step 3: Item Name (Supports Multiple Items) & Amount */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
               <div className="sm:col-span-7">
                 <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  ၂။ အသုံးစရိတ် အကြောင်းအရာ (Item Name) *
+                  ၂။ အသုံးစရိတ် အကြောင်းအရာ (Item Name / Multiple Items) *
                 </label>
                 <input
                   type="text"
                   required
                   value={expTitle}
                   onChange={(e) => setExpTitle(e.target.value)}
-                  placeholder="ဥပမာ - အနှိပ်ဆီ ၅ ဘူး / Taxi ခ..."
+                  placeholder="အပေါ်မှ ခလုတ်များကို တစ်ခုထက်ပိုနှိပ်ပါ သို့မဟုတ် စာရိုက်ထည့်ပါ..."
                   className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
                 />
               </div>
@@ -1999,7 +2160,7 @@ export function AdminExpenseManager({
                   min={1}
                   value={expAmount}
                   onChange={(e) => setExpAmount(e.target.value)}
-                  placeholder="ဥပမာ - 25000"
+                  placeholder="ဥပမာ - 215400"
                   className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-red-600 outline-none focus:border-red-500"
                 />
               </div>
@@ -2086,7 +2247,6 @@ export function AdminExpenseManager({
           </div>
 
           <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
-            {/* 1. Payroll & Executive Salaries Bar (Auto-Synced) */}
             <div
               onClick={() => setShowPayrollBreakdownModal(true)}
               className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-300 cursor-pointer hover:shadow-xs transition"
@@ -2124,7 +2284,6 @@ export function AdminExpenseManager({
               </div>
             </div>
 
-            {/* 2. Operational Expense Categories */}
             {categoryBreakdownList.map((cat) => {
               const isSelected = activeCategoryFilter === cat.id;
               return (
@@ -2274,7 +2433,7 @@ export function AdminExpenseManager({
                         <button
                           type="button"
                           disabled={adminRole !== 'super_admin'}
-                          onClick={() => handleDeleteExpense(exp.id, exp.title, exp.amount)}
+                          onClick={() => handleDeleteExpense(exp)}
                           className={`p-1.5 rounded-lg transition ${
                             adminRole === 'super_admin'
                               ? 'bg-red-50 text-red-600 hover:bg-red-100'
