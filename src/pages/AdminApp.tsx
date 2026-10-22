@@ -701,7 +701,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
             {tab === 'roster' && hasAccess('settings') && <DutyRosterSystem therapists={appData.therapists} />}
             {tab === 'hr' && hasAccess('settings') && <AdminHRManagement />}
             {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
-            {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView />}
+            {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView bookings={bookings} adminRole={adminRole} />}
             {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
             {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
             {tab === 'revenue_dashboard' && (hasAccess('bookings') || hasAccess('reports')) && <AdminRevenueProfitDashboard bookings={bookings} therapists={appData.therapists} />}
@@ -6905,105 +6905,753 @@ function AdminStaffPerformanceView({ therapists, bookings = [] }: { therapists: 
   );
 }
 
-function AdminCampaignsView() {
-    const [records, setRecords] = useState<any[]>([]);
-    const [search, setSearch] = useState('');
+// ============================================================================
+// 🌟 SHARED HELPER: NORMALIZE PHONE & CHECK CAMPAIGN REWARD STATUS 🌟
+// ============================================================================
+export const normalizeMyanmarPhone = (p: string): string => {
+  return String(p || '')
+    .replace(/[^0-9]/g, '')
+    .replace(/^959/, '09')
+    .trim();
+};
 
-    useEffect(() => {
-        const fetchRecords = async () => {
-            try {
-                const q = query(collection(db, 'campaign_records')); 
-                const snap = await getDocs(q);
-                const data: any[] = [];
-                snap.forEach(d => { data.push({ id: d.id, ...d.data() }); });
-                data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                setRecords(data);
-            } catch (error) {}
-        };
-        fetchRecords();
-    }, []);
+/**
+ * Checks if a customer's campaign reward is still valid for booking today.
+ * Rule: Valid all day on the winning date UNTIL a booking/POS bill is marked as `completed` (Service Complete).
+ */
+export const isCampaignRewardUsedByCompletedService = (
+  winnerPhone: string,
+  winDate: string,
+  allBookings: Booking[]
+): { isUsed: boolean; completedBooking?: Booking; activePendingBooking?: Booking } => {
+  const normWinPhone = normalizeMyanmarPhone(winnerPhone);
+  if (!normWinPhone || normWinPhone.length < 7) return { isUsed: false };
 
-    const filtered = records.filter(r => r.phone?.includes(search));
+  let completedBooking: Booking | undefined;
+  let activePendingBooking: Booking | undefined;
 
-    // 🌟 User ဆီသို့ Telegram မှ စာလှမ်းပို့မည့် Function 🌟
-    const handleContactUser = (phone: string, discount: number) => {
-        if (!phone) return;
-        
-        // ဖုန်းနံပါတ်ကို Telegram လက်ခံသော Format ပြောင်းခြင်း (09 သို့မဟုတ် 959 မှ +959 သို့)
-        let formattedPhone = phone.replace(/[^0-9+]/g, '');
-        if (formattedPhone.startsWith('09')) {
-            formattedPhone = '+959' + formattedPhone.substring(2);
-        } else if (!formattedPhone.startsWith('+')) {
-            formattedPhone = '+' + formattedPhone;
-        }
-        
-        // ပို့မည့်စာသား (Pre-filled message)
-        const msg = encodeURIComponent(`မင်္ဂလာပါရှင်။ Shangri-La Men's Retreat မှ ဆက်သွယ်တာပါ။ \nလူကြီးမင်း ရရှိထားသော Discount (${discount}% OFF) အား လာရောက်အသုံးပြုနိုင်ပါပြီရှင်။`);
-        
-        // Telegram သို့ လင့်ခ်ဖွင့်ခြင်း
-        window.open(`https://t.me/${formattedPhone}?text=${msg}`, '_blank');
-    };
+  for (const b of allBookings) {
+    if (!b || b.status === 'cancelled') continue;
+    const normBPhone = normalizeMyanmarPhone(b.phone || '');
+    if (normBPhone !== normWinPhone) continue;
 
+    // Determine if this booking was created on or for the winning date
+    const submittedDateStr = b.createdAt
+      ? (() => {
+          const d = new Date(b.createdAt);
+          return (
+            d.getFullYear() +
+            '-' +
+            String(d.getMonth() + 1).padStart(2, '0') +
+            '-' +
+            String(d.getDate()).padStart(2, '0')
+          );
+        })()
+      : '';
+
+    const isSameDayOrAfterWin =
+      b.date === winDate ||
+      submittedDateStr === winDate ||
+      (b.date >= winDate && submittedDateStr >= winDate);
+
+    if (!isSameDayOrAfterWin) continue;
+
+    // Ignore 0 Ks walk-in reward redemptions or staff clock-ins
+    if ((Number(b.totalPrice) || 0) <= 0 || Boolean((b as any).isAdminClockIn) || Boolean((b as any).isStaffClockIn)) {
+      continue;
+    }
+
+    if (b.status === 'completed') {
+      completedBooking = b;
+      break;
+    } else if (!activePendingBooking) {
+      activePendingBooking = b;
+    }
+  }
+
+  return {
+    isUsed: Boolean(completedBooking),
+    completedBooking,
+    activePendingBooking
+  };
+};
+
+function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { bookings?: Booking[]; adminRole?: string }) {
+  const todayStr = getLocalTodayStr();
+  const [records, setRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active_unused' | 'used_completed' | 'expired'>('all');
+  const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'this_month' | 'custom_range'>('all');
+  const [fromDate, setFromDate] = useState<string>(todayStr);
+  const [toDate, setToDate] = useState<string>(todayStr);
+  const [applyingBookingId, setApplyingBookingId] = useState<string | null>(null);
+
+  const getYesterdayStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
     return (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
-                <h2 className="text-xl font-bold flex items-center text-orange-600">
-                    <PartyPopper className="mr-2 text-orange-500" /> Campaign Winners Record
-                </h2>
-                <div className="relative w-full sm:w-64">
-                    <input 
-                        type="text" 
-                        placeholder="Search phone number..." 
-                        value={search} 
-                        onChange={(e) => setSearch(e.target.value)} 
-                        className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-orange-500 text-sm font-semibold" 
-                    />
-                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-                </div>
-            </div>
-            
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[700px]">
-                    <thead>
-                        <tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
-                            <th className="p-3 pb-4">Date & Time</th>
-                            <th className="p-3 pb-4">Phone Number</th>
-                            <th className="p-3 pb-4">Contact Source</th>
-                            <th className="p-3 pb-4 text-right">Discount Won</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filtered.length === 0 && <tr><td colSpan={4} className="p-10 text-center text-gray-400">No records found.</td></tr>}
-                        {filtered.map(r => (
-                            <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition text-sm">
-                                <td className="p-3 text-gray-600 font-semibold">{r.date}</td>
-                                <td className="p-3 font-mono font-bold text-[#123524] tracking-wider">{r.phone}</td>
-                                <td className="p-3">
-                                    {r.telegramClicked ? (
-                                        // 🌟 ခလုတ်အဖြစ် ပြောင်းလဲလိုက်ပြီး နှိပ်ပါက Telegram ပွင့်လာပါမည် 🌟
-                                        <button 
-                                            onClick={() => handleContactUser(r.phone, r.discountPercent)}
-                                            className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg font-bold flex items-center w-fit cursor-pointer hover:bg-blue-100 hover:shadow-sm active:scale-95 transition-all"
-                                            title="Click to Message via Telegram"
-                                        >
-                                            <MessageCircle className="w-3.5 h-3.5 mr-1.5" /> Telegram သို့ ပို့မည်
-                                        </button>
-                                    ) : (
-                                        <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-1 rounded font-bold">App Only</span>
-                                    )}
-                                </td>
-                                <td className="p-3 text-right">
-                                    <span className="font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 shadow-sm">
-                                        {r.discountPercent}% OFF
-                                    </span>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+      d.getFullYear() +
+      '-' +
+      String(d.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(d.getDate()).padStart(2, '0')
     );
+  };
+
+  const getThisMonthPrefix = () => {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  };
+
+  const formatReadableDateHeader = (dateStr: string) => {
+    if (!dateStr) return 'Unknown Date';
+    const yesterday = getYesterdayStr();
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return dateStr;
+    const dt = new Date(y, m - 1, d);
+    const formatted = dt.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+    if (dateStr === todayStr) return `ယနေ့ (Today) — ${formatted}`;
+    if (dateStr === yesterday) return `မနေ့က (Yesterday) — ${formatted}`;
+    return formatted;
+  };
+
+  // Real-time listener on campaign_records
+  useEffect(() => {
+    const q = query(collection(db, 'campaign_records'));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const data: any[] = [];
+        snap.forEach((d) => {
+          const raw = d.data();
+          const rawDate = String(raw.date || '').trim();
+          // Extract clean YYYY-MM-DD even if time is appended
+          const cleanDate = rawDate.match(/^(\d{4}-\d{2}-\d{2})/)
+            ? rawDate.match(/^(\d{4}-\d{2}-\d{2})/)![1]
+            : raw.createdAt
+            ? (() => {
+                const dt = new Date(raw.createdAt);
+                return (
+                  dt.getFullYear() +
+                  '-' +
+                  String(dt.getMonth() + 1).padStart(2, '0') +
+                  '-' +
+                  String(dt.getDate()).padStart(2, '0')
+                );
+              })()
+            : todayStr;
+
+          data.push({
+            id: d.id,
+            ...raw,
+            cleanDate,
+            phone: String(raw.phone || '').trim(),
+            discountPercent: Number(raw.discountPercent) || 0
+          });
+        });
+        data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setRecords(data);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsub();
+  }, [todayStr]);
+
+  // Enrich each winner record with real-time Usage Status (Used / Active / Expired)
+  const enrichedRecords = useMemo(() => {
+    return records.map((r) => {
+      const usage = isCampaignRewardUsedByCompletedService(r.phone, r.cleanDate, bookings);
+      let rewardStatus: 'used_completed' | 'active_unused' | 'expired' = 'active_unused';
+
+      if (usage.isUsed) {
+        rewardStatus = 'used_completed';
+      } else if (r.cleanDate < todayStr) {
+        // Past winning date and service was never completed -> Expired
+        rewardStatus = 'expired';
+      } else {
+        // Won today and not yet completed in POS/Service -> Still Active!
+        rewardStatus = 'active_unused';
+      }
+
+      // Check if customer has an active booking that forgot to apply the discount (like Dr. Than Htwe!)
+      const activeBookingNeedsDiscount =
+        usage.activePendingBooking &&
+        (!usage.activePendingBooking.discountPercent || usage.activePendingBooking.discountPercent === 0) &&
+        r.discountPercent > 0;
+
+      return {
+        ...r,
+        rewardStatus,
+        completedBooking: usage.completedBooking,
+        activePendingBooking: usage.activePendingBooking,
+        activeBookingNeedsDiscount
+      };
+    });
+  }, [records, bookings, todayStr]);
+
+  // 1. Date & Search Filter
+  const dateAndSearchFiltered = useMemo(() => {
+    const yesterday = getYesterdayStr();
+    const thisMonthPrefix = getThisMonthPrefix();
+    const q = search.trim().toLowerCase();
+
+    return enrichedRecords.filter((r) => {
+      const d = r.cleanDate || todayStr;
+      if (dateFilterMode === 'today' && d !== todayStr) return false;
+      if (dateFilterMode === 'yesterday' && d !== yesterday) return false;
+      if (dateFilterMode === 'this_month' && !d.startsWith(thisMonthPrefix)) return false;
+      if (dateFilterMode === 'custom_range') {
+        const start = fromDate && toDate && fromDate > toDate ? toDate : fromDate;
+        const end = fromDate && toDate && fromDate > toDate ? fromDate : toDate;
+        if (start && d < start) return false;
+        if (end && d > end) return false;
+      }
+
+      if (q) {
+        const matchPhone = String(r.phone || '').toLowerCase().includes(q);
+        const matchPct = `${r.discountPercent}%`.includes(q);
+        const matchCustName =
+          (r.completedBooking?.name || '').toLowerCase().includes(q) ||
+          (r.activePendingBooking?.name || '').toLowerCase().includes(q);
+        if (!matchPhone && !matchPct && !matchCustName) return false;
+      }
+      return true;
+    });
+  }, [enrichedRecords, dateFilterMode, fromDate, toDate, search, todayStr]);
+
+  // 2. Status Filter
+  const finalFilteredRecords = useMemo(() => {
+    if (statusFilter === 'all') return dateAndSearchFiltered;
+    return dateAndSearchFiltered.filter((r) => r.rewardStatus === statusFilter);
+  }, [dateAndSearchFiltered, statusFilter]);
+
+  // 3. KPI Summary Counts
+  const summaryStats = useMemo(() => {
+    let total = dateAndSearchFiltered.length;
+    let usedCount = 0;
+    let activeCount = 0;
+    let expiredCount = 0;
+
+    dateAndSearchFiltered.forEach((r) => {
+      if (r.rewardStatus === 'used_completed') usedCount++;
+      else if (r.rewardStatus === 'active_unused') activeCount++;
+      else expiredCount++;
+    });
+
+    return { total, usedCount, activeCount, expiredCount };
+  }, [dateAndSearchFiltered]);
+
+  // 4. Group by Date
+  const groupedByDate = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        date: string;
+        items: any[];
+        usedCount: number;
+        activeCount: number;
+        expiredCount: number;
+      }
+    >();
+
+    finalFilteredRecords.forEach((r) => {
+      const d = r.cleanDate || todayStr;
+      if (!map.has(d)) {
+        map.set(d, { date: d, items: [], usedCount: 0, activeCount: 0, expiredCount: 0 });
+      }
+      const grp = map.get(d)!;
+      grp.items.push(r);
+      if (r.rewardStatus === 'used_completed') grp.usedCount++;
+      else if (r.rewardStatus === 'active_unused') grp.activeCount++;
+      else grp.expiredCount++;
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [finalFilteredRecords, todayStr]);
+
+  // 🌟 One-Click Fix: Apply Won Campaign Discount directly to a Customer's Pending Booking 🌟
+  const handleApplyCampaignDiscountToBooking = async (winnerRecord: any, targetBooking: Booking) => {
+    if (!targetBooking.id) return;
+    const svcStr = String(targetBooking.service || '').toLowerCase();
+    const isOutcall =
+      svcStr.includes('outcall') ||
+      svcStr.includes('hotel') ||
+      svcStr.includes('half day') ||
+      svcStr.includes('whole');
+
+    // Outcall/Hotel services max 10% cap if applicable, otherwise full won discountPercent
+    const appliedPct = isOutcall ? Math.min(10, winnerRecord.discountPercent) : winnerRecord.discountPercent;
+    const origPrice = Number(targetBooking.originalPrice) || Number(targetBooking.totalPrice) || 0;
+    const discountedTotal = Math.round(origPrice * (1 - appliedPct / 100));
+    const labelText = `Campaign Winner Bonus (${appliedPct}% OFF)`;
+
+    if (
+      !window.confirm(
+        `${targetBooking.name} (${winnerRecord.phone}) ၏ Booking တွင် ကံထူးထားသော ${appliedPct}% OFF အား ထည့်သွင်းပေးမည် သေချာပါသလား?\n\n• မူရင်းကျသင့်ငွေ: ${formatPrice(origPrice)}\n• ${appliedPct}% လျှော့ပြီး ကျသင့်ငွေအသစ်: ${formatPrice(discountedTotal)}`
+      )
+    ) {
+      return;
+    }
+
+    setApplyingBookingId(targetBooking.id);
+    try {
+      const isDep = (targetBooking as any).paymentStatus === 'deposit_only';
+      const depPaid = Number((targetBooking as any).depositPaid) || 0;
+      const newBalanceDue = isDep ? Math.max(0, discountedTotal - depPaid) : 0;
+
+      await updateDoc(doc(db, 'bookings', targetBooking.id), {
+        originalPrice: encryptText(String(origPrice)),
+        discountPercent: encryptText(String(appliedPct)),
+        discountLabel: encryptText(labelText),
+        totalPrice: discountedTotal,
+        ...(isDep ? { balanceDue: newBalanceDue } : {})
+      });
+      alert(`✅ ${targetBooking.name} ၏ Booking အား ${appliedPct}% OFF (${formatPrice(discountedTotal)}) သို့ အောင်မြင်စွာ ပြင်ဆင်ပေးပြီးပါပြီ။`);
+    } catch (err) {
+      alert('Discount ထည့်သွင်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    } finally {
+      setApplyingBookingId(null);
+    }
+  };
+
+  const handleContactUser = (phone: string, discount: number) => {
+    if (!phone) return;
+    let formattedPhone = phone.replace(/[^0-9+]/g, '');
+    if (formattedPhone.startsWith('09')) {
+      formattedPhone = '+959' + formattedPhone.substring(2);
+    } else if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+' + formattedPhone;
+    }
+    const msg = encodeURIComponent(
+      `မင်္ဂလာပါခင်ဗျာ။ The Shangri-La Men's Retreat မှ ဆက်သွယ်တာပါ။ \nလူကြီးမင်း ကံထူးရရှိထားသော အထူး Discount (${discount}% OFF) အား ယနေ့အတွင်း လာရောက်အသုံးပြုနိုင်ပါပြီခင်ဗျာ။`
+    );
+    window.open(`https://t.me/${formattedPhone}?text=${msg}`, '_blank');
+  };
+
+  const handleDeleteRecord = async (id: string, phone: string) => {
+    if (adminRole !== 'super_admin') {
+      alert('Super Admin သာလျှင် ဖျက်ခွင့်ရှိပါသည်။');
+      return;
+    }
+    if (!window.confirm(`ဖုန်းနံပါတ် [${phone}] ၏ မဲပေါက်မှတ်တမ်းကို ဖျက်မည် သေချာပါသလား?`)) return;
+    await deleteDoc(doc(db, 'campaign_records', id));
+  };
+
+  const handleExportCSV = () => {
+    const headers = [
+      'Winning Date',
+      'Phone Number',
+      'Customer Name',
+      'Discount Won (%)',
+      'Reward Status',
+      'Booking / Receipt Status',
+      'Invoice / TxID',
+      'Contact Source'
+    ];
+    const rows = finalFilteredRecords.map((r) => {
+      const statusText =
+        r.rewardStatus === 'used_completed'
+          ? 'သုံးပြီးပြီ (Used - Service Completed)'
+          : r.rewardStatus === 'active_unused'
+          ? 'မသုံးရသေး (Active Today)'
+          : 'သက်တမ်းကုန်ဆုံး (Expired - 1 Day Passed)';
+      const linkedB = r.completedBooking || r.activePendingBooking;
+      return [
+        `"${r.cleanDate}"`,
+        `"${r.phone}"`,
+        `"${linkedB?.name || '-'}"`,
+        `${r.discountPercent}%`,
+        `"${statusText}"`,
+        `"${linkedB ? linkedB.status.toUpperCase() : 'No Booking'}"`,
+        `"${linkedB?.txId || '-'}"`,
+        `"${r.telegramClicked ? 'Telegram' : 'App Only'}"`
+      ];
+    });
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Campaign_Winners_Report_${todayStr}.csv`;
+    link.click();
+  };
+
+  return (
+    <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6 animate-fade-in">
+      {/* 1. Header & Export */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-4 gap-4">
+        <div>
+          <h2 className="text-xl font-bold flex items-center text-[#123524]">
+            <PartyPopper className="mr-2 text-[#D4AF37]" /> Game Campaign Winners & Usage Tracker
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
+            ကံထူးရှင်များ၏ ၁ ရက်တာ Discount ခံစားခွင့်သည် Shop POS မှ ဘောင်ချာထုတ်ပြီး Service Complete ဖြစ်မှသာ သုံးပြီးကြောင်း (Used) သတ်မှတ်ပါမည်
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-black hover:bg-emerald-100 transition shadow-2xs"
+          >
+            <Download className="w-4 h-4 mr-1.5" /> Export Excel
+          </button>
+        </div>
+      </div>
+
+      {/* 2. 4 KPI Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200">
+          <div className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
+            စုစုပေါင်း ကံထူးရှင် (Total Winners)
+          </div>
+          <div className="text-2xl font-black text-[#123524] mt-1">{summaryStats.total} ဦး</div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200">
+          <div className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider">
+            ✓ သုံးပြီးပြီ (Used / Completed)
+          </div>
+          <div className="text-2xl font-black text-emerald-700 mt-1">{summaryStats.usedCount} ဦး</div>
+          <div className="text-[10px] font-semibold text-emerald-700/80 mt-0.5">
+            ဘောင်ချာထုတ်ပြီး / Service ပြီးဆုံး
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200">
+          <div className="text-[10px] font-extrabold text-blue-800 uppercase tracking-wider">
+            ⏳ မသုံးရသေး (Active Today)
+          </div>
+          <div className="text-2xl font-black text-blue-700 mt-1">{summaryStats.activeCount} ဦး</div>
+          <div className="text-[10px] font-semibold text-blue-700/80 mt-0.5">
+            ယနေ့ ဘိုကင်တင်/အသုံးပြုနိုင်ဆဲ
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200">
+          <div className="text-[10px] font-extrabold text-red-700 uppercase tracking-wider">
+            ⏰ သက်တမ်းကုန်ဆုံး (Expired)
+          </div>
+          <div className="text-2xl font-black text-red-600 mt-1">{summaryStats.expiredCount} ဦး</div>
+          <div className="text-[10px] font-semibold text-red-600/80 mt-0.5">
+            ၁ ရက်ကျော်သွား၍ မသုံးလိုက်ရသူများ
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Date Filter + Status Filter + Search Bar */}
+      <div className="flex flex-col gap-3 bg-gray-50/80 p-3.5 rounded-2xl border border-gray-200">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          {/* Date Filter Pills */}
+          <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+            {[
+              { id: 'all', label: 'ရက်အားလုံး (All)' },
+              { id: 'today', label: 'ယနေ့ (Today)' },
+              { id: 'yesterday', label: 'မနေ့က (Yesterday)' },
+              { id: 'this_month', label: 'ယခုလ (This Month)' }
+            ].map((dm) => (
+              <button
+                key={dm.id}
+                type="button"
+                onClick={() => setDateFilterMode(dm.id as any)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  dateFilterMode === dm.id
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {dm.label}
+              </button>
+            ))}
+          </div>
+
+          {/* From -> To Date Range Picker */}
+          <div
+            className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border transition shadow-2xs ${
+              dateFilterMode === 'custom_range'
+                ? 'bg-[#123524] text-[#D4AF37] border-[#D4AF37]'
+                : 'bg-white text-gray-700 border-gray-200'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5 text-[#D4AF37]" />
+            <span className="text-[10px] font-bold uppercase opacity-75">From:</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFromDate(val);
+                if (toDate && val > toDate) setToDate(val);
+                setDateFilterMode('custom_range');
+              }}
+              className="text-xs font-bold bg-transparent outline-none cursor-pointer"
+            />
+            <span className="text-xs font-black">➔</span>
+            <span className="text-[10px] font-bold uppercase opacity-75">To:</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => {
+                const val = e.target.value;
+                setToDate(val);
+                if (fromDate && val < fromDate) setFromDate(val);
+                setDateFilterMode('custom_range');
+              }}
+              className="text-xs font-bold bg-transparent outline-none cursor-pointer"
+            />
+          </div>
+        </div>
+
+        {/* Bottom Row: Reward Usage Status Pills + Search */}
+        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-2.5 pt-2 border-t border-gray-200/60">
+          <div className="flex flex-wrap bg-white p-1 rounded-xl border border-gray-200 shadow-2xs gap-1">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                statusFilter === 'all' ? 'bg-[#123524] text-white' : 'text-gray-600'
+              }`}
+            >
+              အားလုံး ({summaryStats.total})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('active_unused')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                statusFilter === 'active_unused' ? 'bg-blue-600 text-white' : 'text-blue-700 hover:bg-blue-50'
+              }`}
+            >
+              ⏳ မသုံးရသေး / Active ({summaryStats.activeCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('used_completed')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                statusFilter === 'used_completed' ? 'bg-emerald-700 text-white' : 'text-emerald-700 hover:bg-emerald-50'
+              }`}
+            >
+              ✓ သုံးပြီးပြီ / Completed ({summaryStats.usedCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('expired')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                statusFilter === 'expired' ? 'bg-red-600 text-white' : 'text-red-600 hover:bg-red-50'
+              }`}
+            >
+              ⏰ သက်တမ်းကုန်ဆုံး ({summaryStats.expiredCount})
+            </button>
+          </div>
+
+          <div className="relative w-full lg:w-72">
+            <input
+              type="text"
+              placeholder="ဖုန်းနံပါတ် သို့မဟုတ် အမည် ရှာရန်..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold shadow-2xs"
+            />
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Date-Grouped Winners Table */}
+      {loading ? (
+        <div className="p-12 text-center text-gray-400 font-bold">Loading Campaign Winners...</div>
+      ) : groupedByDate.length === 0 ? (
+        <div className="p-12 text-center text-gray-400 font-bold border border-dashed border-gray-200 rounded-2xl">
+          ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် ကံထူးရှင်မှတ်တမ်း မရှိပါ။
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {groupedByDate.map((grp) => (
+            <div key={grp.date} className="rounded-2xl border border-gray-200 shadow-xs overflow-hidden bg-white">
+              {/* Daily Header Banner */}
+              <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 sm:px-5 py-3 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37]">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-extrabold text-xs sm:text-sm text-[#D4AF37]">
+                      {formatReadableDateHeader(grp.date)}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-200 font-semibold mt-0.5">
+                      <span>ကံထူးရှင် စုစုပေါင်း: <strong>{grp.items.length} ဦး</strong></span>
+                      <span>•</span>
+                      <span className="text-emerald-300">သုံးပြီး: <strong>{grp.usedCount} ဦး</strong></span>
+                      {grp.activeCount > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-blue-300">မသုံးရသေး (Active): <strong>{grp.activeCount} ဦး</strong></span>
+                        </>
+                      )}
+                      {grp.expiredCount > 0 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-red-300">သက်တမ်းကုန်: <strong>{grp.expiredCount} ဦး</strong></span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[880px]">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
+                      <th className="p-3.5">Winning Date</th>
+                      <th className="p-3.5">Phone & Customer</th>
+                      <th className="p-3.5">Discount Won</th>
+                      <th className="p-3.5">Reward Usage Status (ခံစားခွင့် အခြေအနေ)</th>
+                      <th className="p-3.5">Booking / POS Receipt</th>
+                      <th className="p-3.5 text-right">Contact & Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-sm">
+                    {grp.items.map((r) => {
+                      const linkedB = r.completedBooking || r.activePendingBooking;
+                      return (
+                        <tr key={r.id} className="hover:bg-gray-50/80 transition">
+                          <td className="p-3.5 font-mono text-xs font-bold text-gray-600">
+                            <div>{r.cleanDate}</div>
+                            {r.createdAt && (
+                              <div className="text-[10px] text-gray-400">
+                                {new Date(r.createdAt).toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="p-3.5">
+                            <div className="font-mono font-black text-[#123524] text-sm">{r.phone}</div>
+                            {linkedB?.name && (
+                              <div className="text-xs font-bold text-gray-600 mt-0.5">👤 {linkedB.name}</div>
+                            )}
+                          </td>
+
+                          <td className="p-3.5">
+                            <span className="font-black text-orange-700 bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-200 text-xs inline-flex items-center gap-1 shadow-2xs">
+                              <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                              {r.discountPercent}% OFF
+                            </span>
+                          </td>
+
+                          {/* Reward Usage Status Column */}
+                          <td className="p-3.5">
+                            {r.rewardStatus === 'used_completed' ? (
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase">
+                                  <CheckCircle className="w-3 h-3" /> သုံးပြီးပြီ (Used / Service Complete)
+                                </span>
+                                <div className="text-[10px] font-semibold text-gray-500">
+                                  ဘောင်ချာထုတ်ပြီး၍ ခံစားခွင့် ပိတ်သိမ်းပြီး
+                                </div>
+                              </div>
+                            ) : r.rewardStatus === 'active_unused' ? (
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300 uppercase animate-pulse">
+                                  <Clock className="w-3 h-3" /> မသုံးရသေး (Active Today)
+                                </span>
+                                <div className="text-[10px] font-bold text-blue-700">
+                                  {r.activePendingBooking
+                                    ? `Booking တင်ထားဆဲ (${r.activePendingBooking.status.toUpperCase()})`
+                                    : 'ယနေ့ ဘိုကင်တင်/အသုံးပြုနိုင်ဆဲ'}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-200 uppercase">
+                                  <AlertCircle className="w-3 h-3" /> သက်တမ်းကုန်ဆုံး (Expired)
+                                </span>
+                                <div className="text-[10px] font-semibold text-gray-400">
+                                  ၁ ရက်ကျော်သွား၍ မသုံးလိုက်ရပါ
+                                </div>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Linked Booking / One-Click Discount Fix */}
+                          <td className="p-3.5 text-xs">
+                            {linkedB ? (
+                              <div className="space-y-1.5">
+                                <div className="font-bold text-gray-800">
+                                  {linkedB.service} • <span className="text-[#123524]">{formatPrice(linkedB.totalPrice)}</span>
+                                </div>
+                                <div className="text-[10px] text-gray-500 font-mono">
+                                  TxID: {linkedB.txId || '-'} | Status: <strong>{linkedB.status.toUpperCase()}</strong>
+                                </div>
+                                {r.activeBookingNeedsDiscount && (
+                                  <button
+                                    type="button"
+                                    disabled={applyingBookingId === linkedB.id}
+                                    onClick={() => handleApplyCampaignDiscountToBooking(r, linkedB)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] shadow-xs flex items-center gap-1 transition"
+                                  >
+                                    <Sparkles className="w-3 h-3" />
+                                    {applyingBookingId === linkedB.id
+                                      ? 'Applying...'
+                                      : `Booking တွင် ${r.discountPercent}% OFF ပြန်နှုတ်ပေးမည်`}
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 font-semibold text-[11px]">Booking မတင်ရသေးပါ</span>
+                            )}
+                          </td>
+
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleContactUser(r.phone, r.discountPercent)}
+                                className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg font-bold flex items-center hover:bg-blue-100 transition whitespace-nowrap"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 mr-1" /> Telegram ပို့မည်
+                              </button>
+                              {adminRole === 'super_admin' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRecord(r.id, r.phone)}
+                                  className="p-1.5 rounded-lg bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600 transition"
+                                  title="Delete Record"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
