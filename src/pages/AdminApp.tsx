@@ -722,6 +722,16 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
   const [toDate, setToDate] = useState<string>(getLocalTodayStr());
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [campaignWinnersList, setCampaignWinnersList] = useState<any[]>([]);
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'campaign_records'), (snap) => {
+      const arr: any[] = [];
+      snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
+      setCampaignWinnersList(arr);
+    });
+    return () => unsub();
+  }, []);
+
   // 🌟 Modals States (Deposit Config, View Slip Details, Cancel with Reason) 🌟
   const [depositModalBooking, setDepositModalBooking] = useState<Booking | null>(null);
   const [customDepositInput, setCustomDepositInput] = useState<string>('');
