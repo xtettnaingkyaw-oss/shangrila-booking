@@ -1935,8 +1935,78 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                                 )}
                               </div>
                             ) : (
-                              <div className={`mt-1 font-black text-base ${isCancelled ? 'line-through text-gray-400' : 'text-[#123524]'}`}>
-                                {formatPrice(b.totalPrice)}
+                              <div>
+                                <div className={`mt-1 font-black text-base ${isCancelled ? 'line-through text-gray-400' : 'text-[#123524]'}`}>
+                                  {formatPrice(b.totalPrice)}
+                                </div>
+
+                                {/* 🌟 အကယ်၍ Campaign မဲပေါက်ထားပြီး Booking တွင် Discount မနှုတ်ရသေးပါက 1-Click ဖြင့် တိုက်ရိုက်နှုတ်ပေးနိုင်သော ခလုတ် 🌟 */}
+                                {(() => {
+                                  if (isCancelled || (b.discountPercent && b.discountPercent > 0)) return null;
+                                  const normBPhone = normalizeMyanmarPhone(b.phone || '');
+                                  const submittedDate = b.createdAt
+                                    ? (() => {
+                                        const dt = new Date(b.createdAt);
+                                        return (
+                                          dt.getFullYear() +
+                                          '-' +
+                                          String(dt.getMonth() + 1).padStart(2, '0') +
+                                          '-' +
+                                          String(dt.getDate()).padStart(2, '0')
+                                        );
+                                      })()
+                                    : b.date;
+
+                                  const matchedWin = campaignWinnersList.find((w) => {
+                                    const wPhone = normalizeMyanmarPhone(w.phone || '');
+                                    const wDate = String(w.date || '').substring(0, 10);
+                                    return wPhone === normBPhone && (wDate === submittedDate || wDate === b.date);
+                                  });
+
+                                  if (!matchedWin || !matchedWin.discountPercent) return null;
+
+                                  const usage = isCampaignRewardUsedByCompletedService(
+                                    matchedWin.phone,
+                                    String(matchedWin.date || '').substring(0, 10),
+                                    bookings
+                                  );
+                                  if (usage.isUsed && usage.completedBooking?.id !== b.id) return null;
+
+                                  const svcStr = String(b.service || '').toLowerCase();
+                                  const isOutcall =
+                                    svcStr.includes('outcall') ||
+                                    svcStr.includes('hotel') ||
+                                    svcStr.includes('half day') ||
+                                    svcStr.includes('whole');
+                                  const applyPct = isOutcall
+                                    ? Math.min(10, Number(matchedWin.discountPercent))
+                                    : Number(matchedWin.discountPercent);
+                                  const newPrice = Math.round((Number(b.totalPrice) || 0) * (1 - applyPct / 100));
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (
+                                          !window.confirm(
+                                            `${b.name} (${b.phone}) သည် Campaign မှ ${matchedWin.discountPercent}% OFF ပေါက်ထားပါသည်။\n\nမူရင်း ${formatPrice(b.totalPrice)} မှ ${applyPct}% လျှော့ပြီး ${formatPrice(newPrice)} သို့ ပြောင်းလဲပေးမည် သေချာပါသလား?`
+                                          )
+                                        )
+                                          return;
+                                        const orig = Number(b.totalPrice) || 0;
+                                        await updateDoc(doc(db, 'bookings', b.id!), {
+                                          originalPrice: encryptText(String(orig)),
+                                          discountPercent: encryptText(String(applyPct)),
+                                          discountLabel: encryptText(`Campaign Winner Bonus (${applyPct}% OFF)`),
+                                          totalPrice: newPrice
+                                        });
+                                      }}
+                                      className="mt-1.5 px-2.5 py-1 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-black flex items-center gap-1 shadow-xs animate-pulse"
+                                    >
+                                      <Sparkles className="w-3 h-3" /> 🎁 Apply Campaign {applyPct}% OFF ({formatPrice(newPrice)})
+                                    </button>
+                                  );
+                                })()}
                               </div>
                             )}
 
