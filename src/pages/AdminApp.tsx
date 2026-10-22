@@ -722,6 +722,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
   const [toDate, setToDate] = useState<string>(getLocalTodayStr());
   const [searchQuery, setSearchQuery] = useState('');
 
+  // 🌟 Campaign Winners စာရင်းကို အလိုအလျောက် ဆွဲယူထားမည် 🌟
   const [campaignWinnersList, setCampaignWinnersList] = useState<any[]>([]);
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'campaign_records'), (snap) => {
