@@ -6952,52 +6952,45 @@ function AdminCampaignsView({ bookings = [] }: { bookings?: Booking[] }) {
       .replace(/^9/, '09');
   }, []);
 
-  // 🌟 Enrich each campaign winner record with real-time Usage & Expiration Status 🌟
+  // 🌟 Enrich each campaign winner record (STRICT SAME-DAY VALIDITY RULE) 🌟
   const enrichedRecords = useMemo(() => {
     return records.map((r) => {
       const cleanWinnerPhone = normalizePhone(r.phone);
       const winDate = String(r.date || '').trim();
-      const winCreatedAt = Number(r.createdAt) || 0;
 
-      // Find all non-cancelled bookings by this phone number on or after the win date
-      const matchingBookings = bookings.filter((b: any) => {
+      // မဲပေါက်သည့်ရက် (winDate) အတွင်း တင်ထားသော Booking များကိုသာ တိုက်ဆိုင်စစ်ဆေးမည်
+      const sameDayBookings = bookings.filter((b: any) => {
         if (!b || b.status === 'cancelled') return false;
         const bPhone = normalizePhone(decryptText(b.phone) || b.phone || '');
         if (!cleanWinnerPhone || bPhone !== cleanWinnerPhone) return false;
-        const bDate = String(b.date || '').trim();
-        return bDate >= winDate || (Number(b.createdAt) && Number(b.createdAt) >= winCreatedAt - 3600000);
+        return String(b.date || '').trim() === winDate;
       });
 
-      // 1. Check if Service Completed (Used)
-      const completedBooking = matchingBookings.find((b: any) => {
-        if (b.status !== 'completed') return false;
-        const discPct = Number(b.discountPercent) || 0;
-        const discLbl = String(decryptText(b.discountLabel) || b.discountLabel || '').toLowerCase();
-        return discPct > 0 || discLbl.includes('campaign') || discLbl.includes('promo') || discLbl.includes('သီတင်းကျွတ်') || Boolean((b as any).campaignRecordId);
-      }) || matchingBookings.find((b: any) => b.status === 'completed' && b.date === winDate);
+      // 1. ထိုနေ့အတွင်း Service Complete ဖြစ်သွားသော Booking ရှိ/မရှိ စစ်ဆေးခြင်း
+      const completedBooking = sameDayBookings.find((b: any) => b.status === 'completed');
 
-      // 2. Check if there is an active/upcoming booking (pending / payment_checking / approved / in_progress)
-      const activeBooking = matchingBookings.find(
+      // 2. ထိုနေ့အတွင်း တင်ထားဆဲ Active Booking (Pending / Approved / In Progress)
+      const activeBooking = sameDayBookings.find(
         (b: any) => b.status === 'pending' || b.status === 'payment_checking' || b.status === 'approved' || b.status === 'in_progress'
       );
 
       let usageStatus: 'used' | 'unused_active' | 'expired' = 'unused_active';
 
-      if (Boolean(r.isUsed) && r.status === 'completed') {
+      if ((Boolean(r.isUsed) && r.status === 'completed') || completedBooking) {
+        // ထိုနေ့အတွင်း POS ဘောင်ချာထုတ်ပြီး Service Complete ဖြစ်သွားပါက "သုံးပြီးပြီ (Used)"
         usageStatus = 'used';
-      } else if (completedBooking) {
-        usageStatus = 'used';
-      } else if (winDate < todayStr && !activeBooking) {
-        // ၁ ရက်ကျော်သွားပြီး မသုံးလိုက်ရဘဲ ကုန်ဆုံးသွားခြင်း
+      } else if (winDate < todayStr) {
+        // မဲပေါက်သည့်ရက် (၁ ရက်) ကျော်လွန်သွားပြီး Service Complete မဖြစ်ခဲ့ပါက "တစ်ရက်ကျော်၍ သက်တမ်းကုန် (Expired)"
         usageStatus = 'expired';
       } else {
-        // ယနေ့ရရှိထားပြီး မသုံးရသေး (သို့မဟုတ် Booking တင်ထားပြီး Service Complete မဖြစ်သေး)
+        // ယနေ့ (winDate === todayStr) မဲပေါက်ထားပြီး Service Complete မဖြစ်သေးပါက "မသုံးရသေး (Active)"
         usageStatus = 'unused_active';
       }
 
-      // Check if activeBooking is missing the discount (like Dr. Than Htwe's case!)
       const activeBookingMissingDiscount =
-        activeBooking && (!Number(activeBooking.discountPercent) || Number(activeBooking.discountPercent) < r.discountPercent);
+        usageStatus === 'unused_active' &&
+        activeBooking &&
+        (!Number(activeBooking.discountPercent) || Number(activeBooking.discountPercent) < r.discountPercent);
 
       return {
         ...r,
@@ -7052,7 +7045,7 @@ function AdminCampaignsView({ bookings = [] }: { bookings?: Booking[] }) {
     };
   }, [dateAndSearchFiltered]);
 
-  // 🌟 One-Click Retroactive Discount Fixer (Dr. Than Htwe ကဲ့သို့ Discount မဝင်ဘဲ တင်မိသွားသော Booking အား ချက်ချင်း လျှော့ပေးရန်) 🌟
+  // One-Click Retroactive Discount Fixer
   const handleApplyWinnerDiscountToBooking = async (winnerRecord: any, targetBooking: Booking) => {
     const pct = Number(winnerRecord.discountPercent) || 0;
     if (pct <= 0 || !targetBooking.id) return;
@@ -7386,7 +7379,6 @@ function AdminCampaignsView({ bookings = [] }: { bookings?: Booking[] }) {
                             {r.activeBooking.service} — {formatPrice(r.activeBooking.totalPrice)}
                           </div>
 
-                          {/* 🌟 If Customer submitted booking without the Campaign Discount applied, Admin can fix in 1 click! 🌟 */}
                           {r.activeBookingMissingDiscount ? (
                             <button
                               type="button"
@@ -7407,7 +7399,7 @@ function AdminCampaignsView({ bookings = [] }: { bookings?: Booking[] }) {
                         </div>
                       ) : (
                         <span className="text-[11px] text-gray-400 font-semibold italic">
-                          Booking မတင်ရသေးပါ
+                          ထိုနေ့အတွက် Booking မရှိပါ
                         </span>
                       )}
                     </td>
