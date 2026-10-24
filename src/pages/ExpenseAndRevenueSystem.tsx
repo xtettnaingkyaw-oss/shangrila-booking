@@ -3,7 +3,6 @@ import {
   collection,
   doc,
   onSnapshot,
-  addDoc,
   deleteDoc,
   setDoc,
   getDoc,
@@ -22,6 +21,7 @@ import {
   Wallet,
   TrendingUp,
   PieChart,
+  BarChart2,
   PlusCircle,
   Trash2,
   Download,
@@ -30,6 +30,7 @@ import {
   Banknote,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowRight,
   Save,
   X,
   FileSpreadsheet,
@@ -439,8 +440,8 @@ export function useMonthlyFinancialEngine(
             id: d.id,
             date: dateStr,
             yearMonth: dateStr.substring(0, 7),
-            category: String(raw.category || 'maintenance_other'),
-            title: String(raw.title || ''),
+            category: String(raw.category || raw.categoryId || 'maintenance_other'),
+            title: String(raw.title || raw.itemName || ''),
             amount: Number(raw.amount) || 0,
             paymentMethod: String(raw.paymentMethod || 'Cash'),
             note: String(raw.note || ''),
@@ -799,17 +800,19 @@ export function useMonthlyFinancialEngine(
 }
 
 // ============================================================================
-// 🌟 3. ADMIN EXPENSE MANAGER COMPONENT (WITH DAILY GROUPING & DATE FILTERS) 🌟
+// 🗂️ 3. TAB 1: ADMIN EXPENSE MANAGER (CLEAN ENTRY FORM + DATE-GROUPED HISTORY LIST ONLY)
 // ============================================================================
 
 export function AdminExpenseManager({
   bookings,
   therapists,
-  adminRole
+  adminRole,
+  onOpenReport
 }: {
   bookings: Booking[];
   therapists: TherapistProfile[];
   adminRole: string;
+  onOpenReport?: () => void;
 }) {
   const todayStr = getLocalTodayStr();
   const yesterdayStr = getYesterdayStr();
@@ -819,7 +822,7 @@ export function AdminExpenseManager({
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // 🌟 Date Filter States for Daily Expense Records 🌟
+  // Date Filter States for Daily Expense Records
   const [dateFilterMode, setDateFilterMode] = useState<
     'all' | 'today' | 'yesterday' | 'single_date' | 'custom_range'
   >('all');
@@ -863,27 +866,13 @@ export function AdminExpenseManager({
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editingCatTitle, setEditingCatTitle] = useState<string>('');
   const [editingCatEmoji, setEditingCatEmoji] = useState<string>('');
-
   const [iconPickerTarget, setIconPickerTarget] = useState<'new' | 'edit' | null>(null);
   const [iconSearchQuery, setIconSearchQuery] = useState<string>('');
-
-  // Executive Salaries (CEO & Manager) States
-  const [showSalaryEditor, setShowSalaryEditor] = useState<boolean>(false);
-  const [ceoSalaryInput, setCeoSalaryInput] = useState<string>('0');
-  const [managerSalaryInput, setManagerSalaryInput] = useState<string>('0');
-  const [ceoNameInput, setCeoNameInput] = useState<string>('CEO');
-  const [managerNameInput, setManagerNameInput] = useState<string>('Spa Manager');
-  const [isSavingExecSalary, setIsSavingExecSalary] = useState<boolean>(false);
-  const [showPayrollBreakdownModal, setShowPayrollBreakdownModal] = useState<boolean>(false);
 
   const {
     categories,
     saveCustomCategories,
-    monthExpenses,
-    totalOperationalExpenses,
-    payrollDoc,
-    monthlyCalculations,
-    grandTotalAllOutflow
+    monthExpenses
   } = useMonthlyFinancialEngine(selectedMonth, bookings, therapists);
 
   useEffect(() => {
@@ -891,13 +880,6 @@ export function AdminExpenseManager({
       setExpCategory(categories[0].id);
     }
   }, [categories, expCategory]);
-
-  useEffect(() => {
-    setCeoSalaryInput(String(payrollDoc.ceoSalary || 0));
-    setManagerSalaryInput(String(payrollDoc.managerSalary || 0));
-    setCeoNameInput(payrollDoc.ceoName || 'CEO');
-    setManagerNameInput(payrollDoc.managerName || 'Spa Manager');
-  }, [payrollDoc.ceoSalary, payrollDoc.managerSalary, payrollDoc.ceoName, payrollDoc.managerName]);
 
   const selectedCategoryMeta = useMemo(() => {
     return categories.find((c) => c.id === expCategory) || categories[0] || DEFAULT_EXPENSE_CATEGORIES[0];
@@ -925,10 +907,7 @@ export function AdminExpenseManager({
     );
   }, [iconSearchQuery]);
 
-  // ============================================================================
-  // 🌟 MULTI-SELECT QUICK ITEMS LOGIC 🌟
-  // ============================================================================
-
+  // Multi-Select Quick Items Logic
   const selectedItemsList = useMemo(() => {
     return expTitle
       .split(',')
@@ -960,10 +939,7 @@ export function AdminExpenseManager({
     setExpTitle('');
   };
 
-  // ============================================================================
-  // 🌟 CATEGORY & QUICK ITEMS CRUD FUNCTIONS 🌟
-  // ============================================================================
-
+  // Category & Quick Items CRUD Functions
   const handleAddQuickPresetItem = async () => {
     const clean = newQuickItemText.trim();
     if (!clean || !selectedCategoryMeta) return;
@@ -1047,31 +1023,6 @@ export function AdminExpenseManager({
     await saveCustomCategories(DEFAULT_EXPENSE_CATEGORIES);
   };
 
-  const handleSaveExecutiveSalaries = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingExecSalary(true);
-    try {
-      await setDoc(
-        doc(db, 'settings', `payroll_${selectedMonth}`),
-        {
-          ceoSalary: Math.max(0, Number(ceoSalaryInput) || 0),
-          managerSalary: Math.max(0, Number(managerSalaryInput) || 0),
-          ceoName: ceoNameInput.trim() || 'CEO',
-          managerName: managerNameInput.trim() || 'Spa Manager',
-          updatedAt: Date.now()
-        },
-        { merge: true }
-      );
-      setShowSalaryEditor(false);
-      alert(`✅ ${selectedMonth} အတွက် CEO လစာနှင့် Manager လစာ သတ်မှတ်သိမ်းဆည်းပြီးပါပြီ။`);
-    } catch (err) {
-      alert('လစာ သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
-    } finally {
-      setIsSavingExecSalary(false);
-    }
-  };
-
-  // Save Expense into `settings/expenses_${yearMonth}`
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     const amt = Math.max(0, Number(expAmount) || 0);
@@ -1157,39 +1108,12 @@ export function AdminExpenseManager({
     }
   };
 
-  // Category Breakdown Summary
-  const categoryBreakdownList = useMemo(() => {
-    const map = new Map<string, { total: number; count: number }>();
-    categories.forEach((c) => map.set(c.id, { total: 0, count: 0 }));
-
-    monthExpenses.forEach((e) => {
-      const entry = map.get(e.category) || { total: 0, count: 0 };
-      entry.total += e.amount;
-      entry.count += 1;
-      map.set(e.category, entry);
-    });
-
-    const operationalRows = categories.map((meta) => {
-      const st = map.get(meta.id) || { total: 0, count: 0 };
-      const pct = grandTotalAllOutflow > 0 ? (st.total / grandTotalAllOutflow) * 100 : 0;
-      return {
-        ...meta,
-        total: st.total,
-        count: st.count,
-        pct
-      };
-    });
-
-    return operationalRows.sort((a, b) => b.total - a.total);
-  }, [categories, monthExpenses, grandTotalAllOutflow]);
-
-  // 🌟 Filter Expenses by Date Mode, Category, and Search Query 🌟
+  // Filter Expenses by Date Mode, Category, and Search Query
   const filteredExpenses = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return monthExpenses.filter((e) => {
       const eDate = e.date || todayStr;
 
-      // 1. Date Filter Check
       if (dateFilterMode === 'today' && eDate !== todayStr) return false;
       if (dateFilterMode === 'yesterday' && eDate !== yesterdayStr) return false;
       if (dateFilterMode === 'single_date' && singleDateFilter && eDate !== singleDateFilter) return false;
@@ -1200,10 +1124,8 @@ export function AdminExpenseManager({
         if (end && eDate > end) return false;
       }
 
-      // 2. Category Filter Check
       if (activeCategoryFilter !== 'all' && e.category !== activeCategoryFilter) return false;
 
-      // 3. Search Query Check
       if (q) {
         const catMeta = categories.find((c) => c.id === e.category);
         const match =
@@ -1228,7 +1150,7 @@ export function AdminExpenseManager({
     categories
   ]);
 
-  // 🌟 Group Filtered Expenses by Date (Just like Sale Reports!) 🌟
+  // Group Filtered Expenses by Date
   const groupedExpensesByDate = useMemo(() => {
     const groupsMap = new Map<
       string,
@@ -1288,49 +1210,18 @@ export function AdminExpenseManager({
       ];
     });
 
-    rows.push([
-      `"${selectedMonth}-30"`,
-      `"ဝန်ထမ်းလစာနှင့် ကော်မရှင် (Staff Payroll Auto-Synced)"`,
-      `"Therapists Net Payroll (${monthlyCalculations.therapistPayrollList.length} Staff)"`,
-      `"Payroll Settlement"`,
-      monthlyCalculations.totalTherapistNetPayroll,
-      `"Auto-synced from Staff Pay Roll Tab"`
-    ]);
-
-    if (payrollDoc.ceoSalary > 0) {
-      rows.push([
-        `"${selectedMonth}-30"`,
-        `"Executive Salary"`,
-        `"${payrollDoc.ceoName} Salary"`,
-        `"Payroll"`,
-        payrollDoc.ceoSalary,
-        `"Monthly Executive Salary"`
-      ]);
-    }
-
-    if (payrollDoc.managerSalary > 0) {
-      rows.push([
-        `"${selectedMonth}-30"`,
-        `"Executive Salary"`,
-        `"${payrollDoc.managerName} Salary"`,
-        `"Payroll"`,
-        payrollDoc.managerSalary,
-        `"Monthly Manager Salary"`
-      ]);
-    }
-
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `ShangriLa_Expenses_And_Payroll_${selectedMonth}.csv`;
+    link.download = `ShangriLa_Daily_Expenses_${selectedMonth}.csv`;
     link.click();
   };
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       {/* =========================================================================
-          MODAL 1: CATEGORY & SEARCHABLE ICON MANAGER
+          MODAL: CATEGORY & SEARCHABLE ICON MANAGER
          ========================================================================= */}
       {showCategoryManagerModal && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -1620,7 +1511,946 @@ export function AdminExpenseManager({
       )}
 
       {/* =========================================================================
-          MODAL 2: STAFF PAYROLL & EXECUTIVE SALARY BREAKDOWN
+          1. TOP HEADER BAR WITH QUICK SWITCH TO EXPENSE REPORT DASHBOARD
+         ========================================================================= */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#123524]/10 text-[#123524]">
+              Daily Expense Entry & History
+            </span>
+            <h2 className="text-lg sm:text-xl font-black text-[#123524] flex items-center">
+              <Wallet className="w-5 h-5 mr-2 text-[#D4AF37]" />
+              Expense Manager (အသုံးစရိတ် သွင်းရန် နှင့် ရက်အလိုက် မှတ်တမ်းစာရင်း)
+            </h2>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            နေ့စဉ် အသုံးစရိတ်အသစ်များ အမြန်ထည့်သွင်းရန် နှင့် ရက်စွဲအလိုက် စာရင်းအသေးစိတ် (Detail History) စစ်ဆေးရန်
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-300">
+            <Calendar className="w-4 h-4 text-[#D4AF37]" />
+            <span className="text-[11px] font-bold text-gray-500">လ ရွေးရန်:</span>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setSelectedMonth(e.target.value);
+                  setDateFilterMode('all');
+                }
+              }}
+              className="bg-transparent text-xs font-black text-[#123524] outline-none cursor-pointer"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowCategoryManagerModal(true)}
+            className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition"
+          >
+            <Settings className="w-3.5 h-3.5 text-[#123524]" /> Category & Icon ပြင်ရန်
+          </button>
+
+          {onOpenReport && (
+            <button
+              type="button"
+              onClick={onOpenReport}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] border border-[#D4AF37]/40 text-xs font-black flex items-center gap-1.5 shadow-sm hover:opacity-95 transition"
+            >
+              <BarChart2 className="w-3.5 h-3.5" />
+              <span>Expense Report Dashboard ကြည့်ရန်</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* =========================================================================
+          2. CLEAN FULL-WIDTH ADD NEW EXPENSE FORM
+         ========================================================================= */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+          <div>
+            <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
+              <PlusCircle className="w-4 h-4 mr-2 text-[#D4AF37]" />
+              အသုံးစရိတ်အသစ် ထည့်သွင်းရန် (Add New Expense)
+            </h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              ဘောင်ချာတစ်စောင်တည်းတွင် ပစ္စည်းအများကြီးပါလျှင် တစ်ခုထက်ပိုနှိပ်၍ ပေါင်းထည့်နိုင်ပါသည်
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCategoryManagerModal(true)}
+            className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#123524] border border-amber-200 text-xs font-black flex items-center gap-1.5 transition"
+          >
+            <Settings className="w-3.5 h-3.5 text-[#D4AF37]" />
+            <span>Category / Icon ပြင်ရန်</span>
+          </button>
+        </div>
+
+        <form onSubmit={handleAddExpense} className="space-y-4">
+          {/* Step 1: Custom Luxury Category Dropdown */}
+          <div ref={categoryDropdownRef} className="relative">
+            <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+              ၁။ အသုံးစရိတ် အမျိုးအစား ရွေးချယ်ပါ (Select Category) *
+            </label>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
+                setDropdownSearchQuery('');
+              }}
+              className="w-full p-3 bg-gradient-to-r from-[#0B2419]/5 via-yellow-50/40 to-white border-2 border-[#D4AF37]/60 hover:border-[#123524] rounded-xl flex items-center justify-between transition shadow-2xs"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="w-9 h-9 rounded-xl bg-[#123524] text-[#D4AF37] flex items-center justify-center text-lg shadow-xs flex-shrink-0">
+                  {selectedCategoryMeta?.iconEmoji || '📌'}
+                </span>
+                <div className="text-left min-w-0">
+                  <div className="text-xs sm:text-sm font-black text-[#123524] truncate">
+                    {selectedCategoryMeta?.title}
+                  </div>
+                  <div className="text-[10px] font-semibold text-gray-500 truncate">
+                    အသင့်ရွေးချယ်စရာ {selectedCategoryMeta?.quickPresets.length || 0} မျိုး ပါဝင်သည်
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 pl-2 flex-shrink-0">
+                <span className="text-[10px] font-bold text-[#123524] bg-[#D4AF37]/25 px-2 py-0.5 rounded-md">
+                  ပြောင်းရန်
+                </span>
+                {isCategoryDropdownOpen ? (
+                  <ChevronUp className="w-4 h-4 text-[#123524]" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-[#123524]" />
+                )}
+              </div>
+            </button>
+
+            {isCategoryDropdownOpen && (
+              <div className="absolute left-0 right-0 top-full mt-2 z-50 bg-white rounded-2xl shadow-2xl border-2 border-[#123524]/20 overflow-hidden animate-fade-in">
+                <div className="p-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={dropdownSearchQuery}
+                      onChange={(e) => setDropdownSearchQuery(e.target.value)}
+                      placeholder="Category အမည်ရှာရန်..."
+                      className="w-full pl-8 pr-7 py-1.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                    />
+                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2" />
+                    {dropdownSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setDropdownSearchQuery('')}
+                        className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 p-1.5">
+                  {filteredDropdownCategories.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-gray-400 font-bold">
+                      ရှာဖွေထားသော Category မတွေ့ပါ။
+                    </div>
+                  ) : (
+                    filteredDropdownCategories.map((cat) => {
+                      const isSelected = expCategory === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            setExpCategory(cat.id);
+                            setIsCategoryDropdownOpen(false);
+                          }}
+                          className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-left transition ${
+                            isSelected
+                              ? 'bg-[#123524] text-[#D4AF37] font-black shadow-xs'
+                              : 'hover:bg-yellow-50/70 text-gray-800 font-bold'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0 ${
+                                isSelected ? 'bg-white/15' : 'bg-gray-100'
+                              }`}
+                            >
+                              {cat.iconEmoji}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="text-xs truncate">{cat.title}</div>
+                              <div
+                                className={`text-[10px] truncate ${
+                                  isSelected ? 'text-gray-300 font-medium' : 'text-gray-400 font-medium'
+                                }`}
+                              >
+                                {cat.quickPresets.slice(0, 3).join(' • ') || cat.subTitle}
+                              </div>
+                            </div>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-[#D4AF37] flex-shrink-0" />}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="p-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCategoryDropdownOpen(false);
+                      setShowCategoryManagerModal(true);
+                    }}
+                    className="w-full py-2 px-3 bg-[#123524]/10 hover:bg-[#123524] text-[#123524] hover:text-[#D4AF37] rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>+ Category အသစ်ထည့်ရန် / Icon ပြောင်းရန်</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Step 2: Multiple-Select Quick Preset Chips */}
+          <div className="bg-gray-50/90 p-3.5 rounded-2xl border border-gray-200 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <span className="text-[10px] font-extrabold text-[#123524] uppercase flex items-center gap-1">
+                  <span>{selectedCategoryMeta?.iconEmoji}</span>
+                  <span>အမြန်ရွေးချယ်ရန် (Multiple Select ရသည်):</span>
+                </span>
+                {selectedItemsList.length > 0 && (
+                  <span className="text-[10px] font-bold text-emerald-700 block mt-0.5">
+                    ✓ ရွေးချယ်ထားသော အမျိုးအစား ({selectedItemsList.length}) ခု ပေါင်းထည့်ထားသည်
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1">
+                {selectedCategoryMeta?.quickPresets.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleSelectAllQuickItems}
+                    className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-black transition"
+                  >
+                    အားလုံးရွေးမည်
+                  </button>
+                )}
+                {selectedItemsList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearQuickItems}
+                    className="px-2 py-1 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 text-[10px] font-bold transition"
+                  >
+                    ပြန်ရှင်းမည်
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAddQuickItemInput(!showAddQuickItemInput)}
+                  className="px-2 py-1 rounded-lg bg-[#123524] text-[#D4AF37] text-[10px] font-black flex items-center gap-0.5 hover:bg-[#1a4a32] transition"
+                >
+                  <Plus className="w-3 h-3" /> အသစ်ထည့်
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingQuickItems(!isEditingQuickItems)}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-black border transition ${
+                    isEditingQuickItems
+                      ? 'bg-red-600 text-white border-red-600'
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  {isEditingQuickItems ? '✓ ပြီးပြီ' : 'ဖျက်ရန် / ပြင်ရန်'}
+                </button>
+              </div>
+            </div>
+
+            {showAddQuickItemInput && (
+              <div className="flex gap-1.5 pt-1 animate-fade-in">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newQuickItemText}
+                  onChange={(e) => setNewQuickItemText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddQuickPresetItem();
+                    }
+                  }}
+                  placeholder="အသေးစိတ် ခေါင်းစဉ်အသစ် ရိုက်ထည့်ပါ..."
+                  className="flex-1 p-2 bg-white border border-[#123524] rounded-xl text-xs font-bold text-gray-800 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddQuickPresetItem}
+                  className="px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddQuickItemInput(false);
+                    setNewQuickItemText('');
+                  }}
+                  className="px-2.5 py-2 bg-gray-200 text-gray-600 rounded-xl text-xs font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-1.5">
+              {selectedCategoryMeta?.quickPresets.length === 0 ? (
+                <span className="text-[11px] text-gray-400 font-semibold py-1">
+                  အသင့်ရွေးချယ်စရာ ခေါင်းစဉ်မရှိသေးပါ။ "+ အသစ်ထည့်" ကိုနှိပ်၍ ထည့်နိုင်ပါသည်။
+                </span>
+              ) : (
+                selectedCategoryMeta?.quickPresets.map((preset, idx) => {
+                  const isSelectedChip = selectedItemsList.some(
+                    (item) => item.toLowerCase() === preset.trim().toLowerCase()
+                  );
+                  return (
+                    <div key={idx} className="inline-flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleQuickItem(preset)}
+                        className={`px-2.5 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 ${
+                          isEditingQuickItems ? 'rounded-l-lg' : 'rounded-lg'
+                        } ${
+                          isSelectedChip
+                            ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-2xs'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-[#D4AF37]'
+                        }`}
+                      >
+                        <span>{isSelectedChip ? '✓' : '+'}</span>
+                        <span>{preset}</span>
+                      </button>
+                      {isEditingQuickItems && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveQuickPresetItem(preset)}
+                          className="px-1.5 py-1.5 bg-red-100 hover:bg-red-600 text-red-600 hover:text-white border border-l-0 border-red-200 rounded-r-lg text-[11px] font-black transition"
+                          title="ဖျက်မည်"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Step 3: Form Fields Row */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
+            <div className="md:col-span-5">
+              <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                ၂။ အသုံးစရိတ် အကြောင်းအရာ (Item Name / Multiple Items) *
+              </label>
+              <input
+                type="text"
+                required
+                value={expTitle}
+                onChange={(e) => setExpTitle(e.target.value)}
+                placeholder="အပေါ်မှ ခလုတ်များကို တစ်ခုထက်ပိုနှိပ်ပါ သို့မဟုတ် စာရိုက်ထည့်ပါ..."
+                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+              />
+            </div>
+
+            <div className="md:col-span-3">
+              <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                ၃။ ကုန်ကျငွေ ပမာဏ (Amount - Ks) *
+              </label>
+              <input
+                type="number"
+                required
+                min={1}
+                value={expAmount}
+                onChange={(e) => setExpAmount(e.target.value)}
+                placeholder="ဥပမာ - 215400"
+                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-red-600 outline-none focus:border-red-500"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                ၄။ နေ့ရက် (Date)
+              </label>
+              <input
+                type="date"
+                required
+                value={expDate}
+                onChange={(e) => setExpDate(e.target.value)}
+                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                ၅။ Payment Method
+              </label>
+              <select
+                value={expPaymentMethod}
+                onChange={(e) => setExpPaymentMethod(e.target.value)}
+                className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none"
+              >
+                <option value="Cash">Cash (ငွေသား)</option>
+                <option value="KBZ PAY">KBZ PAY</option>
+                <option value="Wave PAY">Wave PAY</option>
+                <option value="AYA PAY">AYA PAY</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center pt-1">
+            <input
+              type="text"
+              value={expNote}
+              onChange={(e) => setExpNote(e.target.value)}
+              placeholder="မှတ်ချက် (Optional — ဆိုင်အမည် / အရေအတွက် / ဘောင်ချာနံပါတ်)..."
+              className="flex-1 p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 outline-none"
+            />
+            <button
+              type="submit"
+              disabled={isSavingExpense}
+              className="px-6 py-3 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-wider shadow-md hover:opacity-95 transition flex items-center justify-center gap-2 disabled:opacity-50 whitespace-nowrap"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>{isSavingExpense ? 'သိမ်းဆည်းနေပါသည်...' : 'အသုံးစရိတ် သိမ်းဆည်းမည် (Save Expense)'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* =========================================================================
+          3. DATE-GROUPED DAILY EXPENSE RECORDS (HISTORY DETAIL LIST)
+         ========================================================================= */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-gray-100 pb-4">
+          <div>
+            <h3 className="text-base sm:text-lg font-black text-[#123524] flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-[#D4AF37]" />
+              <span>နေ့စဉ် အသုံးစရိတ် မှတ်တမ်းစာရင်း ({selectedMonth})</span>
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              ရက်စွဲတစ်ရက်ချင်းစီအလိုက် တစ်ရက်စာ စုစုပေါင်းအသုံးစရိတ် (Daily Expense Total) နှင့် မှတ်တမ်းအသေးစိတ်
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 self-end sm:self-center">
+            <button
+              type="button"
+              onClick={handleExportExpensesExcel}
+              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs"
+            >
+              <Download className="w-3.5 h-3.5" /> Export Excel
+            </button>
+
+            <div className="bg-red-50 border border-red-200 px-4 py-1.5 rounded-xl text-right">
+              <span className="text-[10px] font-extrabold text-red-800 uppercase block">
+                ပြသထားသော အသုံးစရိတ် ({filteredExpenses.length} ကြိမ်)
+              </span>
+              <span className="text-sm sm:text-base font-black text-red-600">
+                -{formatPrice(filteredExpenses.reduce((s, e) => s + e.amount, 0))}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Date Filter Bar */}
+        <div className="flex flex-col gap-3 bg-gray-50/80 p-3.5 rounded-2xl border border-gray-200/90">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setDateFilterMode('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  dateFilterMode === 'all'
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                ရက်အားလုံး ({monthExpenses.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const todayYm = todayStr.substring(0, 7);
+                  if (selectedMonth !== todayYm) setSelectedMonth(todayYm);
+                  setDateFilterMode('today');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  dateFilterMode === 'today'
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                ယနေ့ (Today)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const yestYm = yesterdayStr.substring(0, 7);
+                  if (selectedMonth !== yestYm) setSelectedMonth(yestYm);
+                  setDateFilterMode('yesterday');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  dateFilterMode === 'yesterday'
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                မနေ့က (Yesterday)
+              </button>
+
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
+                  dateFilterMode === 'single_date'
+                    ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
+                    : 'bg-gray-50 text-gray-700 border-gray-200'
+                }`}
+              >
+                <span className="text-[10px] font-bold opacity-80">ရက်စွဲရွေးရန်:</span>
+                <input
+                  type="date"
+                  value={singleDateFilter}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) return;
+                    setSingleDateFilter(val);
+                    if (val.substring(0, 7) !== selectedMonth) {
+                      setSelectedMonth(val.substring(0, 7));
+                    }
+                    setDateFilterMode('single_date');
+                  }}
+                  className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                    dateFilterMode === 'single_date' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                  }`}
+                />
+              </div>
+            </div>
+
+            <div
+              className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border transition shadow-2xs ${
+                dateFilterMode === 'custom_range'
+                  ? 'bg-[#123524] text-[#D4AF37] border-[#D4AF37]'
+                  : 'bg-white text-gray-700 border-gray-200'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
+              <div className="flex items-center gap-1.5 text-xs font-bold">
+                <span
+                  className={`text-[10px] uppercase ${
+                    dateFilterMode === 'custom_range' ? 'text-gray-300' : 'text-gray-400'
+                  }`}
+                >
+                  From:
+                </span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFromDate(val);
+                    if (toDate && val > toDate) setToDate(val);
+                    setDateFilterMode('custom_range');
+                  }}
+                  className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                    dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                  }`}
+                />
+              </div>
+
+              <span
+                className={`text-xs font-black ${
+                  dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-gray-400'
+                }`}
+              >
+                ➔
+              </span>
+
+              <div className="flex items-center gap-1.5 text-xs font-bold">
+                <span
+                  className={`text-[10px] uppercase ${
+                    dateFilterMode === 'custom_range' ? 'text-gray-300' : 'text-gray-400'
+                  }`}
+                >
+                  To:
+                </span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setToDate(val);
+                    if (fromDate && val < fromDate) setFromDate(val);
+                    setDateFilterMode('custom_range');
+                  }}
+                  className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
+                    dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
+                  }`}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 pt-2 border-t border-gray-200/60">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-gray-500">Category စစ်ရန်:</span>
+              <select
+                value={activeCategoryFilter}
+                onChange={(e) => setActiveCategoryFilter(e.target.value)}
+                className="p-2 bg-white border border-gray-300 rounded-xl text-xs font-bold text-[#123524] outline-none shadow-2xs"
+              >
+                <option value="all">Category အားလုံး ({monthExpenses.length})</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.iconEmoji} {c.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative w-full sm:w-72">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ပစ္စည်းအမည် / မှတ်ချက် / Payment ရှာရန်..."
+                className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#D4AF37] shadow-2xs"
+              />
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Date-Grouped Daily Expense Cards */}
+        {groupedExpensesByDate.length === 0 ? (
+          <div className="p-12 text-center text-gray-400 font-bold border border-dashed border-gray-200 rounded-2xl space-y-2">
+            <div>ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် အသုံးစရိတ်မှတ်တမ်း မရှိပါ။</div>
+            {(dateFilterMode !== 'all' || activeCategoryFilter !== 'all' || searchQuery) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDateFilterMode('all');
+                  setActiveCategoryFilter('all');
+                  setSearchQuery('');
+                }}
+                className="text-xs font-black text-[#123524] underline"
+              >
+                ရက်အားလုံး ပြန်ကြည့်မည် (Show All Records)
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {groupedExpensesByDate.map((group) => (
+              <div
+                key={group.date}
+                className="rounded-2xl border border-gray-200 shadow-xs overflow-hidden bg-white"
+              >
+                <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 sm:px-5 py-3.5 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] shadow-inner">
+                      <Calendar className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-extrabold text-xs sm:text-sm text-[#D4AF37] tracking-wide">
+                        {formatReadableDateHeader(group.date)}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-200 font-semibold mt-0.5">
+                        <span>
+                          အသုံးစရိတ် အရေအတွက်: <strong>{group.records.length} ကြိမ်</strong>
+                        </span>
+                        <span>•</span>
+                        <span>
+                          Cash: <strong>{formatPrice(group.dailyCashTotal)}</strong>
+                        </span>
+                        <span>•</span>
+                        <span>
+                          Online Pay: <strong>{formatPrice(group.dailyDigitalTotal)}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 px-4 py-2 rounded-xl border border-[#D4AF37]/40 text-right ml-auto">
+                    <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wider block">
+                      Daily Expense Total (တစ်ရက်စာ စုစုပေါင်း ကုန်ကျငွေ)
+                    </span>
+                    <span className="text-base sm:text-lg font-black text-[#D4AF37]">
+                      -{formatPrice(group.dailyTotalAmount)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[820px]">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
+                        <th className="p-3.5">နေ့ရက် (Date)</th>
+                        <th className="p-3.5">အမျိုးအစား (Category)</th>
+                        <th className="p-3.5">အသုံးစရိတ် အကြောင်းအရာ (Description)</th>
+                        <th className="p-3.5">Payment Method</th>
+                        <th className="p-3.5 text-right">ကုန်ကျငွေ (Amount)</th>
+                        <th className="p-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-xs">
+                      {group.records.map((exp) => {
+                        const catMeta = categories.find((c) => c.id === exp.category);
+                        return (
+                          <tr key={exp.id} className="hover:bg-gray-50/80 transition">
+                            <td className="p-3.5 font-mono font-bold text-gray-700 whitespace-nowrap">
+                              {exp.date}
+                            </td>
+                            <td className="p-3.5">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black border ${
+                                  catMeta?.badgeColor || 'bg-gray-100 text-gray-700 border-gray-200'
+                                }`}
+                              >
+                                <span>{catMeta?.iconEmoji || '📌'}</span>
+                                <span>{catMeta?.title || exp.category}</span>
+                              </span>
+                            </td>
+                            <td className="p-3.5 max-w-md">
+                              <div className="font-bold text-gray-800 text-sm leading-snug">{exp.title}</div>
+                              {exp.note && (
+                                <div className="text-[11px] text-gray-500 mt-0.5 font-medium">
+                                  မှတ်ချက်: {exp.note}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3.5">
+                              <span className="bg-gray-100 text-gray-700 border border-gray-200 px-2.5 py-1 rounded-md font-bold text-[11px]">
+                                {exp.paymentMethod}
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-right font-black text-sm text-red-600 whitespace-nowrap">
+                              -{formatPrice(exp.amount)}
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <button
+                                type="button"
+                                disabled={adminRole !== 'super_admin'}
+                                onClick={() => handleDeleteExpense(exp)}
+                                className={`p-1.5 rounded-lg transition ${
+                                  adminRole === 'super_admin'
+                                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                    : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                }`}
+                                title="Delete Expense"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 📊 4. TAB 2: ADMIN EXPENSE REPORT DASHBOARD (SEPARATED OVERALL ANALYTICS & PAYROLL REPORT)
+// ============================================================================
+
+export function AdminExpenseReportDashboard({
+  bookings,
+  therapists,
+  adminRole,
+  onOpenEntry
+}: {
+  bookings: Booking[];
+  therapists: TherapistProfile[];
+  adminRole: string;
+  onOpenEntry?: () => void;
+}) {
+  const todayStr = getLocalTodayStr();
+  const currentYearMonth = todayStr.substring(0, 7);
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
+
+  // Executive Salaries (CEO & Manager) States
+  const [showSalaryEditor, setShowSalaryEditor] = useState<boolean>(false);
+  const [ceoSalaryInput, setCeoSalaryInput] = useState<string>('0');
+  const [managerSalaryInput, setManagerSalaryInput] = useState<string>('0');
+  const [ceoNameInput, setCeoNameInput] = useState<string>('CEO');
+  const [managerNameInput, setManagerNameInput] = useState<string>('Spa Manager');
+  const [isSavingExecSalary, setIsSavingExecSalary] = useState<boolean>(false);
+  const [showPayrollBreakdownModal, setShowPayrollBreakdownModal] = useState<boolean>(false);
+
+  const {
+    categories,
+    monthExpenses,
+    totalOperationalExpenses,
+    payrollDoc,
+    monthlyCalculations,
+    grandTotalAllOutflow
+  } = useMonthlyFinancialEngine(selectedMonth, bookings, therapists);
+
+  useEffect(() => {
+    setCeoSalaryInput(String(payrollDoc.ceoSalary || 0));
+    setManagerSalaryInput(String(payrollDoc.managerSalary || 0));
+    setCeoNameInput(payrollDoc.ceoName || 'CEO');
+    setManagerNameInput(payrollDoc.managerName || 'Spa Manager');
+  }, [payrollDoc.ceoSalary, payrollDoc.managerSalary, payrollDoc.ceoName, payrollDoc.managerName]);
+
+  const handleSaveExecutiveSalaries = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingExecSalary(true);
+    try {
+      await setDoc(
+        doc(db, 'settings', `payroll_${selectedMonth}`),
+        {
+          ceoSalary: Math.max(0, Number(ceoSalaryInput) || 0),
+          managerSalary: Math.max(0, Number(managerSalaryInput) || 0),
+          ceoName: ceoNameInput.trim() || 'CEO',
+          managerName: managerNameInput.trim() || 'Spa Manager',
+          updatedAt: Date.now()
+        },
+        { merge: true }
+      );
+      setShowSalaryEditor(false);
+      alert(`✅ ${selectedMonth} အတွက် CEO လစာနှင့် Manager လစာ သတ်မှတ်သိမ်းဆည်းပြီးပါပြီ။`);
+    } catch (err) {
+      alert('လစာ သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    } finally {
+      setIsSavingExecSalary(false);
+    }
+  };
+
+  // Category Breakdown Summary
+  const categoryBreakdownList = useMemo(() => {
+    const map = new Map<string, { total: number; count: number }>();
+    categories.forEach((c) => map.set(c.id, { total: 0, count: 0 }));
+
+    monthExpenses.forEach((e) => {
+      const entry = map.get(e.category) || { total: 0, count: 0 };
+      entry.total += e.amount;
+      entry.count += 1;
+      map.set(e.category, entry);
+    });
+
+    const operationalRows = categories.map((meta) => {
+      const st = map.get(meta.id) || { total: 0, count: 0 };
+      const pct = grandTotalAllOutflow > 0 ? (st.total / grandTotalAllOutflow) * 100 : 0;
+      return {
+        ...meta,
+        total: st.total,
+        count: st.count,
+        pct
+      };
+    });
+
+    return operationalRows.sort((a, b) => b.total - a.total);
+  }, [categories, monthExpenses, grandTotalAllOutflow]);
+
+  const drilldownExpenses = useMemo(() => {
+    if (activeCategoryFilter === 'all') return monthExpenses;
+    return monthExpenses.filter((e) => e.category === activeCategoryFilter);
+  }, [monthExpenses, activeCategoryFilter]);
+
+  const handleExportReportExcel = () => {
+    const headers = [
+      'Date',
+      'Category',
+      'Expense Item / Description',
+      'Payment Method',
+      'Amount (Ks)',
+      'Remark / Note'
+    ];
+
+    const rows: any[] = drilldownExpenses.map((e) => {
+      const catMeta = categories.find((c) => c.id === e.category);
+      return [
+        `"${e.date}"`,
+        `"${catMeta?.title || e.category}"`,
+        `"${e.title}"`,
+        `"${e.paymentMethod}"`,
+        e.amount,
+        `"${e.note || '-'}"`
+      ];
+    });
+
+    rows.push([
+      `"${selectedMonth}-30"`,
+      `"ဝန်ထမ်းလစာနှင့် ကော်မရှင် (Staff Payroll Auto-Synced)"`,
+      `"Therapists Net Payroll (${monthlyCalculations.therapistPayrollList.length} Staff)"`,
+      `"Payroll Settlement"`,
+      monthlyCalculations.totalTherapistNetPayroll,
+      `"Auto-synced from Staff Pay Roll Tab"`
+    ]);
+
+    if (payrollDoc.ceoSalary > 0) {
+      rows.push([
+        `"${selectedMonth}-30"`,
+        `"Executive Salary"`,
+        `"${payrollDoc.ceoName} Salary"`,
+        `"Payroll"`,
+        payrollDoc.ceoSalary,
+        `"Monthly Executive Salary"`
+      ]);
+    }
+
+    if (payrollDoc.managerSalary > 0) {
+      rows.push([
+        `"${selectedMonth}-30"`,
+        `"Executive Salary"`,
+        `"${payrollDoc.managerName} Salary"`,
+        `"Payroll"`,
+        payrollDoc.managerSalary,
+        `"Monthly Manager Salary"`
+      ]);
+    }
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `ShangriLa_Expense_Report_${selectedMonth}.csv`;
+    link.click();
+  };
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* =========================================================================
+          MODAL: STAFF PAYROLL & EXECUTIVE SALARY BREAKDOWN
          ========================================================================= */}
       {showPayrollBreakdownModal && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -1725,15 +2555,15 @@ export function AdminExpenseManager({
           <div>
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#123524]/10 text-[#123524]">
-                Shop Expense & Payroll Tracker
+                Category & Payroll Analytics
               </span>
               <h2 className="text-lg sm:text-xl font-black text-[#123524] flex items-center">
-                <Wallet className="w-5 h-5 mr-2 text-[#D4AF37]" />
-                Expense Manager (နေ့စဉ်နှင့် လစဉ် အသုံးစရိတ် စီမံခန့်ခွဲမှု)
+                <BarChart2 className="w-5 h-5 mr-2 text-[#D4AF37]" />
+                Overall Expense Report Dashboard ({selectedMonth})
               </h2>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              ဆိုင်အသုံးစရိတ်များ၊ ဝန်ထမ်းလစာ (Staff Payroll)၊ CEO လစာ နှင့် Manager လစာများကို Category အလိုက် စိတ်ကြိုက် ပြင်ဆင်မှတ်သားနိုင်ပါသည်
+              Category အလိုက် ကုန်ကျစရိတ် ရာခိုင်နှုန်း၊ ဝန်ထမ်းလစာ (Staff Payroll)၊ CEO လစာ နှင့် Manager လစာ စာရင်းချုပ်
             </p>
           </div>
 
@@ -1745,10 +2575,7 @@ export function AdminExpenseManager({
                 type="month"
                 value={selectedMonth}
                 onChange={(e) => {
-                  if (e.target.value) {
-                    setSelectedMonth(e.target.value);
-                    setDateFilterMode('all');
-                  }
+                  if (e.target.value) setSelectedMonth(e.target.value);
                 }}
                 className="bg-transparent text-xs font-black text-[#123524] outline-none cursor-pointer"
               />
@@ -1756,19 +2583,22 @@ export function AdminExpenseManager({
 
             <button
               type="button"
-              onClick={() => setShowCategoryManagerModal(true)}
-              className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition"
-            >
-              <Settings className="w-3.5 h-3.5 text-[#123524]" /> Category & Icon ပြင်ရန်
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExportExpensesExcel}
+              onClick={handleExportReportExcel}
               className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-2xs"
             >
               <Download className="w-3.5 h-3.5" /> Export Excel
             </button>
+
+            {onOpenEntry && (
+              <button
+                type="button"
+                onClick={onOpenEntry}
+                className="px-4 py-2 rounded-xl bg-[#123524] text-[#D4AF37] text-xs font-black flex items-center gap-1.5 shadow-sm hover:bg-[#1a4a32] transition"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>+ အသုံးစရိတ်အသစ် သွင်းရန်</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1939,833 +2769,172 @@ export function AdminExpenseManager({
       </div>
 
       {/* =========================================================================
-          2. ADD NEW EXPENSE FORM & CATEGORY BREAKDOWN
+          2. CATEGORY-BY-CATEGORY BREAKDOWN WITH VISUAL PROGRESS BARS
          ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 5 Cols: Add Expense Form */}
-        <div className="lg:col-span-5 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-            <div>
-              <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
-                <PlusCircle className="w-4 h-4 mr-2 text-[#D4AF37]" />
-                အသုံးစရိတ်အသစ် ထည့်သွင်းရန်
-              </h3>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                ဘောင်ချာတစ်စောင်တည်းတွင် ပစ္စည်းအများကြီးပါလျှင် တစ်ခုထက်ပိုနှိပ်၍ ပေါင်းထည့်နိုင်ပါသည်
-              </p>
-            </div>
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+          <div>
+            <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
+              <PieChart className="w-4 h-4 mr-2 text-[#D4AF37]" />
+              Category အလိုက် ကုန်ကျစရိတ် စာရင်းချုပ် ({selectedMonth})
+            </h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Category တစ်ခုချင်းစီကို နှိပ်၍ အောက်ပါစာရင်းဇယားတွင် သီးသန့် စစ်ကြည့်နိုင်ပါသည်
+            </p>
+          </div>
+          {activeCategoryFilter !== 'all' && (
             <button
               type="button"
-              onClick={() => setShowCategoryManagerModal(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#123524] border border-amber-200 text-[11px] font-black flex items-center gap-1 transition"
+              onClick={() => setActiveCategoryFilter('all')}
+              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-black"
             >
-              <Settings className="w-3.5 h-3.5 text-[#D4AF37]" />
-              <span>Category / Icon ပြင်ရန်</span>
+              Category အားလုံး ပြန်ပြမည်
             </button>
-          </div>
-
-          <form onSubmit={handleAddExpense} className="space-y-4">
-            <div ref={categoryDropdownRef} className="relative">
-              <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
-                ၁။ အသုံးစရိတ် အမျိုးအစား ရွေးချယ်ပါ (Select Category) *
-              </label>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
-                  setDropdownSearchQuery('');
-                }}
-                className="w-full p-3 bg-gradient-to-r from-[#0B2419]/5 via-yellow-50/40 to-white border-2 border-[#D4AF37]/60 hover:border-[#123524] rounded-xl flex items-center justify-between transition shadow-2xs"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="w-9 h-9 rounded-xl bg-[#123524] text-[#D4AF37] flex items-center justify-center text-lg shadow-xs flex-shrink-0">
-                    {selectedCategoryMeta?.iconEmoji || '📌'}
-                  </span>
-                  <div className="text-left min-w-0">
-                    <div className="text-xs sm:text-sm font-black text-[#123524] truncate">
-                      {selectedCategoryMeta?.title}
-                    </div>
-                    <div className="text-[10px] font-semibold text-gray-500 truncate">
-                      အသင့်ရွေးချယ်စရာ {selectedCategoryMeta?.quickPresets.length || 0} မျိုး ပါဝင်သည်
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 pl-2 flex-shrink-0">
-                  <span className="text-[10px] font-bold text-[#123524] bg-[#D4AF37]/25 px-2 py-0.5 rounded-md">
-                    ပြောင်းရန်
-                  </span>
-                  {isCategoryDropdownOpen ? (
-                    <ChevronUp className="w-4 h-4 text-[#123524]" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-[#123524]" />
-                  )}
-                </div>
-              </button>
-
-              {isCategoryDropdownOpen && (
-                <div className="absolute left-0 right-0 top-full mt-2 z-50 bg-white rounded-2xl shadow-2xl border-2 border-[#123524]/20 overflow-hidden animate-fade-in">
-                  <div className="p-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={dropdownSearchQuery}
-                        onChange={(e) => setDropdownSearchQuery(e.target.value)}
-                        placeholder="Category အမည်ရှာရန်..."
-                        className="w-full pl-8 pr-7 py-1.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
-                      />
-                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2" />
-                      {dropdownSearchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => setDropdownSearchQuery('')}
-                          className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 p-1.5">
-                    {filteredDropdownCategories.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-gray-400 font-bold">
-                        ရှာဖွေထားသော Category မတွေ့ပါ။
-                      </div>
-                    ) : (
-                      filteredDropdownCategories.map((cat) => {
-                        const isSelected = expCategory === cat.id;
-                        return (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => {
-                              setExpCategory(cat.id);
-                              setIsCategoryDropdownOpen(false);
-                            }}
-                            className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 text-left transition ${
-                              isSelected
-                                ? 'bg-[#123524] text-[#D4AF37] font-black shadow-xs'
-                                : 'hover:bg-yellow-50/70 text-gray-800 font-bold'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0 ${
-                                  isSelected ? 'bg-white/15' : 'bg-gray-100'
-                                }`}
-                              >
-                                {cat.iconEmoji}
-                              </span>
-                              <div className="min-w-0">
-                                <div className="text-xs truncate">{cat.title}</div>
-                                <div
-                                  className={`text-[10px] truncate ${
-                                    isSelected ? 'text-gray-300 font-medium' : 'text-gray-400 font-medium'
-                                  }`}
-                                >
-                                  {cat.quickPresets.slice(0, 3).join(' • ') || cat.subTitle}
-                                </div>
-                              </div>
-                            </div>
-                            {isSelected && <Check className="w-4 h-4 text-[#D4AF37] flex-shrink-0" />}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  <div className="p-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCategoryDropdownOpen(false);
-                        setShowCategoryManagerModal(true);
-                      }}
-                      className="w-full py-2 px-3 bg-[#123524]/10 hover:bg-[#123524] text-[#123524] hover:text-[#D4AF37] rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition"
-                    >
-                      <Settings className="w-3.5 h-3.5" />
-                      <span>+ Category အသစ်ထည့်ရန် / Icon ပြောင်းရန်</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-gray-50/90 p-3.5 rounded-2xl border border-gray-200 space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <span className="text-[10px] font-extrabold text-[#123524] uppercase flex items-center gap-1">
-                    <span>{selectedCategoryMeta?.iconEmoji}</span>
-                    <span>အမြန်ရွေးချယ်ရန် (Multiple Select ရသည်):</span>
-                  </span>
-                  {selectedItemsList.length > 0 && (
-                    <span className="text-[10px] font-bold text-emerald-700 block mt-0.5">
-                      ✓ ရွေးချယ်ထားသော အမျိုးအစား ({selectedItemsList.length}) ခု ပေါင်းထည့်ထားသည်
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1">
-                  {selectedCategoryMeta?.quickPresets.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={handleSelectAllQuickItems}
-                      className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-black transition"
-                    >
-                      အားလုံးရွေးမည်
-                    </button>
-                  )}
-                  {selectedItemsList.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleClearQuickItems}
-                      className="px-2 py-1 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 text-[10px] font-bold transition"
-                    >
-                      ပြန်ရှင်းမည်
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowAddQuickItemInput(!showAddQuickItemInput)}
-                    className="px-2 py-1 rounded-lg bg-[#123524] text-[#D4AF37] text-[10px] font-black flex items-center gap-0.5 hover:bg-[#1a4a32] transition"
-                  >
-                    <Plus className="w-3 h-3" /> အသစ်ထည့်
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingQuickItems(!isEditingQuickItems)}
-                    className={`px-2 py-1 rounded-lg text-[10px] font-black border transition ${
-                      isEditingQuickItems
-                        ? 'bg-red-600 text-white border-red-600'
-                        : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
-                    }`}
-                  >
-                    {isEditingQuickItems ? '✓ ပြီးပြီ' : 'ဖျက်ရန် / ပြင်ရန်'}
-                  </button>
-                </div>
-              </div>
-
-              {showAddQuickItemInput && (
-                <div className="flex gap-1.5 pt-1 animate-fade-in">
-                  <input
-                    type="text"
-                    autoFocus
-                    value={newQuickItemText}
-                    onChange={(e) => setNewQuickItemText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddQuickPresetItem();
-                      }
-                    }}
-                    placeholder="အသေးစိတ် ခေါင်းစဉ်အသစ် ရိုက်ထည့်ပါ..."
-                    className="flex-1 p-2 bg-white border border-[#123524] rounded-xl text-xs font-bold text-gray-800 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddQuickPresetItem}
-                    className="px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddQuickItemInput(false);
-                      setNewQuickItemText('');
-                    }}
-                    className="px-2.5 py-2 bg-gray-200 text-gray-600 rounded-xl text-xs font-bold"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-1.5">
-                {selectedCategoryMeta?.quickPresets.length === 0 ? (
-                  <span className="text-[11px] text-gray-400 font-semibold py-1">
-                    အသင့်ရွေးချယ်စရာ ခေါင်းစဉ်မရှိသေးပါ။ "+ အသစ်ထည့်" ကိုနှိပ်၍ ထည့်နိုင်ပါသည်။
-                  </span>
-                ) : (
-                  selectedCategoryMeta?.quickPresets.map((preset, idx) => {
-                    const isSelectedChip = selectedItemsList.some(
-                      (item) => item.toLowerCase() === preset.trim().toLowerCase()
-                    );
-                    return (
-                      <div key={idx} className="inline-flex items-center">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleQuickItem(preset)}
-                          className={`px-2.5 py-1.5 text-[11px] font-bold border transition flex items-center gap-1 ${
-                            isEditingQuickItems ? 'rounded-l-lg' : 'rounded-lg'
-                          } ${
-                            isSelectedChip
-                              ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-2xs'
-                              : 'bg-white text-gray-700 border-gray-200 hover:border-[#D4AF37]'
-                          }`}
-                        >
-                          <span>{isSelectedChip ? '✓' : '+'}</span>
-                          <span>{preset}</span>
-                        </button>
-                        {isEditingQuickItems && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveQuickPresetItem(preset)}
-                            className="px-1.5 py-1.5 bg-red-100 hover:bg-red-600 text-red-600 hover:text-white border border-l-0 border-red-200 rounded-r-lg text-[11px] font-black transition"
-                            title="ဖျက်မည်"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-              <div className="sm:col-span-7">
-                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  ၂။ အသုံးစရိတ် အကြောင်းအရာ (Item Name / Multiple Items) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={expTitle}
-                  onChange={(e) => setExpTitle(e.target.value)}
-                  placeholder="အပေါ်မှ ခလုတ်များကို တစ်ခုထက်ပိုနှိပ်ပါ သို့မဟုတ် စာရိုက်ထည့်ပါ..."
-                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
-                />
-              </div>
-
-              <div className="sm:col-span-5">
-                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  ၃။ ကုန်ကျငွေ ပမာဏ (Amount - Ks) *
-                </label>
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  value={expAmount}
-                  onChange={(e) => setExpAmount(e.target.value)}
-                  placeholder="ဥပမာ - 215400"
-                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-red-600 outline-none focus:border-red-500"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-              <div className="sm:col-span-4">
-                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  နေ့ရက် (Date)
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={expDate}
-                  onChange={(e) => setExpDate(e.target.value)}
-                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none"
-                />
-              </div>
-
-              <div className="sm:col-span-4">
-                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  Payment Method
-                </label>
-                <select
-                  value={expPaymentMethod}
-                  onChange={(e) => setExpPaymentMethod(e.target.value)}
-                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none"
-                >
-                  <option value="Cash">Cash (ငွေသား)</option>
-                  <option value="KBZ PAY">KBZ PAY</option>
-                  <option value="Wave PAY">Wave PAY</option>
-                  <option value="AYA PAY">AYA PAY</option>
-                  <option value="Bank Transfer">Bank Transfer</option>
-                </select>
-              </div>
-
-              <div className="sm:col-span-4">
-                <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
-                  မှတ်ချက် (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={expNote}
-                  onChange={(e) => setExpNote(e.target.value)}
-                  placeholder="ဆိုင်အမည် / အရေအတွက်..."
-                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 outline-none"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSavingExpense}
-              className="w-full py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-wider shadow-md hover:opacity-95 transition flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>{isSavingExpense ? 'သိမ်းဆည်းနေပါသည်...' : 'အသုံးစရိတ် သိမ်းဆည်းမည် (Save Expense)'}</span>
-            </button>
-          </form>
+          )}
         </div>
 
-        {/* Right 7 Cols: Category-by-Category Breakdown with Visual Progress Bars */}
-        <div className="lg:col-span-7 bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
-            <div>
-              <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center">
-                <PieChart className="w-4 h-4 mr-2 text-[#D4AF37]" />
-                Category အလိုက် ကုန်ကျစရိတ် စာရင်းချုပ် ({selectedMonth})
-              </h3>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                Category တစ်ခုချင်းစီကို နှိပ်၍ အောက်ပါစာရင်းဇယားတွင် သီးသန့် စစ်ကြည့်နိုင်ပါသည်
-              </p>
+        <div className="space-y-2.5">
+          {/* Auto-Synced Payroll Bar */}
+          <div
+            onClick={() => setShowPayrollBreakdownModal(true)}
+            className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-300 cursor-pointer hover:shadow-xs transition"
+          >
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="font-black text-[#123524] flex items-center gap-1.5">
+                <span>💼</span>
+                <span>ဝန်ထမ်းလစာ + CEO + Manager လစာ (Payroll Auto-Synced)</span>
+              </div>
+              <div className="text-right whitespace-nowrap">
+                <span className="font-black text-sm text-[#123524]">
+                  {formatPrice(monthlyCalculations.totalCombinedPayroll)}
+                </span>
+                <span className="text-[10px] font-bold text-amber-800 ml-1.5">
+                  (
+                  {grandTotalAllOutflow > 0
+                    ? ((monthlyCalculations.totalCombinedPayroll / grandTotalAllOutflow) * 100).toFixed(1)
+                    : '0.0'}
+                  %)
+                </span>
+              </div>
             </div>
-            {activeCategoryFilter !== 'all' && (
-              <button
-                type="button"
-                onClick={() => setActiveCategoryFilter('all')}
-                className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-black"
+            <div className="w-full h-2 bg-amber-200/60 rounded-full overflow-hidden mt-2">
+              <div
+                className="h-full bg-[#123524] rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    grandTotalAllOutflow > 0
+                      ? (monthlyCalculations.totalCombinedPayroll / grandTotalAllOutflow) * 100
+                      : 0
+                  )}%`
+                }}
+              />
+            </div>
+          </div>
+
+          {categoryBreakdownList.map((cat) => {
+            const isSelected = activeCategoryFilter === cat.id;
+            return (
+              <div
+                key={cat.id}
+                onClick={() => setActiveCategoryFilter(isSelected ? 'all' : cat.id)}
+                className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                  isSelected
+                    ? 'bg-yellow-50 border-[#123524] ring-1 ring-[#123524]'
+                    : 'bg-gray-50/70 border-gray-200 hover:bg-gray-100/70'
+                }`}
               >
-                အားလုံး ပြန်ကြည့်မည်
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
-            <div
-              onClick={() => setShowPayrollBreakdownModal(true)}
-              className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-300 cursor-pointer hover:shadow-xs transition"
-            >
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <div className="font-black text-[#123524] flex items-center gap-1.5">
-                  <span>💼</span>
-                  <span>ဝန်ထမ်းလစာ + CEO + Manager လစာ (Payroll Auto-Synced)</span>
-                </div>
-                <div className="text-right whitespace-nowrap">
-                  <span className="font-black text-sm text-[#123524]">
-                    {formatPrice(monthlyCalculations.totalCombinedPayroll)}
-                  </span>
-                  <span className="text-[10px] font-bold text-amber-800 ml-1.5">
-                    (
-                    {grandTotalAllOutflow > 0
-                      ? ((monthlyCalculations.totalCombinedPayroll / grandTotalAllOutflow) * 100).toFixed(1)
-                      : '0.0'}
-                    %)
-                  </span>
-                </div>
-              </div>
-              <div className="w-full h-2 bg-amber-200/60 rounded-full overflow-hidden mt-2">
-                <div
-                  className="h-full bg-[#123524] rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      grandTotalAllOutflow > 0
-                        ? (monthlyCalculations.totalCombinedPayroll / grandTotalAllOutflow) * 100
-                        : 0
-                    )}%`
-                  }}
-                />
-              </div>
-            </div>
-
-            {categoryBreakdownList.map((cat) => {
-              const isSelected = activeCategoryFilter === cat.id;
-              return (
-                <div
-                  key={cat.id}
-                  onClick={() => setActiveCategoryFilter(isSelected ? 'all' : cat.id)}
-                  className={`p-3.5 rounded-xl border cursor-pointer transition ${
-                    isSelected
-                      ? 'bg-yellow-50 border-[#123524] ring-1 ring-[#123524]'
-                      : 'bg-gray-50/70 border-gray-200 hover:bg-gray-100/70'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <div className="min-w-0">
-                      <div className="font-bold text-gray-800 flex items-center gap-2 truncate">
-                        <span className="text-sm">{cat.iconEmoji}</span>
-                        <span className="truncate">{cat.title}</span>
-                        <span className="text-[10px] font-black bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600">
-                          {cat.count} ကြိမ်
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0 whitespace-nowrap">
-                      <span className={`font-black text-sm ${cat.total > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                        {formatPrice(cat.total)}
-                      </span>
-                      <span className="text-[10px] font-bold text-gray-500 ml-1.5">
-                        ({cat.pct.toFixed(1)}%)
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <div className="min-w-0">
+                    <div className="font-bold text-gray-800 flex items-center gap-2 truncate">
+                      <span className="text-sm">{cat.iconEmoji}</span>
+                      <span className="truncate">{cat.title}</span>
+                      <span className="text-[10px] font-black bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-600">
+                        {cat.count} ကြိမ်
                       </span>
                     </div>
                   </div>
-                  <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-2">
-                    <div
-                      className={`h-full ${cat.barColor} rounded-full transition-all duration-500`}
-                      style={{ width: `${Math.min(100, cat.pct)}%` }}
-                    />
+                  <div className="text-right flex-shrink-0 whitespace-nowrap">
+                    <span className={`font-black text-sm ${cat.total > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                      {formatPrice(cat.total)}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-500 ml-1.5">
+                      ({cat.pct.toFixed(1)}%)
+                    </span>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+                <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-2">
+                  <div
+                    className={`h-full ${cat.barColor} rounded-full transition-all duration-500`}
+                    style={{ width: `${Math.min(100, cat.pct)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* =========================================================================
-          🌟 3. DATE-GROUPED DAILY EXPENSE RECORDS (SALE REPORT STYLE + DATE FILTER BAR) 🌟
+          3. DRILLDOWN TABLE FOR SELECTED CATEGORY IN THIS MONTH
          ========================================================================= */}
-      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
-        {/* Top Title & Filtered Total Summary */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-gray-100 pb-4">
-          <div>
-            <h3 className="text-base sm:text-lg font-black text-[#123524] flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#D4AF37]" />
-              <span>နေ့စဉ် အသုံးစရိတ် မှတ်တမ်းစာရင်း ({selectedMonth})</span>
-            </h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              ရက်စွဲတစ်ရက်ချင်းစီအလိုက် တစ်ရက်စာ စုစုပေါင်းအသုံးစရိတ် (Daily Expense Total) နှင့် မှတ်တမ်းအသေးစိတ်
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2.5 self-end sm:self-center">
-            <div className="bg-red-50 border border-red-200 px-4 py-2 rounded-xl text-right">
-              <span className="text-[10px] font-extrabold text-red-800 uppercase block">
-                စုစုပေါင်း ပြသထားသော အသုံးစရိတ် ({filteredExpenses.length} ကြိမ်)
-              </span>
-              <span className="text-base sm:text-lg font-black text-red-600">
-                -{formatPrice(filteredExpenses.reduce((s, e) => s + e.amount, 0))}
-              </span>
-            </div>
-          </div>
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+          <h3 className="text-sm sm:text-base font-black text-[#123524]">
+            {selectedMonth} အတွင်း သွင်းထားသော အသုံးစရိတ်စာရင်း ({drilldownExpenses.length} ကြိမ်)
+          </h3>
+          <span className="text-xs font-black text-red-600 bg-red-50 px-3 py-1 rounded-xl border border-red-200">
+            စုစုပေါင်း: -{formatPrice(drilldownExpenses.reduce((s, e) => s + e.amount, 0))}
+          </span>
         </div>
 
-        {/* 🌟 Date Filter Bar (All, Today, Yesterday, Single Date, From -> To Range) + Category + Search 🌟 */}
-        <div className="flex flex-col gap-3 bg-gray-50/80 p-3.5 rounded-2xl border border-gray-200/90">
-          {/* Row 1: Quick Date Filter Buttons & Date Pickers */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5">
-            <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setDateFilterMode('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  dateFilterMode === 'all'
-                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                ရက်အားလုံး ({monthExpenses.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const todayYm = todayStr.substring(0, 7);
-                  if (selectedMonth !== todayYm) setSelectedMonth(todayYm);
-                  setDateFilterMode('today');
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  dateFilterMode === 'today'
-                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                ယနေ့ (Today)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const yestYm = yesterdayStr.substring(0, 7);
-                  if (selectedMonth !== yestYm) setSelectedMonth(yestYm);
-                  setDateFilterMode('yesterday');
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  dateFilterMode === 'yesterday'
-                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                မနေ့က (Yesterday)
-              </button>
-
-              {/* Single Specific Date Picker */}
-              <div
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition ${
-                  dateFilterMode === 'single_date'
-                    ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
-                    : 'bg-gray-50 text-gray-700 border-gray-200'
-                }`}
-              >
-                <span className="text-[10px] font-bold opacity-80">ရက်စွဲရွေးရန်:</span>
-                <input
-                  type="date"
-                  value={singleDateFilter}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (!val) return;
-                    setSingleDateFilter(val);
-                    if (val.substring(0, 7) !== selectedMonth) {
-                      setSelectedMonth(val.substring(0, 7));
-                    }
-                    setDateFilterMode('single_date');
-                  }}
-                  className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
-                    dateFilterMode === 'single_date' ? 'text-[#D4AF37]' : 'text-[#123524]'
-                  }`}
-                />
-              </div>
-            </div>
-
-            {/* From Date ➔ To Date Range Picker */}
-            <div
-              className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border transition shadow-2xs ${
-                dateFilterMode === 'custom_range'
-                  ? 'bg-[#123524] text-[#D4AF37] border-[#D4AF37]'
-                  : 'bg-white text-gray-700 border-gray-200'
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5 text-[#D4AF37] flex-shrink-0" />
-              <div className="flex items-center gap-1.5 text-xs font-bold">
-                <span
-                  className={`text-[10px] uppercase ${
-                    dateFilterMode === 'custom_range' ? 'text-gray-300' : 'text-gray-400'
-                  }`}
-                >
-                  From:
-                </span>
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFromDate(val);
-                    if (toDate && val > toDate) setToDate(val);
-                    setDateFilterMode('custom_range');
-                  }}
-                  className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
-                    dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
-                  }`}
-                />
-              </div>
-
-              <span
-                className={`text-xs font-black ${
-                  dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-gray-400'
-                }`}
-              >
-                ➔
-              </span>
-
-              <div className="flex items-center gap-1.5 text-xs font-bold">
-                <span
-                  className={`text-[10px] uppercase ${
-                    dateFilterMode === 'custom_range' ? 'text-gray-300' : 'text-gray-400'
-                  }`}
-                >
-                  To:
-                </span>
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setToDate(val);
-                    if (fromDate && val < fromDate) setFromDate(val);
-                    setDateFilterMode('custom_range');
-                  }}
-                  className={`text-xs font-bold outline-none bg-transparent cursor-pointer ${
-                    dateFilterMode === 'custom_range' ? 'text-[#D4AF37]' : 'text-[#123524]'
-                  }`}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Row 2: Category Dropdown Filter & Search Input */}
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 pt-2 border-t border-gray-200/60">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-gray-500">Category စစ်ရန်:</span>
-              <select
-                value={activeCategoryFilter}
-                onChange={(e) => setActiveCategoryFilter(e.target.value)}
-                className="p-2 bg-white border border-gray-300 rounded-xl text-xs font-bold text-[#123524] outline-none shadow-2xs"
-              >
-                <option value="all">Category အားလုံး ({monthExpenses.length})</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.iconEmoji} {c.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="relative w-full sm:w-72">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ပစ္စည်းအမည် / မှတ်ချက် / Payment ရှာရန်..."
-                className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#D4AF37] shadow-2xs"
-              />
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
+          <table className="w-full text-left border-collapse min-w-[750px]">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500 uppercase">
+                <th className="p-3">Date</th>
+                <th className="p-3">Category</th>
+                <th className="p-3">အသုံးစရိတ် အကြောင်းအရာ (Description)</th>
+                <th className="p-3">Payment</th>
+                <th className="p-3 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-xs">
+              {drilldownExpenses.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-gray-400 font-bold">
+                    ဤလအတွက် အသုံးစရိတ်မှတ်တမ်း မရှိသေးပါ။
+                  </td>
+                </tr>
+              ) : (
+                drilldownExpenses.map((exp) => {
+                  const catMeta = categories.find((c) => c.id === exp.category);
+                  return (
+                    <tr key={exp.id} className="hover:bg-gray-50">
+                      <td className="p-3 font-mono font-bold text-gray-700">{exp.date}</td>
+                      <td className="p-3 font-bold text-gray-800">
+                        {catMeta?.iconEmoji || '📌'} {catMeta?.title || exp.category}
+                      </td>
+                      <td className="p-3">
+                        <div className="font-bold text-gray-900">{exp.title}</div>
+                        {exp.note && <div className="text-[10px] text-gray-500">မှတ်ချက်: {exp.note}</div>}
+                      </td>
+                      <td className="p-3 text-gray-600 font-semibold">{exp.paymentMethod}</td>
+                      <td className="p-3 text-right font-black text-red-600">-{formatPrice(exp.amount)}</td>
+                    </tr>
+                  );
+                })
               )}
-            </div>
-          </div>
+            </tbody>
+          </table>
         </div>
-
-        {/* 🌟 Date-Grouped Daily Expense Cards (Matches Sale Report Look & Feel!) 🌟 */}
-        {groupedExpensesByDate.length === 0 ? (
-          <div className="p-12 text-center text-gray-400 font-bold border border-dashed border-gray-200 rounded-2xl space-y-2">
-            <div>ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် အသုံးစရိတ်မှတ်တမ်း မရှိပါ။</div>
-            {(dateFilterMode !== 'all' || activeCategoryFilter !== 'all' || searchQuery) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setDateFilterMode('all');
-                  setActiveCategoryFilter('all');
-                  setSearchQuery('');
-                }}
-                className="text-xs font-black text-[#123524] underline"
-              >
-                ရက်အားလုံး ပြန်ကြည့်မည် (Show All Records)
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {groupedExpensesByDate.map((group) => (
-              <div
-                key={group.date}
-                className="rounded-2xl border border-gray-200 shadow-xs overflow-hidden bg-white"
-              >
-                {/* Daily Header Banner */}
-                <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 sm:px-5 py-3.5 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] shadow-inner">
-                      <Calendar className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-extrabold text-xs sm:text-sm text-[#D4AF37] tracking-wide">
-                        {formatReadableDateHeader(group.date)}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-200 font-semibold mt-0.5">
-                        <span>
-                          အသုံးစရိတ် အရေအတွက်: <strong>{group.records.length} ကြိမ်</strong>
-                        </span>
-                        <span>•</span>
-                        <span>
-                          Cash: <strong>{formatPrice(group.dailyCashTotal)}</strong>
-                        </span>
-                        <span>•</span>
-                        <span>
-                          Online Pay: <strong>{formatPrice(group.dailyDigitalTotal)}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-black/30 px-4 py-2 rounded-xl border border-[#D4AF37]/40 text-right ml-auto">
-                    <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wider block">
-                      Daily Expense Total (တစ်ရက်စာ စုစုပေါင်း ကုန်ကျငွေ)
-                    </span>
-                    <span className="text-base sm:text-lg font-black text-[#D4AF37]">
-                      -{formatPrice(group.dailyTotalAmount)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Expenses Table inside Date Group */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[820px]">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
-                        <th className="p-3.5">နေ့ရက် (Date)</th>
-                        <th className="p-3.5">အမျိုးအစား (Category)</th>
-                        <th className="p-3.5">အသုံးစရိတ် အကြောင်းအရာ (Description)</th>
-                        <th className="p-3.5">Payment Method</th>
-                        <th className="p-3.5 text-right">ကုန်ကျငွေ (Amount)</th>
-                        <th className="p-3.5 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 text-xs">
-                      {group.records.map((exp) => {
-                        const catMeta = categories.find((c) => c.id === exp.category);
-                        return (
-                          <tr key={exp.id} className="hover:bg-gray-50/80 transition">
-                            <td className="p-3.5 font-mono font-bold text-gray-700 whitespace-nowrap">
-                              {exp.date}
-                            </td>
-                            <td className="p-3.5">
-                              <span
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black border ${
-                                  catMeta?.badgeColor || 'bg-gray-100 text-gray-700 border-gray-200'
-                                }`}
-                              >
-                                <span>{catMeta?.iconEmoji || '📌'}</span>
-                                <span>{catMeta?.title || exp.category}</span>
-                              </span>
-                            </td>
-                            <td className="p-3.5 max-w-md">
-                              <div className="font-bold text-gray-800 text-sm leading-snug">{exp.title}</div>
-                              {exp.note && (
-                                <div className="text-[11px] text-gray-500 mt-0.5 font-medium">
-                                  မှတ်ချက်: {exp.note}
-                                </div>
-                              )}
-                            </td>
-                            <td className="p-3.5">
-                              <span className="bg-gray-100 text-gray-700 border border-gray-200 px-2.5 py-1 rounded-md font-bold text-[11px]">
-                                {exp.paymentMethod}
-                              </span>
-                            </td>
-                            <td className="p-3.5 text-right font-black text-sm text-red-600 whitespace-nowrap">
-                              -{formatPrice(exp.amount)}
-                            </td>
-                            <td className="p-3.5 text-right">
-                              <button
-                                type="button"
-                                disabled={adminRole !== 'super_admin'}
-                                onClick={() => handleDeleteExpense(exp)}
-                                className={`p-1.5 rounded-lg transition ${
-                                  adminRole === 'super_admin'
-                                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                                    : 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                                }`}
-                                title="Delete Expense"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
 }
 
 // ============================================================================
-// 🌟 4. ADMIN REVENUE & NET PROFIT DASHBOARD COMPONENT 🌟
+// 📈 5. TAB 3: ADMIN REVENUE & NET PROFIT DASHBOARD COMPONENT
 // ============================================================================
 
 export function AdminRevenueProfitDashboard({
