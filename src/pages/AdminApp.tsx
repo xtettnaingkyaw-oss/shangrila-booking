@@ -285,14 +285,6 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         {
           id: 'expenses',
           label: 'Expense Manager',
-          subLabel: 'Daily & Monthly Expenses',
-          icon: Wallet,
-          visible: hasAccess('bookings') || hasAccess('reports'),
-          badge: 0
-        },
-        {
-          id: 'expenses',
-          label: 'Expense Manager',
           subLabel: 'Add Expense & History List',
           icon: Wallet,
           visible: hasAccess('bookings') || hasAccess('reports'),
@@ -312,7 +304,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           subLabel: 'Booking Requests',
           icon: CalendarPlus,
           visible: hasAccess('bookings'),
-          badge: pendingCount
+          badge: 0
         },
         {
           id: 'pos_sales',
