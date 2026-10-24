@@ -13,7 +13,7 @@ import { AdminPenaltyManager } from './PenaltySystem';
 import AdminSalesSummaryView from './AdminSalesSummaryView';
 import { AdminEmployeeHandbookManager } from './EmployeeHandbookSystem';
 import { AdminStaffPayrollManager, calculateBookingCommissionForStaff, getStaffSeniority, isSameStaffMember } from './StaffPayrollSystem';
-import { AdminExpenseManager, AdminRevenueProfitDashboard } from './ExpenseAndRevenueSystem';
+import { AdminExpenseManager, AdminExpenseReportDashboard, AdminRevenueProfitDashboard } from './ExpenseAndRevenueSystem';
 import { BookOpen, Wallet, PieChart } from 'lucide-react';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -100,7 +100,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
   const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
-  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'revenue_dashboard' | 'expenses' | 'reports' | 'payroll' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook'>('sales_summary');
+  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'revenue_dashboard' | 'expenses' | 'expense_report' | 'reports' | 'payroll' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook'>('sales_summary');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -132,7 +132,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           setAdminRole(r);
           setAdminPermissions(p);
           const isAllowedExtraTab =
-            (p.includes('bookings') && (tab === 'sales_summary' || tab === 'pos_sales' || tab === 'revenue_dashboard' || tab === 'expenses')) ||
+            (p.includes('bookings') && (tab === 'sales_summary' || tab === 'pos_sales' || tab === 'revenue_dashboard' || tab === 'expenses' || tab === 'expense_report')) ||
             (p.includes('admins') && tab === 'pos_users') ||
             (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns' || tab === 'handbook' || tab === 'pos_users'));
           if (r !== 'super_admin' && !p.includes(tab) && !isAllowedExtraTab && p.length > 0) {
@@ -287,6 +287,22 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           label: 'Expense Manager',
           subLabel: 'Daily & Monthly Expenses',
           icon: Wallet,
+          visible: hasAccess('bookings') || hasAccess('reports'),
+          badge: 0
+        },
+        {
+          id: 'expenses',
+          label: 'Expense Manager',
+          subLabel: 'Add Expense & History List',
+          icon: Wallet,
+          visible: hasAccess('bookings') || hasAccess('reports'),
+          badge: 0
+        },
+        {
+          id: 'expense_report',
+          label: 'Expense Report',
+          subLabel: 'Category & Overall Analytics',
+          icon: BarChart2,
           visible: hasAccess('bookings') || hasAccess('reports'),
           badge: 0
         },
@@ -705,7 +721,8 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
             {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
             {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
             {tab === 'revenue_dashboard' && (hasAccess('bookings') || hasAccess('reports')) && <AdminRevenueProfitDashboard bookings={bookings} therapists={appData.therapists} />}
-            {tab === 'expenses' && (hasAccess('bookings') || hasAccess('reports')) && <AdminExpenseManager bookings={bookings} therapists={appData.therapists} adminRole={adminRole} />}
+            {tab === 'expenses' && (hasAccess('bookings') || hasAccess('reports')) && <AdminExpenseManager bookings={bookings} therapists={appData.therapists} adminRole={adminRole} onOpenReport={() => setTab('expense_report')} />}
+{tab === 'expense_report' && (hasAccess('bookings') || hasAccess('reports')) && <AdminExpenseReportDashboard bookings={bookings} therapists={appData.therapists} adminRole={adminRole} onOpenEntry={() => setTab('expenses')} />}
             {tab === 'handbook' && hasAccess('settings') && <AdminEmployeeHandbookManager />}
             {tab === 'pos_users' && (hasAccess('admins') || hasAccess('settings')) && <AdminPOSUsersManager adminRole={adminRole} />}
           </div>
