@@ -2873,21 +2873,22 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        categories: globalAppData?.categories?.length ? globalAppData.categories : (appData.categories || [])
    };
 
-   // 🌟 STRICT CAMPAIGN & LINK GUARD 🌟
-   // Admin မှ Mini Game Popup ကို ဖွင့်ထားမှသာ (isPopupActive === true) ကံစမ်းမဲဂိမ်းကို ဝင်ရောက်ဆော့ကစားခွင့်ပြုမည်။
-   // ပိတ်ထားချိန်တွင် Link ဖြင့် ဝင်လာလျှင်လည်း ဂိမ်းလုံးဝ ပေးမဆော့ဘဲ ပယ်ချမည်။
+   // 🌟 ULTRA-STRICT CAMPAIGN & URL LINK GUARD 🌟
+   // Admin မှ Mini Game Popup / Promotion ကို အပြီးပိတ်ထားပါက (isPopupActive !== true) 
+   // ?mode=campaign သို့မဟုတ် ?campaign=... ဖြင့် ဘယ်လိုပဲ ဝင်လာပါစေ လုံးဝ (Absolute) ပိတ်ပင်မည်။
    const [showCampaign, setShowCampaign] = useState(() => {
        const searchParams = new URLSearchParams(window.location.search);
-       const hasCampaignParam = searchParams.get('campaign') === 'true' || searchParams.has('campaign');
+       const modeParam = searchParams.get('mode');
+       const campaignParam = searchParams.get('campaign');
+       const hasCampaignIntent = modeParam === 'campaign' || campaignParam === 'true' || campaignParam || searchParams.has('campaign');
        
-       if (!hasCampaignParam) return false;
+       if (!hasCampaignIntent) return false;
 
-       // Check if promotion is actively enabled by Admin in real-time mergedAppData
        const promo = mergedAppData.promotion;
        const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
 
        if (!isPromoLive) {
-           // 🚫 ပိတ်ထားချိန်တွင် Link ဖြင့် ဝင်လာပါက URL ကို ချက်ချင်းရှင်းလင်းပြီး မပြပါ
+           // 🚫 URL ကို ချက်ချင်းရှင်းလင်းပြီး ဂိမ်းကို လုံးဝ မပြပါ
            window.history.replaceState({}, document.title, window.location.pathname);
            return false;
        }
@@ -2895,11 +2896,14 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        return true;
    });
 
-   // Additional real-time effect to guard against lingering state or manual URL tampering
+   // Real-time effect to guard against any lingering state or manual URL tampering
    useEffect(() => {
        const searchParams = new URLSearchParams(window.location.search);
-       const hasCampaignParam = searchParams.get('campaign') === 'true' || searchParams.has('campaign');
-       if (!hasCampaignParam) return;
+       const modeParam = searchParams.get('mode');
+       const campaignParam = searchParams.get('campaign');
+       const hasCampaignIntent = modeParam === 'campaign' || campaignParam === 'true' || campaignParam || searchParams.has('campaign');
+       
+       if (!hasCampaignIntent) return;
 
        const promo = mergedAppData.promotion;
        const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
