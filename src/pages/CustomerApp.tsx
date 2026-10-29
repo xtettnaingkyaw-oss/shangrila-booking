@@ -2863,13 +2863,55 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 // CUSTOMER APP WIDGET (TABS & NAVIGATION)
 // ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
-  // 🌟 FIX: URL တွင် campaign=true ပါလာပါက Campaign Popup ကို ချက်ချင်း ပြန်ပြပေးမည် 🌟
-  const [showCampaign, setShowCampaign] = useState(() => {
-       const searchParams = new URLSearchParams(window.location.search);
-       return searchParams.get('campaign') === 'true';
-  });
+   const { appData: globalAppData } = useAppStore(); // 🌟 Context မှ Data ကို ယူသုံးခြင်း
 
-  const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
+   const mergedAppData = { 
+       ...appData,
+       ...globalAppData,
+       vipSettings: globalAppData?.vipSettings || appData.vipSettings || FALLBACK_VIP_SETTINGS,
+       therapists: Array.from(new Map((globalAppData?.therapists?.length ? globalAppData.therapists : (appData.therapists || [])).map(t => [t.name, t])).values()),
+       categories: globalAppData?.categories?.length ? globalAppData.categories : (appData.categories || [])
+   };
+
+   // 🌟 STRICT CAMPAIGN & LINK GUARD 🌟
+   // Admin မှ Mini Game Popup ကို ဖွင့်ထားမှသာ (isPopupActive === true) ကံစမ်းမဲဂိမ်းကို ဝင်ရောက်ဆော့ကစားခွင့်ပြုမည်။
+   // ပိတ်ထားချိန်တွင် Link ဖြင့် ဝင်လာလျှင်လည်း ဂိမ်းလုံးဝ ပေးမဆော့ဘဲ ပယ်ချမည်။
+   const [showCampaign, setShowCampaign] = useState(() => {
+       const searchParams = new URLSearchParams(window.location.search);
+       const hasCampaignParam = searchParams.get('campaign') === 'true' || searchParams.has('campaign');
+       
+       if (!hasCampaignParam) return false;
+
+       // Check if promotion is actively enabled by Admin in real-time mergedAppData
+       const promo = mergedAppData.promotion;
+       const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
+
+       if (!isPromoLive) {
+           // 🚫 ပိတ်ထားချိန်တွင် Link ဖြင့် ဝင်လာပါက URL ကို ချက်ချင်းရှင်းလင်းပြီး မပြပါ
+           window.history.replaceState({}, document.title, window.location.pathname);
+           return false;
+       }
+
+       return true;
+   });
+
+   // Additional real-time effect to guard against lingering state or manual URL tampering
+   useEffect(() => {
+       const searchParams = new URLSearchParams(window.location.search);
+       const hasCampaignParam = searchParams.get('campaign') === 'true' || searchParams.has('campaign');
+       if (!hasCampaignParam) return;
+
+       const promo = mergedAppData.promotion;
+       const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
+
+       if (!isPromoLive && showCampaign) {
+           setShowCampaign(false);
+           window.history.replaceState({}, document.title, window.location.pathname);
+           alert("🙏 ဤအထူးပရိုမိုးရှင်း / မဲဖောက်သည့် အစီအစဉ် ပြီးဆုံးသွားပါပြီခင်ဗျာ။ (Campaign Ended)");
+       }
+   }, [mergedAppData.promotion, showCampaign]);
+
+   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
        const searchParams = new URLSearchParams(window.location.search);
        const view = searchParams.get('view');
        
@@ -2885,20 +2927,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
    const prevStatuses = useRef<Record<string, string>>({});
    const isFirstLoad = useRef(true);
-
-  const { appData: globalAppData } = useAppStore(); // 🌟 Context မှ Data ကို ယူသုံးခြင်း
-
-  // 🌟 နာမည်တူနေသော Therapist များကို ဖယ်ရှားပြီး တစ်ယောက်ကို တစ်ခုသာ ပြသရန် (Auto Deduplicate) 🌟
-  const rawTherapists = globalAppData?.therapists?.length ? globalAppData.therapists : (appData.therapists || []);
-  const uniqueTherapists = Array.from(new Map(rawTherapists.map(t => [t.name, t])).values());
-
-  const mergedAppData = { 
-      ...appData,
-      ...globalAppData,
-      vipSettings: globalAppData?.vipSettings || appData.vipSettings || FALLBACK_VIP_SETTINGS,
-      therapists: uniqueTherapists,
-      categories: globalAppData?.categories?.length ? globalAppData.categories : (appData.categories || [])
-  };
 
    useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
@@ -2958,7 +2986,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
               {/* Swipe Indicator (Compact & Animated) */}
               <div className="w-full max-w-[95vw] flex sm:hidden justify-end mb-0.5 pr-1.5">
                   <span className="text-[8px] text-[#123524] font-black flex items-center bg-white/80 px-2 py-0.5 rounded-full border border-[#123524]/10 shadow-sm tracking-widest animate-pulse">
-                     ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-2.5 h-2.5 ml-0.5 text-[#123524]" /><ChevronRight className="w-2.5 h-2.5 -ml-1.5 text-[#123524]" />
+                      ဘေးသို့ဆွဲကြည့်ပါ <ChevronRight className="w-2.5 h-2.5 ml-0.5 text-[#123524]" /><ChevronRight className="w-2.5 h-2.5 -ml-1.5 text-[#123524]" />
                   </span>
               </div>
 
@@ -3006,15 +3034,13 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        
        {/* 🌟 Main Content Area */}
        <div className="max-w-2xl mx-auto px-4 sm:px-0">
-           {/* 🌟 FIX: showCampaign True ဖြစ်နေပါက ThadingyutCampaign ကိုသာ ပြသမည် 🌟 */}
+           {/* 🌟 FIX: showCampaign True ဖြစ်နေပါက ThadingyutCampaign ကိုသာ ပြသမည် (Strict Guard ဖြင့် ကာကွယ်ထားသည်) 🌟 */}
            {showCampaign ? (
                <div className="fixed inset-0 z-[100] bg-black">
-                   {/* ThadingyutCampaign အား Import လုပ်ထားရန် လိုအပ်သည် */}
                    <ThadingyutCampaign appData={mergedAppData} />
                    <button 
                        onClick={() => {
                            setShowCampaign(false);
-                           // URL ကို ပြန်ရှင်းမည်
                            window.history.pushState({}, '', '/');
                        }}
                        className="absolute top-4 right-4 z-[200] text-white bg-black/50 p-2 rounded-full hover:bg-black/80"
