@@ -5,6 +5,8 @@ import { db, auth, requestNotificationPermission } from './firebase';
 import { Download, X, MapPin, Phone, LogOut } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
 
+import { TelegramGlobalBridge } from './components/TelegramNotificationCenter';
+
 // 🌟 Premium Loading Screen ကို Import ခေါ်ယူခြင်း 🌟
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
 import CustomerApp from './pages/CustomerApp'; 
@@ -331,4 +333,4 @@ function MainApp() {
   );
 }
 
-export default function App() { return <ErrorBoundary><MainApp /></ErrorBoundary>; }
+export default function App() { return <ErrorBoundary><MainApp /><TelegramGlobalBridge /></ErrorBoundary>; }
