@@ -390,10 +390,10 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         },
         {
           id: 'campaigns',
-          label: 'Game Campaigns',
-          subLabel: 'Lantern Game Winners',
+          label: 'Promotion & Campaigns',
+          subLabel: 'Promo Cards & Game Winners',
           icon: Gift,
-          visible: hasAccess('settings'),
+          visible: hasAccess('settings') || hasAccess('bookings'),
           badge: 0
         }
       ]
@@ -709,7 +709,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
             {tab === 'roster' && hasAccess('settings') && <DutyRosterSystem therapists={appData.therapists} />}
             {tab === 'hr' && hasAccess('settings') && <AdminHRManagement />}
             {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
-            {tab === 'campaigns' && hasAccess('settings') && <AdminCampaignsView bookings={bookings} adminRole={adminRole} />}
+            {tab === 'campaigns' && (hasAccess('settings') || hasAccess('bookings')) && <AdminCampaignsView bookings={bookings} adminRole={adminRole} appData={appData} onSettingsUpdated={onSettingsUpdated} />}
             {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
             {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
             {tab === 'revenue_dashboard' && (hasAccess('bookings') || hasAccess('reports')) && <AdminRevenueProfitDashboard bookings={bookings} therapists={appData.therapists} />}
@@ -4937,107 +4937,6 @@ const handleSaveTherapists = async () => {
           )}
       </div>
 
-      {/* 🌟 PROMOTION & DISCOUNTS SECTION 🌟 */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-green-600">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Sparkles className="w-5 h-5 mr-2 text-green-600" /> App Promotion & Discounts</h3>
-                  <p className="text-xs text-gray-500 mt-1">Web App မှ Booking တင်သူများအတွက် Discount သတ်မှတ်ရန်</p>
-              </div>
-              <button onClick={() => toggleSection('promotion')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                  {expandedSection === 'promotion' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-              </button>
-          </div>
-
-          {expandedSection === 'promotion' && (
-              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                  <div className="flex justify-end mb-6">
-                      <button disabled={savingCategory === 'promotion'} onClick={handleSavePromotion} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
-                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'promotion' ? 'Saving...' : 'Save Settings'}
-                      </button>
-                  </div>
-                  
-                  <div className="space-y-6">
-                      {/* 🌟 1. Customer App Box Promotion 🌟 */}
-                      <div className="border border-emerald-100 bg-emerald-50/30 rounded-xl p-5">
-                          <div className="flex items-center justify-between mb-4">
-                              <label className="font-bold text-gray-800 flex items-center cursor-pointer">
-                                  <span>1. Customer App Promotion Box (Booking အပေါ်တွင်ပေါ်မည်)</span>
-                              </label>
-                              <input 
-                                  type="checkbox" 
-                                  checked={localPromotion.isBoxActive || false}
-                                  onChange={(e) => setLocalPromotion({...localPromotion, isBoxActive: e.target.checked})}
-                                  className="w-5 h-5 accent-emerald-600 cursor-pointer"
-                              />
-                          </div>
-                          <div className="mb-2">
-                              <label className="text-xs font-bold text-gray-500 mb-1 block">Box Title (e.g. SPECIAL DISCOUNT)</label>
-                              <input 
-                                  type="text" 
-                                  value={localPromotion.boxTitle || ''}
-                                  onChange={(e) => setLocalPromotion({...localPromotion, boxTitle: e.target.value})}
-                                  placeholder="SPECIAL PROMO" 
-                                  className="w-full p-2 text-sm border border-gray-300 rounded focus:border-emerald-500 outline-none font-bold" 
-                              />
-                          </div>
-                      </div>
-
-                      {/* 🌟 2. Mini Game Campaign Popup 🌟 */}
-                      <div className="border border-orange-100 bg-orange-50/30 rounded-xl p-5">
-                          <div className="flex items-center justify-between mb-4">
-                              <label className="font-bold text-gray-800 flex items-center cursor-pointer">
-                                  <Sparkles className="w-5 h-5 mr-2 text-orange-500" />
-                                  2. Mini Game Popup Campaign (App အဖွင့်တွင်ပေါ်မည်)
-                              </label>
-                              <input 
-                                  type="checkbox" 
-                                  checked={localPromotion.isPopupActive || false}
-                                  onChange={(e) => setLocalPromotion({...localPromotion, isPopupActive: e.target.checked})}
-                                  className="w-5 h-5 accent-orange-500 cursor-pointer"
-                              />
-                          </div>
-
-                
-                          <div className="mb-2">
-                              <label className="text-xs font-bold text-gray-500 mb-1 block">Campaign Title (e.g. သီတင်းကျွတ် အထူးပရိုမိုးရှင်း)</label>
-                              <input 
-                                  type="text" 
-                                  value={localPromotion.campaignTitle || ''}
-                                  onChange={(e) => setLocalPromotion({...localPromotion, campaignTitle: e.target.value})}
-                                  placeholder="သီတင်းကျွတ် အထူးအစီအစဉ်" 
-                                  className="w-full p-2 text-sm border border-gray-300 rounded focus:border-orange-500 outline-none font-bold" 
-                              />
-                          </div>
-                      </div>
-
-                      {/* Discount Data Inputs */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-5 rounded-xl border border-gray-200">
-                          <div className="md:col-span-2">
-                             <h4 className="font-bold text-sm text-gray-700 mb-3 border-b border-gray-200 pb-2">Discount Configurations</h4>
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 mb-1">Hotel & Home Services Discount (%)</label>
-                              <input type="number" value={localPromotion.hotelDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, hotelDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 mb-1">Other Services Discount (%)</label>
-                              <input type="number" value={localPromotion.otherDiscountPercent} onChange={(e) => setLocalPromotion({...localPromotion, otherDiscountPercent: Number(e.target.value)})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label>
-                              <input type="date" value={localPromotion.startDate} onChange={(e) => setLocalPromotion({...localPromotion, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 mb-1">End Date</label>
-                              <input type="date" value={localPromotion.endDate} onChange={(e) => setLocalPromotion({...localPromotion, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" />
-                          </div>
-                      </div>
-                  </div>
-              </div>
-          )}
-      </div>
-
        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-purple-500">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -7066,8 +6965,354 @@ export const isCampaignRewardUsedByCompletedService = (
   };
 };
 
-function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { bookings?: Booking[]; adminRole?: string }) {
+export interface SavedCampaignCard {
+  id: string;
+  campaignTitle: string;
+  boxTitle: string;
+  isPopupActive: boolean;
+  isBoxActive: boolean;
+  hotelDiscountPercent: number;
+  otherDiscountPercent: number;
+  startDate: string;
+  endDate: string;
+  themeColor?: string;
+  badgeText?: string;
+  updatedAt: number;
+}
+
+const DEFAULT_SAVED_CAMPAIGNS: SavedCampaignCard[] = [
+  {
+    id: 'camp_thadingyut',
+    campaignTitle: 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
+    boxTitle: 'SPECIAL PROMO',
+    isPopupActive: false,
+    isBoxActive: false,
+    hotelDiscountPercent: 10,
+    otherDiscountPercent: 20,
+    startDate: '2026-10-01',
+    endDate: '2026-10-31',
+    themeColor: 'from-amber-900 via-[#2a1808] to-[#140b03]',
+    badgeText: 'LANTERN FESTIVAL',
+    updatedAt: Date.now()
+  },
+  {
+    id: 'camp_tazaungdaing',
+    campaignTitle: 'တန်ဆောင်တိုင် အထူးပရိုမိုးရှင်း',
+    boxTitle: 'TAZAUNGDAING SPECIAL',
+    isPopupActive: false,
+    isBoxActive: false,
+    hotelDiscountPercent: 10,
+    otherDiscountPercent: 20,
+    startDate: '2026-11-15',
+    endDate: '2026-11-30',
+    themeColor: 'from-[#123524] via-[#0B2419] to-[#06150e]',
+    badgeText: 'FESTIVAL OF LIGHTS',
+    updatedAt: Date.now()
+  },
+  {
+    id: 'camp_newyear',
+    campaignTitle: 'နှစ်သစ်ကူး အထူးပရိုမိုးရှင်း (New Year Special)',
+    boxTitle: 'NEW YEAR PROMO',
+    isPopupActive: false,
+    isBoxActive: false,
+    hotelDiscountPercent: 10,
+    otherDiscountPercent: 25,
+    startDate: '2026-12-20',
+    endDate: '2027-01-05',
+    themeColor: 'from-emerald-950 via-[#123524] to-[#091e14]',
+    badgeText: 'YEAR END SALE',
+    updatedAt: Date.now()
+  }
+];
+
+function AdminCampaignsView({
+  bookings = [],
+  adminRole = 'super_admin',
+  appData,
+  onSettingsUpdated
+}: {
+  bookings?: Booking[];
+  adminRole?: string;
+  appData?: AppData;
+  onSettingsUpdated?: (data: AppData) => void;
+}) {
   const todayStr = getLocalTodayStr();
+  const [subView, setSubView] = useState<'cards_studio' | 'winners_tracker'>('cards_studio');
+
+  // ============================================================================
+  // 🌟 PART 1: PROMOTION & CAMPAIGN CARDS STUDIO STATES & LOGIC 🌟
+  // ============================================================================
+  const [campaignCards, setCampaignCards] = useState<SavedCampaignCard[]>(DEFAULT_SAVED_CAMPAIGNS);
+  const [livePromotion, setLivePromotion] = useState<any>(() => {
+    return (
+      appData?.promotion || {
+        isActive: false,
+        isBoxActive: false,
+        boxTitle: 'SPECIAL PROMO',
+        isPopupActive: false,
+        campaignTitle: 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
+        hotelDiscountPercent: 10,
+        otherDiscountPercent: 20,
+        startDate: '',
+        endDate: ''
+      }
+    );
+  });
+  const [savingPromoId, setSavingPromoId] = useState<string | null>(null);
+  const [editingCard, setEditingCard] = useState<SavedCampaignCard | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [newCardForm, setNewCardForm] = useState<SavedCampaignCard>({
+    id: '',
+    campaignTitle: '',
+    boxTitle: 'SPECIAL DISCOUNT',
+    isPopupActive: true,
+    isBoxActive: true,
+    hotelDiscountPercent: 10,
+    otherDiscountPercent: 20,
+    startDate: todayStr,
+    endDate: todayStr,
+    themeColor: 'from-[#123524] via-[#0B2419] to-[#06150e]',
+    badgeText: 'EXCLUSIVE EVENT',
+    updatedAt: Date.now()
+  });
+
+  // Real-time sync with settings/appData so Admin always sees the exact live status
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.promotion) {
+        setLivePromotion(data.promotion);
+      }
+      if (Array.isArray(data.savedCampaignCards) && data.savedCampaignCards.length > 0) {
+        setCampaignCards(data.savedCampaignCards);
+      } else {
+        // Initialize default cards with current promotion state on first load
+        const curPromo = data.promotion || {};
+        const initialized = DEFAULT_SAVED_CAMPAIGNS.map((c, idx) => {
+          if (idx === 0 && curPromo.campaignTitle) {
+            return {
+              ...c,
+              campaignTitle: curPromo.campaignTitle || c.campaignTitle,
+              boxTitle: curPromo.boxTitle || c.boxTitle,
+              isPopupActive: Boolean(curPromo.isPopupActive),
+              isBoxActive: Boolean(curPromo.isBoxActive),
+              hotelDiscountPercent: Number(curPromo.hotelDiscountPercent ?? c.hotelDiscountPercent),
+              otherDiscountPercent: Number(curPromo.otherDiscountPercent ?? c.otherDiscountPercent),
+              startDate: curPromo.startDate || c.startDate,
+              endDate: curPromo.endDate || c.endDate
+            };
+          }
+          return c;
+        });
+        setCampaignCards(initialized);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Sync a Campaign Card (or Turn Off All) to Firestore `settings/appData`
+  const syncCampaignStateToFirestore = async (
+    updatedCards: SavedCampaignCard[],
+    activeCardToPublish: SavedCampaignCard | null,
+    actionId: string
+  ) => {
+    setSavingPromoId(actionId);
+    try {
+      const nextPromotionPayload = activeCardToPublish
+        ? {
+            isActive: Boolean(activeCardToPublish.isPopupActive || activeCardToPublish.isBoxActive),
+            isPopupActive: Boolean(activeCardToPublish.isPopupActive),
+            isBoxActive: Boolean(activeCardToPublish.isBoxActive),
+            campaignTitle: activeCardToPublish.campaignTitle.trim(),
+            boxTitle: activeCardToPublish.boxTitle.trim() || 'SPECIAL PROMO',
+            hotelDiscountPercent: Number(activeCardToPublish.hotelDiscountPercent) || 0,
+            otherDiscountPercent: Number(activeCardToPublish.otherDiscountPercent) || 0,
+            startDate: activeCardToPublish.startDate || '',
+            endDate: activeCardToPublish.endDate || '',
+            activeCampaignId: activeCardToPublish.id,
+            updatedAt: Date.now()
+          }
+        : {
+            // 🚫 COMPLETELY OFF (Clears legacy isActive, Popup, Box & Dates so Popup NEVER appears!)
+            isActive: false,
+            isPopupActive: false,
+            isBoxActive: false,
+            campaignTitle: livePromotion.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
+            boxTitle: livePromotion.boxTitle || 'SPECIAL PROMO',
+            hotelDiscountPercent: 0,
+            otherDiscountPercent: 0,
+            startDate: '1970-01-01',
+            endDate: '1970-01-01',
+            activeCampaignId: '',
+            updatedAt: Date.now()
+          };
+
+      await setDoc(
+        doc(db, 'settings', 'appData'),
+        {
+          promotion: nextPromotionPayload,
+          savedCampaignCards: updatedCards
+        },
+        { merge: true }
+      );
+
+      setLivePromotion(nextPromotionPayload);
+      setCampaignCards(updatedCards);
+
+      if (appData && onSettingsUpdated) {
+        onSettingsUpdated({
+          ...appData,
+          promotion: nextPromotionPayload
+        });
+      }
+    } catch (err) {
+      console.error('Error syncing campaign:', err);
+      alert('Campaign အပြောင်းအလဲ သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    } finally {
+      setSavingPromoId(null);
+    }
+  };
+
+  // Toggle Popup or Box on a specific Card
+  const handleToggleCardChannel = async (
+    card: SavedCampaignCard,
+    channel: 'popup' | 'box' | 'master_toggle'
+  ) => {
+    let nextPopup = card.isPopupActive;
+    let nextBox = card.isBoxActive;
+
+    if (channel === 'popup') {
+      nextPopup = !card.isPopupActive;
+    } else if (channel === 'box') {
+      nextBox = !card.isBoxActive;
+    } else {
+      const currentlyAnyOn = card.isPopupActive || card.isBoxActive;
+      nextPopup = !currentlyAnyOn;
+      nextBox = !currentlyAnyOn;
+    }
+
+    const updatedTargetCard: SavedCampaignCard = {
+      ...card,
+      isPopupActive: nextPopup,
+      isBoxActive: nextBox,
+      updatedAt: Date.now()
+    };
+
+    const isTurningOn = nextPopup || nextBox;
+
+    // Only 1 campaign card can be live at a time to prevent conflicting popups
+    const nextCardsList = campaignCards.map((c) => {
+      if (c.id === card.id) return updatedTargetCard;
+      if (isTurningOn) {
+        return { ...c, isPopupActive: false, isBoxActive: false };
+      }
+      return c;
+    });
+
+    const anyActiveCard = nextCardsList.find((c) => c.isPopupActive || c.isBoxActive) || null;
+    await syncCampaignStateToFirestore(nextCardsList, anyActiveCard, card.id);
+  };
+
+  // Emergency 1-Click Turn Off All Popups & Promotions
+  const handleTurnOffAllPromotionsNow = async () => {
+    if (
+      !window.confirm(
+        'Customer App တွင် ပေါ်နေသော Popup နှင့် Promotion Box အားလုံးကို ချက်ချင်း ပိတ်မည်မှာ သေချာပါသလား?'
+      )
+    ) {
+      return;
+    }
+    const allOffCards = campaignCards.map((c) => ({
+      ...c,
+      isPopupActive: false,
+      isBoxActive: false
+    }));
+    await syncCampaignStateToFirestore(allOffCards, null, 'turn_off_all');
+    alert('✅ Promotion နှင့် Popup အားလုံးကို အောင်မြင်စွာ ပိတ်လိုက်ပါပြီ။ Customer App တွင် လုံးဝ မပေါ်တော့ပါ။');
+  };
+
+  // Save Edited Card Details
+  const handleSaveEditedCard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCard || !editingCard.campaignTitle.trim()) return;
+
+    const updatedCard: SavedCampaignCard = {
+      ...editingCard,
+      campaignTitle: editingCard.campaignTitle.trim(),
+      boxTitle: editingCard.boxTitle.trim() || 'SPECIAL PROMO',
+      hotelDiscountPercent: Number(editingCard.hotelDiscountPercent) || 0,
+      otherDiscountPercent: Number(editingCard.otherDiscountPercent) || 0,
+      updatedAt: Date.now()
+    };
+
+    const isThisCardActive = updatedCard.isPopupActive || updatedCard.isBoxActive;
+    const nextCardsList = campaignCards.map((c) => {
+      if (c.id === updatedCard.id) return updatedCard;
+      if (isThisCardActive) return { ...c, isPopupActive: false, isBoxActive: false };
+      return c;
+    });
+
+    const activeCard = nextCardsList.find((c) => c.isPopupActive || c.isBoxActive) || null;
+    await syncCampaignStateToFirestore(nextCardsList, activeCard, updatedCard.id);
+    setEditingCard(null);
+  };
+
+  // Create New Campaign Card
+  const handleCreateNewCard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCardForm.campaignTitle.trim()) return;
+
+    const created: SavedCampaignCard = {
+      ...newCardForm,
+      id: `camp_${Date.now()}`,
+      campaignTitle: newCardForm.campaignTitle.trim(),
+      boxTitle: newCardForm.boxTitle.trim() || 'SPECIAL PROMO',
+      hotelDiscountPercent: Number(newCardForm.hotelDiscountPercent) || 0,
+      otherDiscountPercent: Number(newCardForm.otherDiscountPercent) || 0,
+      updatedAt: Date.now()
+    };
+
+    const isTurningOn = created.isPopupActive || created.isBoxActive;
+    const baseList = isTurningOn
+      ? campaignCards.map((c) => ({ ...c, isPopupActive: false, isBoxActive: false }))
+      : [...campaignCards];
+
+    const nextCardsList = [created, ...baseList];
+    const activeCard = nextCardsList.find((c) => c.isPopupActive || c.isBoxActive) || null;
+    await syncCampaignStateToFirestore(nextCardsList, activeCard, created.id);
+
+    setShowCreateModal(false);
+    setNewCardForm({
+      id: '',
+      campaignTitle: '',
+      boxTitle: 'SPECIAL DISCOUNT',
+      isPopupActive: false,
+      isBoxActive: false,
+      hotelDiscountPercent: 10,
+      otherDiscountPercent: 20,
+      startDate: todayStr,
+      endDate: todayStr,
+      themeColor: 'from-[#123524] via-[#0B2419] to-[#06150e]',
+      badgeText: 'EXCLUSIVE EVENT',
+      updatedAt: Date.now()
+    });
+  };
+
+  const handleDeleteCampaignCard = async (card: SavedCampaignCard) => {
+    if (campaignCards.length <= 1) {
+      alert('အနည်းဆုံး Campaign ကဒ် (၁) ခု ချန်ထားရပါမည်။');
+      return;
+    }
+    if (!window.confirm(`"${card.campaignTitle}" ကဒ်ကို အပြီးတိုင် ဖျက်မည်မှာ သေချာပါသလား?`)) return;
+    const nextCardsList = campaignCards.filter((c) => c.id !== card.id);
+    const activeCard = nextCardsList.find((c) => c.isPopupActive || c.isBoxActive) || null;
+    await syncCampaignStateToFirestore(nextCardsList, activeCard, card.id);
+  };
+
+  // ============================================================================
+  // 🌟 PART 2: GAME CAMPAIGN WINNERS & USAGE TRACKER STATES & LOGIC 🌟
+  // ============================================================================
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -7111,7 +7356,6 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
     return formatted;
   };
 
-  // Real-time listener on campaign_records
   useEffect(() => {
     const q = query(collection(db, 'campaign_records'));
     const unsub = onSnapshot(
@@ -7121,7 +7365,6 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
         snap.forEach((d) => {
           const raw = d.data();
           const rawDate = String(raw.date || '').trim();
-          // Extract clean YYYY-MM-DD even if time is appended
           const cleanDate = rawDate.match(/^(\d{4}-\d{2}-\d{2})/)
             ? rawDate.match(/^(\d{4}-\d{2}-\d{2})/)![1]
             : raw.createdAt
@@ -7154,7 +7397,6 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
     return () => unsub();
   }, [todayStr]);
 
-  // Enrich each winner record with real-time Usage Status (Used / Active / Expired)
   const enrichedRecords = useMemo(() => {
     return records.map((r) => {
       const usage = isCampaignRewardUsedByCompletedService(r.phone, r.cleanDate, bookings);
@@ -7163,14 +7405,11 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
       if (usage.isUsed) {
         rewardStatus = 'used_completed';
       } else if (r.cleanDate < todayStr) {
-        // Past winning date and service was never completed -> Expired
         rewardStatus = 'expired';
       } else {
-        // Won today and not yet completed in POS/Service -> Still Active!
         rewardStatus = 'active_unused';
       }
 
-      // Check if customer has an active booking that forgot to apply the discount (like Dr. Than Htwe!)
       const activeBookingNeedsDiscount =
         usage.activePendingBooking &&
         (!usage.activePendingBooking.discountPercent || usage.activePendingBooking.discountPercent === 0) &&
@@ -7186,7 +7425,6 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
     });
   }, [records, bookings, todayStr]);
 
-  // 1. Date & Search Filter
   const dateAndSearchFiltered = useMemo(() => {
     const yesterday = getYesterdayStr();
     const thisMonthPrefix = getThisMonthPrefix();
@@ -7216,13 +7454,11 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
     });
   }, [enrichedRecords, dateFilterMode, fromDate, toDate, search, todayStr]);
 
-  // 2. Status Filter
   const finalFilteredRecords = useMemo(() => {
     if (statusFilter === 'all') return dateAndSearchFiltered;
     return dateAndSearchFiltered.filter((r) => r.rewardStatus === statusFilter);
   }, [dateAndSearchFiltered, statusFilter]);
 
-  // 3. KPI Summary Counts
   const summaryStats = useMemo(() => {
     let total = dateAndSearchFiltered.length;
     let usedCount = 0;
@@ -7238,7 +7474,6 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
     return { total, usedCount, activeCount, expiredCount };
   }, [dateAndSearchFiltered]);
 
-  // 4. Group by Date
   const groupedByDate = useMemo(() => {
     const map = new Map<
       string,
@@ -7266,7 +7501,6 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
   }, [finalFilteredRecords, todayStr]);
 
-  // 🌟 One-Click Fix: Apply Won Campaign Discount directly to a Customer's Pending Booking 🌟
   const handleApplyCampaignDiscountToBooking = async (winnerRecord: any, targetBooking: Booking) => {
     if (!targetBooking.id) return;
     const svcStr = String(targetBooking.service || '').toLowerCase();
@@ -7276,7 +7510,6 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
       svcStr.includes('half day') ||
       svcStr.includes('whole');
 
-    // Outcall/Hotel services max 10% cap if applicable, otherwise full won discountPercent
     const appliedPct = isOutcall ? Math.min(10, winnerRecord.discountPercent) : winnerRecord.discountPercent;
     const origPrice = Number(targetBooking.originalPrice) || Number(targetBooking.totalPrice) || 0;
     const discountedTotal = Math.round(origPrice * (1 - appliedPct / 100));
@@ -7372,372 +7605,1059 @@ function AdminCampaignsView({ bookings = [], adminRole = 'super_admin' }: { book
     link.click();
   };
 
+  const isAnyGlobalPromoLive = Boolean(
+    livePromotion?.isPopupActive || livePromotion?.isBoxActive || livePromotion?.isActive
+  );
+
   return (
-    <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6 animate-fade-in">
-      {/* 1. Header & Export */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-4 gap-4">
-        <div>
-          <h2 className="text-xl font-bold flex items-center text-[#123524]">
-            <PartyPopper className="mr-2 text-[#D4AF37]" /> Game Campaign Winners & Usage Tracker
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">
-            ကံထူးရှင်များ၏ ၁ ရက်တာ Discount ခံစားခွင့်သည် Shop POS မှ ဘောင်ချာထုတ်ပြီး Service Complete ဖြစ်မှသာ သုံးပြီးကြောင်း (Used) သတ်မှတ်ပါမည်
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-black hover:bg-emerald-100 transition shadow-2xs"
+    <div className="space-y-6 animate-fade-in">
+      {/* =========================================================================
+          MODAL 1: EDIT CAMPAIGN CARD CONFIGURATION
+         ========================================================================= */}
+      {editingCard && (
+        <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <form
+            onSubmit={handleSaveEditedCard}
+            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#D4AF37]/40 space-y-4 my-auto animate-fade-in"
           >
-            <Download className="w-4 h-4 mr-1.5" /> Export Excel
-          </button>
-        </div>
-      </div>
-
-      {/* 2. 4 KPI Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200">
-          <div className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
-            စုစုပေါင်း ကံထူးရှင် (Total Winners)
-          </div>
-          <div className="text-2xl font-black text-[#123524] mt-1">{summaryStats.total} ဦး</div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200">
-          <div className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider">
-            ✓ သုံးပြီးပြီ (Used / Completed)
-          </div>
-          <div className="text-2xl font-black text-emerald-700 mt-1">{summaryStats.usedCount} ဦး</div>
-          <div className="text-[10px] font-semibold text-emerald-700/80 mt-0.5">
-            ဘောင်ချာထုတ်ပြီး / Service ပြီးဆုံး
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200">
-          <div className="text-[10px] font-extrabold text-blue-800 uppercase tracking-wider">
-            ⏳ မသုံးရသေး (Active Today)
-          </div>
-          <div className="text-2xl font-black text-blue-700 mt-1">{summaryStats.activeCount} ဦး</div>
-          <div className="text-[10px] font-semibold text-blue-700/80 mt-0.5">
-            ယနေ့ ဘိုကင်တင်/အသုံးပြုနိုင်ဆဲ
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200">
-          <div className="text-[10px] font-extrabold text-red-700 uppercase tracking-wider">
-            ⏰ သက်တမ်းကုန်ဆုံး (Expired)
-          </div>
-          <div className="text-2xl font-black text-red-600 mt-1">{summaryStats.expiredCount} ဦး</div>
-          <div className="text-[10px] font-semibold text-red-600/80 mt-0.5">
-            ၁ ရက်ကျော်သွား၍ မသုံးလိုက်ရသူများ
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Date Filter + Status Filter + Search Bar */}
-      <div className="flex flex-col gap-3 bg-gray-50/80 p-3.5 rounded-2xl border border-gray-200">
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          {/* Date Filter Pills */}
-          <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
-            {[
-              { id: 'all', label: 'ရက်အားလုံး (All)' },
-              { id: 'today', label: 'ယနေ့ (Today)' },
-              { id: 'yesterday', label: 'မနေ့က (Yesterday)' },
-              { id: 'this_month', label: 'ယခုလ (This Month)' }
-            ].map((dm) => (
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-[#123524] flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-[#D4AF37]" />
+                  <span>Campaign Card ပြင်ဆင်ရန် (Edit Campaign)</span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">{editingCard.campaignTitle}</p>
+              </div>
               <button
-                key={dm.id}
                 type="button"
-                onClick={() => setDateFilterMode(dm.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  dateFilterMode === dm.id
+                onClick={() => setEditingCard(null)}
+                className="p-1.5 rounded-full bg-gray-100 text-gray-500 hover:text-red-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-[11px] font-extrabold text-gray-600 uppercase mb-1">
+                  Campaign Title (Popup နှင့် Promotion ခေါင်းစဉ်) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingCard.campaignTitle}
+                  onChange={(e) => setEditingCard({ ...editingCard, campaignTitle: e.target.value })}
+                  placeholder="ဥပမာ - သီတင်းကျွတ် အထူးပရိုမိုးရှင်း"
+                  className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-[#123524] outline-none focus:border-[#123524]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-extrabold text-gray-600 uppercase mb-1">
+                    Booking Box Badge Title
+                  </label>
+                  <input
+                    type="text"
+                    value={editingCard.boxTitle}
+                    onChange={(e) => setEditingCard({ ...editingCard, boxTitle: e.target.value })}
+                    placeholder="SPECIAL PROMO"
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-extrabold text-gray-600 uppercase mb-1">
+                    Event Tag / Subtitle
+                  </label>
+                  <input
+                    type="text"
+                    value={editingCard.badgeText || ''}
+                    onChange={(e) => setEditingCard({ ...editingCard, badgeText: e.target.value })}
+                    placeholder="EXCLUSIVE EVENT"
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-amber-50/50 p-3.5 rounded-2xl border border-amber-200">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-amber-900 uppercase mb-1">
+                    Other Services Discount (%)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={editingCard.otherDiscountPercent}
+                    onChange={(e) =>
+                      setEditingCard({ ...editingCard, otherDiscountPercent: Number(e.target.value) })
+                    }
+                    className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-sm font-black text-[#123524] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-amber-900 uppercase mb-1">
+                    Hotel / Outcall Discount (%)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={editingCard.hotelDiscountPercent}
+                    onChange={(e) =>
+                      setEditingCard({ ...editingCard, hotelDiscountPercent: Number(e.target.value) })
+                    }
+                    className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-sm font-black text-[#123524] outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                    Start Date (စတင်ရက်)
+                  </label>
+                  <input
+                    type="date"
+                    value={editingCard.startDate}
+                    onChange={(e) => setEditingCard({ ...editingCard, startDate: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-[#123524]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                    End Date (ပြီးဆုံးရက်)
+                  </label>
+                  <input
+                    type="date"
+                    value={editingCard.endDate}
+                    onChange={(e) => setEditingCard({ ...editingCard, endDate: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-[#123524]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <label className="flex items-center justify-between p-3 rounded-xl border border-orange-200 bg-orange-50/50 cursor-pointer">
+                  <span className="text-xs font-black text-orange-900">🏮 Mini Game Popup ဖွင့်မည်</span>
+                  <input
+                    type="checkbox"
+                    checked={editingCard.isPopupActive}
+                    onChange={(e) => setEditingCard({ ...editingCard, isPopupActive: e.target.checked })}
+                    className="w-4 h-4 accent-orange-600"
+                  />
+                </label>
+                <label className="flex items-center justify-between p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 cursor-pointer">
+                  <span className="text-xs font-black text-emerald-900">🏷️ Booking Promo Box ဖွင့်မည်</span>
+                  <input
+                    type="checkbox"
+                    checked={editingCard.isBoxActive}
+                    onChange={(e) => setEditingCard({ ...editingCard, isBoxActive: e.target.checked })}
+                    className="w-4 h-4 accent-emerald-600"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setEditingCard(null)}
+                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2.5 bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black shadow-md"
+              >
+                Save Campaign Card
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 2: CREATE NEW CAMPAIGN CARD
+         ========================================================================= */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <form
+            onSubmit={handleCreateNewCard}
+            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#D4AF37]/40 space-y-4 my-auto animate-fade-in"
+          >
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-[#123524] flex items-center gap-2">
+                  <PlusCircle className="w-5 h-5 text-[#D4AF37]" />
+                  <span>Promotion / Campaign ကဒ်အသစ် ဖန်တီးရန်</span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  ပွဲတော်အလိုက် သို့မဟုတ် လအလိုက် Promotion ကဒ်အသစ်များ ကြိုတင်သိမ်းဆည်းထားနိုင်ပါသည်
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="p-1.5 rounded-full bg-gray-100 text-gray-500 hover:text-red-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-[11px] font-extrabold text-gray-600 uppercase mb-1">
+                  Campaign Title (ပရိုမိုးရှင်း အမည်) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newCardForm.campaignTitle}
+                  onChange={(e) => setNewCardForm({ ...newCardForm, campaignTitle: e.target.value })}
+                  placeholder="ဥပမာ - တန်ဆောင်တိုင် အထူးပရိုမိုးရှင်း"
+                  className="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-[#123524] outline-none focus:border-[#123524]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-extrabold text-gray-600 uppercase mb-1">
+                    Booking Box Title
+                  </label>
+                  <input
+                    type="text"
+                    value={newCardForm.boxTitle}
+                    onChange={(e) => setNewCardForm({ ...newCardForm, boxTitle: e.target.value })}
+                    placeholder="SPECIAL PROMO"
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-extrabold text-gray-600 uppercase mb-1">
+                    Event Tag
+                  </label>
+                  <input
+                    type="text"
+                    value={newCardForm.badgeText || ''}
+                    onChange={(e) => setNewCardForm({ ...newCardForm, badgeText: e.target.value })}
+                    placeholder="EXCLUSIVE EVENT"
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-amber-50/50 p-3.5 rounded-2xl border border-amber-200">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-amber-900 uppercase mb-1">
+                    Other Services Discount (%)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={newCardForm.otherDiscountPercent}
+                    onChange={(e) =>
+                      setNewCardForm({ ...newCardForm, otherDiscountPercent: Number(e.target.value) })
+                    }
+                    className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-sm font-black text-[#123524]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-amber-900 uppercase mb-1">
+                    Hotel / Outcall Discount (%)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={newCardForm.hotelDiscountPercent}
+                    onChange={(e) =>
+                      setNewCardForm({ ...newCardForm, hotelDiscountPercent: Number(e.target.value) })
+                    }
+                    className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-sm font-black text-[#123524]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newCardForm.startDate}
+                    onChange={(e) => setNewCardForm({ ...newCardForm, startDate: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-[#123524]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-500 uppercase mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newCardForm.endDate}
+                    onChange={(e) => setNewCardForm({ ...newCardForm, endDate: e.target.value })}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-[#123524]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <label className="flex items-center justify-between p-3 rounded-xl border border-orange-200 bg-orange-50/50 cursor-pointer">
+                  <span className="text-xs font-black text-orange-900">🏮 Mini Game Popup ချက်ချင်းဖွင့်မည်</span>
+                  <input
+                    type="checkbox"
+                    checked={newCardForm.isPopupActive}
+                    onChange={(e) => setNewCardForm({ ...newCardForm, isPopupActive: e.target.checked })}
+                    className="w-4 h-4 accent-orange-600"
+                  />
+                </label>
+                <label className="flex items-center justify-between p-3 rounded-xl border border-emerald-200 bg-emerald-50/50 cursor-pointer">
+                  <span className="text-xs font-black text-emerald-900">🏷️ Booking Promo Box ချက်ချင်းဖွင့်မည်</span>
+                  <input
+                    type="checkbox"
+                    checked={newCardForm.isBoxActive}
+                    onChange={(e) => setNewCardForm({ ...newCardForm, isBoxActive: e.target.checked })}
+                    className="w-4 h-4 accent-emerald-600"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2.5 bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black shadow-md"
+              >
+                + Create Campaign Card
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TOP EXECUTIVE HEADER & SUB-TAB NAVIGATION
+         ========================================================================= */}
+      <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-gray-100 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#123524]/10 text-[#123524]">
+                Centralized Promotion Hub
+              </span>
+              <h2 className="text-lg sm:text-xl font-black text-[#123524] flex items-center">
+                <Sparkles className="w-5 h-5 mr-2 text-[#D4AF37]" />
+                Promotion & Campaigns Studio
+              </h2>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Customer App ရှိ Popup Game နှင့် Promotion များကို ကဒ်တစ်ခုချင်းစီအလိုက် လိုသလို အဖွင့်/အပိတ် လုပ်ပြီး စီမံခန့်ခွဲနိုင်ပါသည်
+            </p>
+          </div>
+
+          {/* Sub-Navigation Switcher */}
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setSubView('cards_studio')}
+                className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-black transition flex items-center justify-center gap-1.5 ${
+                  subView === 'cards_studio'
                     ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                {dm.label}
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Campaign Cards ({campaignCards.length})</span>
               </button>
-            ))}
-          </div>
-
-          {/* From -> To Date Range Picker */}
-          <div
-            className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border transition shadow-2xs ${
-              dateFilterMode === 'custom_range'
-                ? 'bg-[#123524] text-[#D4AF37] border-[#D4AF37]'
-                : 'bg-white text-gray-700 border-gray-200'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5 text-[#D4AF37]" />
-            <span className="text-[10px] font-bold uppercase opacity-75">From:</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => {
-                const val = e.target.value;
-                setFromDate(val);
-                if (toDate && val > toDate) setToDate(val);
-                setDateFilterMode('custom_range');
-              }}
-              className="text-xs font-bold bg-transparent outline-none cursor-pointer"
-            />
-            <span className="text-xs font-black">➔</span>
-            <span className="text-[10px] font-bold uppercase opacity-75">To:</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => {
-                const val = e.target.value;
-                setToDate(val);
-                if (fromDate && val < fromDate) setFromDate(val);
-                setDateFilterMode('custom_range');
-              }}
-              className="text-xs font-bold bg-transparent outline-none cursor-pointer"
-            />
+              <button
+                type="button"
+                onClick={() => setSubView('winners_tracker')}
+                className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-black transition flex items-center justify-center gap-1.5 ${
+                  subView === 'winners_tracker'
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <PartyPopper className="w-3.5 h-3.5" />
+                <span>Game Winners ({records.length})</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Bottom Row: Reward Usage Status Pills + Search */}
-        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-2.5 pt-2 border-t border-gray-200/60">
-          <div className="flex flex-wrap bg-white p-1 rounded-xl border border-gray-200 shadow-2xs gap-1">
-            <button
-              type="button"
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                statusFilter === 'all' ? 'bg-[#123524] text-white' : 'text-gray-600'
+        {/* Live Status Banner & Emergency Kill Switch */}
+        <div
+          className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition ${
+            isAnyGlobalPromoLive
+              ? 'bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white border-[#D4AF37]'
+              : 'bg-gray-50 text-gray-700 border-gray-200'
+          }`}
+        >
+          <div className="flex items-center gap-3.5">
+            <div
+              className={`w-11 h-11 rounded-2xl flex items-center justify-center text-xl flex-shrink-0 ${
+                isAnyGlobalPromoLive
+                  ? 'bg-[#D4AF37]/20 border border-[#D4AF37] text-[#D4AF37]'
+                  : 'bg-gray-200 text-gray-500'
               }`}
             >
-              အားလုံး ({summaryStats.total})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('active_unused')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                statusFilter === 'active_unused' ? 'bg-blue-600 text-white' : 'text-blue-700 hover:bg-blue-50'
-              }`}
-            >
-              ⏳ မသုံးရသေး / Active ({summaryStats.activeCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('used_completed')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                statusFilter === 'used_completed' ? 'bg-emerald-700 text-white' : 'text-emerald-700 hover:bg-emerald-50'
-              }`}
-            >
-              ✓ သုံးပြီးပြီ / Completed ({summaryStats.usedCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('expired')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                statusFilter === 'expired' ? 'bg-red-600 text-white' : 'text-red-600 hover:bg-red-50'
-              }`}
-            >
-              ⏰ သက်တမ်းကုန်ဆုံး ({summaryStats.expiredCount})
-            </button>
+              {isAnyGlobalPromoLive ? '🏮' : '🌙'}
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs sm:text-sm font-black">
+                  {isAnyGlobalPromoLive
+                    ? `လက်ရှိ ဖွင့်ထားသော Campaign: ${livePromotion?.campaignTitle || 'Active Promotion'}`
+                    : 'လက်ရှိတွင် Customer App ၌ Promotion နှင့် Popup အားလုံး ပိတ်ထားပါသည် (All OFF)'}
+                </span>
+                {isAnyGlobalPromoLive ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white uppercase animate-pulse">
+                    ● LIVE ON APP
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-gray-300 text-gray-700 uppercase">
+                    ● ALL OFF
+                  </span>
+                )}
+              </div>
+              <div
+                className={`text-[11px] font-semibold mt-1 ${
+                  isAnyGlobalPromoLive ? 'text-gray-300' : 'text-gray-500'
+                }`}
+              >
+                Popup Game:{' '}
+                <strong className={livePromotion?.isPopupActive ? 'text-[#D4AF37]' : ''}>
+                  {livePromotion?.isPopupActive ? 'ON (ဖွင့်ထားသည်)' : 'OFF (ပိတ်ထားသည်)'}
+                </strong>{' '}
+                • Booking Box:{' '}
+                <strong className={livePromotion?.isBoxActive ? 'text-[#D4AF37]' : ''}>
+                  {livePromotion?.isBoxActive ? 'ON (ဖွင့်ထားသည်)' : 'OFF (ပိတ်ထားသည်)'}
+                </strong>
+                {isAnyGlobalPromoLive && (
+                  <span>
+                    {' '}
+                    • Discount: Other {livePromotion?.otherDiscountPercent || 0}% / Hotel{' '}
+                    {livePromotion?.hotelDiscountPercent || 0}%
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="relative w-full lg:w-72">
-            <input
-              type="text"
-              placeholder="ဖုန်းနံပါတ် သို့မဟုတ် အမည် ရှာရန်..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold shadow-2xs"
-            />
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              disabled={savingPromoId === 'turn_off_all'}
+              onClick={handleTurnOffAllPromotionsNow}
+              className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-md transition flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <Ban className="w-4 h-4" />
+              <span>
+                {savingPromoId === 'turn_off_all'
+                  ? 'Turning Off...'
+                  : '🚫 Popup နှင့် Promo အားလုံး ချက်ချင်းပိတ်မည်'}
+              </span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* 4. Date-Grouped Winners Table */}
-      {loading ? (
-        <div className="p-12 text-center text-gray-400 font-bold">Loading Campaign Winners...</div>
-      ) : groupedByDate.length === 0 ? (
-        <div className="p-12 text-center text-gray-400 font-bold border border-dashed border-gray-200 rounded-2xl">
-          ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် ကံထူးရှင်မှတ်တမ်း မရှိပါ။
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {groupedByDate.map((grp) => (
-            <div key={grp.date} className="rounded-2xl border border-gray-200 shadow-xs overflow-hidden bg-white">
-              {/* Daily Header Banner */}
-              <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 sm:px-5 py-3 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37]">
-                    <Calendar className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-extrabold text-xs sm:text-sm text-[#D4AF37]">
-                      {formatReadableDateHeader(grp.date)}
+      {/* =========================================================================
+          VIEW 1: CAMPAIGN CARDS STUDIO (CREATE, TOGGLE ON/OFF, EDIT CARDS)
+         ========================================================================= */}
+      {subView === 'cards_studio' && (
+        <div className="space-y-5 animate-fade-in">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-black text-[#123524] flex items-center gap-2">
+                <Gift className="w-4 h-4 text-[#D4AF37]" />
+                <span>Saved Promotion & Campaign Cards ({campaignCards.length})</span>
+              </h3>
+              <p className="text-xs text-gray-500 font-semibold">
+                ကဒ်တစ်ခုချင်းစီရှိ ခလုတ်များဖြင့် Popup သို့မဟုတ် Booking Box ကို လိုအပ်သည့်အချိန်တွင် အလွယ်တကူ ပြန်ဖွင့်/ပိတ် နိုင်ပါသည်
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="px-4 py-2.5 rounded-xl bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] border border-[#D4AF37]/40 text-xs font-black flex items-center gap-1.5 shadow-sm transition"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>+ Campaign ကဒ်အသစ် ထည့်မည်</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {campaignCards.map((card) => {
+              const isCardLive = Boolean(card.isPopupActive || card.isBoxActive);
+              const isSavingThis = savingPromoId === card.id;
+
+              return (
+                <div
+                  key={card.id}
+                  className={`rounded-3xl border-2 overflow-hidden flex flex-col justify-between transition-all duration-200 ${
+                    isCardLive
+                      ? 'bg-white border-[#D4AF37] shadow-xl ring-2 ring-[#D4AF37]/30'
+                      : 'bg-white border-gray-200 shadow-sm hover:border-gray-300'
+                  }`}
+                >
+                  {/* Card Visual Header (Inspired by Customer App Popup!) */}
+                  <div
+                    className={`p-5 bg-gradient-to-br ${
+                      card.themeColor || 'from-amber-900 via-[#2a1808] to-[#140b03]'
+                    } text-white relative overflow-hidden`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-black/40 text-[#D4AF37] border border-[#D4AF37]/40">
+                        ✨ {card.badgeText || 'EXCLUSIVE EVENT'}
+                      </span>
+
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase flex items-center gap-1 ${
+                          isCardLive
+                            ? 'bg-emerald-500 text-white shadow animate-pulse'
+                            : 'bg-white/15 text-gray-200'
+                        }`}
+                      >
+                        {isCardLive ? '● ACTIVE NOW' : '○ INACTIVE (OFF)'}
+                      </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-200 font-semibold mt-0.5">
-                      <span>ကံထူးရှင် စုစုပေါင်း: <strong>{grp.items.length} ဦး</strong></span>
-                      <span>•</span>
-                      <span className="text-emerald-300">သုံးပြီး: <strong>{grp.usedCount} ဦး</strong></span>
-                      {grp.activeCount > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="text-blue-300">မသုံးရသေး (Active): <strong>{grp.activeCount} ဦး</strong></span>
-                        </>
-                      )}
-                      {grp.expiredCount > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="text-red-300">သက်တမ်းကုန်: <strong>{grp.expiredCount} ဦး</strong></span>
-                        </>
-                      )}
+
+                    <h4 className="text-base sm:text-lg font-black text-[#D4AF37] leading-snug">
+                      {card.campaignTitle}
+                    </h4>
+                    <div className="text-[11px] text-gray-200 font-semibold mt-1 flex items-center gap-2">
+                      <span>🏷️ Box Title: {card.boxTitle}</span>
+                    </div>
+                  </div>
+
+                  {/* Card Body: Discount & Date Info + Individual Toggles */}
+                  <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
+                    <div className="space-y-3">
+                      {/* Discount Pills */}
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-200 text-center">
+                          <div className="text-[9px] font-bold text-gray-400 uppercase">
+                            Other Services
+                          </div>
+                          <div className="text-sm font-black text-[#123524] mt-0.5">
+                            {card.otherDiscountPercent}% OFF
+                          </div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-200 text-center">
+                          <div className="text-[9px] font-bold text-gray-400 uppercase">
+                            Hotel & Outcall
+                          </div>
+                          <div className="text-sm font-black text-[#123524] mt-0.5">
+                            {card.hotelDiscountPercent}% OFF
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Date Range */}
+                      <div className="flex items-center justify-between text-xs bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                        <span className="text-gray-500 font-bold flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-[#D4AF37]" /> ကာလ:
+                        </span>
+                        <span className="font-mono font-black text-gray-700 text-[11px]">
+                          {card.startDate || '-'} ➔ {card.endDate || '-'}
+                        </span>
+                      </div>
+
+                      {/* Individual Channel Toggles */}
+                      <div className="space-y-2 pt-1">
+                        {/* 1. Mini Game Popup Toggle */}
+                        <div
+                          onClick={() => !isSavingThis && handleToggleCardChannel(card, 'popup')}
+                          className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
+                            card.isPopupActive
+                              ? 'bg-orange-50 border-orange-300 text-orange-950'
+                              : 'bg-gray-50/70 border-gray-200 text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-xs font-black flex items-center gap-1.5">
+                              <span>🏮 Mini Game Popup</span>
+                            </div>
+                            <div className="text-[10px] opacity-75 font-semibold">
+                              App အဖွင့်တွင် ပေါ်မည့် မီးပုံးဂိမ်း Popup
+                            </div>
+                          </div>
+                          <span
+                            className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                              card.isPopupActive
+                                ? 'bg-orange-600 text-white shadow-2xs'
+                                : 'bg-gray-200 text-gray-600'
+                            }`}
+                          >
+                            {card.isPopupActive ? 'ON (ဖွင့်ထားသည်)' : 'OFF (ပိတ်ထားသည်)'}
+                          </span>
+                        </div>
+
+                        {/* 2. Customer App Promotion Box Toggle */}
+                        <div
+                          onClick={() => !isSavingThis && handleToggleCardChannel(card, 'box')}
+                          className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
+                            card.isBoxActive
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                              : 'bg-gray-50/70 border-gray-200 text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-xs font-black flex items-center gap-1.5">
+                              <span>🏷️ Booking Promo Box</span>
+                            </div>
+                            <div className="text-[10px] opacity-75 font-semibold">
+                              Booking စာမျက်နှာအပေါ်တွင် ပေါ်မည့် Box
+                            </div>
+                          </div>
+                          <span
+                            className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                              card.isBoxActive
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'bg-gray-200 text-gray-600'
+                            }`}
+                          >
+                            {card.isBoxActive ? 'ON (ဖွင့်ထားသည်)' : 'OFF (ပိတ်ထားသည်)'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Footer Actions */}
+                    <div className="pt-3 border-t border-gray-100 flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isSavingThis}
+                        onClick={() => handleToggleCardChannel(card, 'master_toggle')}
+                        className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition shadow-xs ${
+                          isCardLive
+                            ? 'bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200'
+                            : 'bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37]'
+                        }`}
+                      >
+                        {isSavingThis
+                          ? 'Saving...'
+                          : isCardLive
+                          ? '🚫 Turn Off Campaign'
+                          : '⚡ Activate Campaign'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditingCard(card)}
+                        className="p-2.5 rounded-xl bg-gray-100 hover:bg-amber-50 text-gray-700 hover:text-[#123524] border border-gray-200 transition"
+                        title="Edit Campaign Details"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCampaignCard(card)}
+                        className="p-2.5 rounded-xl bg-gray-100 hover:bg-red-50 text-gray-500 hover:text-red-600 border border-gray-200 transition"
+                        title="Delete Campaign Card"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          VIEW 2: GAME CAMPAIGN WINNERS & USAGE TRACKER
+         ========================================================================= */}
+      {subView === 'winners_tracker' && (
+        <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-100 pb-4 gap-4">
+            <div>
+              <h3 className="text-lg font-bold flex items-center text-[#123524]">
+                <PartyPopper className="mr-2 text-[#D4AF37]" /> Game Campaign Winners & Usage Tracker
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                ကံထူးရှင်များ၏ ၁ ရက်တာ Discount ခံစားခွင့်သည် Shop POS မှ ဘောင်ချာထုတ်ပြီး Service Complete ဖြစ်မှသာ သုံးပြီးကြောင်း (Used) သတ်မှတ်ပါမည်
+              </p>
+            </div>
+            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="flex-1 sm:flex-none justify-center items-center flex px-4 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-black hover:bg-emerald-100 transition shadow-2xs"
+              >
+                <Download className="w-4 h-4 mr-1.5" /> Export Excel
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200">
+              <div className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
+                စုစုပေါင်း ကံထူးရှင် (Total Winners)
               </div>
+              <div className="text-2xl font-black text-[#123524] mt-1">{summaryStats.total} ဦး</div>
+            </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[880px]">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
-                      <th className="p-3.5">Winning Date</th>
-                      <th className="p-3.5">Phone & Customer</th>
-                      <th className="p-3.5">Discount Won</th>
-                      <th className="p-3.5">Reward Usage Status (ခံစားခွင့် အခြေအနေ)</th>
-                      <th className="p-3.5">Booking / POS Receipt</th>
-                      <th className="p-3.5 text-right">Contact & Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-sm">
-                    {grp.items.map((r) => {
-                      const linkedB = r.completedBooking || r.activePendingBooking;
-                      return (
-                        <tr key={r.id} className="hover:bg-gray-50/80 transition">
-                          <td className="p-3.5 font-mono text-xs font-bold text-gray-600">
-                            <div>{r.cleanDate}</div>
-                            {r.createdAt && (
-                              <div className="text-[10px] text-gray-400">
-                                {new Date(r.createdAt).toLocaleTimeString('en-US', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="p-3.5">
-                            <div className="font-mono font-black text-[#123524] text-sm">{r.phone}</div>
-                            {linkedB?.name && (
-                              <div className="text-xs font-bold text-gray-600 mt-0.5">👤 {linkedB.name}</div>
-                            )}
-                          </td>
-
-                          <td className="p-3.5">
-                            <span className="font-black text-orange-700 bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-200 text-xs inline-flex items-center gap-1 shadow-2xs">
-                              <Sparkles className="w-3.5 h-3.5 text-orange-500" />
-                              {r.discountPercent}% OFF
-                            </span>
-                          </td>
-
-                          {/* Reward Usage Status Column */}
-                          <td className="p-3.5">
-                            {r.rewardStatus === 'used_completed' ? (
-                              <div className="space-y-1">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase">
-                                  <CheckCircle className="w-3 h-3" /> သုံးပြီးပြီ (Used / Service Complete)
-                                </span>
-                                <div className="text-[10px] font-semibold text-gray-500">
-                                  ဘောင်ချာထုတ်ပြီး၍ ခံစားခွင့် ပိတ်သိမ်းပြီး
-                                </div>
-                              </div>
-                            ) : r.rewardStatus === 'active_unused' ? (
-                              <div className="space-y-1">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300 uppercase animate-pulse">
-                                  <Clock className="w-3 h-3" /> မသုံးရသေး (Active Today)
-                                </span>
-                                <div className="text-[10px] font-bold text-blue-700">
-                                  {r.activePendingBooking
-                                    ? `Booking တင်ထားဆဲ (${r.activePendingBooking.status.toUpperCase()})`
-                                    : 'ယနေ့ ဘိုကင်တင်/အသုံးပြုနိုင်ဆဲ'}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="space-y-1">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-200 uppercase">
-                                  <AlertCircle className="w-3 h-3" /> သက်တမ်းကုန်ဆုံး (Expired)
-                                </span>
-                                <div className="text-[10px] font-semibold text-gray-400">
-                                  ၁ ရက်ကျော်သွား၍ မသုံးလိုက်ရပါ
-                                </div>
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Linked Booking / One-Click Discount Fix */}
-                          <td className="p-3.5 text-xs">
-                            {linkedB ? (
-                              <div className="space-y-1.5">
-                                <div className="font-bold text-gray-800">
-                                  {linkedB.service} • <span className="text-[#123524]">{formatPrice(linkedB.totalPrice)}</span>
-                                </div>
-                                <div className="text-[10px] text-gray-500 font-mono">
-                                  TxID: {linkedB.txId || '-'} | Status: <strong>{linkedB.status.toUpperCase()}</strong>
-                                </div>
-                                {r.activeBookingNeedsDiscount && (
-                                  <button
-                                    type="button"
-                                    disabled={applyingBookingId === linkedB.id}
-                                    onClick={() => handleApplyCampaignDiscountToBooking(r, linkedB)}
-                                    className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] shadow-xs flex items-center gap-1 transition"
-                                  >
-                                    <Sparkles className="w-3 h-3" />
-                                    {applyingBookingId === linkedB.id
-                                      ? 'Applying...'
-                                      : `Booking တွင် ${r.discountPercent}% OFF ပြန်နှုတ်ပေးမည်`}
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-gray-400 font-semibold text-[11px]">Booking မတင်ရသေးပါ</span>
-                            )}
-                          </td>
-
-                          <td className="p-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleContactUser(r.phone, r.discountPercent)}
-                                className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg font-bold flex items-center hover:bg-blue-100 transition whitespace-nowrap"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5 mr-1" /> Telegram ပို့မည်
-                              </button>
-                              {adminRole === 'super_admin' && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteRecord(r.id, r.phone)}
-                                  className="p-1.5 rounded-lg bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600 transition"
-                                  title="Delete Record"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200">
+              <div className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider">
+                ✓ သုံးပြီးပြီ (Used / Completed)
+              </div>
+              <div className="text-2xl font-black text-emerald-700 mt-1">{summaryStats.usedCount} ဦး</div>
+              <div className="text-[10px] font-semibold text-emerald-700/80 mt-0.5">
+                ဘောင်ချာထုတ်ပြီး / Service ပြီးဆုံး
               </div>
             </div>
-          ))}
+
+            <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200">
+              <div className="text-[10px] font-extrabold text-blue-800 uppercase tracking-wider">
+                ⏳ မသုံးရသေး (Active Today)
+              </div>
+              <div className="text-2xl font-black text-blue-700 mt-1">{summaryStats.activeCount} ဦး</div>
+              <div className="text-[10px] font-semibold text-blue-700/80 mt-0.5">
+                ယနေ့ ဘိုကင်တင်/အသုံးပြုနိုင်ဆဲ
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200">
+              <div className="text-[10px] font-extrabold text-red-700 uppercase tracking-wider">
+                ⏰ သက်တမ်းကုန်ဆုံး (Expired)
+              </div>
+              <div className="text-2xl font-black text-red-600 mt-1">{summaryStats.expiredCount} ဦး</div>
+              <div className="text-[10px] font-semibold text-red-600/80 mt-0.5">
+                ၁ ရက်ကျော်သွား၍ မသုံးလိုက်ရသူများ
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 bg-gray-50/80 p-3.5 rounded-2xl border border-gray-200">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+                {[
+                  { id: 'all', label: 'ရက်အားလုံး (All)' },
+                  { id: 'today', label: 'ယနေ့ (Today)' },
+                  { id: 'yesterday', label: 'မနေ့က (Yesterday)' },
+                  { id: 'this_month', label: 'ယခုလ (This Month)' }
+                ].map((dm) => (
+                  <button
+                    key={dm.id}
+                    type="button"
+                    onClick={() => setDateFilterMode(dm.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      dateFilterMode === dm.id
+                        ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {dm.label}
+                  </button>
+                ))}
+              </div>
+
+              <div
+                className={`flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border transition shadow-2xs ${
+                  dateFilterMode === 'custom_range'
+                    ? 'bg-[#123524] text-[#D4AF37] border-[#D4AF37]'
+                    : 'bg-white text-gray-700 border-gray-200'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <span className="text-[10px] font-bold uppercase opacity-75">From:</span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFromDate(val);
+                    if (toDate && val > toDate) setToDate(val);
+                    setDateFilterMode('custom_range');
+                  }}
+                  className="text-xs font-bold bg-transparent outline-none cursor-pointer"
+                />
+                <span className="text-xs font-black">➔</span>
+                <span className="text-[10px] font-bold uppercase opacity-75">To:</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setToDate(val);
+                    if (fromDate && val < fromDate) setFromDate(val);
+                    setDateFilterMode('custom_range');
+                  }}
+                  className="text-xs font-bold bg-transparent outline-none cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-2.5 pt-2 border-t border-gray-200/60">
+              <div className="flex flex-wrap bg-white p-1 rounded-xl border border-gray-200 shadow-2xs gap-1">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    statusFilter === 'all' ? 'bg-[#123524] text-white' : 'text-gray-600'
+                  }`}
+                >
+                  အားလုံး ({summaryStats.total})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('active_unused')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    statusFilter === 'active_unused' ? 'bg-blue-600 text-white' : 'text-blue-700 hover:bg-blue-50'
+                  }`}
+                >
+                  ⏳ မသုံးရသေး / Active ({summaryStats.activeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('used_completed')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    statusFilter === 'used_completed'
+                      ? 'bg-emerald-700 text-white'
+                      : 'text-emerald-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  ✓ သုံးပြီးပြီ / Completed ({summaryStats.usedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('expired')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    statusFilter === 'expired' ? 'bg-red-600 text-white' : 'text-red-600 hover:bg-red-50'
+                  }`}
+                >
+                  ⏰ သက်တမ်းကုန်ဆုံး ({summaryStats.expiredCount})
+                </button>
+              </div>
+
+              <div className="relative w-full lg:w-72">
+                <input
+                  type="text"
+                  placeholder="ဖုန်းနံပါတ် သို့မဟုတ် အမည် ရှာရန်..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold shadow-2xs"
+                />
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="p-12 text-center text-gray-400 font-bold">Loading Campaign Winners...</div>
+          ) : groupedByDate.length === 0 ? (
+            <div className="p-12 text-center text-gray-400 font-bold border border-dashed border-gray-200 rounded-2xl">
+              ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် ကံထူးရှင်မှတ်တမ်း မရှိပါ။
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {groupedByDate.map((grp) => (
+                <div key={grp.date} className="rounded-2xl border border-gray-200 shadow-xs overflow-hidden bg-white">
+                  <div className="bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] px-4 sm:px-5 py-3 text-white flex flex-wrap items-center justify-between gap-3 border-b border-[#D4AF37]/40">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-white/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37]">
+                        <Calendar className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-xs sm:text-sm text-[#D4AF37]">
+                          {formatReadableDateHeader(grp.date)}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-200 font-semibold mt-0.5">
+                          <span>
+                            ကံထူးရှင် စုစုပေါင်း: <strong>{grp.items.length} ဦး</strong>
+                          </span>
+                          <span>•</span>
+                          <span className="text-emerald-300">
+                            သုံးပြီး: <strong>{grp.usedCount} ဦး</strong>
+                          </span>
+                          {grp.activeCount > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-blue-300">
+                                မသုံးရသေး (Active): <strong>{grp.activeCount} ဦး</strong>
+                              </span>
+                            </>
+                          )}
+                          {grp.expiredCount > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-red-300">
+                                သက်တမ်းကုန်: <strong>{grp.expiredCount} ဦး</strong>
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[880px]">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
+                          <th className="p-3.5">Winning Date</th>
+                          <th className="p-3.5">Phone & Customer</th>
+                          <th className="p-3.5">Discount Won</th>
+                          <th className="p-3.5">Reward Usage Status (ခံစားခွင့် အခြေအနေ)</th>
+                          <th className="p-3.5">Booking / POS Receipt</th>
+                          <th className="p-3.5 text-right">Contact & Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 text-sm">
+                        {grp.items.map((r) => {
+                          const linkedB = r.completedBooking || r.activePendingBooking;
+                          return (
+                            <tr key={r.id} className="hover:bg-gray-50/80 transition">
+                              <td className="p-3.5 font-mono text-xs font-bold text-gray-600">
+                                <div>{r.cleanDate}</div>
+                                {r.createdAt && (
+                                  <div className="text-[10px] text-gray-400">
+                                    {new Date(r.createdAt).toLocaleTimeString('en-US', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="p-3.5">
+                                <div className="font-mono font-black text-[#123524] text-sm">{r.phone}</div>
+                                {linkedB?.name && (
+                                  <div className="text-xs font-bold text-gray-600 mt-0.5">👤 {linkedB.name}</div>
+                                )}
+                              </td>
+
+                              <td className="p-3.5">
+                                <span className="font-black text-orange-700 bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-200 text-xs inline-flex items-center gap-1 shadow-2xs">
+                                  <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                                  {r.discountPercent}% OFF
+                                </span>
+                              </td>
+
+                              <td className="p-3.5">
+                                {r.rewardStatus === 'used_completed' ? (
+                                  <div className="space-y-1">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase">
+                                      <CheckCircle className="w-3 h-3" /> သုံးပြီးပြီ (Used / Service Complete)
+                                    </span>
+                                    <div className="text-[10px] font-semibold text-gray-500">
+                                      ဘောင်ချာထုတ်ပြီး၍ ခံစားခွင့် ပိတ်သိမ်းပြီး
+                                    </div>
+                                  </div>
+                                ) : r.rewardStatus === 'active_unused' ? (
+                                  <div className="space-y-1">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300 uppercase animate-pulse">
+                                      <Clock className="w-3 h-3" /> မသုံးရသေး (Active Today)
+                                    </span>
+                                    <div className="text-[10px] font-bold text-blue-700">
+                                      {r.activePendingBooking
+                                        ? `Booking တင်ထားဆဲ (${r.activePendingBooking.status.toUpperCase()})`
+                                        : 'ယနေ့ ဘိုကင်တင်/အသုံးပြုနိုင်ဆဲ'}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-200 uppercase">
+                                      <AlertCircle className="w-3 h-3" /> သက်တမ်းကုန်ဆုံး (Expired)
+                                    </span>
+                                    <div className="text-[10px] font-semibold text-gray-400">
+                                      ၁ ရက်ကျော်သွား၍ မသုံးလိုက်ရပါ
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="p-3.5 text-xs">
+                                {linkedB ? (
+                                  <div className="space-y-1.5">
+                                    <div className="font-bold text-gray-800">
+                                      {linkedB.service} •{' '}
+                                      <span className="text-[#123524]">{formatPrice(linkedB.totalPrice)}</span>
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 font-mono">
+                                      TxID: {linkedB.txId || '-'} | Status:{' '}
+                                      <strong>{linkedB.status.toUpperCase()}</strong>
+                                    </div>
+                                    {r.activeBookingNeedsDiscount && (
+                                      <button
+                                        type="button"
+                                        disabled={applyingBookingId === linkedB.id}
+                                        onClick={() => handleApplyCampaignDiscountToBooking(r, linkedB)}
+                                        className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] shadow-xs flex items-center gap-1 transition"
+                                      >
+                                        <Sparkles className="w-3 h-3" />
+                                        {applyingBookingId === linkedB.id
+                                          ? 'Applying...'
+                                          : `Booking တွင် ${r.discountPercent}% OFF ပြန်နှုတ်ပေးမည်`}
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 font-semibold text-[11px]">
+                                    Booking မတင်ရသေးပါ
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="p-3.5 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleContactUser(r.phone, r.discountPercent)}
+                                    className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg font-bold flex items-center hover:bg-blue-100 transition whitespace-nowrap"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5 mr-1" /> Telegram ပို့မည်
+                                  </button>
+                                  {adminRole === 'super_admin' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteRecord(r.id, r.phone)}
+                                      className="p-1.5 rounded-lg bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600 transition"
+                                      title="Delete Record"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
