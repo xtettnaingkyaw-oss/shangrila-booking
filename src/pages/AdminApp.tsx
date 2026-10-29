@@ -8076,7 +8076,7 @@ function AdminCampaignsView({
       </div>
 
       {/* =========================================================================
-          VIEW 1: CAMPAIGN CARDS STUDIO (CREATE, TOGGLE ON/OFF, EDIT CARDS)
+          VIEW 1: CAMPAIGN CARDS STUDIO (CREATE, TOGGLE ON/OFF, COPY LINK & EDIT CARDS)
          ========================================================================= */}
       {subView === 'cards_studio' && (
         <div className="space-y-5 animate-fade-in">
@@ -8087,24 +8087,43 @@ function AdminCampaignsView({
                 <span>Saved Promotion & Campaign Cards ({campaignCards.length})</span>
               </h3>
               <p className="text-xs text-gray-500 font-semibold">
-                ကဒ်တစ်ခုချင်းစီရှိ ခလုတ်များဖြင့် Popup သို့မဟုတ် Booking Box ကို လိုအပ်သည့်အချိန်တွင် အလွယ်တကူ ပြန်ဖွင့်/ပိတ် နိုင်ပါသည်
+                ကဒ်တစ်ခုချင်းစီရှိ ခလုတ်များဖြင့် Popup သို့မဟုတ် Booking Box ကို အဖွင့်/အပိတ် လုပ်နိုင်ပြီး၊ Campaign Link ကို Copy ကူးယူနိုင်ပါသည်
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2.5 rounded-xl bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] border border-[#D4AF37]/40 text-xs font-black flex items-center gap-1.5 shadow-sm transition"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>+ Campaign ကဒ်အသစ် ထည့်မည်</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const generalLink = `${window.location.origin}/?campaign=active`;
+                  navigator.clipboard.writeText(generalLink);
+                  alert(
+                    `✅ Main Campaign Game Link ကို Copy ကူးပြီးပါပြီ!\n\n${generalLink}\n\n(မှတ်ချက် - Admin မှ Mini Game Popup ဖွင့်ထားသည့် အချိန်တွင်သာ ဤ Link ဖြင့် ဂိမ်းဝင်ဆော့နိုင်ပါမည်)`
+                  );
+                }}
+                className="px-3.5 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#123524] border border-[#D4AF37]/50 text-xs font-black flex items-center gap-1.5 shadow-2xs transition"
+              >
+                <Copy className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <span>Copy Main Game Link</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="px-4 py-2.5 rounded-xl bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] border border-[#D4AF37]/40 text-xs font-black flex items-center gap-1.5 shadow-sm transition"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>+ Campaign ကဒ်အသစ် ထည့်မည်</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {campaignCards.map((card) => {
               const isCardLive = Boolean(card.isPopupActive || card.isBoxActive);
+              const isGameLinkPlayable = Boolean(card.isPopupActive);
               const isSavingThis = savingPromoId === card.id;
+              const campaignShareUrl = `${window.location.origin}/?campaign=${encodeURIComponent(card.id)}`;
 
               return (
                 <div
@@ -8115,7 +8134,7 @@ function AdminCampaignsView({
                       : 'bg-white border-gray-200 shadow-sm hover:border-gray-300'
                   }`}
                 >
-                  {/* Card Visual Header (Inspired by Customer App Popup!) */}
+                  {/* Card Visual Header */}
                   <div
                     className={`p-5 bg-gradient-to-br ${
                       card.themeColor || 'from-amber-900 via-[#2a1808] to-[#140b03]'
@@ -8145,7 +8164,7 @@ function AdminCampaignsView({
                     </div>
                   </div>
 
-                  {/* Card Body: Discount & Date Info + Individual Toggles */}
+                  {/* Card Body: Discount, Date, Direct Link & Toggles */}
                   <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
                     <div className="space-y-3">
                       {/* Discount Pills */}
@@ -8178,6 +8197,58 @@ function AdminCampaignsView({
                         </span>
                       </div>
 
+                      {/* 🌟 Direct Campaign Link & Copy Box (With Lock Indicator when OFF) 🌟 */}
+                      <div
+                        className={`p-3 rounded-xl border space-y-1.5 ${
+                          isGameLinkPlayable
+                            ? 'bg-blue-50/50 border-blue-200'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-600 flex items-center gap-1">
+                            🔗 Direct Campaign Game Link
+                          </span>
+                          <span
+                            className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
+                              isGameLinkPlayable
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-red-100 text-red-700 border border-red-200'
+                            }`}
+                          >
+                            {isGameLinkPlayable ? '🔓 Link Active (ဆော့နိုင်သည်)' : '🔒 Link Locked (ပိတ်ထားသည်)'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            readOnly
+                            value={campaignShareUrl}
+                            className="flex-1 px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg font-mono text-[10px] text-gray-600 outline-none select-all"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(campaignShareUrl);
+                              if (isGameLinkPlayable) {
+                                alert(
+                                  `✅ "${card.campaignTitle}" Game Link ကို Copy ကူးပြီးပါပြီ!\n\n${campaignShareUrl}`
+                                );
+                              } else {
+                                alert(
+                                  `📋 Link ကို Copy ကူးပြီးပါပြီ:\n${campaignShareUrl}\n\n⚠️ သတိပြုရန်: လက်ရှိတွင် ဤ Campaign ကို ပိတ်ထားသဖြင့် Customer မှ Link ကိုနှိပ်လျှင် ဂိမ်းဆော့၍ရမည် မဟုတ်ပါ။ ဂိမ်းပေးဆော့လိုပါက "Activate Campaign" သို့မဟုတ် "Mini Game Popup" ကို အရင်ဖွင့်ပေးပါ။`
+                                );
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-lg text-[10px] font-black flex items-center gap-1 flex-shrink-0 transition shadow-2xs"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </button>
+                        </div>
+                      </div>
+
                       {/* Individual Channel Toggles */}
                       <div className="space-y-2 pt-1">
                         {/* 1. Mini Game Popup Toggle */}
@@ -8191,10 +8262,10 @@ function AdminCampaignsView({
                         >
                           <div>
                             <div className="text-xs font-black flex items-center gap-1.5">
-                              <span>🏮 Mini Game Popup</span>
+                              <span>🏮 Mini Game Popup & Link</span>
                             </div>
                             <div className="text-[10px] opacity-75 font-semibold">
-                              App အဖွင့်တွင် ပေါ်မည့် မီးပုံးဂိမ်း Popup
+                              ပိတ်ထားလျှင် App အဖွင့်ရော Link မှပါ ဂိမ်းဆော့၍မရပါ
                             </div>
                           </div>
                           <span
