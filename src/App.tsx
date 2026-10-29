@@ -95,11 +95,28 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
 }
 
 function MainApp() {
-  // 🌟 URL မှ Mode ကို စဖွင့်ဖွင့်ချင်း ချက်ချင်း ဖတ်ယူမည် 🌟
+  // 🌟 URL မှ Mode ကို စဖွင့်ဖွင့်ချင်း ချက်ချင်း ဖတ်ယူမည် (Admin မှ ပိတ်ထားပါက campaign mode သို့ ဝင်ခွင့်မပြုပါ) 🌟
   const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff' | 'pos' | 'campaign'>(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const mode = searchParams.get('mode');
-    if (mode === 'admin' || mode === 'staff' || mode === 'pos' || mode === 'campaign') return mode;
+    
+    // POS နှင့် Admin / Staff တို့အတွက် သီးသန့်ခွင့်ပြုမည်
+    if (mode === 'admin' || mode === 'staff' || mode === 'pos') return mode;
+
+    // အကယ်၍ mode=campaign ဖြင့် ဝင်လာပါက appData ရှိ promotion အခြေအနေကို ကြိုတင်စစ်ဆေးမည်
+    if (mode === 'campaign') {
+      const cached = localStorage.getItem(CACHED_APPDATA_KEY);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          const isPromoLive = Boolean(parsed?.promotion?.isPopupActive || parsed?.promotion?.isActive);
+          if (isPromoLive) return 'campaign';
+        } catch {}
+      }
+      // မပွင့်ရသေးပါက customer mode သို့ ပြန်ပို့မည်
+      return 'customer';
+    }
+
     return 'customer';
   });
 
@@ -189,6 +206,20 @@ function MainApp() {
         setIsLoaderFinished(true);
         return;
       }
+
+    // 🌟 REAL-TIME CAMPAIGN LOCKOUT GUARD 🌟
+  // Admin မှ Promotion ပိတ်လိုက်သည်နှင့် တစ်ပြိုင်နက် campaign mode ဖြင့် ဝင်ရောက်နေပါက customer mode သို့ အလိုအလျောက် လွှဲပြောင်းပေးမည်
+  useEffect(() => {
+    if (appMode !== 'campaign') return;
+    const promo = appData?.promotion;
+    const isPromoLive = Boolean(promo?.isPopupActive === true || promo?.isActive === true);
+
+    if (!isPromoLive) {
+      setAppMode('customer');
+      window.history.replaceState({}, document.title, window.location.pathname);
+      alert("🙏 ဤအထူးပရိုမိုးရှင်း / မဲဖောက်သည့် အစီအစဉ် ပြီးဆုံးသွားပါပြီခင်ဗျာ။ (Campaign Ended)");
+    }
+  }, [appData?.promotion, appMode]);
 
       try {
         const [settingsSnap, therapistsSnap] = await Promise.all([
