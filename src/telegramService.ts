@@ -1845,3 +1845,119 @@ export const syncBotCommandsAndMenu = async (config: TelegramBotConfig): Promise
     return { ok: false, message: err?.message || 'Failed to sync bot commands' };
   }
 };
+
+// ==========================================
+// 🌟 INSTANT TELEGRAM DEEP-LINK FOR NORMAL WEBAPP / iOS PWA 🌟
+// ==========================================
+
+// Default Bot Username fallback (BotUsername ကို localStorage တွင် အမြဲ Caches သိမ်းထားပေးမည်)
+const DEFAULT_FALLBACK_BOT_USERNAME =
+  import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'theshangrilamenretreat';
+
+export const getCachedBotUsername = (): string => {
+  try {
+    const cached = localStorage.getItem('shangrila_bot_username');
+    if (cached && cached.trim()) {
+      return cached.replace(/^@/, '').trim();
+    }
+  } catch {}
+  return DEFAULT_FALLBACK_BOT_USERNAME.replace(/^@/, '').trim();
+};
+
+/**
+ * Bot Username ကို Telegram getMe API မှ အလိုအလျောက် ဆွဲယူပြီး localStorage ၌ အသင့်သိမ်းထားခြင်း
+ */
+export const fetchBotUsername = async (botToken?: string): Promise<string> => {
+  try {
+    const config = await getTelegramConfig();
+    if (config.botUsername && config.botUsername.trim()) {
+      const clean = config.botUsername.replace(/^@/, '').trim();
+      localStorage.setItem('shangrila_bot_username', clean);
+      return clean;
+    }
+    const token = botToken || config.botToken;
+    if (!token) return getCachedBotUsername();
+
+    const res = await fetch(`https://api.telegram.org/bot${token.trim()}/getMe`);
+    const data = await res.json();
+    if (data?.ok && data?.result?.username) {
+      const uname = String(data.result.username).replace(/^@/, '').trim();
+      localStorage.setItem('shangrila_bot_username', uname);
+      await saveTelegramConfig({ ...config, botUsername: uname });
+      return uname;
+    }
+  } catch (e) {
+    console.warn('Could not fetch bot username:', e);
+  }
+  return getCachedBotUsername();
+};
+
+/**
+ * ⚡ SYNCHRONOUS DEEP-LINK GENERATOR (iOS Safari / PWA တွင် Popup မပိတ်စေရန် await မပါဘဲ ချက်ချင်း URL ထုတ်ပေးသည်)
+ */
+export const getInstantCustomerTelegramDeepLink = (params?: {
+  mode?: 'subscribe' | 'booking_notify';
+  bookingId?: string;
+  customerPhone?: string;
+  customerName?: string;
+  botUsername?: string;
+}): { httpsUrl: string; tgAppUrl: string } => {
+  const botUsername = (params?.botUsername || getCachedBotUsername()).replace(/^@/, '').trim();
+  const cleanPhone = normalizePhone(params?.customerPhone) || 'guest';
+  const cleanBookingId = (params?.bookingId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-12);
+
+  const startPayload =
+    params?.mode === 'booking_notify' && cleanBookingId
+      ? `book_${cleanBookingId}_${cleanPhone}`
+      : `sub_${cleanPhone}`;
+
+  const httpsUrl = `https://t.me/${botUsername}?start=${startPayload}`;
+  const tgAppUrl = `tg://resolve?domain=${botUsername}&start=${startPayload}`;
+
+  return { httpsUrl, tgAppUrl };
+};
+
+/**
+ * Async wrapper (Backward compatibility အတွက် ဆက်ထားပေးသည်)
+ */
+export const buildCustomerTelegramDeepLink = async (params: {
+  mode: 'subscribe' | 'booking_notify';
+  bookingId?: string;
+  customerPhone?: string;
+  customerName?: string;
+}): Promise<string> => {
+  const botUsername = await fetchBotUsername();
+  return getInstantCustomerTelegramDeepLink({ ...params, botUsername }).httpsUrl;
+};
+
+/**
+ * 🚀 पုံမှန် WebApp / iOS Home Screen App မှ နှိပ်လိုက်သည်နှင့် Telegram Bot သို့ ချက်ချင်း ပွင့်သွားစေမည့် Function
+ */
+export const openCustomerTelegramBot = (params?: {
+  mode?: 'subscribe' | 'booking_notify';
+  bookingId?: string;
+  customerPhone?: string;
+  customerName?: string;
+}): void => {
+  const { httpsUrl, tgAppUrl } = getInstantCustomerTelegramDeepLink(params);
+
+  // Background တွင် Bot Username အမှန်ကို Caches အသစ်လဲထားမည်
+  fetchBotUsername().catch(() => {});
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isStandalonePWA =
+    window.matchMedia?.('(display-mode: standalone)').matches || (window.navigator as any)?.standalone === true;
+
+  if (isIOS || isStandalonePWA) {
+    // iOS PWA / Safari တွင် location.href ဖြင့် တိုက်ရိုက်ဖွင့်မှသာ Block မခံရဘဲ Telegram App တန်းပွင့်သည်
+    window.location.href = httpsUrl;
+    setTimeout(() => {
+      window.location.href = tgAppUrl;
+    }, 350);
+  } else {
+    const win = window.open(httpsUrl, '_blank', 'noopener,noreferrer');
+    if (!win) {
+      window.location.href = httpsUrl;
+    }
+  }
+};
