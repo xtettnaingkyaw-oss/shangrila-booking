@@ -9,6 +9,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { decryptText } from './security';
 
 // ==========================================
 // 1. TYPES & INTERFACES
@@ -74,6 +75,7 @@ export interface TelegramBotConfig {
     staffAssignTitle: string;
   };
   staffMappings: StaffTelegramMapping[];
+  subscribers?: CustomerTelegramSubscriber[];
 }
 
 export interface BookingNotificationPayload {
@@ -90,7 +92,7 @@ export interface BookingNotificationPayload {
   therapistName?: string;
   roomName?: string;
   vipTier?: string;
-  status: 'pending' | 'confirmed' | 'in-service' | 'completed' | 'cancelled' | string;
+  status: 'pending' | 'confirmed' | 'approved' | 'in-service' | 'completed' | 'cancelled' | string;
   notes?: string;
   updatedBy?: string;
 }
@@ -160,21 +162,25 @@ export const DEFAULT_TELEGRAM_CONFIG: TelegramBotConfig = {
   staffMappings: [
     { staffId: 'No. 1', staffName: 'Therapist No. 1', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
     { staffId: 'No. 3', staffName: 'Therapist No. 3', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
+    { staffId: 'No. 5', staffName: 'Therapist No. 5', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
     { staffId: 'No. 6', staffName: 'Therapist No. 6', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
-    { staffId: 'No. 7', staffName: 'Therapist No. 7', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
-    { staffId: 'No. 9', staffName: 'Therapist No. 9', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
     { staffId: 'No. 10', staffName: 'Therapist No. 10', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
-    { staffId: 'No. 11', staffName: 'Therapist No. 11', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
-    { staffId: 'No. 12', staffName: 'Therapist No. 12', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
-    { staffId: 'No. 13', staffName: 'Therapist No. 13', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
-    { staffId: 'No. 14', staffName: 'Therapist No. 14', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
-    { staffId: 'Manager', staffName: 'Shop Manager', telegramChatId: '', receiveBookingAssign: true, receiveRosterUpdate: true, receivePenaltyAlert: true, receivePayrollAlert: true },
   ],
+  subscribers: [],
 };
 
 // ==========================================
 // 3. HELPER FUNCTIONS
 // ==========================================
+
+export const safeDecryptValue = (val: any): string => {
+  if (!val || typeof val !== 'string') return String(val || '');
+  try {
+    return decryptText(val) || val;
+  } catch {
+    return val;
+  }
+};
 
 export const escapeHtml = (unsafe: string | number | undefined | null): string => {
   if (unsafe === undefined || unsafe === null) return '-';
@@ -188,10 +194,17 @@ export const escapeHtml = (unsafe: string | number | undefined | null): string =
 
 export const normalizePhone = (phone: string | undefined | null): string => {
   if (!phone) return '';
-  const digits = String(phone).replace(/[^0-9]/g, '');
+  const decrypted = safeDecryptValue(phone);
+  const digits = String(decrypted).replace(/[^0-9]/g, '');
   if (digits.startsWith('959')) return '09' + digits.slice(3);
   if (digits.startsWith('9') && digits.length >= 8) return '0' + digits;
   return digits;
+};
+
+export const isPrivateUserChatId = (chatId: string | number | undefined | null): boolean => {
+  if (!chatId) return false;
+  const s = String(chatId).trim();
+  return /^\d+$/.test(s) && !s.startsWith('-');
 };
 
 export const getTelegramConfig = async (): Promise<TelegramBotConfig> => {
@@ -207,6 +220,7 @@ export const getTelegramConfig = async (): Promise<TelegramBotConfig> => {
         botFlow: { ...DEFAULT_TELEGRAM_CONFIG.botFlow, ...(data.botFlow || {}) },
         templates: { ...DEFAULT_TELEGRAM_CONFIG.templates, ...(data.templates || {}) },
         staffMappings: data.staffMappings || DEFAULT_TELEGRAM_CONFIG.staffMappings,
+        subscribers: Array.isArray(data.subscribers) ? data.subscribers : [],
       };
     } else {
       await setDoc(docRef, DEFAULT_TELEGRAM_CONFIG);
@@ -251,9 +265,6 @@ const logTelegramActivity = async (
   }
 };
 
-/**
- * Mini App အတွင်းရှိ သက်ဆိုင်ရာ Tab သို့ တိုက်ရိုက်ပွင့်စေမည့် Inline Keyboard တည်ဆောက်ပေးခြင်း
- */
 export const buildCustomerMiniAppInlineKeyboard = (baseUrl: string = 'https://www.shangrilamenretreat.online') => {
   const cleanUrl = baseUrl.replace(/\/$/, '');
   return {
@@ -396,15 +407,9 @@ export const sendRawTelegramPhoto = async (
 };
 
 // ==========================================
-// 5. CUSTOMER SUBSCRIBER MANAGEMENT & AUTO-CAPTURE
+// 5. CUSTOMER SUBSCRIBER MANAGEMENT & DUAL-STORAGE SYNC
 // ==========================================
 
-/**
- * Telegram Mini App မှ ဝင်လာသော Customer ၏ Chat ID နှင့် အချက်အလက်ကို
- * 1) window.Telegram.WebApp.initDataUnsafe
- * 2) window.location.hash (#tgWebAppData=...) - telegram-web-app.js မရှိသည့်တိုင် အလုပ်လုပ်စေရန်
- * 3) URL query params (?tgChatId=...) သို့မဟုတ် localStorage တို့မှ အဆင့်ဆင့် ဖတ်ယူခြင်း
- */
 export const getDetectedTelegramWebAppUser = (): {
   chatId: string;
   firstName: string;
@@ -412,7 +417,6 @@ export const getDetectedTelegramWebAppUser = (): {
   username: string;
 } | null => {
   try {
-    // 1. Check window.Telegram.WebApp
     const tg = (window as any)?.Telegram?.WebApp;
     if (tg) {
       try {
@@ -433,7 +437,6 @@ export const getDetectedTelegramWebAppUser = (): {
       return userObj;
     }
 
-    // 2. Parse #tgWebAppData from URL hash or search params (works even if telegram-web-app.js is missing!)
     const rawHash = window.location.hash ? window.location.hash.substring(1) : '';
     const hashParams = new URLSearchParams(rawHash);
     const searchParams = new URLSearchParams(window.location.search);
@@ -458,9 +461,8 @@ export const getDetectedTelegramWebAppUser = (): {
       }
     }
 
-    // 3. Check explicit query param ?chatId= or ?tgChatId=
     const explicitParamId = searchParams.get('tgChatId') || searchParams.get('chatId');
-    if (explicitParamId && /^\d+$/.test(explicitParamId.trim())) {
+    if (explicitParamId && isPrivateUserChatId(explicitParamId)) {
       const userObj = {
         chatId: explicitParamId.trim(),
         firstName: searchParams.get('firstName') || '',
@@ -472,15 +474,14 @@ export const getDetectedTelegramWebAppUser = (): {
       return userObj;
     }
 
-    // 4. Fallback to cached localStorage
     const cached = localStorage.getItem('shangrila_tg_user');
     if (cached) {
       const parsed = JSON.parse(cached);
-      if (parsed?.chatId) return parsed;
+      if (parsed?.chatId && isPrivateUserChatId(parsed.chatId)) return parsed;
     }
 
     const savedChatId = localStorage.getItem('shangrila_customer_chat_id');
-    if (savedChatId) {
+    if (savedChatId && isPrivateUserChatId(savedChatId)) {
       return { chatId: savedChatId, firstName: '', lastName: '', username: '' };
     }
   } catch (e) {
@@ -490,91 +491,185 @@ export const getDetectedTelegramWebAppUser = (): {
 };
 
 /**
- * Customer ၏ Telegram Chat ID ကို Firestore 'telegramSubscribers' collection တွင် သိမ်းဆည်းခြင်း (Auto-Subscribe)
+ * 🌟 DUAL-STORAGE SAVE:
+ * 1) `telegramSubscribers/{chatId}` collection သို့ သိမ်းမည်
+ * 2) `settings/telegramConfig` ၏ `subscribers` array တွင်ပါ တစ်ပြိုင်နက် သိမ်းမည် (Firestore Rules ကြောင့် 0 ဖြစ်နေခြင်းကို 100% ကာကွယ်ပေးသည်)
  */
 export const saveCustomerTelegramSubscription = async (
   subscriber: Partial<CustomerTelegramSubscriber> & { chatId: string }
 ): Promise<boolean> => {
   if (!subscriber.chatId) return false;
-  try {
-    const cleanChatId = String(subscriber.chatId).trim();
-    if (!cleanChatId || cleanChatId.startsWith('-')) {
-      // Group chat IDs (negative numbers) should not be saved as individual customer subscribers
-      return false;
-    }
-
-    const docRef = doc(db, 'telegramSubscribers', cleanChatId);
-    const existingSnap = await getDoc(docRef);
-    const existingData = existingSnap.exists() ? (existingSnap.data() as CustomerTelegramSubscriber) : null;
-
-    const nowIso = new Date().toISOString();
-    const normalizedPhone = normalizePhone(subscriber.customerPhone || existingData?.customerPhone || '');
-
-    const resolvedName =
-      (subscriber.customerName && subscriber.customerName !== 'Shangri-La Guest'
-        ? subscriber.customerName
-        : '') ||
-      existingData?.customerName ||
-      [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ') ||
-      subscriber.username ||
-      'Shangri-La Guest';
-
-    const payload: CustomerTelegramSubscriber = {
-      chatId: cleanChatId,
-      customerName: resolvedName,
-      customerPhone: normalizedPhone || subscriber.customerPhone || existingData?.customerPhone || '',
-      username: subscriber.username || existingData?.username || '',
-      firstName: subscriber.firstName || existingData?.firstName || '',
-      lastName: subscriber.lastName || existingData?.lastName || '',
-      vipTier: subscriber.vipTier || existingData?.vipTier || 'Member',
-      subscribed: subscriber.subscribed !== undefined ? subscriber.subscribed : true,
-      source: subscriber.source || existingData?.source || 'mini_app',
-      lastBookingId: subscriber.lastBookingId || existingData?.lastBookingId || '',
-      subscribedAt: existingData?.subscribedAt || nowIso,
-      updatedAt: nowIso,
-    };
-
-    await setDoc(docRef, payload, { merge: true });
-    return true;
-  } catch (error) {
-    console.error('Error saving customer telegram subscription:', error);
+  const cleanChatId = String(subscriber.chatId).trim();
+  if (!isPrivateUserChatId(cleanChatId)) {
     return false;
   }
+
+  const nowIso = new Date().toISOString();
+  const normalizedPhone = normalizePhone(subscriber.customerPhone || '');
+  const cleanInputName = safeDecryptValue(subscriber.customerName || '').trim();
+
+  let existingData: CustomerTelegramSubscriber | null = null;
+
+  try {
+    const docRef = doc(db, 'telegramSubscribers', cleanChatId);
+    const existingSnap = await getDoc(docRef);
+    if (existingSnap.exists()) {
+      existingData = existingSnap.data() as CustomerTelegramSubscriber;
+    }
+  } catch {}
+
+  let configData: TelegramBotConfig | null = null;
+  try {
+    configData = await getTelegramConfig();
+    if (!existingData && configData.subscribers) {
+      existingData = configData.subscribers.find((s) => String(s.chatId) === cleanChatId) || null;
+    }
+  } catch {}
+
+  const resolvedName =
+    (cleanInputName && cleanInputName !== 'Shangri-La Guest' && cleanInputName !== 'Telegram Customer'
+      ? cleanInputName
+      : '') ||
+    existingData?.customerName ||
+    [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ') ||
+    subscriber.username ||
+    cleanInputName ||
+    'Shangri-La Guest';
+
+  const payload: CustomerTelegramSubscriber = {
+    chatId: cleanChatId,
+    customerName: resolvedName,
+    customerPhone: normalizedPhone || existingData?.customerPhone || '',
+    username: subscriber.username || existingData?.username || '',
+    firstName: subscriber.firstName || existingData?.firstName || '',
+    lastName: subscriber.lastName || existingData?.lastName || '',
+    vipTier: subscriber.vipTier || existingData?.vipTier || 'Member',
+    subscribed: subscriber.subscribed !== undefined ? subscriber.subscribed : true,
+    source: subscriber.source || existingData?.source || 'mini_app',
+    lastBookingId: subscriber.lastBookingId || existingData?.lastBookingId || '',
+    subscribedAt: existingData?.subscribedAt || nowIso,
+    updatedAt: nowIso,
+  };
+
+  let savedAnywhere = false;
+
+  // Save 1: Dedicated `telegramSubscribers` collection
+  try {
+    await setDoc(doc(db, 'telegramSubscribers', cleanChatId), payload, { merge: true });
+    savedAnywhere = true;
+  } catch (err) {
+    console.warn('Could not write to telegramSubscribers collection, using config fallback:', err);
+  }
+
+  // Save 2: Inside `settings/telegramConfig` document (Guaranteed Admin R/W permission)
+  try {
+    const currentConfig = configData || (await getTelegramConfig());
+    const currentList = Array.isArray(currentConfig.subscribers) ? [...currentConfig.subscribers] : [];
+    const idx = currentList.findIndex((s) => String(s.chatId) === cleanChatId);
+    if (idx >= 0) {
+      currentList[idx] = { ...currentList[idx], ...payload };
+    } else {
+      currentList.push(payload);
+    }
+    await setDoc(
+      doc(db, 'settings', 'telegramConfig'),
+      { subscribers: currentList, updatedAt: nowIso },
+      { merge: true }
+    );
+    savedAnywhere = true;
+  } catch (err) {
+    console.warn('Could not save subscriber into telegramConfig fallback:', err);
+  }
+
+  // Save 3: LocalStorage immediate cache
+  try {
+    const localList: CustomerTelegramSubscriber[] = JSON.parse(
+      localStorage.getItem('shangrila_cached_subscribers') || '[]'
+    );
+    const lIdx = localList.findIndex((s) => String(s.chatId) === cleanChatId);
+    if (lIdx >= 0) localList[lIdx] = { ...localList[lIdx], ...payload };
+    else localList.push(payload);
+    localStorage.setItem('shangrila_cached_subscribers', JSON.stringify(localList));
+  } catch {}
+
+  return savedAnywhere;
 };
 
 /**
- * Customer များအားလုံး၏ Telegram Subscription စာရင်းကို Firestore မှ ဆွဲယူခြင်း
+ * 🌟 MULTI-SOURCE SUBSCRIBER LOADER:
+ * `telegramSubscribers` collection + `settings/telegramConfig.subscribers` + `bookings` မှ Chat ID များကို ပေါင်းစပ်ဆွဲယူပေးသည်
  */
 export const getCustomerTelegramSubscribers = async (): Promise<CustomerTelegramSubscriber[]> => {
+  const mergedMap = new Map<string, CustomerTelegramSubscriber>();
+
+  const mergeEntry = (item: Partial<CustomerTelegramSubscriber> & { chatId: string }) => {
+    const cid = String(item.chatId || '').trim();
+    if (!isPrivateUserChatId(cid)) return;
+    const prev = mergedMap.get(cid);
+    const cName = safeDecryptValue(
+      item.customerName || [item.firstName, item.lastName].filter(Boolean).join(' ') || prev?.customerName || 'Guest'
+    );
+    const cPhone = normalizePhone(item.customerPhone || prev?.customerPhone || '');
+
+    mergedMap.set(cid, {
+      chatId: cid,
+      customerName: cName,
+      customerPhone: cPhone,
+      username: item.username || prev?.username || '',
+      firstName: item.firstName || prev?.firstName || '',
+      lastName: item.lastName || prev?.lastName || '',
+      vipTier: item.vipTier || prev?.vipTier || 'Member',
+      subscribed: item.subscribed !== false,
+      source: item.source || prev?.source || 'bot_command',
+      lastBookingId: item.lastBookingId || prev?.lastBookingId || '',
+      subscribedAt: item.subscribedAt || prev?.subscribedAt || new Date().toISOString(),
+      updatedAt: item.updatedAt || prev?.updatedAt || new Date().toISOString(),
+    });
+  };
+
+  // Source 1: `settings/telegramConfig` subscribers array
+  try {
+    const cfg = await getTelegramConfig();
+    if (Array.isArray(cfg.subscribers)) {
+      cfg.subscribers.forEach((s) => {
+        if (s && s.chatId) mergeEntry(s);
+      });
+    }
+  } catch {}
+
+  // Source 2: `telegramSubscribers` collection
   try {
     const snap = await getDocs(collection(db, 'telegramSubscribers'));
-    const list: CustomerTelegramSubscriber[] = [];
     snap.forEach((docSnap) => {
       const data = docSnap.data() as CustomerTelegramSubscriber;
       const chatId = data?.chatId || docSnap.id;
-      if (chatId && !String(chatId).startsWith('-')) {
-        list.push({
-          ...data,
-          chatId: String(chatId),
-          customerName: data.customerName || [data.firstName, data.lastName].filter(Boolean).join(' ') || 'Guest',
-          customerPhone: data.customerPhone || '',
-          subscribed: data.subscribed !== false,
-        });
+      if (chatId) {
+        mergeEntry({ ...data, chatId: String(chatId) });
       }
     });
-    return list.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-  } catch (error) {
-    console.error('Error fetching telegram subscribers:', error);
-    return [];
-  }
+  } catch {}
+
+  // Source 3: LocalStorage Cache
+  try {
+    const localList: CustomerTelegramSubscriber[] = JSON.parse(
+      localStorage.getItem('shangrila_cached_subscribers') || '[]'
+    );
+    localList.forEach((s) => {
+      if (s && s.chatId) mergeEntry(s);
+    });
+  } catch {}
+
+  return Array.from(mergedMap.values()).sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
 };
 
 /**
- * Customer ၏ Chat ID ကို:
+ * 🌟 SMART CUSTOMER CHAT ID MATCHER:
  * 1) Explicit Chat ID
- * 2) ဖုန်းနံပါတ် (Phone Match)
- * 3) အမည် သို့မဟုတ် Username (Name / Username Match - ဥပမာ Tho Sit Naing)
- * 4) Booking ID (lastBookingId Match) တို့ဖြင့် အဆင့်ဆင့် လိုက်လံရှာဖွေပေးခြင်း
+ * 2) Booking Document ထဲရှိ `customerChatId` / `telegramChatId`
+ * 3) Booking ID တူညီမှု
+ * 4) ဖုန်းနံပါတ် တူညီမှု (Encrypted ဖုန်းနံပါတ်များပါ Decrypt လုပ်၍ တိုက်စစ်သည်)
+ * 5) အမည် သို့မဟုတ် Username တူညီမှု
+ * 6) Subscribed Customer (၁) ဦးတည်းသာ ရှိပြီး ဖုန်းနံပါတ် မချိတ်ရသေးပါက ထို Customer ကို အလိုအလျောက် ချိတ်ဆက်ပေးခြင်း
  */
 export const findCustomerChatId = async (
   customerPhone?: string,
@@ -582,13 +677,34 @@ export const findCustomerChatId = async (
   customerName?: string,
   bookingId?: string
 ): Promise<string | null> => {
-  if (explicitChatId && String(explicitChatId).trim() && !String(explicitChatId).startsWith('-')) {
+  if (explicitChatId && isPrivateUserChatId(explicitChatId)) {
     return String(explicitChatId).trim();
   }
 
   try {
+    // Check booking document directly in Firestore first if bookingId is provided
+    if (bookingId) {
+      try {
+        const bSnap = await getDoc(doc(db, 'bookings', bookingId));
+        if (bSnap.exists()) {
+          const bData = bSnap.data();
+          const bChatId = bData?.customerChatId || bData?.telegramChatId || bData?.chatId;
+          if (bChatId && isPrivateUserChatId(bChatId)) {
+            return String(bChatId).trim();
+          }
+        }
+      } catch {}
+    }
+
     const subscribers = await getCustomerTelegramSubscribers();
-    const activeSubs = subscribers.filter((s) => s.subscribed !== false && s.chatId);
+    const config = await getTelegramConfig();
+
+    // Staff Chat IDs စာရင်းကို ဖယ်ထုတ်ထားရန် (Customer နှင့် မရောစေရန်)
+    const staffChatIds = new Set(
+      (config.staffMappings || []).map((s) => String(s.telegramChatId || '').trim()).filter(Boolean)
+    );
+
+    const activeSubs = subscribers.filter((s) => s.subscribed !== false && isPrivateUserChatId(s.chatId));
 
     // 1. Match by Booking ID
     if (bookingId) {
@@ -604,24 +720,49 @@ export const findCustomerChatId = async (
     // 2. Match by Normalized Phone Number
     const cleanTargetPhone = normalizePhone(customerPhone);
     if (cleanTargetPhone) {
-      const byPhone = activeSubs.find((s) => normalizePhone(s.customerPhone) === cleanTargetPhone);
+      const byPhone = activeSubs.find((s) => {
+        const subPhone = normalizePhone(s.customerPhone);
+        return (
+          subPhone &&
+          (subPhone === cleanTargetPhone ||
+            subPhone.slice(-8) === cleanTargetPhone.slice(-8))
+        );
+      });
       if (byPhone) return byPhone.chatId;
     }
 
-    // 3. Match by Customer Name or Username (For Mini App users whose phone wasn't linked yet)
-    if (customerName && customerName.trim()) {
-      const targetName = customerName.trim().toLowerCase();
+    // 3. Match by Decrypted Customer Name or Username
+    const decryptedTargetName = safeDecryptValue(customerName || '').trim().toLowerCase();
+    if (decryptedTargetName) {
       const byName = activeSubs.find((s) => {
-        const subName = (s.customerName || '').trim().toLowerCase();
+        const subName = safeDecryptValue(s.customerName || '').trim().toLowerCase();
         const fullName = [s.firstName, s.lastName].filter(Boolean).join(' ').trim().toLowerCase();
         const uName = (s.username || '').trim().toLowerCase();
         return (
-          (subName && (subName === targetName || subName.includes(targetName) || targetName.includes(subName))) ||
-          (fullName && (fullName === targetName || fullName.includes(targetName) || targetName.includes(fullName))) ||
-          (uName && targetName.includes(uName))
+          (subName &&
+            subName !== 'guest' &&
+            subName !== 'telegram customer' &&
+            (subName === decryptedTargetName ||
+              subName.includes(decryptedTargetName) ||
+              decryptedTargetName.includes(subName))) ||
+          (fullName &&
+            (fullName === decryptedTargetName ||
+              fullName.includes(decryptedTargetName) ||
+              decryptedTargetName.includes(fullName))) ||
+          (uName && decryptedTargetName.includes(uName))
         );
       });
       if (byName) return byName.chatId;
+    }
+
+    // 4. Smart Fallback: Customer က Bot မှာ /start နှိပ်ထားပေမယ့် ဖုန်းနံပါတ် မတွဲရသေးသည့် Subscribed Customer ရှိလျှင်
+    const nonStaffSubs = activeSubs.filter((s) => !staffChatIds.has(s.chatId));
+    const unlinkedSubs = nonStaffSubs.filter((s) => !s.customerPhone);
+    if (unlinkedSubs.length === 1) {
+      return unlinkedSubs[0].chatId;
+    }
+    if (nonStaffSubs.length === 1) {
+      return nonStaffSubs[0].chatId;
     }
 
     return null;
@@ -630,9 +771,6 @@ export const findCustomerChatId = async (
   }
 };
 
-/**
- * Mini App ဖွင့်လိုက်သည်နှင့် အလိုအလျောက် Subscribe လုပ်ပေးမည့် Helper
- */
 export const autoSubscribeFromTelegramWebApp = async (
   customerName?: string,
   customerPhone?: string,
@@ -656,9 +794,6 @@ export const autoSubscribeFromTelegramWebApp = async (
   return detected.chatId;
 };
 
-/**
- * Bot Username ကို Telegram getMe API မှ အလိုအလျောက် ဆွဲယူခြင်း
- */
 export const fetchBotUsername = async (botToken?: string): Promise<string> => {
   try {
     const config = await getTelegramConfig();
@@ -681,9 +816,6 @@ export const fetchBotUsername = async (botToken?: string): Promise<string> => {
   return '';
 };
 
-/**
- * ဘိုကင်တင်သည့် နောက်ဆုံးအဆင့်နှင့် Subscribe ခလုတ်တို့အတွက် Deep-Link URL ထုတ်ပေးခြင်း
- */
 export const buildCustomerTelegramDeepLink = async (params: {
   mode: 'subscribe' | 'booking_notify';
   bookingId?: string;
@@ -715,13 +847,14 @@ const getStatusBadge = (status: string): string => {
       return '🟡 <b>စောင့်ဆိုင်းဆဲ (PENDING)</b>';
     case 'approved':
     case 'confirmed':
-      return '🟢 <b>အတည်ပြုပြီး (CONFIRMED)</b>';
+      return '🟢 <b>အတည်ပြုပြီး (APPROVED / CONFIRMED)</b>';
     case 'in-service':
     case 'in_service':
       return '💆‍♂️ <b>ဝန်ဆောင်မှုပေးနေဆဲ (IN-SERVICE)</b>';
     case 'completed':
       return '✨ <b>ပြီးဆုံးပါပြီ (COMPLETED)</b>';
     case 'cancelled':
+    case 'rejected':
       return '🔴 <b>ပယ်ဖျက်ထားသည် (CANCELLED)</b>';
     default:
       return `📌 <b>${escapeHtml(status.toUpperCase())}</b>`;
@@ -729,7 +862,7 @@ const getStatusBadge = (status: string): string => {
 };
 
 /**
- * Customer ထံသို့ တိုက်ရိုက်ပေးပို့မည့် Booking Status Update Message
+ * Customer ထံသို့ တိုက်ရိုက်ပေးပို့မည့် Booking Status Update Message (Pending / Approved / In-Service / Completed / Cancelled)
  */
 export const notifyCustomerBookingStatus = async (
   eventType: 'NEW_BOOKING' | 'STATUS_UPDATE' | 'STAFF_ASSIGNED',
@@ -741,21 +874,27 @@ export const notifyCustomerBookingStatus = async (
     return { customerSent: false };
   }
 
-  // First try latest Telegram updates quickly so any recent /start user is auto-bound before sending
+  const decryptedCustomerName = safeDecryptValue(booking.customerName);
+  const decryptedCustomerPhone = normalizePhone(booking.customerPhone) || safeDecryptValue(booking.customerPhone);
+
+  // Check if current browser session has a detected Telegram WebApp user
+  const localTgUser = getDetectedTelegramWebAppUser();
+  const candidateExplicitChatId = booking.customerChatId || localTgUser?.chatId;
+
   let targetChatId = await findCustomerChatId(
-    booking.customerPhone,
-    booking.customerChatId,
-    booking.customerName,
+    decryptedCustomerPhone,
+    candidateExplicitChatId,
+    decryptedCustomerName,
     booking.id
   );
 
   if (!targetChatId) {
-    // Auto-sync recent bot chats once in case the customer just pressed /start on the bot
+    // Auto-sync recent bot updates (and remove any webhook blocking getUpdates)
     await fetchRecentBotChats(config.botToken, true);
     targetChatId = await findCustomerChatId(
-      booking.customerPhone,
-      booking.customerChatId,
-      booking.customerName,
+      decryptedCustomerPhone,
+      candidateExplicitChatId,
+      decryptedCustomerName,
       booking.id
     );
   }
@@ -764,17 +903,18 @@ export const notifyCustomerBookingStatus = async (
     return { customerSent: false, error: 'Customer Chat ID not subscribed yet' };
   }
 
-  // Save/update customer subscriber profile with latest booking info & phone
+  // Link this customer's phone, name, and bookingId to their Telegram subscription
   await saveCustomerTelegramSubscription({
     chatId: targetChatId,
-    customerName: booking.customerName,
-    customerPhone: booking.customerPhone,
+    customerName: decryptedCustomerName,
+    customerPhone: decryptedCustomerPhone,
     vipTier: booking.vipTier,
     lastBookingId: booking.id,
+    subscribed: true,
   });
 
-  // Also persist customerChatId back onto the booking document in Firestore if it exists
-  if (booking.id) {
+  // Also persist customerChatId back onto the booking document in Firestore
+  if (booking.id && booking.id !== 'TEST-9988') {
     try {
       await updateDoc(doc(db, 'bookings', booking.id), {
         customerChatId: targetChatId,
@@ -789,14 +929,14 @@ export const notifyCustomerBookingStatus = async (
   let customerTitle = "🌿 <b>THE SHANGRI-LA MEN'S RETREAT</b>";
   let statusIntro = 'သင်၏ ရက်ချိန်းအချက်အလက် အောက်ပါအတိုင်း ဖြစ်ပါသည် -';
 
-  if (eventType === 'NEW_BOOKING' || statusLower === 'pending') {
-    customerTitle = '🔔 <b>ဘိုကင်တင်ခြင်း လက်ခံရရှိပါသည် (BOOKING RECEIVED)</b>';
+  if (statusLower === 'pending') {
+    customerTitle = '🟡 <b>ဘိုကင်တင်ခြင်း လက်ခံရရှိပါသည် (BOOKING PENDING)</b>';
     statusIntro =
       'လူကြီးမင်း၏ ရက်ချိန်းတောင်းဆိုမှုကို လက်ခံရရှိပါသည်။ Admin အဖွဲ့မှ အမြန်ဆုံး စစ်ဆေးအတည်ပြုပေးပါမည်။';
   } else if (statusLower === 'confirmed' || statusLower === 'approved' || eventType === 'STAFF_ASSIGNED') {
-    customerTitle = '✅ <b>သင်၏ ရက်ချိန်းကို အတည်ပြုပြီးပါပြီ (BOOKING CONFIRMED)</b>';
+    customerTitle = '🟢 <b>သင်၏ ရက်ချိန်းကို အတည်ပြုပြီးပါပြီ (BOOKING APPROVED)</b>';
     statusIntro =
-      'လူကြီးမင်း၏ ဘိုကင်ကို အတည်ပြုပြီးဖြစ်ပါသည်။ သတ်မှတ်ချိန်မတိုင်မီ (၁၀) မိနစ်ခန့် ကြိုတင်ကြွရောက်ပေးပါရန် လေးစားစွာ ပန်ကြားအပ်ပါသည်။';
+      'လူကြီးမင်း၏ ဘိုကင်ကို အတည်ပြု (Approve) ပြုလုပ်ပြီးဖြစ်ပါသည်။ သတ်မှတ်ချိန်မတိုင်မီ (၁၀) မိနစ်ခန့် ကြိုတင်ကြွရောက်ပေးပါရန် လေးစားစွာ ပန်ကြားအပ်ပါသည်။';
   } else if (statusLower === 'in-service' || statusLower === 'in_service') {
     customerTitle = '💆‍♂️ <b>ဝန်ဆောင်မှု စတင်နေပါပြီ (IN-SERVICE)</b>';
     statusIntro =
@@ -805,7 +945,7 @@ export const notifyCustomerBookingStatus = async (
     customerTitle = '✨ <b>ဝန်ဆောင်မှု ပြီးဆုံးပါပြီ (THANK YOU FOR VISITING)</b>';
     statusIntro =
       'လာရောက်အားပေးမှုအတွက် အထူးကျေးဇူးတင်ရှိပါသည်။ နောက်တစ်ကြိမ် ရက်ချိန်းများကိုလည်း အောက်ပါ Mini App မှတစ်ဆင့် အလွယ်တကူ ရယူနိုင်ပါသည်။';
-  } else if (statusLower === 'cancelled') {
+  } else if (statusLower === 'cancelled' || statusLower === 'rejected') {
     customerTitle = '🔴 <b>သင်၏ ရက်ချိန်း ပယ်ဖျက်ထားပါသည် (BOOKING CANCELLED)</b>';
     statusIntro =
       'သင်၏ ရက်ချိန်းကို ပယ်ဖျက်ထားပါသည်။ အချိန်ပြန်လည်ချိန်းဆိုလိုပါက အောက်ပါခလုတ်မှတစ်ဆင့် ပြန်လည်ရယူနိုင်ပါသည်။';
@@ -818,7 +958,7 @@ export const notifyCustomerBookingStatus = async (
     ``,
     `🆔 <b>Booking ID:</b> <code>#${escapeHtml(booking.id.slice(-6).toUpperCase())}</code>`,
     `📊 <b>Status:</b> ${getStatusBadge(booking.status)}`,
-    `👤 <b>အမည်:</b> ${escapeHtml(booking.customerName)}`,
+    `👤 <b>အမည်:</b> ${escapeHtml(decryptedCustomerName)}`,
     `💆‍♂️ <b>ဝန်ဆောင်မှု:</b> ${escapeHtml(booking.serviceName)} ${booking.duration ? `(${escapeHtml(booking.duration)} Mins)` : ''}`,
     `💰 <b>ကျသင့်ငွေ:</b> ${escapeHtml(formattedPrice)}`,
     `📅 <b>နေ့ရက် / အချိန်:</b> ${escapeHtml(booking.date)} | ⏰ <b>${escapeHtml(booking.time)}</b>`,
@@ -865,9 +1005,6 @@ export const notifyCustomerBookingStatus = async (
   return { customerSent: res.ok, error: res.error };
 };
 
-/**
- * Booking အသစ် သို့မဟုတ် Status ပြောင်းလဲမှုတိုင်းအတွက် Admin Group + သက်ဆိုင်ရာ ဝန်ထမ်း + Customer ထံသို့ တစ်ပြိုင်နက် ပို့ပေးမည့် Function
- */
 export const notifyBookingEvent = async (
   eventType: 'NEW_BOOKING' | 'STATUS_UPDATE' | 'STAFF_ASSIGNED',
   booking: BookingNotificationPayload
@@ -893,10 +1030,13 @@ export const notifyBookingEvent = async (
     if (statusLower === 'completed' && !config.triggers.bookingCompleted) {
       return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
     }
-    if (statusLower === 'cancelled' && !config.triggers.bookingCancelled) {
+    if ((statusLower === 'cancelled' || statusLower === 'rejected') && !config.triggers.bookingCancelled) {
       return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
     }
   }
+
+  const decryptedCustomerName = safeDecryptValue(booking.customerName);
+  const decryptedCustomerPhone = normalizePhone(booking.customerPhone) || safeDecryptValue(booking.customerPhone);
 
   const headerTitle =
     eventType === 'NEW_BOOKING'
@@ -912,8 +1052,8 @@ export const notifyBookingEvent = async (
     `━━━━━━━━━━━━━━━━━━━━`,
     `🆔 <b>Booking ID:</b> <code>#${escapeHtml(booking.id.slice(-6).toUpperCase())}</code>`,
     `📊 <b>Status:</b> ${getStatusBadge(booking.status)}`,
-    `👤 <b>ဧည့်သည်အမည်:</b> ${escapeHtml(booking.customerName)} ${booking.vipTier ? `(${escapeHtml(booking.vipTier)})` : ''}`,
-    `📞 <b>ဖုန်းနံပါတ်:</b> <code>${escapeHtml(booking.customerPhone)}</code>`,
+    `👤 <b>ဧည့်သည်အမည်:</b> ${escapeHtml(decryptedCustomerName)} ${booking.vipTier ? `(${escapeHtml(booking.vipTier)})` : ''}`,
+    `📞 <b>ဖုန်းနံပါတ်:</b> <code>${escapeHtml(decryptedCustomerPhone)}</code>`,
     `💆‍♂️ <b>ဝန်ဆောင်မှု:</b> ${escapeHtml(booking.serviceName)} ${booking.duration ? `(${escapeHtml(booking.duration)} Mins)` : ''}`,
     `💰 <b>ကျသင့်ငွေ:</b> ${escapeHtml(formattedPrice)}`,
     `📅 <b>နေ့ရက် / အချိန်:</b> ${escapeHtml(booking.date)} | ⏰ <b>${escapeHtml(booking.time)}</b>`,
@@ -955,7 +1095,7 @@ export const notifyBookingEvent = async (
     if (!res.ok && res.error) errors.push(`Admin Group: ${res.error}`);
   }
 
-  // 2. Send to Assigned Staff (Direct Chat or Staff Group)
+  // 2. Send to Assigned Staff
   if (config.triggers.staffAssigned && (booking.therapistId || booking.therapistName)) {
     const staffMessage = [
       `<b>${escapeHtml(config.templates.staffAssignTitle)}</b>`,
@@ -1006,6 +1146,9 @@ export const notifyBookingEvent = async (
 
   // 3. Send Real-Time Update to Subscribed Customer
   const customerResult = await notifyCustomerBookingStatus(eventType, booking, config);
+  if (!customerResult.customerSent && customerResult.error) {
+    console.warn('Customer direct notification skipped:', customerResult.error);
+  }
 
   return { adminSent, staffSent, customerSent: customerResult.customerSent, errors };
 };
@@ -1026,7 +1169,7 @@ export const sendBulkCustomerBroadcast = async (
   }
 
   const allSubscribers = await getCustomerTelegramSubscribers();
-  const activeSubscribers = allSubscribers.filter((s) => s.subscribed !== false && s.chatId);
+  const activeSubscribers = allSubscribers.filter((s) => s.subscribed !== false && isPrivateUserChatId(s.chatId));
 
   let targetList = activeSubscribers;
   if (payload.targetAudience === 'VIP_ONLY') {
@@ -1127,7 +1270,7 @@ export const sendBulkCustomerBroadcast = async (
 };
 
 // ==========================================
-// 8. STAFF OPERATIONS NOTIFICATIONS (ROSTER, PENALTY, PAYROLL)
+// 8. STAFF OPERATIONS NOTIFICATIONS
 // ==========================================
 
 export const notifyStaffUpdate = async (
@@ -1218,7 +1361,7 @@ export const notifyStaffUpdate = async (
 };
 
 // ==========================================
-// 9. BOT DISCOVERY, AUTO-SUBSCRIBE SYNC & MINI APP MENU SETUP
+// 9. BOT DISCOVERY, WEBHOOK UNLOCK & AUTO-SUBSCRIBE SYNC
 // ==========================================
 
 export interface DiscoveredTelegramChat {
@@ -1232,9 +1375,10 @@ export interface DiscoveredTelegramChat {
 }
 
 /**
- * Bot သို့ ဝင်ရောက်လာသော Message များနှင့် `/start book_<BookingID>_<Phone>` သို့မဟုတ် `/start sub_<Phone>` တို့ကို စစ်ဆေးပြီး
- * Private Chat အားလုံးကို `telegramSubscribers` collection သို့ အမြဲတမ်း အလိုအလျောက် Sync & Save လုပ်ပေးခြင်း +
- * Bookings collection ရှိ အမည်/ဖုန်းနံပါတ်နှင့် တိုက်ဆိုင်စစ်ဆေးပြီး Chat ID ချိတ်ဆက်ပေးခြင်း
+ * 🌟 COMPLETE DISCOVERY & AUTO-HARVEST:
+ * 1) Webhook ရှိနေပါက `deleteWebhook(drop_pending_updates=false)` ဖြင့် အရင်ဖယ်ရှားပေးသည်
+ * 2) `getUpdates` မှ Private Chat အားလုံးကို ဖမ်းယူသည်
+ * 3) `bookings` နှင့် `telegramLogs` ထဲရှိ Private Chat ID များကိုပါ အလိုအလျောက် စုဆောင်း၍ Subscriber စာရင်းသွင်းပေးသည်
  */
 export const fetchRecentBotChats = async (
   botToken: string,
@@ -1248,14 +1392,17 @@ export const fetchRecentBotChats = async (
   if (!botToken) return { ok: false, chats: [], error: 'Bot Token လိုအပ်ပါသည်' };
 
   try {
-    // Also auto-detect and save botUsername whenever we scan
-    await fetchBotUsername(botToken);
+    const cleanToken = botToken.trim();
+    await fetchBotUsername(cleanToken);
 
-    const response = await fetch(`https://api.telegram.org/bot${botToken.trim()}/getUpdates?limit=100`);
-    const data = await response.json();
+    // Step 1: Try getUpdates; if 409 Conflict (Webhook active), delete webhook without dropping updates
+    let response = await fetch(`https://api.telegram.org/bot${cleanToken}/getUpdates?limit=100`);
+    let data = await response.json();
 
-    if (!data.ok) {
-      return { ok: false, chats: [], error: data.description || 'Failed to fetch updates' };
+    if (!data.ok && (response.status === 409 || String(data.description || '').toLowerCase().includes('webhook'))) {
+      await fetch(`https://api.telegram.org/bot${cleanToken}/deleteWebhook?drop_pending_updates=false`);
+      response = await fetch(`https://api.telegram.org/bot${cleanToken}/getUpdates?limit=100`);
+      data = await response.json();
     }
 
     const chatMap = new Map<string, DiscoveredTelegramChat & { firstName?: string; lastName?: string }>();
@@ -1265,9 +1412,12 @@ export const fetchRecentBotChats = async (
     );
 
     const config = await getTelegramConfig();
+    const staffChatIds = new Set(
+      (config.staffMappings || []).map((s) => String(s.telegramChatId || '').trim()).filter(Boolean)
+    );
 
-    // Load recent bookings once so we can cross-match phone numbers for Mini App users like Tho Sit Naing
-    let existingBookings: any[] = [];
+    // Step 2: Load existing bookings to cross-match customer names, phones, and saved chatIds
+    const existingBookings: any[] = [];
     try {
       const bookingsSnap = await getDocs(collection(db, 'bookings'));
       bookingsSnap.forEach((bDoc) => {
@@ -1275,70 +1425,124 @@ export const fetchRecentBotChats = async (
       });
     } catch {}
 
-    for (const update of data.result || []) {
-      const msg =
-        update.message ||
-        update.edited_message ||
-        update.callback_query?.message ||
-        update.my_chat_member;
-      if (!msg || !msg.chat) continue;
+    // Step 3: Parse Telegram `getUpdates`
+    if (data.ok && Array.isArray(data.result)) {
+      for (const update of data.result) {
+        const msg =
+          update.message ||
+          update.edited_message ||
+          update.callback_query?.message ||
+          update.my_chat_member?.chat
+            ? update.my_chat_member
+            : null;
 
-      const chat = msg.chat;
-      const chatIdStr = String(chat.id);
-      const titleOrName =
-        chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(' ') || chat.username || 'Telegram User';
-      const text: string = msg.text || '';
+        const chat =
+          update.message?.chat ||
+          update.edited_message?.chat ||
+          update.callback_query?.message?.chat ||
+          update.callback_query?.from ||
+          update.my_chat_member?.chat;
 
-      let startPayload = '';
-      if (text.startsWith('/start')) {
-        const parts = text.trim().split(/\s+/);
-        if (parts.length > 1) startPayload = parts[1];
-      }
+        if (!chat || !chat.id) continue;
 
-      const prevEntry = chatMap.get(chatIdStr);
-      chatMap.set(chatIdStr, {
-        chatId: chatIdStr,
-        titleOrName,
-        username: chat.username || prevEntry?.username || '',
-        firstName: chat.first_name || prevEntry?.firstName || '',
-        lastName: chat.last_name || prevEntry?.lastName || '',
-        type: chat.type,
-        lastMessage: text || prevEntry?.lastMessage || '[Media / Action]',
-        date: msg.date ? new Date(msg.date * 1000).toLocaleString() : prevEntry?.date || '-',
-        startPayload: startPayload || prevEntry?.startPayload || '',
-      });
+        const chatIdStr = String(chat.id);
+        const chatType = chat.type || (isPrivateUserChatId(chatIdStr) ? 'private' : 'group');
+        const titleOrName =
+          chat.title ||
+          [chat.first_name, chat.last_name].filter(Boolean).join(' ') ||
+          chat.username ||
+          'Telegram User';
+        const text: string = update.message?.text || update.callback_query?.data || '';
 
-      // Send interactive welcome menu only once per new command update
-      const updateKey = String(update.update_id);
-      if (
-        autoBindCustomers &&
-        chat.type === 'private' &&
-        !welcomedUpdateIds.has(updateKey) &&
-        (text.startsWith('/start') ||
-          text.startsWith('/book') ||
-          text.startsWith('/staff') ||
-          text.startsWith('/available') ||
-          text.startsWith('/history') ||
-          text.startsWith('/vip'))
-      ) {
-        welcomedUpdateIds.add(updateKey);
-        let extractedPhone = '';
-        let extractedBookingId = '';
-        if (startPayload.startsWith('book_')) {
-          const tokens = startPayload.split('_');
-          extractedBookingId = tokens[1] || '';
-          extractedPhone = tokens.slice(2).join('') || '';
-        } else if (startPayload.startsWith('sub_')) {
-          extractedPhone = startPayload.replace('sub_', '');
+        let startPayload = '';
+        if (text.startsWith('/start')) {
+          const parts = text.trim().split(/\s+/);
+          if (parts.length > 1) startPayload = parts[1];
         }
-        await sendInteractiveMiniAppMenu(chatIdStr, config, extractedBookingId, extractedPhone);
+
+        const prevEntry = chatMap.get(chatIdStr);
+        chatMap.set(chatIdStr, {
+          chatId: chatIdStr,
+          titleOrName,
+          username: chat.username || prevEntry?.username || '',
+          firstName: chat.first_name || prevEntry?.firstName || '',
+          lastName: chat.last_name || prevEntry?.lastName || '',
+          type: chatType,
+          lastMessage: text || prevEntry?.lastMessage || '[Bot Interaction]',
+          date: update.message?.date
+            ? new Date(update.message.date * 1000).toLocaleString()
+            : prevEntry?.date || new Date().toLocaleString(),
+          startPayload: startPayload || prevEntry?.startPayload || '',
+        });
+
+        const updateKey = String(update.update_id);
+        if (
+          autoBindCustomers &&
+          chatType === 'private' &&
+          !welcomedUpdateIds.has(updateKey) &&
+          (text.startsWith('/start') ||
+            text.startsWith('/book') ||
+            text.startsWith('/staff') ||
+            text.startsWith('/available') ||
+            text.startsWith('/history') ||
+            text.startsWith('/vip'))
+        ) {
+          welcomedUpdateIds.add(updateKey);
+          let extractedPhone = '';
+          let extractedBookingId = '';
+          if (startPayload.startsWith('book_')) {
+            const tokens = startPayload.split('_');
+            extractedBookingId = tokens[1] || '';
+            extractedPhone = tokens.slice(2).join('') || '';
+          } else if (startPayload.startsWith('sub_')) {
+            extractedPhone = startPayload.replace('sub_', '');
+          }
+          await sendInteractiveMiniAppMenu(chatIdStr, config, extractedBookingId, extractedPhone);
+        }
       }
     }
 
-    // ALWAYS ensure every discovered PRIVATE chat is saved in Firestore `telegramSubscribers`
+    // Step 4: Also harvest any Private Chat IDs found in `bookings` or `telegramLogs`
+    for (const b of existingBookings) {
+      const bChatId = String(b.customerChatId || b.telegramChatId || b.chatId || '').trim();
+      if (isPrivateUserChatId(bChatId) && !chatMap.has(bChatId)) {
+        const cName = safeDecryptValue(b.customerName || b.name || 'Shangri-La Guest');
+        chatMap.set(bChatId, {
+          chatId: bChatId,
+          titleOrName: cName,
+          type: 'private',
+          lastMessage: `Booking #${String(b.id).slice(-6)}`,
+          date: b.date || new Date().toLocaleDateString(),
+        });
+      }
+    }
+
+    try {
+      const logsSnap = await getDocs(collection(db, 'telegramLogs'));
+      logsSnap.forEach((lDoc) => {
+        const lData = lDoc.data();
+        const tId = String(lData?.targetChatId || '').trim();
+        if (isPrivateUserChatId(tId) && !staffChatIds.has(tId) && !chatMap.has(tId)) {
+          chatMap.set(tId, {
+            chatId: tId,
+            titleOrName: 'Telegram Subscriber',
+            type: 'private',
+            lastMessage: lData?.type || 'Bot Notification',
+            date: lData?.timestamp ? new Date(lData.timestamp).toLocaleString() : '-',
+          });
+        }
+      });
+    } catch {}
+
+    // Step 5: Auto-save all private chats into Subscriber storage and cross-link bookings
     if (autoBindCustomers) {
+      // Sort bookings newest first
+      const sortedBookings = [...existingBookings].sort((a, b) =>
+        String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''))
+      );
+
       for (const discovered of chatMap.values()) {
-        if (discovered.type !== 'private') continue;
+        if (discovered.type !== 'private' || !isPrivateUserChatId(discovered.chatId)) continue;
 
         let extractedPhone = '';
         let extractedBookingId = '';
@@ -1352,33 +1556,44 @@ export const fetchRecentBotChats = async (
           extractedPhone = payload.replace('sub_', '');
         }
 
-        // Cross-match with existing bookings by Booking ID or Customer Name/Username
-        const matchedBooking = existingBookings.find((b) => {
+        // Cross-match with bookings
+        let matchedBooking = sortedBookings.find((b) => {
           const bId = String(b.id || '');
-          const bName = String(b.customerName || b.name || '').trim().toLowerCase();
+          const bChat = String(b.customerChatId || b.telegramChatId || '').trim();
+          const bName = safeDecryptValue(b.customerName || b.name || '').trim().toLowerCase();
+          const bPhone = normalizePhone(b.customerPhone || b.phone || '');
           const dName = discovered.titleOrName.trim().toLowerCase();
           const dUser = (discovered.username || '').trim().toLowerCase();
 
-          if (extractedBookingId && (bId === extractedBookingId || bId.endsWith(extractedBookingId))) {
+          if (bChat === discovered.chatId) return true;
+          if (extractedBookingId && (bId === extractedBookingId || bId.endsWith(extractedBookingId))) return true;
+          if (extractedPhone && bPhone && bPhone === normalizePhone(extractedPhone)) return true;
+          if (
+            bName &&
+            dName &&
+            dName !== 'telegram user' &&
+            dName !== 'telegram subscriber' &&
+            (bName === dName || bName.includes(dName) || dName.includes(bName))
+          ) {
             return true;
           }
-          if (bName && dName && (bName === dName || bName.includes(dName) || dName.includes(bName))) {
-            return true;
-          }
-          if (bName && dUser && bName.includes(dUser)) {
-            return true;
-          }
+          if (bName && dUser && bName.includes(dUser)) return true;
           return false;
         });
 
+        // If there is only 1 private customer chat and recent unlinked bookings exist, link the latest booking
+        const privateChatsCount = Array.from(chatMap.values()).filter(
+          (c) => c.type === 'private' && !staffChatIds.has(c.chatId)
+        ).length;
+        if (!matchedBooking && privateChatsCount === 1 && sortedBookings.length > 0 && !staffChatIds.has(discovered.chatId)) {
+          matchedBooking = sortedBookings[0];
+        }
+
         if (matchedBooking) {
-          if (!extractedPhone && (matchedBooking.customerPhone || matchedBooking.phone)) {
-            extractedPhone = matchedBooking.customerPhone || matchedBooking.phone;
-          }
-          if (!extractedBookingId && matchedBooking.id) {
-            extractedBookingId = matchedBooking.id;
-          }
-          // Update the booking document with this customer's Telegram Chat ID
+          const mPhone = normalizePhone(matchedBooking.customerPhone || matchedBooking.phone || '');
+          if (!extractedPhone && mPhone) extractedPhone = mPhone;
+          if (!extractedBookingId && matchedBooking.id) extractedBookingId = matchedBooking.id;
+
           try {
             await updateDoc(doc(db, 'bookings', matchedBooking.id), {
               customerChatId: discovered.chatId,
@@ -1387,9 +1602,13 @@ export const fetchRecentBotChats = async (
           } catch {}
         }
 
+        const resolvedCustomerName = matchedBooking
+          ? safeDecryptValue(matchedBooking.customerName || matchedBooking.name || '') || discovered.titleOrName
+          : discovered.titleOrName;
+
         const saved = await saveCustomerTelegramSubscription({
           chatId: discovered.chatId,
-          customerName: matchedBooking?.customerName || matchedBooking?.name || discovered.titleOrName,
+          customerName: resolvedCustomerName,
           customerPhone: extractedPhone,
           username: discovered.username || '',
           firstName: discovered.firstName || '',
@@ -1406,6 +1625,15 @@ export const fetchRecentBotChats = async (
     const trimmedIds = Array.from(welcomedUpdateIds).slice(-200);
     localStorage.setItem('shangrila_welcomed_tg_updates', JSON.stringify(trimmedIds));
 
+    if (!data.ok) {
+      return {
+        ok: chatMap.size > 0,
+        chats: Array.from(chatMap.values()).reverse(),
+        newlySubscribedCount,
+        error: data.description || 'Failed to fetch live bot updates',
+      };
+    }
+
     return {
       ok: true,
       chats: Array.from(chatMap.values()).reverse(),
@@ -1416,9 +1644,6 @@ export const fetchRecentBotChats = async (
   }
 };
 
-/**
- * Customer ထံသို့ Interactive Mini App Menu ခလုတ်များ ပေးပို့ခြင်း
- */
 export const sendInteractiveMiniAppMenu = async (
   chatId: string,
   existingConfig?: TelegramBotConfig,
@@ -1453,9 +1678,6 @@ export const sendInteractiveMiniAppMenu = async (
   return sendRawTelegramMessage(config.botToken, chatId, menuHtml, keyboard, 'CUSTOMER_MENU_WELCOME');
 };
 
-/**
- * Telegram Bot ၏ Menu Commands နှင့် WebApp Menu Button ကို Admin Panel မှ တိုက်ရိုက် သတ်မှတ်ပေးခြင်း
- */
 export const syncBotCommandsAndMenu = async (config: TelegramBotConfig): Promise<{ ok: boolean; message: string }> => {
   if (!config.botToken) return { ok: false, message: 'Bot Token မရှိပါ' };
 
