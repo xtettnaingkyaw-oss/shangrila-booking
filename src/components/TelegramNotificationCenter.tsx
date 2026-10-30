@@ -1,147 +1,288 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Send, Settings, Users, MessageSquare, AlertCircle, CheckCircle2, 
-  RefreshCw, Shield, Bell, ExternalLink, Bot, Check, X, Smartphone
+import {
+  Send,
+  Bell,
+  Settings,
+  Users,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
+  ShieldAlert,
+  MessageSquare,
+  Sparkles,
+  Copy,
+  Radio,
+  History,
+  Save,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
-import { 
-  getTelegramSettings, saveTelegramSettings, sendTelegramMessage, 
-  broadcastTelegramMessage, sendQuickPenaltyAlert, syncTelegramSubscribers,
-  TelegramSettings, TelegramSubscriber, TelegramNotificationLog 
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
+import {
+  TelegramBotConfig,
+  DEFAULT_TELEGRAM_CONFIG,
+  getTelegramConfig,
+  saveTelegramConfig,
+  sendRawTelegramMessage,
+  notifyBookingEvent,
+  notifyStaffUpdate,
+  fetchRecentBotChats,
+  syncBotCommandsAndMenu,
+  DiscoveredTelegramChat,
 } from '../telegramService';
 
 export const TelegramNotificationCenter: React.FC = () => {
-  const [settings, setSettings] = useState<TelegramSettings>(getTelegramSettings());
-  const [subscribers, setSubscribers] = useState<TelegramSubscriber[]>([]);
-  const [logs, setLogs] = useState<TelegramNotificationLog[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'broadcast' | 'subscribers' | 'settings' | 'logs'>('broadcast');
+  const [config, setConfig] = useState<TelegramBotConfig>(DEFAULT_TELEGRAM_CONFIG);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'setup' | 'triggers' | 'staff' | 'botflow' | 'logs'>('setup');
+  const [showToken, setShowToken] = useState<boolean>(false);
+  const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Broadcast Form State
-  const [broadcastText, setBroadcastText] = useState('');
-  const [broadcastTarget, setBroadcastTarget] = useState<'all' | 'channel' | 'vip'>('channel');
-  const [includeBookButton, setIncludeBookButton] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // Chat Discovery State
+  const [scanningChats, setScanningChats] = useState<boolean>(false);
+  const [discoveredChats, setDiscoveredChats] = useState<DiscoveredTelegramChat[]>([]);
+
+  // Broadcast State
+  const [broadcastTitle, setBroadcastTitle] = useState<string>('📢 ရုံးတွင်း အရေးကြီး အသိပေးချက်');
+  const [broadcastBody, setBroadcastBody] = useState<string>('');
+  const [broadcastTarget, setBroadcastTarget] = useState<'ALL' | 'ADMIN' | 'STAFF_GROUP'>('ALL');
+  const [sendingBroadcast, setSendingBroadcast] = useState<boolean>(false);
+
+  // Logs State
+  const [logs, setLogs] = useState<any[]>([]);
 
   useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      const loaded = await getTelegramConfig();
+      setConfig(loaded);
+      setLoading(false);
+    };
     loadData();
+
+    // Real-time listener for Telegram delivery logs
+    const q = query(collection(db, 'telegramLogs'), orderBy('timestamp', 'desc'), limit(35));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      },
+      (err) => console.warn('Telegram logs listener error:', err)
+    );
+
+    return () => unsub();
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const currentSettings = getTelegramSettings();
-      setSettings(currentSettings);
-      const subs = await syncTelegramSubscribers();
-      setSubscribers(subs);
-      
-      // Load logs from localStorage
-      const savedLogs = localStorage.getItem('shangrila_telegram_logs');
-      if (savedLogs) {
-        setLogs(JSON.parse(savedLogs));
-      }
-    } catch (error) {
-      console.error('Error loading Telegram data:', error);
-    } finally {
-      setLoading(false);
+  const showToast = (type: 'success' | 'error', text: string) => {
+    setStatusBanner({ type, text });
+    setTimeout(() => setStatusBanner(null), 5000);
+  };
+
+  const handleSaveConfig = async () => {
+    setSaving(true);
+    const ok = await saveTelegramConfig(config);
+    setSaving(false);
+    if (ok) {
+      showToast('success', 'Telegram Bot Settings အားလုံးကို Firestore သို့ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+    } else {
+      showToast('error', 'သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
     }
   };
 
-  const handleSaveSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveTelegramSettings(settings);
-    setStatusMessage({ type: 'success', text: 'Telegram ဆက်တင်များကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။' });
-    setTimeout(() => setStatusMessage(null), 4000);
+  const handleTestAdminConnection = async () => {
+    if (!config.botToken || !config.adminGroupChatId) {
+      showToast('error', 'Bot Token နှင့် Admin Group Chat ID ကို အရင်ဖြည့်သွင်းပါ။');
+      return;
+    }
+    await saveTelegramConfig(config);
+    const res = await notifyBookingEvent('NEW_BOOKING', {
+      id: 'TEST-9988',
+      customerName: 'U Min Khant (Test VIP)',
+      customerPhone: '09-799999999',
+      serviceName: 'Imperial Royal Signature Package',
+      duration: 90,
+      price: 85000,
+      date: new Date().toISOString().split('T')[0],
+      time: '04:30 PM',
+      therapistId: 'No. 1',
+      therapistName: 'Therapist No. 1',
+      roomName: 'VIP Jade Suite 1',
+      vipTier: 'Signature V-VIP (20% Off)',
+      status: 'confirmed',
+      notes: 'Siam Sleep Balm နှင့် အခန်းအပူချိန် အေးအေးလေး ပြင်ဆင်ထားပေးပါရန်။',
+      updatedBy: 'Admin Test Console',
+    });
+
+    if (res.adminSent) {
+      showToast('success', 'စမ်းသပ် Booking Notification ကို Telegram သို့ အောင်မြင်စွာ ပေးပို့ပြီးပါပြီ!');
+    } else {
+      showToast('error', `ပေးပို့မှု မအောင်မြင်ပါ: ${res.errors.join(', ')}`);
+    }
   };
 
-  const handleSendBroadcast = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!broadcastText.trim()) return;
-
-    setSending(true);
-    setStatusMessage(null);
-
-    try {
-      let successCount = 0;
-      const inlineKeyboard = includeBookButton ? {
-        inline_keyboard: [[
-          { text: '🌟 Book Now / ဘိုကင်တင်ရန်', url: 'https://shangrilamenretreat.com' },
-          { text: '📞 ဆက်သွယ်ရန်', url: 'https://t.me/shangrila_support' }
-        ]]
-      } : undefined;
-
-      if (broadcastTarget === 'channel' && settings.channelUsername) {
-        const success = await broadcastTelegramMessage(
-          `📢 **THE SHANGRILA MEN RETREAT**\n\n${broadcastText}`,
-          inlineKeyboard
-        );
-        if (success) successCount = 1;
+  const handleScanRecentChats = async () => {
+    setScanningChats(true);
+    const res = await fetchRecentBotChats(config.botToken);
+    setScanningChats(false);
+    if (res.ok) {
+      setDiscoveredChats(res.chats);
+      if (res.chats.length === 0) {
+        showToast('error', 'လတ်တလော Message မတွေ့ပါ။ Telegram Bot သို့ "/start" သို့မဟုတ် "Hello" တစ်ချက်ပို့ပြီး ပြန်နှိပ်ပါ။');
       } else {
-        // Broadcast to subscribers / VIPs
-        const targets = subscribers.filter(s => broadcastTarget === 'all' || (broadcastTarget === 'vip' && s.isVip));
-        for (const sub of targets) {
-          const success = await broadcastTelegramMessage(broadcastText, inlineKeyboard);
-          if (success) successCount++;
-        }
+        showToast('success', `Chat ID (${res.chats.length}) ခု ရှာဖွေတွေ့ရှိပါပြီ။`);
       }
-
-      setStatusMessage({ type: 'success', text: `သတင်းစာကို အောင်မြင်စွာ ပေးပို့ပြီးပါပြီ။ (Target count: ${successCount})` });
-      setBroadcastText('');
-      loadData();
-    } catch (error: any) {
-      setStatusMessage({ type: 'error', text: `ပေးပို့၍မရပါ: ${error.message || 'Unknown error'}` });
-    } finally {
-      setSending(false);
+    } else {
+      showToast('error', res.error || 'Chat ID ရှာဖွေမရပါ။');
     }
   };
+
+  const handleTestStaffDirect = async (staffId: string, staffName: string, chatId: string) => {
+    if (!chatId) {
+      showToast('error', `${staffName} အတွက် Telegram Chat ID မထည့်ရသေးပါ။`);
+      return;
+    }
+    const res = await sendRawTelegramMessage(
+      config.botToken,
+      chatId,
+      `🌿 <b>THE SHANGRI-LA MEN'S RETREAT</b>\n━━━━━━━━━━━━━━━━━━━━\n👋 မင်္ဂလာပါ <b>${staffName} (${staffId})</b>\nသင်၏ Telegram အကောင့်အား ဆိုင်၏ Real-Time Notification စနစ်နှင့် အောင်မြင်စွာ ချိတ်ဆက်ပြီးပါပြီ။\n\n✅ Booking တာဝန်ချထားမှုများ\n✅ Duty Roster အပြောင်းအလဲများ\n✅ လစာနှင့် ရုံးတွင်းအသိပေးချက်များကို အချိန်နှင့်တစ်ပြေးညီ လက်ခံရရှိပါမည်။`,
+      undefined,
+      'STAFF_TEST'
+    );
+    if (res.ok) {
+      showToast('success', `${staffName} ထံသို့ Test Message ပို့ပြီးပါပြီ။`);
+    } else {
+      showToast('error', `${staffName} ထံ ပို့မရပါ: ${res.error}`);
+    }
+  };
+
+  const handleSyncBotMenu = async () => {
+    await saveTelegramConfig(config);
+    const res = await syncBotCommandsAndMenu(config);
+    if (res.ok) {
+      showToast('success', res.message);
+    } else {
+      showToast('error', res.message);
+    }
+  };
+
+  const handleSendBroadcast = async () => {
+    if (!broadcastBody.trim()) {
+      showToast('error', 'ပေးပို့လိုသည့် စာသား ရေးသားပေးပါ။');
+      return;
+    }
+    setSendingBroadcast(true);
+    const res = await notifyStaffUpdate({
+      type: 'GENERAL_ANNOUNCEMENT',
+      staffName: broadcastTarget === 'ALL' ? 'ဝန်ထမ်းအားလုံး (All Staff)' : 'သက်ဆိုင်ရာ အဖွဲ့ဝင်များ',
+      title: broadcastTitle,
+      details: broadcastBody,
+      effectiveDate: new Date().toLocaleDateString(),
+      issuedBy: 'Management (Admin Panel)',
+    });
+    setSendingBroadcast(false);
+    if (res.sent) {
+      setBroadcastBody('');
+      showToast('success', 'ကြေညာချက်ကို Telegram သို့ အောင်မြင်စွာ ပေးပို့ပြီးပါပြီ။');
+    } else {
+      showToast('error', `ပေးပို့မှု မအောင်မြင်ပါ: ${res.errors.join(', ')}`);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-8 text-center text-[#C8A951] bg-[#0B2419] rounded-2xl border border-[#C8A951]/30">
+        <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+        <p className="text-sm">Telegram Control Center ကို ရယူနေပါသည်...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-slate-900 text-slate-100 rounded-2xl p-6 shadow-2xl border border-amber-500/30 max-w-5xl mx-auto my-6">
+    <div className="bg-[#0B2419] text-stone-100 rounded-2xl border border-[#C8A951]/30 shadow-2xl overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col md:flex-row items-center justify-between pb-6 border-b border-slate-800 gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400">
-            <Bot className="w-8 h-8" />
+      <div className="p-6 bg-gradient-to-r from-[#071810] via-[#0B2419] to-[#071810] border-b border-[#C8A951]/30 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-[#C8A951]/15 border border-[#C8A951]/40 text-[#C8A951]">
+              <Send className="w-5 h-5" />
+            </span>
+            <h2 className="text-xl font-bold text-[#C8A951] tracking-wide">
+              TELEGRAM BOT & REAL-TIME NOTIFICATION CENTER
+            </h2>
           </div>
-          <div>
-            <h2 className="text-2xl font-bold tracking-wide text-amber-400">Telegram Pro Notification Center</h2>
-            <p className="text-sm text-slate-400">Realtime Bot Automation, Channel Broadcast & Staff Alerts</p>
-          </div>
+          <p className="text-xs text-stone-400 mt-1">
+            Booking Status Updates, ဝန်ထမ်း တစ်ဦးချင်းစီအတွက် Real-Time Alerts နှင့် Bot Flow ထိန်းချုပ်ရေးစနစ်
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={loadData}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition border border-slate-700 text-sm font-medium"
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 cursor-pointer bg-black/30 px-3.5 py-2 rounded-xl border border-[#C8A951]/30">
+            <input
+              type="checkbox"
+              checked={config.enabled}
+              onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
+              className="accent-[#C8A951] w-4 h-4"
+            />
+            <span className="text-xs font-semibold text-[#C8A951]">
+              {config.enabled ? '🟢 BOT ACTIVE' : '🔴 BOT PAUSED'}
+            </span>
+          </label>
+
+          <button
+            onClick={handleSaveConfig}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#C8A951] text-[#0B2419] font-bold text-xs hover:bg-[#d8b962] transition disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+            <Save className="w-4 h-4" />
+            {saving ? 'Saving...' : 'Save All Changes'}
           </button>
-          <span className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 ${settings.enabled ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'}`}>
-            <span className={`w-2 h-2 rounded-full ${settings.enabled ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></span>
-            {settings.enabled ? 'Bot Active' : 'Bot Disabled'}
-          </span>
         </div>
       </div>
 
+      {/* Status Toast */}
+      {statusBanner && (
+        <div
+          className={`px-6 py-3 text-xs font-medium flex items-center justify-between ${
+            statusBanner.type === 'success'
+              ? 'bg-emerald-950/90 text-emerald-300 border-b border-emerald-500/30'
+              : 'bg-red-950/90 text-red-300 border-b border-red-500/30'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {statusBanner.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+            )}
+            <span>{statusBanner.text}</span>
+          </div>
+          <button onClick={() => setStatusBanner(null)} className="text-stone-400 hover:text-white">
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap gap-2 my-6 border-b border-slate-800 pb-4">
+      <div className="flex overflow-x-auto border-b border-[#C8A951]/20 bg-[#071810]/60 px-4">
         {[
-          { id: 'broadcast', label: 'Channel Broadcast', icon: Send },
-          { id: 'subscribers', label: `Subscribers (${subscribers.length})`, icon: Users },
-          { id: 'settings', label: 'Bot Settings', icon: Settings },
-          { id: 'logs', label: 'Delivery Logs', icon: Bell },
-        ].map(tab => {
+          { id: 'setup', label: '1. Bot & Channels Setup', icon: Settings },
+          { id: 'triggers', label: '2. Notification Triggers', icon: Bell },
+          { id: 'staff', label: '3. Staff Chat IDs (No.1 - No.14)', icon: Users },
+          { id: 'botflow', label: '4. Bot Flow & Broadcast', icon: MessageSquare },
+          { id: 'logs', label: '5. Delivery Logs', icon: History },
+        ].map((tab) => {
           const Icon = tab.icon;
+          const active = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition ${
-                activeTab === tab.id 
-                  ? 'bg-amber-500 text-slate-950 font-semibold shadow-lg shadow-amber-500/20' 
-                  : 'bg-slate-800/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              className={`flex items-center gap-2 px-4 py-3.5 text-xs font-semibold whitespace-nowrap border-b-2 transition ${
+                active
+                  ? 'border-[#C8A951] text-[#C8A951] bg-[#C8A951]/10'
+                  : 'border-transparent text-stone-400 hover:text-stone-200'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -151,278 +292,499 @@ export const TelegramNotificationCenter: React.FC = () => {
         })}
       </div>
 
-      {/* Status Alert Banner */}
-      {statusMessage && (
-        <div className={`p-4 rounded-xl mb-6 flex items-center gap-3 border ${statusMessage.type === 'success' ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' : 'bg-rose-950/40 border-rose-500/30 text-rose-300'}`}>
-          {statusMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />}
-          <span className="text-sm font-medium">{statusMessage.text}</span>
-        </div>
-      )}
+      {/* Tab Content */}
+      <div className="p-6 space-y-6">
+        {/* TAB 1: BOT & CHANNELS SETUP */}
+        {activeTab === 'setup' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20">
+                <label className="block text-xs font-semibold text-[#C8A951] mb-1">
+                  Telegram Bot Token (@BotFather)
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type={showToken ? 'text' : 'password'}
+                    value={config.botToken}
+                    onChange={(e) => setConfig({ ...config, botToken: e.target.value })}
+                    placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(!showToken)}
+                    className="absolute right-2.5 text-stone-400 hover:text-[#C8A951]"
+                  >
+                    {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-stone-400 mt-1">
+                  @BotFather မှ ရရှိသော HTTP API Token ကို ထည့်သွင်းပါ။
+                </p>
+              </div>
 
-      {/* Tab 1: Broadcast */}
-      {activeTab === 'broadcast' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <form onSubmit={handleSendBroadcast} className="space-y-4">
+              <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20">
+                <label className="block text-xs font-semibold text-[#C8A951] mb-1">
+                  Official Web App URL
+                </label>
+                <input
+                  type="text"
+                  value={config.webAppUrl}
+                  onChange={(e) => setConfig({ ...config, webAppUrl: e.target.value })}
+                  placeholder="https://www.shangrilamenretreat.online"
+                  className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
+                />
+                <p className="text-[11px] text-stone-400 mt-1">
+                  Telegram Notification အောက်ရှိ Button နှိပ်လျှင် ပွင့်လာမည့် Link ဖြစ်ပါသည်။
+                </p>
+              </div>
+
+              <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20">
+                <label className="block text-xs font-semibold text-[#C8A951] mb-1">
+                  Admin / Reception Group Chat ID
+                </label>
+                <input
+                  type="text"
+                  value={config.adminGroupChatId}
+                  onChange={(e) => setConfig({ ...config, adminGroupChatId: e.target.value })}
+                  placeholder="-1001234567890 သို့မဟုတ် 123456789"
+                  className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
+                />
+                <p className="text-[11px] text-stone-400 mt-1">
+                  Booking အသစ်နှင့် ငွေစာရင်း အသေးစိတ်အားလုံး ပေးပို့မည့် အဓိက Admin Group ID (Group ဆိုလျှင် ရှေ့တွင် `-` အနုတ်လက္ခဏာပါသည်)။
+                </p>
+              </div>
+
+              <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20">
+                <label className="block text-xs font-semibold text-[#C8A951] mb-1">
+                  Staff General Group Chat ID (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={config.staffGroupChatId}
+                  onChange={(e) => setConfig({ ...config, staffGroupChatId: e.target.value })}
+                  placeholder="-1009876543210"
+                  className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
+                />
+                <p className="text-[11px] text-stone-400 mt-1">
+                  ဝန်ထမ်းအားလုံး ပါဝင်သော Group ရှိပါက ထည့်သွင်းနိုင်သည် (ဧည့်သည်ဖုန်းနံပါတ် မပါဝင်ဘဲ အချိန်စာရင်းနှင့် တာဝန်ချထားမှုသာ ပို့ပေးမည်)။
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleTestAdminConnection}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition"
+              >
+                <Sparkles className="w-4 h-4" />
+                Send Test Booking Notification
+              </button>
+
+              <button
+                onClick={handleScanRecentChats}
+                disabled={scanningChats}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#C8A951]/20 hover:bg-[#C8A951]/30 text-[#C8A951] border border-[#C8A951]/40 font-semibold text-xs transition"
+              >
+                <Radio className={`w-4 h-4 ${scanningChats ? 'animate-ping' : ''}`} />
+                {scanningChats ? 'Scanning Bot Updates...' : '🔄 Scan Recent Chats (Auto-Find Chat IDs)'}
+              </button>
+            </div>
+
+            {/* Discovered Chats Table */}
+            {discoveredChats.length > 0 && (
+              <div className="bg-black/30 rounded-xl border border-[#C8A951]/30 p-4 space-y-3">
+                <h3 className="text-xs font-bold text-[#C8A951]">
+                  📡 Bot သို့ လတ်တလော ဆက်သွယ်ထားသော အကောင့်နှင့် Group များ (Click to Copy Chat ID)
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-[#C8A951]/20 text-stone-400">
+                        <th className="py-2 px-2">Name / Group Title</th>
+                        <th className="py-2 px-2">Type</th>
+                        <th className="py-2 px-2">Chat ID</th>
+                        <th className="py-2 px-2">Last Message</th>
+                        <th className="py-2 px-2">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {discoveredChats.map((c) => (
+                        <tr key={c.chatId} className="hover:bg-white/5">
+                          <td className="py-2 px-2 font-medium text-white">
+                            {c.titleOrName} {c.username ? `(@${c.username})` : ''}
+                          </td>
+                          <td className="py-2 px-2 uppercase text-[10px] text-[#C8A951]">{c.type}</td>
+                          <td className="py-2 px-2 font-mono text-emerald-300">{c.chatId}</td>
+                          <td className="py-2 px-2 text-stone-400 truncate max-w-[160px]">{c.lastMessage}</td>
+                          <td className="py-2 px-2 flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(c.chatId);
+                                showToast('success', `Chat ID (${c.chatId}) ကို Copy ကူးပြီးပါပြီ။`);
+                              }}
+                              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] flex items-center gap-1"
+                            >
+                              <Copy className="w-3 h-3" /> Copy ID
+                            </button>
+                            <button
+                              onClick={() => setConfig({ ...config, adminGroupChatId: c.chatId })}
+                              className="px-2 py-1 rounded bg-[#C8A951]/20 text-[#C8A951] hover:bg-[#C8A951]/30 text-[11px]"
+                            >
+                              Set as Admin ID
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: NOTIFICATION TRIGGERS */}
+        {activeTab === 'triggers' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20 space-y-3">
+              <h3 className="text-sm font-bold text-[#C8A951] border-b border-[#C8A951]/20 pb-2">
+                📅 Booking Status Real-Time Alerts
+              </h3>
+              {[
+                { key: 'newBooking', label: '🔔 Booking အသစ်ဝင်ချိန် (New Booking Created)' },
+                { key: 'bookingConfirmed', label: '🟢 Booking အတည်ပြုချိန် (Status -> Confirmed)' },
+                { key: 'bookingInService', label: '💆‍♂️ ဝန်ဆောင်မှု စတင်ချိန် (Status -> In-Service)' },
+                { key: 'bookingCompleted', label: '✨ ဝန်ဆောင်မှု ပြီးဆုံးချိန် (Status -> Completed)' },
+                { key: 'bookingCancelled', label: '🔴 Booking ပယ်ဖျက်ချိန် (Status -> Cancelled)' },
+              ].map((item) => (
+                <label key={item.key} className="flex items-center justify-between py-1.5 cursor-pointer">
+                  <span className="text-xs text-stone-200">{item.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={(config.triggers as any)[item.key]}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        triggers: { ...config.triggers, [item.key]: e.target.checked },
+                      })
+                    }
+                    className="accent-[#C8A951] w-4 h-4"
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20 space-y-3">
+              <h3 className="text-sm font-bold text-[#C8A951] border-b border-[#C8A951]/20 pb-2">
+                👨‍💼 ဝန်ထမ်းနှင့် ဆိုင်စီမံခန့်ခွဲမှု Alerts (Staff & Operations)
+              </h3>
+              {[
+                { key: 'staffAssigned', label: '👨‍💼 Therapist တာဝန်ချထားမှု (Direct Staff Alert)' },
+                { key: 'dutyRosterUpdated', label: '📅 Duty Roster / အဆိုင်းအပြောင်းအလဲ နိုတီ' },
+                { key: 'penaltyIssued', label: '⚠️ စည်းကမ်းထိန်းသိမ်းရေး / ဒဏ်ကြေး နိုတီ (Penalty System)' },
+                { key: 'payrollGenerated', label: '💵 လစာနှင့် ကော်မရှင် ထုတ်ပြန်ချက် (Payroll Ready)' },
+                { key: 'dailySalesSummary', label: '📊 နေ့စဉ် အရောင်းချုပ် (Daily Sales Summary)' },
+              ].map((item) => (
+                <label key={item.key} className="flex items-center justify-between py-1.5 cursor-pointer">
+                  <span className="text-xs text-stone-200">{item.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={(config.triggers as any)[item.key]}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        triggers: { ...config.triggers, [item.key]: e.target.checked },
+                      })
+                    }
+                    className="accent-[#C8A951] w-4 h-4"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: STAFF TELEGRAM MAPPINGS */}
+        {activeTab === 'staff' && (
+          <div className="space-y-4">
+            <div className="bg-black/20 p-3.5 rounded-xl border border-[#C8A951]/20 flex flex-col md:flex-row md:items-center justify-between gap-2">
+              <p className="text-xs text-stone-300">
+                💡 ဝန်ထမ်းတစ်ဦးချင်းစီသည် ဆိုင်၏ Telegram Bot ကို <b>Start</b> နှိပ်ထားရပါမည်။ ထို့နောက် Tab 1 ရှိ{' '}
+                <b>Scan Recent Chats</b> ဖြင့် ၎င်းတို့၏ Chat ID ကို ရှာယူပြီး အောက်ပါဇယားတွင် ထည့်သွင်းပါ။
+              </p>
+            </div>
+
+            <div className="overflow-x-auto bg-black/20 rounded-xl border border-[#C8A951]/20">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#C8A951]/20 text-[#C8A951] bg-black/40">
+                    <th className="py-3 px-3">ID / Code</th>
+                    <th className="py-3 px-3">Staff Name</th>
+                    <th className="py-3 px-3">Telegram Chat ID</th>
+                    <th className="py-3 px-3 text-center">Booking</th>
+                    <th className="py-3 px-3 text-center">Roster</th>
+                    <th className="py-3 px-3 text-center">Penalty</th>
+                    <th className="py-3 px-3 text-center">Payroll</th>
+                    <th className="py-3 px-3 text-right">Test</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {config.staffMappings.map((staff, idx) => (
+                    <tr key={staff.staffId} className="hover:bg-white/5">
+                      <td className="py-2.5 px-3 font-bold text-[#C8A951]">{staff.staffId}</td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="text"
+                          value={staff.staffName}
+                          onChange={(e) => {
+                            const updated = [...config.staffMappings];
+                            updated[idx].staffName = e.target.value;
+                            setConfig({ ...config, staffMappings: updated });
+                          }}
+                          className="bg-[#071810] border border-[#C8A951]/20 rounded px-2 py-1 text-xs text-white w-36"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="text"
+                          value={staff.telegramChatId}
+                          onChange={(e) => {
+                            const updated = [...config.staffMappings];
+                            updated[idx].telegramChatId = e.target.value;
+                            setConfig({ ...config, staffMappings: updated });
+                          }}
+                          placeholder="e.g. 582910394"
+                          className="bg-[#071810] border border-[#C8A951]/30 rounded px-2.5 py-1 text-xs font-mono text-emerald-300 w-40"
+                        />
+                      </td>
+                      {(['receiveBookingAssign', 'receiveRosterUpdate', 'receivePenaltyAlert', 'receivePayrollAlert'] as const).map(
+                        (field) => (
+                          <td key={field} className="py-2.5 px-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={staff[field]}
+                              onChange={(e) => {
+                                const updated = [...config.staffMappings];
+                                updated[idx][field] = e.target.checked;
+                                setConfig({ ...config, staffMappings: updated });
+                              }}
+                              className="accent-[#C8A951]"
+                            />
+                          </td>
+                        )
+                      )}
+                      <td className="py-2.5 px-3 text-right">
+                        <button
+                          onClick={() => handleTestStaffDirect(staff.staffId, staff.staffName, staff.telegramChatId)}
+                          className="px-2.5 py-1 rounded bg-[#C8A951]/20 text-[#C8A951] hover:bg-[#C8A951]/30 text-[11px] font-semibold"
+                        >
+                          Test Ping
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: BOT FLOW & BROADCAST */}
+        {activeTab === 'botflow' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Bot Flow Controller */}
+            <div className="bg-black/25 p-5 rounded-xl border border-[#C8A951]/20 space-y-4">
+              <div className="flex items-center justify-between border-b border-[#C8A951]/20 pb-3">
+                <h3 className="text-sm font-bold text-[#C8A951]">🤖 Telegram Bot Flow & Menu Customization</h3>
+                <button
+                  onClick={handleSyncBotMenu}
+                  className="px-3 py-1.5 rounded-lg bg-[#C8A951] text-[#0B2419] font-bold text-xs hover:bg-[#d8b962]"
+                >
+                  ⚡ Push Commands to Telegram
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-center justify-between text-xs">
+                  <span>Notification အောက်တွင် [🌐 Open Admin Panel] ခလုတ်ထည့်မည်</span>
+                  <input
+                    type="checkbox"
+                    checked={config.botFlow.enableWebAppButton}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        botFlow: { ...config.botFlow, enableWebAppButton: e.target.checked },
+                      })
+                    }
+                    className="accent-[#C8A951] w-4 h-4"
+                  />
+                </label>
+
+                <div>
+                  <label className="block text-xs text-[#C8A951] mb-1">New Booking Header Title</label>
+                  <input
+                    type="text"
+                    value={config.templates.newBookingTitle}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        templates: { ...config.templates, newBookingTitle: e.target.value },
+                      })
+                    }
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-[#C8A951] mb-1">Booking Status Update Header Title</label>
+                  <input
+                    type="text"
+                    value={config.templates.statusUpdateTitle}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        templates: { ...config.templates, statusUpdateTitle: e.target.value },
+                      })
+                    }
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-[#C8A951] mb-1">Bot Welcome Message (/start)</label>
+                  <textarea
+                    rows={2}
+                    value={config.botFlow.welcomeMessage}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        botFlow: { ...config.botFlow, welcomeMessage: e.target.value },
+                      })
+                    }
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-[#C8A951] mb-1">Custom Notification Footer</label>
+                  <input
+                    type="text"
+                    value={config.botFlow.customFooterText}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        botFlow: { ...config.botFlow, customFooterText: e.target.value },
+                      })
+                    }
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Instant Broadcast Box */}
+            <div className="bg-black/25 p-5 rounded-xl border border-[#C8A951]/20 space-y-4">
+              <h3 className="text-sm font-bold text-[#C8A951] border-b border-[#C8A951]/20 pb-3">
+                📢 Instant Staff & Group Announcement (Broadcast)
+              </h3>
+
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Broadcast Message (Markdown Supported)</label>
-                <textarea
-                  rows={6}
-                  value={broadcastText}
-                  onChange={(e) => setBroadcastText(e.target.value)}
-                  placeholder="ဥပမာ - 🌟 Happy Hour Promo! ယနေ့ ညနေ ၃ နာရီမှ ၆ နာရီအတွင်း Signature Service တိုင်းအတွက် 20% Discount ရရှိမည်ဖြစ်ပါသည်..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 transition text-sm"
-                  required
+                <label className="block text-xs text-[#C8A951] mb-1">ခေါင်းစဉ် (Announcement Title)</label>
+                <input
+                  type="text"
+                  value={broadcastTitle}
+                  onChange={(e) => setBroadcastTitle(e.target.value)}
+                  className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Target Audience</label>
-                  <select
-                    value={broadcastTarget}
-                    onChange={(e: any) => setBroadcastTarget(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-amber-500 text-sm"
-                  >
-                    <option value="channel">Official Telegram Channel ({settings.channelUsername})</option>
-                    <option value="all">All Connected Customers ({subscribers.length})</option>
-                    <option value="vip">VIP Members Only</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center pt-6">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={includeBookButton}
-                      onChange={(e) => setIncludeBookButton(e.target.checked)}
-                      className="w-5 h-5 rounded bg-slate-950 border-slate-800 text-amber-500 focus:ring-amber-500"
-                    />
-                    <span className="text-sm font-medium text-slate-300">Include "Book Now" Button</span>
-                  </label>
-                </div>
+              <div>
+                <label className="block text-xs text-[#C8A951] mb-1">
+                  အကြောင်းအရာ အပြည့်အစုံ (Message Content)
+                </label>
+                <textarea
+                  rows={4}
+                  value={broadcastBody}
+                  onChange={(e) => setBroadcastBody(e.target.value)}
+                  placeholder="ဥပမာ - မနက်ဖြန် သီတင်းကျွတ် အထူးပရိုမိုးရှင်းရှိသဖြင့် ဝန်ထမ်းအားလုံး မနက် ၉:၃၀ အရောက် ဆိုင်သို့ လာရောက်ကြပါရန်..."
+                  className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
+                />
               </div>
 
               <button
-                type="submit"
-                disabled={sending}
-                className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition disabled:opacity-50"
+                onClick={handleSendBroadcast}
+                disabled={sendingBroadcast}
+                className="w-full py-2.5 rounded-xl bg-[#C8A951] text-[#0B2419] font-bold text-xs hover:bg-[#d8b962] flex items-center justify-center gap-2"
               >
-                {sending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                Send Telegram Broadcast Now
+                <Send className="w-4 h-4" />
+                {sendingBroadcast ? 'ပေးပို့နေပါသည်...' : 'Telegram သို့ ချက်ချင်းပေးပို့မည် (Send Now)'}
               </button>
-            </form>
-          </div>
-
-          {/* Preview Card */}
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
-                <span className="text-xs font-bold text-amber-400 tracking-wider uppercase">Live Preview</span>
-                <Smartphone className="w-4 h-4 text-slate-500" />
-              </div>
-              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 text-xs space-y-3">
-                <div className="flex items-center gap-2 text-amber-400 font-bold">
-                  <span>📢 THE SHANGRILA MEN RETREAT</span>
-                </div>
-                <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">
-                  {broadcastText || 'သင်၏ မက်ဆေ့ချ် စာသားများသည် ဤနေရာတွင် ပုံစံပေါ်လာမည်ဖြစ်ပါသည်...'}
-                </p>
-                {includeBookButton && (
-                  <div className="pt-2 space-y-1.5">
-                    <div className="w-full py-2 bg-amber-500/20 border border-amber-500/40 text-amber-300 font-semibold text-center rounded-lg">
-                      🌟 Book Now / ဘိုကင်တင်ရန်
-                    </div>
-                    <div className="w-full py-2 bg-slate-800 text-slate-300 font-semibold text-center rounded-lg">
-                      📞 ဆက်သွယ်ရန်
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-900 text-[11px] text-slate-500 text-center">
-              Bot Token Connected: {settings.botToken.substring(0, 10)}...
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Tab 2: Subscribers */}
-      {activeTab === 'subscribers' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-200">Connected Telegram Users ({subscribers.length})</h3>
-            <span className="text-xs text-slate-400">Auto-synced from Customer & Staff App</span>
-          </div>
-
-          <div className="overflow-x-auto rounded-xl border border-slate-800">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-950 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800">
-                <tr>
-                  <th className="p-4">Name / Phone</th>
-                  <th className="p-4">Telegram Username</th>
-                  <th className="p-4">Role / Status</th>
-                  <th className="p-4">Chat ID</th>
-                  <th className="p-4">Joined Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {subscribers.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-slate-500">
-                      လက်လွတ်ချိတ်ဆက်ထားသော Subscribers မရှိသေးပါ။ Customer များ Bot ကို စတင်အသုံးပြုချိန်တွင် အလိုအလျောက် ပေါ်လာပါမည်။
-                    </td>
+        {/* TAB 5: DELIVERY LOGS */}
+        {activeTab === 'logs' && (
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold text-[#C8A951]">
+              📜 နောက်ဆုံး ပေးပို့ခဲ့သော Telegram Notification မှတ်တမ်းများ (Last 35 Logs)
+            </h3>
+            <div className="overflow-x-auto bg-black/25 rounded-xl border border-[#C8A951]/20">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[#C8A951]/20 text-stone-400">
+                    <th className="py-2.5 px-3">Time</th>
+                    <th className="py-2.5 px-3">Event Type</th>
+                    <th className="py-2.5 px-3">Target Chat ID</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3">Details / Error</th>
                   </tr>
-                ) : (
-                  subscribers.map((sub, idx) => (
-                    <tr key={idx} className="hover:bg-slate-800/30 transition">
-                      <td className="p-4 font-medium text-slate-200">{sub.name}</td>
-                      <td className="p-4 text-amber-400">@{sub.username || 'N/A'}</td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${sub.isVip ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-300'}`}>
-                          {sub.isVip ? '🌟 VIP Member' : 'Regular User'}
-                        </span>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {logs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-stone-400">
+                        Notification မှတ်တမ်း မရှိသေးပါ။
                       </td>
-                      <td className="p-4 font-mono text-xs text-slate-400">{sub.chatId}</td>
-                      <td className="p-4 text-xs text-slate-500">{new Date(sub.joinedAt).toLocaleDateString()}</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Settings */}
-      {activeTab === 'settings' && (
-        <form onSubmit={handleSaveSettings} className="max-w-2xl space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Telegram Bot API Token</label>
-            <input
-              type="text"
-              value={settings.botToken}
-              onChange={(e) => setSettings({ ...settings, botToken: e.target.value })}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 font-mono text-sm focus:outline-none focus:border-amber-500"
-              required
-            />
-            <p className="text-xs text-slate-500 mt-1">BotFather မှ ရရှိထားသော Token ဖြစ်ပါသည်။</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Admin Group Chat ID</label>
-              <input
-                type="text"
-                value={settings.adminGroupId}
-                onChange={(e) => setSettings({ ...settings, adminGroupId: e.target.value })}
-                placeholder="-100xxxxxxxxxx"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 font-mono text-sm focus:outline-none focus:border-amber-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Channel Username</label>
-              <input
-                type="text"
-                value={settings.channelUsername}
-                onChange={(e) => setSettings({ ...settings, channelUsername: e.target.value })}
-                placeholder="@shangrilamenretreat"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 font-mono text-sm focus:outline-none focus:border-amber-500"
-              />
+                  ) : (
+                    logs.map((log) => (
+                      <tr key={log.id} className="hover:bg-white/5">
+                        <td className="py-2 px-3 text-stone-400 whitespace-nowrap">
+                          {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '-'}
+                        </td>
+                        <td className="py-2 px-3 font-semibold text-[#C8A951]">{log.type}</td>
+                        <td className="py-2 px-3 font-mono text-stone-300">{log.targetChatId}</td>
+                        <td className="py-2 px-3">
+                          {log.status === 'SUCCESS' ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> SENT
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-red-400 font-semibold">
+                              <XCircle className="w-3.5 h-3.5" /> FAILED
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-stone-300 max-w-md truncate">
+                          {log.errorDetail ? (
+                            <span className="text-red-300">{log.errorDetail}</span>
+                          ) : (
+                            log.summary?.replace(/<[^>]+>/g, '')
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
-
-          <div className="pt-2">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.enabled}
-                onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
-                className="w-5 h-5 rounded bg-slate-950 border-slate-800 text-amber-500 focus:ring-amber-500"
-              />
-              <span className="text-sm font-medium text-slate-200">Enable Realtime Telegram Notifications System</span>
-            </label>
-          </div>
-
-          <button
-            type="submit"
-            className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition"
-          >
-            Save Bot Settings
-          </button>
-        </form>
-      )}
-
-      {/* Tab 4: Logs */}
-      {activeTab === 'logs' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-200">Notification Delivery History</h3>
-            <button
-              onClick={() => { localStorage.removeItem('shangrila_telegram_logs'); setLogs([]); }}
-              className="text-xs text-rose-400 hover:underline"
-            >
-              Clear Logs
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {logs.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 bg-slate-950 border border-slate-800 rounded-xl">
-                ပြသရန် Delivery Logs များ မရှိသေးပါ။
-              </div>
-            ) : (
-              logs.map((log, idx) => (
-                <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex items-center justify-between text-xs">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-slate-800 text-amber-400 rounded font-semibold uppercase">{log.type}</span>
-                      <span className="text-slate-400 font-mono">ChatID: {log.chatId}</span>
-                    </div>
-                    <p className="text-slate-300 truncate max-w-xl">{log.message}</p>
-                  </div>
-                  <div className="text-right space-y-1">
-                    <span className={`px-2.5 py-0.5 rounded-full font-semibold ${log.status === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                      {log.status}
-                    </span>
-                    <p className="text-slate-500 text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
 
-export const TelegramGlobalBridge: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <>
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold rounded-full shadow-2xl shadow-sky-500/40 border border-sky-400/30 transition transform hover:scale-105"
-      >
-        <Bot className="w-5 h-5 animate-bounce" />
-        <span className="text-sm">Telegram Noti</span>
-      </button>
-
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-amber-500/30 rounded-2xl shadow-2xl p-6">
-            <button
-              onClick={() => setIsOpen(false)}
-              className="absolute top-4 right-4 p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-full transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <TelegramNotificationCenter />
-          </div>
-        </div>
-      )}
-    </>
-  );
-};
+export default TelegramNotificationCenter;
