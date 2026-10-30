@@ -359,13 +359,40 @@ export const TelegramNotificationCenter: React.FC = () => {
     setScanningChats(false);
     if (res.ok) {
       setDiscoveredChats(res.chats);
+
+      // 🌟 အသစ်ထည့်ရန်: ရှာတွေ့သမျှ Private Chat များကို Subscribed Customers စာရင်းထဲသို့ Auto-Save လုပ်မည် 🌟
+      const { doc, setDoc } = await import('firebase/firestore');
+      let savedCount = 0;
+      
+      for (const chat of res.chats) {
+        // Group များ (-100... စသည်) မဟုတ်ဘဲ လူကိုယ်တိုင်ပြောသော Private Chat များကိုသာ သိမ်းမည်
+        if (chat.type === 'private' || chat.type === 'PRIVATE') {
+          const chatIdStr = String(chat.chatId).trim();
+          await setDoc(
+            doc(db, 'telegramSubscribers', chatIdStr),
+            {
+              chatId: chatIdStr,
+              customerName: chat.titleOrName || 'Telegram Customer',
+              customerPhone: '',
+              username: chat.username || '',
+              vipTier: 'Member',
+              subscribed: true,
+              source: 'bot_command',
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+          savedCount++;
+        }
+      }
+
       await loadSubscribers();
       if (res.chats.length === 0) {
         showToast('error', 'လတ်တလော Message မတွေ့ပါ။ Telegram Bot သို့ "/start" တစ်ချက်ပို့ပြီး ပြန်နှိပ်ပါ။');
       } else {
         showToast(
           'success',
-          `Chat ID (${res.chats.length}) ခု ရှာဖွေတွေ့ရှိပြီး Customer Subscribers များကို Auto-Sync လုပ်ပြီးပါပြီ။`
+          `Chat ID (${res.chats.length}) ခု ရှာဖွေတွေ့ရှိပြီး Subscribed Customers (${savedCount}) ဦးကို Auto-Save လုပ်ပြီးပါပြီ။`
         );
       }
     } else {
