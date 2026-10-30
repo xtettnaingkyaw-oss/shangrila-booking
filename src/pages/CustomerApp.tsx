@@ -8,7 +8,45 @@ import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, forma
 
 import { useAppStore } from '../AppDataContext';
 import ThadingyutCampaign from './ThadingyutCampaign';
-import { notifyBookingEvent, notifyStaffUpdate } from '../telegramService';
+import { notifyBookingEvent, notifyStaffUpdate, fetchBotUsername, normalizePhone } from '../telegramService';
+
+// 🌟 iOS PWA / Safari / Browser အားလုံးတွင် Popup မပိတ်စေဘဲ ချက်ချင်း Telegram ပွင့်စေမည့် Synchronous Helper 🌟
+const getInstantTelegramLink = (phoneStr?: string, bookingId?: string) => {
+  const botUser = (
+    localStorage.getItem('shangrila_bot_username') ||
+    import.meta.env.VITE_TELEGRAM_BOT_USERNAME ||
+    'theshangrilamenretreat'
+  )
+    .replace(/^@/, '')
+    .trim();
+  const cleanPhone = normalizePhone(phoneStr) || 'guest';
+  const cleanBId = (bookingId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-12);
+  const startParam = cleanBId ? `book_${cleanBId}_${cleanPhone}` : `sub_${cleanPhone}`;
+  return {
+    httpsUrl: `https://t.me/${botUser}?start=${startParam}`,
+    tgAppUrl: `tg://resolve?domain=${botUser}&start=${startParam}`,
+  };
+};
+
+const openTelegramBotInstantly = (phoneStr?: string, bookingId?: string) => {
+  const { httpsUrl, tgAppUrl } = getInstantTelegramLink(phoneStr, bookingId);
+  fetchBotUsername().catch(() => {});
+  const isIOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isPWA =
+    window.matchMedia?.('(display-mode: standalone)').matches || (window.navigator as any)?.standalone === true;
+
+  if (isIOS || isPWA) {
+    window.location.href = tgAppUrl;
+    setTimeout(() => {
+      window.location.href = httpsUrl;
+    }, 300);
+  } else {
+    const w = window.open(httpsUrl, '_blank', 'noopener,noreferrer');
+    if (!w) window.location.href = httpsUrl;
+  }
+};
 
 
 // ==========================================
@@ -558,21 +596,18 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
                       <div className="text-[10px] text-gray-500 font-semibold">ဘိုကင် Status ပြောင်းလဲမှုကို Telegram ဖြင့် တိုက်ရိုက် ပို့ပေးပါမည်။</div>
                   </div>
               </div>
-              <button
-                  type="button"
-                  onClick={async () => {
-                      const tgService = await import('../telegramService');
-                      const link = await tgService.buildCustomerTelegramDeepLink({
-                          mode: 'subscribe',
-                          customerPhone: formData.phone,
-                          customerName: formData.name
-                      });
-                      window.open(link, '_blank');
+              <a
+                  href={getInstantTelegramLink(phone).httpsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                      e.preventDefault();
+                      openTelegramBotInstantly(phone);
                   }}
-                  className="px-3 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] whitespace-nowrap"
+                  className="px-3 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] active:scale-95 transition whitespace-nowrap"
               >
                   Connect Telegram
-              </button>
+              </a>
           </div>
           
           <div>
@@ -1569,21 +1604,18 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
       </div>
 
       {/* 🌟 Telegram Noti & Mini App Subscribe Button 🌟 */}
-      <button 
-          type="button"
-          onClick={async () => {
-              const tgService = await import('../telegramService');
-              const link = await tgService.buildCustomerTelegramDeepLink({
-                  mode: 'subscribe',
-                  customerPhone: userPhone,
-                  customerName: profile?.name
-              });
-              window.open(link, '_blank');
+      <a
+          href={getInstantTelegramLink(userPhone).httpsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+              e.preventDefault();
+              openTelegramBotInstantly(userPhone);
           }}
-          className="w-full mb-3 py-3.5 text-[#123524] bg-gradient-to-r from-yellow-50 to-amber-50 border border-[#D4AF37]/50 rounded-xl font-bold shadow-sm hover:bg-yellow-100 transition-all flex justify-center items-center tracking-widest text-[10px] uppercase group"
+          className="w-full mb-3 py-3.5 text-[#123524] bg-gradient-to-r from-yellow-50 to-amber-50 border border-[#D4AF37]/50 rounded-xl font-bold shadow-sm hover:bg-yellow-100 active:scale-95 transition-all flex justify-center items-center tracking-widest text-[10px] uppercase group"
       >
           <MessageCircle className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37] group-hover:scale-110 transition-transform" /> Connect Telegram Noti & Mini App
-      </button>
+      </a>
 
       <button onClick={onLogout} className="w-full py-3.5 text-red-500 bg-white border border-red-100 rounded-xl font-bold shadow-sm hover:bg-red-50 hover:border-red-200 transition-all flex justify-center items-center tracking-widest text-[10px] uppercase group">
           <LogOut className="w-3.5 h-3.5 mr-1.5 group-hover:scale-110 transition-transform" /> Log Out
@@ -3018,6 +3050,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 
    // 🌟 ၄။ Telegram Mini App & userPhone ကို သုံးသော useEffect များကို အောက်တွင် ဆက်ထည့်ပါ 🌟
    useEffect(() => {
+     fetchBotUsername().catch(() => {});
         import('../telegramService').then(async (tgService) => {
             // 1. Mini App မှ ဝင်လာလျှင် Auto-subscribe လုပ်မည်
             const detectedChatId = await tgService.autoSubscribeFromTelegramWebApp();
@@ -3118,45 +3151,34 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      <div className="w-full relative" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
 
-       {/* 🌟 ညာဘက်အောက်နားတွင် အမြဲပေါ်နေမည့် Floating Telegram Pop-up Icon 🌟 */}
-       <div className="fixed bottom-6 right-6 z-[999] flex flex-col items-end">
+       {/* 🌟 ညာဘက်အောက်နားတွင် အမြဲပေါ်နေမည့် Floating Telegram Direct Link Button (100% Mobile & iOS PWA Ready) 🌟 */}
+       <div className="fixed bottom-6 right-5 z-[999] flex items-center gap-2">
            {tgUser ? (
                <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[#123524] text-[#D4AF37] border border-[#D4AF37]/40 text-xs font-bold shadow-2xl animate-fade-in backdrop-blur-md">
                    <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse"></span>
                    <span>Telegram Connected</span>
                </div>
            ) : (
-               <button
-                   type="button"
-                   onClick={async () => {
-                       // 🌟 ခလုတ်နှိပ်သည့်အခါ Telegram Bot သို့ တိုက်ရိုက်သွားစေရန် 🌟
-                       try {
-                           const tgService = await import('../telegramService');
-                           const link = await tgService.buildCustomerTelegramDeepLink({
-                               mode: 'subscribe',
-                               customerPhone: userPhone,
-                           });
-                           if (link) {
-                               window.open(link, '_blank');
-                           } else {
-                               window.open('https://t.me/ShangrilaRetreatBot', '_blank');
-                           }
-                       } catch (err) {
-                           window.open('https://t.me/ShangrilaRetreatBot', '_blank');
-                       }
+               <a
+                   href={getInstantTelegramLink(userPhone).httpsUrl}
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   onClick={(e) => {
+                       e.preventDefault();
+                       openTelegramBotInstantly(userPhone);
                    }}
-                   className="group relative flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-r from-[#0088cc] to-[#00a2ff] text-white shadow-[0_8px_25px_rgba(0,136,204,0.4)] hover:shadow-[0_12px_30px_rgba(0,136,204,0.6)] transform hover:scale-110 active:scale-95 transition-all duration-300 border-2 border-white animate-bounce cursor-pointer"
-                   title="Telegram ချိတ်ဆက်ရန်"
+                   className="flex items-center gap-2 pl-3.5 pr-1.5 py-1.5 rounded-full bg-[#123524]/95 border border-[#D4AF37]/50 shadow-[0_8px_25px_rgba(0,0,0,0.35)] active:scale-95 transition-transform duration-150 cursor-pointer no-underline"
+                   style={{ WebkitTapHighlightColor: 'transparent' }}
                >
-                   <svg className="w-7 h-7 fill-current drop-shadow-md" viewBox="0 0 24 24">
-                       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27 0-.12.07-2.01 1.28-5.69 3.77-.54.37-1.03.55-1.47.54-.48-.01-1.4-.27-2.08-.49-.84-.27-1.51-.42-1.45-.89.03-.25.38-.51 1.07-.78 4.18-1.82 6.98-3.02 8.39-3.61 4-.1.66 4.83.65 4.98z"/>
-                   </svg>
-                   
-                   {/* Tooltip Label လေး */}
-                   <span className="absolute right-full mr-3 px-3 py-1.5 bg-[#123524] text-[#D4AF37] text-[10px] font-bold rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none border border-[#D4AF37]/30">
+                   <span className="text-[#D4AF37] text-[11px] font-bold whitespace-nowrap">
                        Telegram ချိတ်ဆက်ရန် ✈️
                    </span>
-               </button>
+                   <span className="flex items-center justify-center w-11 h-11 rounded-full bg-gradient-to-r from-[#0088cc] to-[#00a2ff] text-white shadow-md border border-white/80">
+                       <svg className="w-6 h-6 fill-current drop-shadow-sm" viewBox="0 0 24 24">
+                           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27 0-.12.07-2.01 1.28-5.69 3.77-.54.37-1.03.55-1.47.54-.48-.01-1.4-.27-2.08-.49-.84-.27-1.51-.42-1.45-.89.03-.25.38-.51 1.07-.78 4.18-1.82 6.98-3.02 8.39-3.61 4-.1.66 4.83.65 4.98z"/>
+                       </svg>
+                   </span>
+               </a>
            )}
        </div>
 
