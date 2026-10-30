@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ClipboardList, Users, RotateCw, Save, Coffee, Droplets, Bed, ChefHat, Bath, CheckCircle, Info, Edit, Trash2, PlusCircle, X, LayoutGrid, Settings, User } from 'lucide-react';
 import { TherapistProfile } from '../shared';
+import { notifyStaffUpdate } from '../telegramService';
 
 const DEFAULT_TASKS = [
     { id: 'reception', title: '၁။ ဧည့်ကြိုနှင့် ဧည့်ခန်းစောင့်တာဝန်', shortName: 'ဧည့်ကြို/ဧည့်ခန်း', iconName: 'Coffee', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200', desc: ['ဆိုင်၏ ပထမဆုံး မျက်နှာစာဖြစ်သောကြောင့် အမြဲတမ်း ဖော်ရွေပျူငှာပြီး သန့်ရှင်းသပ်ရပ်နေရန်။', 'ကြိုဆိုခြင်း - ဧည့်သည်များကို အပြုံးဖြင့် နွေးထွေးစွာ ကြိုဆိုရန်။', 'ဧည့်ခန်းတာဝန်ကျသူ တစ်ယောက်သည် အမြဲတမ်း Stand By ရှိရမည်။', 'ဧည့်ခန်းသန့်ရှင်းရေး - ဖုန်ကင်းစင်အောင် နေ့စဉ် သန့်ရှင်းရေးလုပ်ရန်။', 'ဆိုင်ရှေ့မျက်နှာစာ - တံမြက်စည်းလှည်း၊ ရေဆေးချရန်။'] },
@@ -79,9 +80,21 @@ export function DutyRosterSystem({ therapists }: { therapists: TherapistProfile[
     const handleSaveRoster = async () => {
         setSaving(true);
         try {
+            const todayStr = new Date().toISOString().split('T')[0];
             await setDoc(doc(db, 'settings', 'dutyRoster'), { 
-                assignments, tasks, lastRotated: lastRotated || new Date().toISOString().split('T')[0], updatedAt: Date.now() 
+                assignments, tasks, lastRotated: lastRotated || todayStr, updatedAt: Date.now() 
             }, { merge: true });
+
+            // 🌟 Duty Roster အပြောင်းအလဲဖြစ်ပေါ်ကြောင်း Telegram သို့ အသိပေးချက် ပို့ခြင်း 🌟
+            notifyStaffUpdate({
+                type: 'ROSTER_UPDATE',
+                staffName: 'ဝန်ထမ်းအားလုံး (All Staff & Team)',
+                title: '📅 Duty Roster (ဆိုင်တာဝန်ခွဲဝေမှု) အသစ် ထွက်ရှိပါပြီ',
+                details: `ဆိုင်၏ တာဝန်ခွဲဝေမှု (Duty Roster) အား ယနေ့ (${todayStr}) တွင် ပြန်လည်ပြင်ဆင် သတ်မှတ်ထားပါသည်။\n\nStaff Portal ရှိ 'Duties' (Duty Roster) တွင် မိမိ၏ တာဝန်များကို ဝင်ရောက်ကြည့်ရှုပါ။`,
+                effectiveDate: todayStr,
+                issuedBy: 'Management (Admin Panel)'
+            }).catch((err) => console.warn('Telegram roster update alert error:', err));
+
             alert("✅ တာဝန်များနှင့် ခွဲဝေမှုများ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။");
         } catch (error) { alert("Error saving roster."); }
         setSaving(false);
