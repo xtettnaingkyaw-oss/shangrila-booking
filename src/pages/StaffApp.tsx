@@ -16,6 +16,7 @@ import { StaffPenaltyView } from './PenaltySystem';
 import { NewEmployeeOnboardingForm, StaffProfileView } from './OnboardingSystem';
 import { StaffEmployeeHandbookReader } from './EmployeeHandbookSystem';
 import { calculateBookingCommissionForStaff, getStaffSeniority, StaffPaySlipView } from './StaffPayrollSystem';
+import { notifyBookingEvent, notifyStaffUpdate } from '../telegramService';
 
 const formatPrice = (price: any) => {
   const num = Number(price);
@@ -661,13 +662,36 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
       const accurateExpectedEndMs = startMs + durInfo.totalMins * 60 * 1000;
       const overtimeMillis = Math.max(0, now - accurateExpectedEndMs);
 
+      const finalOvertimeSecs = isStrictlyAdminClockIn(activeSession) ? 0 : Math.floor(overtimeMillis / 1000);
+
       await updateDoc(doc(db, 'bookings', activeSession.id), {
         status: 'completed',
         startTimeMillis: startMs,
         expectedEndTimeMillis: accurateExpectedEndMs,
         actualEndTimeMillis: now,
-        overtimeSeconds: isStrictlyAdminClockIn(activeSession) ? 0 : Math.floor(overtimeMillis / 1000)
+        overtimeSeconds: finalOvertimeSecs
       });
+
+      // 🌟 ဝန်ထမ်းမှ ဝန်ဆောင်မှု ပြီးဆုံးကြောင်း (Complete) နှိပ်သည့်အခါ Telegram ပို့ခြင်း 🌟
+      notifyBookingEvent('STATUS_UPDATE', {
+        id: activeSession.txId || activeSession.id,
+        customerName: activeSession.name || 'Walk-in Guest',
+        customerPhone: activeSession.phone || '-',
+        serviceName: activeSession.service || 'Spa Service',
+        duration: formatMinsToHrMinBurmese(durInfo.totalMins),
+        price: Number(activeSession.totalPrice) || 0,
+        date: activeSession.date || getLocalTodayStr(),
+        time: `${formatTimeAMPM(startMs)} - ${formatTimeAMPM(now)}`,
+        therapistId: liveStaff.id || liveStaff.name,
+        therapistName: liveStaff.name,
+        status: 'completed',
+        notes:
+          finalOvertimeSecs > 60
+            ? `⚠️ အချိန်ပို (Overtime): +${formatSecondsToBurmeseWords(finalOvertimeSecs)} | သတ်မှတ်ပြီးချိန်: ${formatTimeAMPM(accurateExpectedEndMs)}`
+            : `✅ အချိန်မှန် ပြီးဆုံးပါသည် (သတ်မှတ်ချိန်: ${formatMinsToHrMinBurmese(durInfo.totalMins)})`,
+        updatedBy: `${liveStaff.name} (Staff Portal)`
+      }).catch((err) => console.warn('Telegram staff complete alert error:', err));
+
       setActiveSession(null);
     } catch (error) {
       console.error(error);
@@ -1414,14 +1438,34 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData; loggedI
         }
 
         const now = Date.now();
+        const expectedReturnMs = now + 30 * 60 * 1000;
+        const cleanReason = reason.trim();
+
         await addDoc(collection(db, 'outpasses'), {
           therapist: loggedInStaff.name,
           date: todayStr,
           outTimeMillis: now,
-          expectedInTimeMillis: now + 30 * 60 * 1000,
+          expectedInTimeMillis: expectedReturnMs,
           status: 'out',
-          reason: reason.trim()
+          reason: cleanReason
         });
+
+        // 🌟 ဝန်ထမ်း Out Pass ယူ၍ အပြင်ထွက်ချိန်တွင် Admin & Staff Group သို့ Telegram ပို့ခြင်း 🌟
+        notifyStaffUpdate({
+          type: 'GENERAL_ANNOUNCEMENT',
+          staffId: loggedInStaff.id || loggedInStaff.name,
+          staffName: loggedInStaff.name,
+          title: '☕ ဝန်ထမ်း Out Pass ဖြင့် အပြင်ထွက်ခွာခြင်း (CLOCK OUT)',
+          details: [
+            `📝 အကြောင်းပြချက်: ${cleanReason}`,
+            `⏰ ထွက်ချိန် (Out): ${formatTimeAMPM(now)}`,
+            `⏳ ပြန်ဝင်ရမည့်ချိန် (Expected Return): ${formatTimeAMPM(expectedReturnMs)} (30 မိနစ်)`,
+            `🔢 ယနေ့ ထွက်သည့်အကြိမ်ရေ: ${myPasses.length + 1} / 4 ကြိမ်`
+          ].join('\n'),
+          effectiveDate: todayStr,
+          issuedBy: `${loggedInStaff.name} (GPS Verified)`
+        }).catch((err) => console.warn('Telegram outpass go out alert error:', err));
+
         setReason('');
         setLocating(false);
       },
@@ -1459,11 +1503,36 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData; loggedI
 
         const now = Date.now();
         const overtimeMillis = Math.max(0, now - myActivePass.expectedInTimeMillis);
+        const overtimeSecs = Math.floor(overtimeMillis / 1000);
+
         await updateDoc(doc(db, 'outpasses', myActivePass.id), {
           status: 'returned',
           inTimeMillis: now,
-          overtimeSeconds: Math.floor(overtimeMillis / 1000)
+          overtimeSeconds: overtimeSecs
         });
+
+        // 🌟 ဝန်ထမ်း Out Pass မှ ပြန်ရောက်ချိန်တွင် (အချိန်မှန် / နောက်ကျချိန်နှင့်တကွ) Telegram ပို့ခြင်း 🌟
+        notifyStaffUpdate({
+          type: overtimeSecs > 60 ? 'PENALTY_ISSUED' : 'GENERAL_ANNOUNCEMENT',
+          staffId: loggedInStaff.id || loggedInStaff.name,
+          staffName: loggedInStaff.name,
+          title:
+            overtimeSecs > 60
+              ? '⚠️ Out Pass သတ်မှတ်ချိန်ထက် နောက်ကျပြီး ပြန်ရောက်ပါသည် (LATE RETURN)'
+              : '✅ Out Pass မှ အချိန်မှန် ပြန်လည်ရောက်ရှိပါသည် (RETURNED ON TIME)',
+          details: [
+            `📝 အကြောင်းပြချက်: ${myActivePass.reason || '-'}`,
+            `⏰ ထွက်ချိန်: ${formatTimeAMPM(myActivePass.outTimeMillis)}`,
+            `🎯 ပြန်ဝင်ရမည့်ချိန်: ${formatTimeAMPM(myActivePass.expectedInTimeMillis)}`,
+            `🏁 အမှန်တကယ် ပြန်ရောက်ချိန်: ${formatTimeAMPM(now)}`,
+            overtimeSecs > 60
+              ? `🚨 နောက်ကျချိန် (Overtime): +${formatSecondsToBurmeseWords(overtimeSecs)}`
+              : `✨ သတ်မှတ် မိနစ် ၃၀ အတွင်း အချိန်မှန် ပြန်ရောက်ပါသည်။`
+          ].join('\n'),
+          effectiveDate: todayStr,
+          issuedBy: `${loggedInStaff.name} (GPS Verified)`
+        }).catch((err) => console.warn('Telegram outpass return alert error:', err));
+
         setLocating(false);
       },
       () => {
