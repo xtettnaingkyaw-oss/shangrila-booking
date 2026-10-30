@@ -41,6 +41,47 @@
     <meta name="apple-mobile-web-app-title" content="Shangri-La Spa" />
     <link rel="apple-touch-icon" href="https://i.ibb.co/37jM3yY/323382766-3392476561021481-1279930960017122176-n.jpg" />
 
+    <!-- 🌟 NEW: Telegram Mini App Official SDK (Auto Chat ID Capture & Mini App UI) 🌟 -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      (function () {
+        try {
+          if (window.Telegram && window.Telegram.WebApp) {
+            var tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand(); // Mini App ပွင့်လာသည်နှင့် မျက်နှာပြင်အပြည့် ဆွဲချဲ့ပေးခြင်း
+            if (typeof tg.setHeaderColor === 'function') {
+              tg.setHeaderColor('#0B2419');
+            }
+            if (typeof tg.setBackgroundColor === 'function') {
+              tg.setBackgroundColor('#0B2419');
+            }
+            // Telegram မှ ဝင်လာသော User ၏ Chat ID နှင့် အချက်အလက်ကို အလိုအလျောက် ဖမ်းယူသိမ်းဆည်းခြင်း
+            var tgUser = tg.initDataUnsafe && tg.initDataUnsafe.user;
+            if (tgUser && tgUser.id) {
+              var capturedUser = {
+                chatId: String(tgUser.id),
+                firstName: tgUser.first_name || '',
+                lastName: tgUser.last_name || '',
+                username: tgUser.username || '',
+                languageCode: tgUser.language_code || 'my',
+                capturedAt: new Date().toISOString()
+              };
+              localStorage.setItem('shangrila_tg_user', JSON.stringify(capturedUser));
+              localStorage.setItem('shangrila_customer_chat_id', String(tgUser.id));
+            }
+            // Telegram Direct Link (?startapp=...) မှ ဝင်လာသည့် Tab Parameter ကို ဖမ်းယူခြင်း
+            var startParam = tg.initDataUnsafe && tg.initDataUnsafe.start_param;
+            if (startParam) {
+              sessionStorage.setItem('shangrila_tg_start_param', String(startParam));
+            }
+          }
+        } catch (e) {
+          console.warn('Telegram WebApp init warning:', e);
+        }
+      })();
+    </script>
+
     <!-- 🌟 မူလ Tailwind v3 CDN (Primary) နှင့် VPN မဖွင့်ထားချိန်အတွက် v3 Mirror (Conflict လုံးဝမဖြစ်ပါ) 🌟 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
