@@ -309,7 +309,7 @@ export const sendRawTelegramMessage = async (
 
   try {
     const bodyPayload: Record<string, unknown> = {
-      chat_id: chatId.trim(),
+      chat_id: String(chatId).trim(),
       text: htmlText,
       parse_mode: 'HTML',
       disable_web_page_preview: true,
@@ -329,15 +329,15 @@ export const sendRawTelegramMessage = async (
 
     if (!response.ok || !data.ok) {
       const errMsg = data.description || `HTTP Error ${response.status}`;
-      await logTelegramActivity(logType, chatId, 'FAILED', htmlText.slice(0, 120), errMsg);
+      await logTelegramActivity(logType, String(chatId), 'FAILED', htmlText.slice(0, 120), errMsg);
       return { ok: false, error: errMsg };
     }
 
-    await logTelegramActivity(logType, chatId, 'SUCCESS', htmlText.slice(0, 120));
+    await logTelegramActivity(logType, String(chatId), 'SUCCESS', htmlText.slice(0, 120));
     return { ok: true };
   } catch (error: any) {
     const errMsg = error?.message || 'Network request failed';
-    await logTelegramActivity(logType, chatId, 'FAILED', htmlText.slice(0, 120), errMsg);
+    await logTelegramActivity(logType, String(chatId), 'FAILED', htmlText.slice(0, 120), errMsg);
     return { ok: false, error: errMsg };
   }
 };
@@ -358,7 +358,7 @@ export const sendRawTelegramPhoto = async (
 
   try {
     const bodyPayload: Record<string, unknown> = {
-      chat_id: chatId.trim(),
+      chat_id: String(chatId).trim(),
       photo: photoUrl.trim(),
       caption: htmlCaption,
       parse_mode: 'HTML',
@@ -377,7 +377,6 @@ export const sendRawTelegramPhoto = async (
     const data = await response.json();
 
     if (!response.ok || !data.ok) {
-      // Fallback to text message if image URL fails to load on Telegram server
       return sendRawTelegramMessage(
         botToken,
         chatId,
@@ -387,11 +386,11 @@ export const sendRawTelegramPhoto = async (
       );
     }
 
-    await logTelegramActivity(logType, chatId, 'SUCCESS', `[PHOTO] ${htmlCaption.slice(0, 100)}`);
+    await logTelegramActivity(logType, String(chatId), 'SUCCESS', `[PHOTO] ${htmlCaption.slice(0, 100)}`);
     return { ok: true };
   } catch (error: any) {
     const errMsg = error?.message || 'Network request failed';
-    await logTelegramActivity(logType, chatId, 'FAILED', htmlCaption.slice(0, 120), errMsg);
+    await logTelegramActivity(logType, String(chatId), 'FAILED', htmlCaption.slice(0, 120), errMsg);
     return { ok: false, error: errMsg };
   }
 };
@@ -401,7 +400,10 @@ export const sendRawTelegramPhoto = async (
 // ==========================================
 
 /**
- * Telegram Mini App မှ ဝင်လာသော Customer ၏ Chat ID နှင့် အချက်အလက်ကို window.Telegram.WebApp သို့မဟုတ် localStorage မှ ဖတ်ယူခြင်း
+ * Telegram Mini App မှ ဝင်လာသော Customer ၏ Chat ID နှင့် အချက်အလက်ကို
+ * 1) window.Telegram.WebApp.initDataUnsafe
+ * 2) window.location.hash (#tgWebAppData=...) - telegram-web-app.js မရှိသည့်တိုင် အလုပ်လုပ်စေရန်
+ * 3) URL query params (?tgChatId=...) သို့မဟုတ် localStorage တို့မှ အဆင့်ဆင့် ဖတ်ယူခြင်း
  */
 export const getDetectedTelegramWebAppUser = (): {
   chatId: string;
@@ -410,7 +412,14 @@ export const getDetectedTelegramWebAppUser = (): {
   username: string;
 } | null => {
   try {
+    // 1. Check window.Telegram.WebApp
     const tg = (window as any)?.Telegram?.WebApp;
+    if (tg) {
+      try {
+        tg.ready?.();
+        tg.expand?.();
+      } catch {}
+    }
     const liveUser = tg?.initDataUnsafe?.user;
     if (liveUser && liveUser.id) {
       const userObj = {
@@ -424,6 +433,46 @@ export const getDetectedTelegramWebAppUser = (): {
       return userObj;
     }
 
+    // 2. Parse #tgWebAppData from URL hash or search params (works even if telegram-web-app.js is missing!)
+    const rawHash = window.location.hash ? window.location.hash.substring(1) : '';
+    const hashParams = new URLSearchParams(rawHash);
+    const searchParams = new URLSearchParams(window.location.search);
+    const tgWebAppData = hashParams.get('tgWebAppData') || searchParams.get('tgWebAppData');
+
+    if (tgWebAppData) {
+      const initParams = new URLSearchParams(tgWebAppData);
+      const userJson = initParams.get('user');
+      if (userJson) {
+        const parsedUser = JSON.parse(decodeURIComponent(userJson));
+        if (parsedUser && parsedUser.id) {
+          const userObj = {
+            chatId: String(parsedUser.id),
+            firstName: parsedUser.first_name || '',
+            lastName: parsedUser.last_name || '',
+            username: parsedUser.username || '',
+          };
+          localStorage.setItem('shangrila_tg_user', JSON.stringify(userObj));
+          localStorage.setItem('shangrila_customer_chat_id', userObj.chatId);
+          return userObj;
+        }
+      }
+    }
+
+    // 3. Check explicit query param ?chatId= or ?tgChatId=
+    const explicitParamId = searchParams.get('tgChatId') || searchParams.get('chatId');
+    if (explicitParamId && /^\d+$/.test(explicitParamId.trim())) {
+      const userObj = {
+        chatId: explicitParamId.trim(),
+        firstName: searchParams.get('firstName') || '',
+        lastName: '',
+        username: searchParams.get('username') || '',
+      };
+      localStorage.setItem('shangrila_tg_user', JSON.stringify(userObj));
+      localStorage.setItem('shangrila_customer_chat_id', userObj.chatId);
+      return userObj;
+    }
+
+    // 4. Fallback to cached localStorage
     const cached = localStorage.getItem('shangrila_tg_user');
     if (cached) {
       const parsed = JSON.parse(cached);
@@ -449,6 +498,11 @@ export const saveCustomerTelegramSubscription = async (
   if (!subscriber.chatId) return false;
   try {
     const cleanChatId = String(subscriber.chatId).trim();
+    if (!cleanChatId || cleanChatId.startsWith('-')) {
+      // Group chat IDs (negative numbers) should not be saved as individual customer subscribers
+      return false;
+    }
+
     const docRef = doc(db, 'telegramSubscribers', cleanChatId);
     const existingSnap = await getDoc(docRef);
     const existingData = existingSnap.exists() ? (existingSnap.data() as CustomerTelegramSubscriber) : null;
@@ -456,18 +510,23 @@ export const saveCustomerTelegramSubscription = async (
     const nowIso = new Date().toISOString();
     const normalizedPhone = normalizePhone(subscriber.customerPhone || existingData?.customerPhone || '');
 
+    const resolvedName =
+      (subscriber.customerName && subscriber.customerName !== 'Shangri-La Guest'
+        ? subscriber.customerName
+        : '') ||
+      existingData?.customerName ||
+      [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ') ||
+      subscriber.username ||
+      'Shangri-La Guest';
+
     const payload: CustomerTelegramSubscriber = {
       chatId: cleanChatId,
-      customerName:
-        subscriber.customerName ||
-        existingData?.customerName ||
-        [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ') ||
-        'Shangri-La Guest',
+      customerName: resolvedName,
       customerPhone: normalizedPhone || subscriber.customerPhone || existingData?.customerPhone || '',
-      username: subscriber.username ?? existingData?.username ?? '',
-      firstName: subscriber.firstName ?? existingData?.firstName ?? '',
-      lastName: subscriber.lastName ?? existingData?.lastName ?? '',
-      vipTier: subscriber.vipTier ?? existingData?.vipTier ?? 'Member',
+      username: subscriber.username || existingData?.username || '',
+      firstName: subscriber.firstName || existingData?.firstName || '',
+      lastName: subscriber.lastName || existingData?.lastName || '',
+      vipTier: subscriber.vipTier || existingData?.vipTier || 'Member',
       subscribed: subscriber.subscribed !== undefined ? subscriber.subscribed : true,
       source: subscriber.source || existingData?.source || 'mini_app',
       lastBookingId: subscriber.lastBookingId || existingData?.lastBookingId || '',
@@ -476,7 +535,6 @@ export const saveCustomerTelegramSubscription = async (
     };
 
     await setDoc(docRef, payload, { merge: true });
-    localStorage.setItem('shangrila_customer_chat_id', cleanChatId);
     return true;
   } catch (error) {
     console.error('Error saving customer telegram subscription:', error);
@@ -493,8 +551,15 @@ export const getCustomerTelegramSubscribers = async (): Promise<CustomerTelegram
     const list: CustomerTelegramSubscriber[] = [];
     snap.forEach((docSnap) => {
       const data = docSnap.data() as CustomerTelegramSubscriber;
-      if (data && data.chatId) {
-        list.push(data);
+      const chatId = data?.chatId || docSnap.id;
+      if (chatId && !String(chatId).startsWith('-')) {
+        list.push({
+          ...data,
+          chatId: String(chatId),
+          customerName: data.customerName || [data.firstName, data.lastName].filter(Boolean).join(' ') || 'Guest',
+          customerPhone: data.customerPhone || '',
+          subscribed: data.subscribed !== false,
+        });
       }
     });
     return list.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
@@ -505,24 +570,61 @@ export const getCustomerTelegramSubscribers = async (): Promise<CustomerTelegram
 };
 
 /**
- * Customer ၏ ဖုန်းနံပါတ် သို့မဟုတ် Booking မှတစ်ဆင့် ၎င်း၏ Telegram Chat ID ကို ရှာဖွေပေးခြင်း
+ * Customer ၏ Chat ID ကို:
+ * 1) Explicit Chat ID
+ * 2) ဖုန်းနံပါတ် (Phone Match)
+ * 3) အမည် သို့မဟုတ် Username (Name / Username Match - ဥပမာ Tho Sit Naing)
+ * 4) Booking ID (lastBookingId Match) တို့ဖြင့် အဆင့်ဆင့် လိုက်လံရှာဖွေပေးခြင်း
  */
 export const findCustomerChatId = async (
   customerPhone?: string,
-  explicitChatId?: string
+  explicitChatId?: string,
+  customerName?: string,
+  bookingId?: string
 ): Promise<string | null> => {
-  if (explicitChatId && String(explicitChatId).trim()) {
+  if (explicitChatId && String(explicitChatId).trim() && !String(explicitChatId).startsWith('-')) {
     return String(explicitChatId).trim();
   }
-  const cleanTargetPhone = normalizePhone(customerPhone);
-  if (!cleanTargetPhone) return null;
 
   try {
     const subscribers = await getCustomerTelegramSubscribers();
-    const matched = subscribers.find(
-      (s) => s.subscribed !== false && normalizePhone(s.customerPhone) === cleanTargetPhone
-    );
-    return matched ? matched.chatId : null;
+    const activeSubs = subscribers.filter((s) => s.subscribed !== false && s.chatId);
+
+    // 1. Match by Booking ID
+    if (bookingId) {
+      const cleanId = bookingId.trim();
+      const byBooking = activeSubs.find(
+        (s) =>
+          s.lastBookingId &&
+          (s.lastBookingId === cleanId || cleanId.endsWith(s.lastBookingId) || s.lastBookingId.endsWith(cleanId))
+      );
+      if (byBooking) return byBooking.chatId;
+    }
+
+    // 2. Match by Normalized Phone Number
+    const cleanTargetPhone = normalizePhone(customerPhone);
+    if (cleanTargetPhone) {
+      const byPhone = activeSubs.find((s) => normalizePhone(s.customerPhone) === cleanTargetPhone);
+      if (byPhone) return byPhone.chatId;
+    }
+
+    // 3. Match by Customer Name or Username (For Mini App users whose phone wasn't linked yet)
+    if (customerName && customerName.trim()) {
+      const targetName = customerName.trim().toLowerCase();
+      const byName = activeSubs.find((s) => {
+        const subName = (s.customerName || '').trim().toLowerCase();
+        const fullName = [s.firstName, s.lastName].filter(Boolean).join(' ').trim().toLowerCase();
+        const uName = (s.username || '').trim().toLowerCase();
+        return (
+          (subName && (subName === targetName || subName.includes(targetName) || targetName.includes(subName))) ||
+          (fullName && (fullName === targetName || fullName.includes(targetName) || targetName.includes(fullName))) ||
+          (uName && targetName.includes(uName))
+        );
+      });
+      if (byName) return byName.chatId;
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -560,7 +662,9 @@ export const autoSubscribeFromTelegramWebApp = async (
 export const fetchBotUsername = async (botToken?: string): Promise<string> => {
   try {
     const config = await getTelegramConfig();
-    if (config.botUsername) return config.botUsername.replace(/^@/, '');
+    if (config.botUsername && config.botUsername.trim()) {
+      return config.botUsername.replace(/^@/, '').trim();
+    }
     const token = botToken || config.botToken;
     if (!token) return '';
 
@@ -579,7 +683,6 @@ export const fetchBotUsername = async (botToken?: string): Promise<string> => {
 
 /**
  * ဘိုကင်တင်သည့် နောက်ဆုံးအဆင့်နှင့် Subscribe ခလုတ်တို့အတွက် Deep-Link URL ထုတ်ပေးခြင်း
- * ဥပမာ - https://t.me/YourBot?start=book_BK123_09458884517
  */
 export const buildCustomerTelegramDeepLink = async (params: {
   mode: 'subscribe' | 'booking_notify';
@@ -610,6 +713,7 @@ const getStatusBadge = (status: string): string => {
   switch (status.toLowerCase()) {
     case 'pending':
       return '🟡 <b>စောင့်ဆိုင်းဆဲ (PENDING)</b>';
+    case 'approved':
     case 'confirmed':
       return '🟢 <b>အတည်ပြုပြီး (CONFIRMED)</b>';
     case 'in-service':
@@ -637,12 +741,30 @@ export const notifyCustomerBookingStatus = async (
     return { customerSent: false };
   }
 
-  const targetChatId = await findCustomerChatId(booking.customerPhone, booking.customerChatId);
+  // First try latest Telegram updates quickly so any recent /start user is auto-bound before sending
+  let targetChatId = await findCustomerChatId(
+    booking.customerPhone,
+    booking.customerChatId,
+    booking.customerName,
+    booking.id
+  );
+
+  if (!targetChatId) {
+    // Auto-sync recent bot chats once in case the customer just pressed /start on the bot
+    await fetchRecentBotChats(config.botToken, true);
+    targetChatId = await findCustomerChatId(
+      booking.customerPhone,
+      booking.customerChatId,
+      booking.customerName,
+      booking.id
+    );
+  }
+
   if (!targetChatId) {
     return { customerSent: false, error: 'Customer Chat ID not subscribed yet' };
   }
 
-  // Save/update customer subscriber profile with latest booking info
+  // Save/update customer subscriber profile with latest booking info & phone
   await saveCustomerTelegramSubscription({
     chatId: targetChatId,
     customerName: booking.customerName,
@@ -651,23 +773,34 @@ export const notifyCustomerBookingStatus = async (
     lastBookingId: booking.id,
   });
 
+  // Also persist customerChatId back onto the booking document in Firestore if it exists
+  if (booking.id) {
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        customerChatId: targetChatId,
+        telegramChatId: targetChatId,
+      });
+    } catch {}
+  }
+
   const statusLower = booking.status.toLowerCase();
   const formattedPrice = booking.price ? `${Number(booking.price).toLocaleString()} MMK` : '-';
 
-  let customerTitle = '🌿 <b>THE SHANGRI-LA MEN\'S RETREAT</b>';
+  let customerTitle = "🌿 <b>THE SHANGRI-LA MEN'S RETREAT</b>";
   let statusIntro = 'သင်၏ ရက်ချိန်းအချက်အလက် အောက်ပါအတိုင်း ဖြစ်ပါသည် -';
 
   if (eventType === 'NEW_BOOKING' || statusLower === 'pending') {
     customerTitle = '🔔 <b>ဘိုကင်တင်ခြင်း လက်ခံရရှိပါသည် (BOOKING RECEIVED)</b>';
     statusIntro =
       'လူကြီးမင်း၏ ရက်ချိန်းတောင်းဆိုမှုကို လက်ခံရရှိပါသည်။ Admin အဖွဲ့မှ အမြန်ဆုံး စစ်ဆေးအတည်ပြုပေးပါမည်။';
-  } else if (statusLower === 'confirmed' || eventType === 'STAFF_ASSIGNED') {
+  } else if (statusLower === 'confirmed' || statusLower === 'approved' || eventType === 'STAFF_ASSIGNED') {
     customerTitle = '✅ <b>သင်၏ ရက်ချိန်းကို အတည်ပြုပြီးပါပြီ (BOOKING CONFIRMED)</b>';
     statusIntro =
       'လူကြီးမင်း၏ ဘိုကင်ကို အတည်ပြုပြီးဖြစ်ပါသည်။ သတ်မှတ်ချိန်မတိုင်မီ (၁၀) မိနစ်ခန့် ကြိုတင်ကြွရောက်ပေးပါရန် လေးစားစွာ ပန်ကြားအပ်ပါသည်။';
   } else if (statusLower === 'in-service' || statusLower === 'in_service') {
     customerTitle = '💆‍♂️ <b>ဝန်ဆောင်မှု စတင်နေပါပြီ (IN-SERVICE)</b>';
-    statusIntro = 'The Shangri-La Men\'s Retreat တွင် စိတ်အေးချမ်းသာစွာ အနားယူအပန်းဖြေနိုင်ပါစေကြောင်း ဆုမွန်ကောင်းတောင်းအပ်ပါသည်။';
+    statusIntro =
+      "The Shangri-La Men's Retreat တွင် စိတ်အေးချမ်းသာစွာ အနားယူအပန်းဖြေနိုင်ပါစေကြောင်း ဆုမွန်ကောင်းတောင်းအပ်ပါသည်။";
   } else if (statusLower === 'completed') {
     customerTitle = '✨ <b>ဝန်ဆောင်မှု ပြီးဆုံးပါပြီ (THANK YOU FOR VISITING)</b>';
     statusIntro =
@@ -746,16 +879,23 @@ export const notifyBookingEvent = async (
     return { adminSent: false, staffSent: false, customerSent: false, errors: ['Telegram Bot is disabled or missing token'] };
   }
 
-  // Check if specific trigger is enabled
   const statusLower = booking.status.toLowerCase();
   if (eventType === 'NEW_BOOKING' && !config.triggers.newBooking) {
     return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
   }
   if (eventType === 'STATUS_UPDATE') {
-    if (statusLower === 'confirmed' && !config.triggers.bookingConfirmed) return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
-    if ((statusLower === 'in-service' || statusLower === 'in_service') && !config.triggers.bookingInService) return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
-    if (statusLower === 'completed' && !config.triggers.bookingCompleted) return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
-    if (statusLower === 'cancelled' && !config.triggers.bookingCancelled) return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
+    if ((statusLower === 'confirmed' || statusLower === 'approved') && !config.triggers.bookingConfirmed) {
+      return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
+    }
+    if ((statusLower === 'in-service' || statusLower === 'in_service') && !config.triggers.bookingInService) {
+      return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
+    }
+    if (statusLower === 'completed' && !config.triggers.bookingCompleted) {
+      return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
+    }
+    if (statusLower === 'cancelled' && !config.triggers.bookingCancelled) {
+      return { adminSent: false, staffSent: false, customerSent: false, errors: [] };
+    }
   }
 
   const headerTitle =
@@ -975,7 +1115,6 @@ export const sendBulkCustomerBroadcast = async (
       onProgress(i + 1, targetList.length);
     }
 
-    // Telegram flood limit ကို ကာကွယ်ရန် တစ်စောင်နှင့်တစ်စောင်ကြား 60ms စောင့်ပေးခြင်း
     await new Promise((r) => setTimeout(r, 60));
   }
 
@@ -1094,7 +1233,8 @@ export interface DiscoveredTelegramChat {
 
 /**
  * Bot သို့ ဝင်ရောက်လာသော Message များနှင့် `/start book_<BookingID>_<Phone>` သို့မဟုတ် `/start sub_<Phone>` တို့ကို စစ်ဆေးပြီး
- * Customer Chat ID ကို အလိုအလျောက် Subscribe လုပ်ပေးခြင်း + Booking နှင့် ချိတ်ဆက်ပေးခြင်း
+ * Private Chat အားလုံးကို `telegramSubscribers` collection သို့ အမြဲတမ်း အလိုအလျောက် Sync & Save လုပ်ပေးခြင်း +
+ * Bookings collection ရှိ အမည်/ဖုန်းနံပါတ်နှင့် တိုက်ဆိုင်စစ်ဆေးပြီး Chat ID ချိတ်ဆက်ပေးခြင်း
  */
 export const fetchRecentBotChats = async (
   botToken: string,
@@ -1108,6 +1248,9 @@ export const fetchRecentBotChats = async (
   if (!botToken) return { ok: false, chats: [], error: 'Bot Token လိုအပ်ပါသည်' };
 
   try {
+    // Also auto-detect and save botUsername whenever we scan
+    await fetchBotUsername(botToken);
+
     const response = await fetch(`https://api.telegram.org/bot${botToken.trim()}/getUpdates?limit=100`);
     const data = await response.json();
 
@@ -1115,22 +1258,35 @@ export const fetchRecentBotChats = async (
       return { ok: false, chats: [], error: data.description || 'Failed to fetch updates' };
     }
 
-    const chatMap = new Map<string, DiscoveredTelegramChat>();
+    const chatMap = new Map<string, DiscoveredTelegramChat & { firstName?: string; lastName?: string }>();
     let newlySubscribedCount = 0;
-    const processedUpdateIds: Set<string> = new Set(
-      JSON.parse(localStorage.getItem('shangrila_processed_tg_updates') || '[]')
+    const welcomedUpdateIds: Set<string> = new Set(
+      JSON.parse(localStorage.getItem('shangrila_welcomed_tg_updates') || '[]')
     );
 
     const config = await getTelegramConfig();
 
+    // Load recent bookings once so we can cross-match phone numbers for Mini App users like Tho Sit Naing
+    let existingBookings: any[] = [];
+    try {
+      const bookingsSnap = await getDocs(collection(db, 'bookings'));
+      bookingsSnap.forEach((bDoc) => {
+        existingBookings.push({ id: bDoc.id, ...bDoc.data() });
+      });
+    } catch {}
+
     for (const update of data.result || []) {
-      const msg = update.message || update.edited_message || update.my_chat_member;
+      const msg =
+        update.message ||
+        update.edited_message ||
+        update.callback_query?.message ||
+        update.my_chat_member;
       if (!msg || !msg.chat) continue;
 
       const chat = msg.chat;
       const chatIdStr = String(chat.id);
       const titleOrName =
-        chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(' ') || 'Unknown User';
+        chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(' ') || chat.username || 'Telegram User';
       const text: string = msg.text || '';
 
       let startPayload = '';
@@ -1139,64 +1295,116 @@ export const fetchRecentBotChats = async (
         if (parts.length > 1) startPayload = parts[1];
       }
 
+      const prevEntry = chatMap.get(chatIdStr);
       chatMap.set(chatIdStr, {
         chatId: chatIdStr,
         titleOrName,
-        username: chat.username,
+        username: chat.username || prevEntry?.username || '',
+        firstName: chat.first_name || prevEntry?.firstName || '',
+        lastName: chat.last_name || prevEntry?.lastName || '',
         type: chat.type,
-        lastMessage: text || '[Media / Action]',
-        date: msg.date ? new Date(msg.date * 1000).toLocaleString() : '-',
-        startPayload,
+        lastMessage: text || prevEntry?.lastMessage || '[Media / Action]',
+        date: msg.date ? new Date(msg.date * 1000).toLocaleString() : prevEntry?.date || '-',
+        startPayload: startPayload || prevEntry?.startPayload || '',
       });
 
-      // Auto-Subscribe private user chats & handle /start deep-links
+      // Send interactive welcome menu only once per new command update
       const updateKey = String(update.update_id);
-      if (autoBindCustomers && chat.type === 'private' && !processedUpdateIds.has(updateKey)) {
-        processedUpdateIds.add(updateKey);
-
+      if (
+        autoBindCustomers &&
+        chat.type === 'private' &&
+        !welcomedUpdateIds.has(updateKey) &&
+        (text.startsWith('/start') ||
+          text.startsWith('/book') ||
+          text.startsWith('/staff') ||
+          text.startsWith('/available') ||
+          text.startsWith('/history') ||
+          text.startsWith('/vip'))
+      ) {
+        welcomedUpdateIds.add(updateKey);
         let extractedPhone = '';
         let extractedBookingId = '';
-
         if (startPayload.startsWith('book_')) {
-          // Format: book_<BookingID>_<Phone>
           const tokens = startPayload.split('_');
           extractedBookingId = tokens[1] || '';
           extractedPhone = tokens.slice(2).join('') || '';
         } else if (startPayload.startsWith('sub_')) {
           extractedPhone = startPayload.replace('sub_', '');
         }
-
-        await saveCustomerTelegramSubscription({
-          chatId: chatIdStr,
-          customerName: titleOrName,
-          customerPhone: extractedPhone,
-          username: chat.username || '',
-          firstName: chat.first_name || '',
-          lastName: chat.last_name || '',
-          lastBookingId: extractedBookingId,
-          subscribed: true,
-          source: startPayload ? 'booking_deeplink' : 'bot_command',
-        });
-
-        newlySubscribedCount++;
-
-        // If user clicked /start or menu commands, send interactive Mini App menu automatically
-        if (
-          text.startsWith('/start') ||
-          text.startsWith('/book') ||
-          text.startsWith('/staff') ||
-          text.startsWith('/available') ||
-          text.startsWith('/history') ||
-          text.startsWith('/vip')
-        ) {
-          await sendInteractiveMiniAppMenu(chatIdStr, config, extractedBookingId, extractedPhone);
-        }
+        await sendInteractiveMiniAppMenu(chatIdStr, config, extractedBookingId, extractedPhone);
       }
     }
 
-    // Keep last 200 processed update IDs
-    const trimmedIds = Array.from(processedUpdateIds).slice(-200);
-    localStorage.setItem('shangrila_processed_tg_updates', JSON.stringify(trimmedIds));
+    // ALWAYS ensure every discovered PRIVATE chat is saved in Firestore `telegramSubscribers`
+    if (autoBindCustomers) {
+      for (const discovered of chatMap.values()) {
+        if (discovered.type !== 'private') continue;
+
+        let extractedPhone = '';
+        let extractedBookingId = '';
+        const payload = discovered.startPayload || '';
+
+        if (payload.startsWith('book_')) {
+          const tokens = payload.split('_');
+          extractedBookingId = tokens[1] || '';
+          extractedPhone = tokens.slice(2).join('') || '';
+        } else if (payload.startsWith('sub_')) {
+          extractedPhone = payload.replace('sub_', '');
+        }
+
+        // Cross-match with existing bookings by Booking ID or Customer Name/Username
+        const matchedBooking = existingBookings.find((b) => {
+          const bId = String(b.id || '');
+          const bName = String(b.customerName || b.name || '').trim().toLowerCase();
+          const dName = discovered.titleOrName.trim().toLowerCase();
+          const dUser = (discovered.username || '').trim().toLowerCase();
+
+          if (extractedBookingId && (bId === extractedBookingId || bId.endsWith(extractedBookingId))) {
+            return true;
+          }
+          if (bName && dName && (bName === dName || bName.includes(dName) || dName.includes(bName))) {
+            return true;
+          }
+          if (bName && dUser && bName.includes(dUser)) {
+            return true;
+          }
+          return false;
+        });
+
+        if (matchedBooking) {
+          if (!extractedPhone && (matchedBooking.customerPhone || matchedBooking.phone)) {
+            extractedPhone = matchedBooking.customerPhone || matchedBooking.phone;
+          }
+          if (!extractedBookingId && matchedBooking.id) {
+            extractedBookingId = matchedBooking.id;
+          }
+          // Update the booking document with this customer's Telegram Chat ID
+          try {
+            await updateDoc(doc(db, 'bookings', matchedBooking.id), {
+              customerChatId: discovered.chatId,
+              telegramChatId: discovered.chatId,
+            });
+          } catch {}
+        }
+
+        const saved = await saveCustomerTelegramSubscription({
+          chatId: discovered.chatId,
+          customerName: matchedBooking?.customerName || matchedBooking?.name || discovered.titleOrName,
+          customerPhone: extractedPhone,
+          username: discovered.username || '',
+          firstName: discovered.firstName || '',
+          lastName: discovered.lastName || '',
+          lastBookingId: extractedBookingId,
+          subscribed: true,
+          source: payload ? 'booking_deeplink' : 'bot_command',
+        });
+
+        if (saved) newlySubscribedCount++;
+      }
+    }
+
+    const trimmedIds = Array.from(welcomedUpdateIds).slice(-200);
+    localStorage.setItem('shangrila_welcomed_tg_updates', JSON.stringify(trimmedIds));
 
     return {
       ok: true,
@@ -1209,7 +1417,7 @@ export const fetchRecentBotChats = async (
 };
 
 /**
- * Customer ထံသို့ Interactive Mini App Menu ခလုတ်များ (ဘိုကင်တင်ရန်၊ ဝန်ထမ်းပုံကြည့်ရန်၊ အားနေသောဝန်ထမ်းများ၊ Booking History) ပေးပို့ခြင်း
+ * Customer ထံသို့ Interactive Mini App Menu ခလုတ်များ ပေးပို့ခြင်း
  */
 export const sendInteractiveMiniAppMenu = async (
   chatId: string,
@@ -1246,8 +1454,7 @@ export const sendInteractiveMiniAppMenu = async (
 };
 
 /**
- * Telegram Bot ၏ Menu Commands (/start, /book, /staff, /available, /history, /vip, /contact) နှင့်
- * WebApp Menu Button ကို Admin Panel မှ တိုက်ရိုက် သတ်မှတ်ပေးခြင်း
+ * Telegram Bot ၏ Menu Commands နှင့် WebApp Menu Button ကို Admin Panel မှ တိုက်ရိုက် သတ်မှတ်ပေးခြင်း
  */
 export const syncBotCommandsAndMenu = async (config: TelegramBotConfig): Promise<{ ok: boolean; message: string }> => {
   if (!config.botToken) return { ok: false, message: 'Bot Token မရှိပါ' };
@@ -1256,10 +1463,8 @@ export const syncBotCommandsAndMenu = async (config: TelegramBotConfig): Promise
     const baseUrl = `https://api.telegram.org/bot${config.botToken.trim()}`;
     const cleanWebAppUrl = (config.webAppUrl || 'https://www.shangrilamenretreat.online').replace(/\/$/, '');
 
-    // Auto-fetch and save botUsername if missing
     await fetchBotUsername(config.botToken);
 
-    // 1. Set Rich Bot Commands for Customer Mini App Navigation
     await fetch(`${baseUrl}/setMyCommands`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1277,7 +1482,6 @@ export const syncBotCommandsAndMenu = async (config: TelegramBotConfig): Promise
       }),
     });
 
-    // 2. Set Chat Menu Button to Launch Mini App Directly
     if (config.botFlow.enableWebAppButton && cleanWebAppUrl) {
       await fetch(`${baseUrl}/setChatMenuButton`, {
         method: 'POST',
