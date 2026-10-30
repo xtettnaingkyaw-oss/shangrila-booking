@@ -2101,6 +2101,8 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
           const dataToSave: any = {
             name: encryptText(formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest')), 
             phone: encryptText(phoneToUse),
+            customerChatId: activeTgChatId, 
+            telegramChatId: activeTgChatId, 
             service: `${formData.selectedItem?.name || ''} ${formData.selectedItem?.duration ? `(${formData.selectedItem.duration})` : ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`.trim(),
             therapist: combinedTherapistName,
             date: formData.date || todayStr, time: finalTimeStr || '00:00', paymentMethod: isStaffMode ? 'Cash Payment in Shop' : (formData.paymentMethod || '-'), 
@@ -2975,7 +2977,30 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 // ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
    const { appData: globalAppData } = useAppStore(); // 🌟 Context မှ Data ကို ယူသုံးခြင်း
+  
+// 🌟 Telegram User ကို Auto-detect လုပ်ရန် State 🌟
+   const [tgUser, setTgUser] = useState<{ chatId: string; firstName: string; username?: string } | null>(null);
 
+   useEffect(() => {
+       import('../telegramService').then(async (tgService) => {
+           // 1. Mini App မှ ဝင်လာလျှင် Auto-subscribe လုပ်မည်
+           const detectedChatId = await tgService.autoSubscribeFromTelegramWebApp();
+           const webAppUser = tgService.getDetectedTelegramWebAppUser();
+           if (webAppUser) {
+               setTgUser({
+                   chatId: webAppUser.chatId,
+                   firstName: webAppUser.firstName || 'Telegram User',
+                   username: webAppUser.username
+               });
+           }
+           if (detectedChatId && !userPhone) {
+               const cachedPhone = localStorage.getItem('shangrila_user_phone');
+               if (cachedPhone) {
+                   setUserPhone(cachedPhone);
+               }
+           }
+       }).catch(() => {});
+   }, [userPhone]);
    const mergedAppData = { 
         ...appData,
         ...globalAppData,
@@ -3103,6 +3128,37 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    return (
      <div className="w-full relative" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
+
+    {/* 🌟 ညာဘက်ထောင့်နားတွင် ပေါ်မည့် Telegram Pop-up Icon 🌟 */}
+       <div className="max-w-4xl mx-auto px-4 pt-2.5 flex justify-end">
+           {tgUser ? (
+               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#123524] text-[#D4AF37] border border-[#D4AF37]/40 text-[10px] font-bold shadow-md animate-fade-in">
+                   <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                   <span>Telegram Connected</span>
+               </div>
+           ) : (
+               <button
+                   type="button"
+                   onClick={async () => {
+                       const tgService = await import('../telegramService');
+                       const link = await tgService.buildCustomerTelegramDeepLink({
+                           mode: 'subscribe',
+                           customerPhone: userPhone,
+                       });
+                       window.open(link, '_blank');
+                   }}
+                   className="group relative inline-flex items-center justify-center p-2.5 rounded-full bg-gradient-to-r from-[#0088cc] to-[#00a2ff] text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 border border-white/30 animate-bounce"
+                   title="Telegram ချိတ်ဆက်ရန်"
+               >
+                   <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27 0-.12.07-2.01 1.28-5.69 3.77-.54.37-1.03.55-1.47.54-.48-.01-1.4-.27-2.08-.49-.84-.27-1.51-.42-1.45-.89.03-.25.38-.51 1.07-.78 4.18-1.82 6.98-3.02 8.39-3.61 4-.1.66 4.83.65 4.98z"/>
+                   </svg>
+                   <span className="absolute right-full mr-2 px-2.5 py-1 bg-[#123524] text-[#D4AF37] text-[9px] font-bold rounded-md shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none border border-[#D4AF37]/30">
+                       Telegram ချိတ်ဆက်ရန် ✈️
+                   </span>
+               </button>
+           )}
+       </div>
        
        {/* 🌟 ULTRA-COMPACT LUXURY GLASS STICKY TAB BAR 🌟 */}
        <div 
