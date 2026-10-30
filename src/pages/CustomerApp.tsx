@@ -548,6 +548,32 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
                   <span className="text-[10px] sm:text-xs font-bold text-yellow-800 leading-tight">ယခုပဲ အကောင့်သစ်ဖွင့်ပြီး {appDataState.signUpBonus.points} Points လက်ဆောင်ရယူလိုက်ပါ!</span>
               </div>
           )}
+
+          {/* 🌟 Telegram Notification Auto-Bind Option 🌟 */}
+          <div className="bg-yellow-50/70 p-4 rounded-xl border border-[#D4AF37]/30 mb-6 flex items-center justify-between">
+              <div className="flex items-center">
+                  <MessageCircle className="w-5 h-5 text-[#123524] mr-3 shrink-0" />
+                  <div>
+                      <div className="font-bold text-xs text-[#123524]">Telegram Real-Time Noti ရယူမည်</div>
+                      <div className="text-[10px] text-gray-500 font-semibold">ဘိုကင် Status ပြောင်းလဲမှုကို Telegram ဖြင့် တိုက်ရိုက် ပို့ပေးပါမည်။</div>
+                  </div>
+              </div>
+              <button
+                  type="button"
+                  onClick={async () => {
+                      const tgService = await import('../telegramService');
+                      const link = await tgService.buildCustomerTelegramDeepLink({
+                          mode: 'subscribe',
+                          customerPhone: formData.phone,
+                          customerName: formData.name
+                      });
+                      window.open(link, '_blank');
+                  }}
+                  className="px-3 py-2 bg-[#123524] text-[#D4AF37] rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#1a4a32] whitespace-nowrap"
+              >
+                  Connect Telegram
+              </button>
+          </div>
           
           <div>
             <label className="block text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">Phone Number (Login ID)</label>
@@ -1541,6 +1567,23 @@ export function CustomerProfile({ appData, userPhone, onLoginSuccess, onLogout }
           </form>
         )}
       </div>
+
+      {/* 🌟 Telegram Noti & Mini App Subscribe Button 🌟 */}
+      <button 
+          type="button"
+          onClick={async () => {
+              const tgService = await import('../telegramService');
+              const link = await tgService.buildCustomerTelegramDeepLink({
+                  mode: 'subscribe',
+                  customerPhone: userPhone,
+                  customerName: profile?.name
+              });
+              window.open(link, '_blank');
+          }}
+          className="w-full mb-3 py-3.5 text-[#123524] bg-gradient-to-r from-yellow-50 to-amber-50 border border-[#D4AF37]/50 rounded-xl font-bold shadow-sm hover:bg-yellow-100 transition-all flex justify-center items-center tracking-widest text-[10px] uppercase group"
+      >
+          <MessageCircle className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37] group-hover:scale-110 transition-transform" /> Connect Telegram Noti & Mini App
+      </button>
 
       <button onClick={onLogout} className="w-full py-3.5 text-red-500 bg-white border border-red-100 rounded-xl font-bold shadow-sm hover:bg-red-50 hover:border-red-200 transition-all flex justify-center items-center tracking-widest text-[10px] uppercase group">
           <LogOut className="w-3.5 h-3.5 mr-1.5 group-hover:scale-110 transition-transform" /> Log Out
@@ -2964,6 +3007,19 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        return true;
    });
 
+  // 🌟 Telegram Mini App ဖြင့် ဝင်လာပါက Chat ID ကို အလိုအလျောက် ဖမ်းယူပြီး Auto-Subscribe လုပ်ခြင်း 🌟
+   useEffect(() => {
+       import('../telegramService').then(async (tgService) => {
+           const detectedChatId = await tgService.autoSubscribeFromTelegramWebApp();
+           if (detectedChatId && !userPhone) {
+               const cachedPhone = localStorage.getItem('shangrila_user_phone');
+               if (cachedPhone) {
+                   setUserPhone(cachedPhone);
+               }
+           }
+       }).catch(() => {});
+   }, [userPhone]);
+
    // Real-time effect to guard against any lingering state or manual URL tampering
    useEffect(() => {
        const searchParams = new URLSearchParams(window.location.search);
@@ -2983,15 +3039,17 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        }
    }, [mergedAppData.promotion, showCampaign]);
 
-   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
-       const searchParams = new URLSearchParams(window.location.search);
-       const view = searchParams.get('view');
-       
-       if (view === 'therapists') return 'therapists';
-       if (view === 'dashboard') return 'dashboard';
-       if (view === 'vip') return 'vip';
-       if (view === 'profile') return 'profile';
-       return 'book';
+ const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const view = searchParams.get('view') || searchParams.get('tab');
+        
+        if (view === 'therapists') return 'therapists';
+        if (view === 'dashboard' || view === 'available') return 'dashboard';
+        if (view === 'vip') return 'vip';
+        if (view === 'profile') return 'profile';
+        if (view === 'history') return 'history';
+        if (view === 'booking') return 'book';
+        return 'book';
    });
    
    const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
