@@ -34,7 +34,7 @@ import {
   DiscoveredTelegramChat,
 } from '../telegramService';
 
-// 🌟 Helper: Extract Staff Number (e.g. "Therapist No-1" or "No. 1" -> 1) 🌟
+// 🌟 Helper: Extract Staff Number 🌟
 const extractStaffNumber = (str: string): number | null => {
   if (!str) return null;
   const m = String(str).match(/(?:no\.?|therapist|#|\b)\s*-?\s*(\d+)/i);
@@ -71,7 +71,7 @@ export const TelegramNotificationCenter: React.FC = () => {
   // Logs State
   const [logs, setLogs] = useState<any[]>([]);
 
-  // 🌟 STRICT SYNC: HR Management ၏ Active Staff List (ပုံ-၅) နှင့် အတိအကျ တထပ်တည်း ဖြစ်စေရန် (No-846, 855, 877 များကို ဖြတ်ထုတ်သည်) 🌟
+  // 🌟 STRICT SYNC: HR Management ၏ Active Staff List နှင့် အတိအကျ ချိန်ညှိခြင်း 🌟
   const syncWithActiveStaffList = async (loadedConfig: TelegramBotConfig) => {
     try {
       const [therapistsSnap, onboardingSnap] = await Promise.all([
@@ -129,7 +129,6 @@ export const TelegramNotificationCenter: React.FC = () => {
 
         const num = extractStaffNumber(rawName) ?? extractStaffNumber(d.id);
         
-        // 🌟 800 ကျော် ID များနှင့် Resigned ဖြစ်နေသူများကို လုံးဝ ဖြတ်ထုတ်မည် 🌟
         if (num === null || num > 50 || hrResignedNums.has(num)) {
           return;
         }
@@ -168,7 +167,6 @@ export const TelegramNotificationCenter: React.FC = () => {
 
       activeStaffItems.sort((a, b) => a.order - b.order);
 
-      // အကယ်၍ DB တွင် မတွေ့ပါက ပုံ-၅ ပါအတိုင်း အမှန်တကယ် Active ဖြစ်သော (၅) ဦးကိုသာ သတ်မှတ်မည်
       const finalStaffList = activeStaffItems.length > 0 ? activeStaffItems : [
         { num: 1, staffId: 'No. 1', staffName: 'Therapist No-1', actualName: 'Htet Wai', position: 'Professional Therapist', order: 1 },
         { num: 3, staffId: 'No. 3', staffName: 'Therapist No-3', actualName: 'Nay Myo Maung', position: 'Junior Therapist', order: 3 },
@@ -208,7 +206,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         staffMappings: syncedMappings,
       };
 
-      // Firestore ထဲသို့ ချက်ချင်း Auto-Clean လုပ်ပြီးသား Config ကို သိမ်းပေးမည် (No-846 တွေ ထပ်မပါအောင်)
       await saveTelegramConfig(updatedConfig);
       setConfig(updatedConfig);
     } catch (err) {
@@ -258,7 +255,7 @@ export const TelegramNotificationCenter: React.FC = () => {
     setLoading(true);
     await syncWithActiveStaffList(config);
     setLoading(false);
-    showToast('success', 'HR Active Staff List (၅) ဦး အတိုင်း အမှိုက်ဒေတာများ ဖယ်ထုတ်ပြီး ချိန်ညှိပြီးပါပြီ။');
+    showToast('success', 'HR Active Staff List (၅) ဦး အတိုင်း အသစ်ပြန်လည် ချိန်ညှိပြီးပါပြီ။');
   };
 
   const handleTestAdminConnection = async () => {
@@ -548,6 +545,57 @@ export const TelegramNotificationCenter: React.FC = () => {
                 {scanningChats ? 'Scanning Bot Updates...' : '🔄 Scan Recent Chats (Auto-Find Chat IDs)'}
               </button>
             </div>
+
+            {/* 🌟 RECENT DISCOVERED CHATS TABLE (Restored & Fixed) 🌟 */}
+            {discoveredChats.length > 0 && (
+              <div className="bg-black/30 rounded-xl border border-[#C8A951]/30 p-4 space-y-3">
+                <h3 className="text-xs font-bold text-[#C8A951]">
+                  📡 Bot သို့ လတ်တလော ဆက်သွယ်ထားသော အကောင့်နှင့် Group များ (Click to Copy Chat ID)
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-[#C8A951]/20 text-stone-400">
+                        <th className="py-2 px-2">Name / Group Title</th>
+                        <th className="py-2 px-2">Type</th>
+                        <th className="py-2 px-2">Chat ID</th>
+                        <th className="py-2 px-2">Last Message</th>
+                        <th className="py-2 px-2">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {discoveredChats.map((c) => (
+                        <tr key={c.chatId} className="hover:bg-white/5">
+                          <td className="py-2 px-2 font-medium text-white">
+                            {c.titleOrName} {c.username ? `(@${c.username})` : ''}
+                          </td>
+                          <td className="py-2 px-2 uppercase text-[10px] text-[#C8A951]">{c.type}</td>
+                          <td className="py-2 px-2 font-mono text-emerald-300">{c.chatId}</td>
+                          <td className="py-2 px-2 text-stone-400 truncate max-w-[160px]">{c.lastMessage}</td>
+                          <td className="py-2 px-2 flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(c.chatId);
+                                showToast('success', `Chat ID (${c.chatId}) ကို Copy ကူးပြီးပါပြီ။`);
+                              }}
+                              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] flex items-center gap-1 text-white"
+                            >
+                              <Copy className="w-3 h-3" /> Copy ID
+                            </button>
+                            <button
+                              onClick={() => setConfig({ ...config, adminGroupChatId: c.chatId })}
+                              className="px-2 py-1 rounded bg-[#C8A951]/20 text-[#C8A951] hover:bg-[#C8A951]/30 text-[11px]"
+                            >
+                              Set as Admin ID
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -618,7 +666,7 @@ export const TelegramNotificationCenter: React.FC = () => {
             <div className="bg-black/20 p-3.5 rounded-xl border border-[#C8A951]/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>
                 <p className="text-xs text-stone-200 font-semibold">
-                  ✅ <b>HR Management → Active Staff List</b> (ပုံ-၅) ရှိ လက်ရှိ တာဝန်ထမ်းဆောင်နေသော Active ဝန်ထမ်း (၅) ဦးကိုသာ သီးသန့်စစ်ထုတ် ချိတ်ဆက်ထားပါသည်။ (No-846 ဇယားဟောင်းများ အပြီးတိုင် ဖယ်ရှားပြီးပါပြီ)။
+                  ✅ <b>HR Management → Active Staff List</b> ရှိ လက်ရှိ တာဝန်ထမ်းဆောင်နေသော Active ဝန်ထမ်း (၅) ဦးကိုသာ သီးသန့်စစ်ထုတ် ချိတ်ဆက်ထားပါသည်။
                 </p>
               </div>
 
