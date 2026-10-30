@@ -77,7 +77,7 @@ export interface TelegramBotConfig {
   };
   staffMappings: StaffTelegramMapping[];
   subscribers?: CustomerTelegramSubscriber[];
-  excludedChatIds?: string[]; // Admin နှင့် Staff အကောင့်များကို Customer List မှ ဖယ်ထုတ်ထားရန်
+  excludedChatIds?: string[];
 }
 
 export interface BookingNotificationPayload {
@@ -210,7 +210,6 @@ export const isPrivateUserChatId = (chatId: string | number | undefined | null):
   return /^\d+$/.test(s) && !s.startsWith('-');
 };
 
-// ဆိုင်အမည်၊ Admin အကောင့် နှင့် လက်ရှိ ဝန်ထမ်းအမည်များ (Customer စာရင်းထဲ မဝင်စေရန် စစ်ထုတ်မည့် Keywords)
 const KNOWN_ADMIN_OR_STAFF_PATTERNS = [
   'the shangri-la',
   'shangrilamenretreat',
@@ -226,10 +225,6 @@ const KNOWN_ADMIN_OR_STAFF_PATTERNS = [
   'အန်စာတုံး',
 ];
 
-/**
- * 🌟 STRICT ADMIN & STAFF ACCOUNT DETECTOR 🌟
- * Admin Chat ID, Staff Chat IDs, Excluded IDs နှင့် ဝန်ထမ်း/ဆိုင် အမည်များကို စစ်ဆေးပေးသည်
- */
 export const isStaffOrAdminSubscriber = (
   item: { chatId?: string; customerName?: string; username?: string; firstName?: string; lastName?: string },
   config?: TelegramBotConfig | null,
@@ -285,6 +280,11 @@ export const getTelegramConfig = async (): Promise<TelegramBotConfig> => {
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data() as Partial<TelegramBotConfig>;
+      if (data.botUsername) {
+        try {
+          localStorage.setItem('shangrila_bot_username', data.botUsername.replace(/^@/, '').trim());
+        } catch {}
+      }
       return {
         ...DEFAULT_TELEGRAM_CONFIG,
         ...data,
@@ -307,6 +307,11 @@ export const getTelegramConfig = async (): Promise<TelegramBotConfig> => {
 
 export const saveTelegramConfig = async (config: TelegramBotConfig): Promise<boolean> => {
   try {
+    if (config.botUsername) {
+      try {
+        localStorage.setItem('shangrila_bot_username', config.botUsername.replace(/^@/, '').trim());
+      } catch {}
+    }
     const docRef = doc(db, 'settings', 'telegramConfig');
     await setDoc(docRef, { ...config, updatedAt: new Date().toISOString() }, { merge: true });
     return true;
@@ -563,9 +568,6 @@ export const getDetectedTelegramWebAppUser = (): {
   return null;
 };
 
-/**
- * 🌟 Customer Subscriber ကို သိမ်းဆည်းခြင်း (ပြောင်းလဲမှုမရှိလျှင် updatedAt မပြောင်းသဖြင့် List အထက်အောက် လုံးဝမခုန်ပါ)
- */
 export const saveCustomerTelegramSubscription = async (
   subscriber: Partial<CustomerTelegramSubscriber> & { chatId: string },
   allowManualOverride: boolean = false
@@ -576,7 +578,6 @@ export const saveCustomerTelegramSubscription = async (
 
   const configData = await getTelegramConfig();
 
-  // Manual Add မဟုတ်ပါက Admin / Staff အကောင့်များကို Customer List ထဲ လုံးဝ မသိမ်းပါ
   if (!allowManualOverride && isStaffOrAdminSubscriber(subscriber, configData)) {
     return false;
   }
@@ -617,7 +618,6 @@ export const saveCustomerTelegramSubscription = async (
   const nextBookingId = subscriber.lastBookingId || existingData?.lastBookingId || '';
   const nextSubscribed = subscriber.subscribed !== undefined ? subscriber.subscribed : true;
 
-  // အချက်အလက် အပြောင်းအလဲ ရှိမရှိ စစ်ဆေးမည် (မရှိပါက Firestore ထပ်မရေးသဖြင့် UI ငြိမ်နေမည်)
   const hasMeaningfulChange =
     !existingData ||
     existingData.customerName !== resolvedName ||
@@ -661,7 +661,6 @@ export const saveCustomerTelegramSubscription = async (
     } else {
       currentList.push(payload);
     }
-    // Admin manual add ဖြစ်ပါက excludedChatIds မှ ပြန်ဖြုတ်ပေးမည်
     const nextExcluded = allowManualOverride
       ? (configData.excludedChatIds || []).filter((id) => id !== cleanChatId)
       : configData.excludedChatIds || [];
@@ -687,9 +686,6 @@ export const saveCustomerTelegramSubscription = async (
   return savedAnywhere;
 };
 
-/**
- * 🌟 Admin သို့မဟုတ် ဝန်ထမ်းအကောင့်များကို Subscribed Customer စာရင်းမှ အပြီးအပိုင် ဖယ်ရှားပေးမည့် Function
- */
 export const removeCustomerTelegramSubscriber = async (
   chatId: string,
   addToExclusionList: boolean = true
@@ -731,10 +727,6 @@ export const removeCustomerTelegramSubscriber = async (
   return true;
 };
 
-/**
- * 🌟 Customer Subscribers စာရင်းကို ဆွဲယူရာတွင် Admin နှင့် Staff အကောင့်များကို အလိုအလျောက် စစ်ထုတ်ပြီး
- * စာရင်း အထက်အောက် မခုန်စေရန် တည်ငြိမ်သော Sort Order ဖြင့် ပြန်ပေးသည်
- */
 export const getCustomerTelegramSubscribers = async (
   extraStaffNames: string[] = []
 ): Promise<CustomerTelegramSubscriber[]> => {
@@ -745,7 +737,6 @@ export const getCustomerTelegramSubscribers = async (
     const cid = String(item.chatId || '').trim();
     if (!isPrivateUserChatId(cid)) return;
 
-    // Admin နှင့် ဝန်ထမ်း အကောင့်များကို Customer List မှ အလိုအလျောက် ဖယ်ထုတ်မည်
     if (isStaffOrAdminSubscriber(item, cfg, extraStaffNames)) {
       return;
     }
@@ -798,7 +789,6 @@ export const getCustomerTelegramSubscribers = async (
     });
   } catch {}
 
-  // 🌟 STABLE SORT: ဖုန်းနံပါတ်ချိတ်ပြီးသူများကို အပေါ်ဆုံးထားပြီး ကျန်သူများကို Chat ID အတိုင်း အသေစီထားသဖြင့် လုံးဝ မခုန်တော့ပါ
   return Array.from(mergedMap.values()).sort((a, b) => {
     const aHasPhone = a.customerPhone ? 1 : 0;
     const bHasPhone = b.customerPhone ? 1 : 0;
@@ -844,7 +834,6 @@ export const findCustomerChatId = async (
     const subscribers = await getCustomerTelegramSubscribers();
     const activeSubs = subscribers.filter((s) => s.subscribed !== false && isPrivateUserChatId(s.chatId));
 
-    // 1. Match by Booking ID
     if (bookingId) {
       const cleanId = bookingId.trim();
       const byBooking = activeSubs.find(
@@ -855,7 +844,6 @@ export const findCustomerChatId = async (
       if (byBooking) return byBooking.chatId;
     }
 
-    // 2. Match by Normalized Phone Number
     const cleanTargetPhone = normalizePhone(customerPhone);
     if (cleanTargetPhone) {
       const byPhone = activeSubs.find((s) => {
@@ -868,7 +856,6 @@ export const findCustomerChatId = async (
       if (byPhone) return byPhone.chatId;
     }
 
-    // 3. Match by Decrypted Customer Name or Username
     const decryptedTargetName = safeDecryptValue(customerName || '').trim().toLowerCase();
     if (decryptedTargetName) {
       const byName = activeSubs.find((s) => {
@@ -925,22 +912,27 @@ export const fetchBotUsername = async (botToken?: string): Promise<string> => {
   try {
     const config = await getTelegramConfig();
     if (config.botUsername && config.botUsername.trim()) {
-      return config.botUsername.replace(/^@/, '').trim();
+      const clean = config.botUsername.replace(/^@/, '').trim();
+      localStorage.setItem('shangrila_bot_username', clean);
+      return clean;
     }
     const token = botToken || config.botToken;
-    if (!token) return '';
+    if (!token) {
+      return (localStorage.getItem('shangrila_bot_username') || 'theshangrilamenretreat').replace(/^@/, '').trim();
+    }
 
     const res = await fetch(`https://api.telegram.org/bot${token.trim()}/getMe`);
     const data = await res.json();
     if (data?.ok && data?.result?.username) {
-      const uname = data.result.username;
+      const uname = String(data.result.username).replace(/^@/, '').trim();
+      localStorage.setItem('shangrila_bot_username', uname);
       await saveTelegramConfig({ ...config, botUsername: uname });
       return uname;
     }
   } catch (e) {
     console.warn('Could not fetch bot username:', e);
   }
-  return '';
+  return (localStorage.getItem('shangrila_bot_username') || 'theshangrilamenretreat').replace(/^@/, '').trim();
 };
 
 export const buildCustomerTelegramDeepLink = async (params: {
@@ -961,7 +953,7 @@ export const buildCustomerTelegramDeepLink = async (params: {
   if (botUsername) {
     return `https://t.me/${botUsername}?start=${startPayload}`;
   }
-  return `https://t.me/?start=${startPayload}`;
+  return `https://t.me/theshangrilamenretreat?start=${startPayload}`;
 };
 
 // ==========================================
@@ -1595,7 +1587,6 @@ export const fetchRecentBotChats = async (
       }
     }
 
-    // 🌟 Auto-Link Known Staff Accounts (e.g. Nay Myo Maung -> No. 3, N W A -> No. 6) & Clean Customer List 🌟
     let staffMappingChanged = false;
     const updatedStaffMappings = [...(config.staffMappings || [])];
 
@@ -1612,7 +1603,6 @@ export const fetchRecentBotChats = async (
     for (const discovered of chatMap.values()) {
       const lowerTitle = `${discovered.titleOrName} ${discovered.username || ''}`.toLowerCase();
 
-      // Auto-assign Staff Chat ID if empty
       for (const [kName, targetStaffId] of Object.entries(staffKnownNameToId)) {
         if (lowerTitle.includes(kName)) {
           const sIdx = updatedStaffMappings.findIndex((s) => s.staffId === targetStaffId);
@@ -1639,7 +1629,12 @@ export const fetchRecentBotChats = async (
         if (matchedStaff) {
           discovered.roleTag = 'STAFF';
           discovered.linkedStaffId = matchedStaff.staffId;
-        } else if (isStaffOrAdminSubscriber({ chatId: discovered.chatId, customerName: discovered.titleOrName, username: discovered.username }, config)) {
+        } else if (
+          isStaffOrAdminSubscriber(
+            { chatId: discovered.chatId, customerName: discovered.titleOrName, username: discovered.username },
+            config
+          )
+        ) {
           discovered.roleTag = 'ADMIN';
         } else {
           discovered.roleTag = 'CUSTOMER';
@@ -1652,7 +1647,6 @@ export const fetchRecentBotChats = async (
       await saveTelegramConfig(config);
     }
 
-    // Save ONLY genuine Customers into `telegramSubscribers` (Admin & Staff accounts are strictly skipped & cleaned up)
     if (autoBindCustomers) {
       const sortedBookings = [...existingBookings].sort((a, b) =>
         String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''))
@@ -1661,7 +1655,6 @@ export const fetchRecentBotChats = async (
       for (const discovered of chatMap.values()) {
         if (discovered.type !== 'private' || !isPrivateUserChatId(discovered.chatId)) continue;
 
-        // Admin သို့မဟုတ် ဝန်ထမ်းအကောင့် ဖြစ်နေပါက Customer List ထဲမှ ဖယ်ရှားပြီး ကျော်သွားမည်
         if (
           discovered.roleTag === 'ADMIN' ||
           discovered.roleTag === 'STAFF' ||
@@ -1692,7 +1685,6 @@ export const fetchRecentBotChats = async (
           extractedPhone = payload.replace('sub_', '');
         }
 
-        // Cross-match with bookings ONLY when ID, Phone, or Exact Customer Name matches
         const matchedBooking = sortedBookings.find((b) => {
           const bId = String(b.id || '');
           const bChat = String(b.customerChatId || b.telegramChatId || '').trim();
@@ -1843,121 +1835,5 @@ export const syncBotCommandsAndMenu = async (config: TelegramBotConfig): Promise
     };
   } catch (err: any) {
     return { ok: false, message: err?.message || 'Failed to sync bot commands' };
-  }
-};
-
-// ==========================================
-// 🌟 INSTANT TELEGRAM DEEP-LINK FOR NORMAL WEBAPP / iOS PWA 🌟
-// ==========================================
-
-// Default Bot Username fallback (BotUsername ကို localStorage တွင် အမြဲ Caches သိမ်းထားပေးမည်)
-const DEFAULT_FALLBACK_BOT_USERNAME =
-  import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'theshangrilamenretreat';
-
-export const getCachedBotUsername = (): string => {
-  try {
-    const cached = localStorage.getItem('shangrila_bot_username');
-    if (cached && cached.trim()) {
-      return cached.replace(/^@/, '').trim();
-    }
-  } catch {}
-  return DEFAULT_FALLBACK_BOT_USERNAME.replace(/^@/, '').trim();
-};
-
-/**
- * Bot Username ကို Telegram getMe API မှ အလိုအလျောက် ဆွဲယူပြီး localStorage ၌ အသင့်သိမ်းထားခြင်း
- */
-export const fetchBotUsername = async (botToken?: string): Promise<string> => {
-  try {
-    const config = await getTelegramConfig();
-    if (config.botUsername && config.botUsername.trim()) {
-      const clean = config.botUsername.replace(/^@/, '').trim();
-      localStorage.setItem('shangrila_bot_username', clean);
-      return clean;
-    }
-    const token = botToken || config.botToken;
-    if (!token) return getCachedBotUsername();
-
-    const res = await fetch(`https://api.telegram.org/bot${token.trim()}/getMe`);
-    const data = await res.json();
-    if (data?.ok && data?.result?.username) {
-      const uname = String(data.result.username).replace(/^@/, '').trim();
-      localStorage.setItem('shangrila_bot_username', uname);
-      await saveTelegramConfig({ ...config, botUsername: uname });
-      return uname;
-    }
-  } catch (e) {
-    console.warn('Could not fetch bot username:', e);
-  }
-  return getCachedBotUsername();
-};
-
-/**
- * ⚡ SYNCHRONOUS DEEP-LINK GENERATOR (iOS Safari / PWA တွင် Popup မပိတ်စေရန် await မပါဘဲ ချက်ချင်း URL ထုတ်ပေးသည်)
- */
-export const getInstantCustomerTelegramDeepLink = (params?: {
-  mode?: 'subscribe' | 'booking_notify';
-  bookingId?: string;
-  customerPhone?: string;
-  customerName?: string;
-  botUsername?: string;
-}): { httpsUrl: string; tgAppUrl: string } => {
-  const botUsername = (params?.botUsername || getCachedBotUsername()).replace(/^@/, '').trim();
-  const cleanPhone = normalizePhone(params?.customerPhone) || 'guest';
-  const cleanBookingId = (params?.bookingId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-12);
-
-  const startPayload =
-    params?.mode === 'booking_notify' && cleanBookingId
-      ? `book_${cleanBookingId}_${cleanPhone}`
-      : `sub_${cleanPhone}`;
-
-  const httpsUrl = `https://t.me/${botUsername}?start=${startPayload}`;
-  const tgAppUrl = `tg://resolve?domain=${botUsername}&start=${startPayload}`;
-
-  return { httpsUrl, tgAppUrl };
-};
-
-/**
- * Async wrapper (Backward compatibility အတွက် ဆက်ထားပေးသည်)
- */
-export const buildCustomerTelegramDeepLink = async (params: {
-  mode: 'subscribe' | 'booking_notify';
-  bookingId?: string;
-  customerPhone?: string;
-  customerName?: string;
-}): Promise<string> => {
-  const botUsername = await fetchBotUsername();
-  return getInstantCustomerTelegramDeepLink({ ...params, botUsername }).httpsUrl;
-};
-
-/**
- * 🚀 पုံမှန် WebApp / iOS Home Screen App မှ နှိပ်လိုက်သည်နှင့် Telegram Bot သို့ ချက်ချင်း ပွင့်သွားစေမည့် Function
- */
-export const openCustomerTelegramBot = (params?: {
-  mode?: 'subscribe' | 'booking_notify';
-  bookingId?: string;
-  customerPhone?: string;
-  customerName?: string;
-}): void => {
-  const { httpsUrl, tgAppUrl } = getInstantCustomerTelegramDeepLink(params);
-
-  // Background တွင် Bot Username အမှန်ကို Caches အသစ်လဲထားမည်
-  fetchBotUsername().catch(() => {});
-
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isStandalonePWA =
-    window.matchMedia?.('(display-mode: standalone)').matches || (window.navigator as any)?.standalone === true;
-
-  if (isIOS || isStandalonePWA) {
-    // iOS PWA / Safari တွင် location.href ဖြင့် တိုက်ရိုက်ဖွင့်မှသာ Block မခံရဘဲ Telegram App တန်းပွင့်သည်
-    window.location.href = httpsUrl;
-    setTimeout(() => {
-      window.location.href = tgAppUrl;
-    }, 350);
-  } else {
-    const win = window.open(httpsUrl, '_blank', 'noopener,noreferrer');
-    if (!win) {
-      window.location.href = httpsUrl;
-    }
   }
 };
