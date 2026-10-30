@@ -3117,31 +3117,42 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      <div className="w-full relative" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
 
-       {/* 🌟 ညာဘက်ထောင့်နားတွင် ပေါ်မည့် Telegram Pop-up Icon 🌟 */}
-       <div className="max-w-4xl mx-auto px-4 pt-2.5 flex justify-end">
+       {/* 🌟 ညာဘက်အောက်နားတွင် အမြဲပေါ်နေမည့် Floating Telegram Pop-up Icon 🌟 */}
+       <div className="fixed bottom-6 right-6 z-[999] flex flex-col items-end">
            {tgUser ? (
-               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#123524] text-[#D4AF37] border border-[#D4AF37]/40 text-[10px] font-bold shadow-md animate-fade-in">
-                   <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+               <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[#123524] text-[#D4AF37] border border-[#D4AF37]/40 text-xs font-bold shadow-2xl animate-fade-in backdrop-blur-md">
+                   <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse"></span>
                    <span>Telegram Connected</span>
                </div>
            ) : (
                <button
                    type="button"
                    onClick={async () => {
-                       const tgService = await import('../telegramService');
-                       const link = await tgService.buildCustomerTelegramDeepLink({
-                           mode: 'subscribe',
-                           customerPhone: userPhone,
-                       });
-                       window.open(link, '_blank');
+                       // 🌟 ခလုတ်နှိပ်သည့်အခါ Telegram Bot သို့ တိုက်ရိုက်သွားစေရန် 🌟
+                       try {
+                           const tgService = await import('../telegramService');
+                           const link = await tgService.buildCustomerTelegramDeepLink({
+                               mode: 'subscribe',
+                               customerPhone: userPhone,
+                           });
+                           if (link) {
+                               window.open(link, '_blank');
+                           } else {
+                               window.open('https://t.me/ShangrilaRetreatBot', '_blank');
+                           }
+                       } catch (err) {
+                           window.open('https://t.me/ShangrilaRetreatBot', '_blank');
+                       }
                    }}
-                   className="group relative inline-flex items-center justify-center p-2.5 rounded-full bg-gradient-to-r from-[#0088cc] to-[#00a2ff] text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 border border-white/30 animate-bounce"
+                   className="group relative flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-r from-[#0088cc] to-[#00a2ff] text-white shadow-[0_8px_25px_rgba(0,136,204,0.4)] hover:shadow-[0_12px_30px_rgba(0,136,204,0.6)] transform hover:scale-110 active:scale-95 transition-all duration-300 border-2 border-white animate-bounce cursor-pointer"
                    title="Telegram ချိတ်ဆက်ရန်"
                >
-                   <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                   <svg className="w-7 h-7 fill-current drop-shadow-md" viewBox="0 0 24 24">
                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27 0-.12.07-2.01 1.28-5.69 3.77-.54.37-1.03.55-1.47.54-.48-.01-1.4-.27-2.08-.49-.84-.27-1.51-.42-1.45-.89.03-.25.38-.51 1.07-.78 4.18-1.82 6.98-3.02 8.39-3.61 4-.1.66 4.83.65 4.98z"/>
                    </svg>
-                   <span className="absolute right-full mr-2 px-2.5 py-1 bg-[#123524] text-[#D4AF37] text-[9px] font-bold rounded-md shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none border border-[#D4AF37]/30">
+                   
+                   {/* Tooltip Label လေး */}
+                   <span className="absolute right-full mr-3 px-3 py-1.5 bg-[#123524] text-[#D4AF37] text-[10px] font-bold rounded-xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none border border-[#D4AF37]/30">
                        Telegram ချိတ်ဆက်ရန် ✈️
                    </span>
                </button>
