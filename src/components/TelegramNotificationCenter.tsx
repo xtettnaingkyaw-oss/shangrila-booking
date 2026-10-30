@@ -8,7 +8,6 @@ import {
   XCircle,
   RefreshCw,
   ShieldAlert,
-  MessageSquare,
   Sparkles,
   Copy,
   Radio,
@@ -21,7 +20,7 @@ import {
   Smartphone,
   Image as ImageIcon,
 } from 'lucide-react';
-import { collection, query, orderBy, limit, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, doc, query, orderBy, limit, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { decryptText } from '../security';
 import {
@@ -33,6 +32,7 @@ import {
   saveTelegramConfig,
   sendRawTelegramMessage,
   notifyBookingEvent,
+  notifyCustomerBookingStatus,
   notifyStaffUpdate,
   fetchRecentBotChats,
   syncBotCommandsAndMenu,
@@ -54,7 +54,11 @@ const extractStaffNumber = (str: string): number | null => {
 
 const safeDecrypt = (val: any): string => {
   if (!val || typeof val !== 'string') return String(val || '');
-  return decryptText(val) || val;
+  try {
+    return decryptText(val) || val;
+  } catch {
+    return val;
+  }
 };
 
 export const TelegramNotificationCenter: React.FC = () => {
@@ -103,6 +107,7 @@ export const TelegramNotificationCenter: React.FC = () => {
   const loadSubscribers = async () => {
     const list = await getCustomerTelegramSubscribers();
     setSubscribers(list);
+    return list;
   };
 
   // 🌟 STRICT SYNC: HR Management ၏ Active Staff List နှင့် အတိအကျ ချိန်ညှိခြင်း 🌟
@@ -245,9 +250,11 @@ export const TelegramNotificationCenter: React.FC = () => {
 
       await saveTelegramConfig(updatedConfig);
       setConfig(updatedConfig);
+      return updatedConfig;
     } catch (err) {
       console.error('Error syncing Active Staff List with Telegram:', err);
       setConfig(loadedConfig);
+      return loadedConfig;
     }
   };
 
@@ -255,24 +262,39 @@ export const TelegramNotificationCenter: React.FC = () => {
     const loadData = async () => {
       setLoading(true);
       const loaded = await getTelegramConfig();
-      await syncWithActiveStaffList(loaded);
+      const syncedCfg = await syncWithActiveStaffList(loaded);
+
+      // စဖွင့်ချင်း Bot Updates နှင့် Existing Bookings မှ Subscribers များကို အလိုအလျောက် စစ်ထုတ်သိမ်းဆည်းပေးမည်
+      if (syncedCfg.botToken) {
+        const scanRes = await fetchRecentBotChats(syncedCfg.botToken, true);
+        if (scanRes.ok && scanRes.chats.length > 0) {
+          setDiscoveredChats(scanRes.chats);
+        }
+      }
+
       await loadSubscribers();
       setLoading(false);
     };
     loadData();
 
-    // Real-time listener for Telegram Subscribers
+    // Real-time listener 1: `telegramSubscribers` collection
     const unsubSubscribers = onSnapshot(
       collection(db, 'telegramSubscribers'),
-      (snap) => {
-        const list: CustomerTelegramSubscriber[] = [];
-        snap.forEach((d) => {
-          const data = d.data() as CustomerTelegramSubscriber;
-          if (data && data.chatId) list.push(data);
-        });
-        setSubscribers(list.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')));
+      () => {
+        loadSubscribers();
       },
-      (err) => console.warn('Subscribers listener warning:', err)
+      () => {
+        loadSubscribers();
+      }
+    );
+
+    // Real-time listener 2: `settings/telegramConfig` fallback subscribers array
+    const unsubConfigDoc = onSnapshot(
+      doc(db, 'settings', 'telegramConfig'),
+      () => {
+        loadSubscribers();
+      },
+      () => {}
     );
 
     const q = query(collection(db, 'telegramLogs'), orderBy('timestamp', 'desc'), limit(35));
@@ -286,6 +308,7 @@ export const TelegramNotificationCenter: React.FC = () => {
 
     return () => {
       unsubSubscribers();
+      unsubConfigDoc();
       unsubLogs();
     };
   }, []);
@@ -293,9 +316,10 @@ export const TelegramNotificationCenter: React.FC = () => {
   // Background Auto-Polling: Customer များ Bot ၌ /start နှိပ်ထားပါက အလိုအလျောက် Subscribe ဖမ်းယူပေးခြင်း
   useEffect(() => {
     if (!config.botToken || !config.enabled) return;
-    const interval = setInterval(() => {
-      fetchRecentBotChats(config.botToken, true).catch(() => {});
-    }, 25000);
+    const interval = setInterval(async () => {
+      await fetchRecentBotChats(config.botToken, true).catch(() => {});
+      await loadSubscribers();
+    }, 20000);
     return () => clearInterval(interval);
   }, [config.botToken, config.enabled]);
 
@@ -347,55 +371,36 @@ export const TelegramNotificationCenter: React.FC = () => {
     });
 
     if (res.adminSent) {
-      showToast('success', 'စမ်းသပ် Booking Notification ကို Telegram သို့ အောင်မြင်စွာ ပေးပို့ပြီးပါပြီ!');
+      showToast(
+        'success',
+        `စမ်းသပ် Booking Notification ပေးပို့ပြီးပါပြီ! (Admin: ✅${res.customerSent ? ', Customer: ✅' : ''})`
+      );
     } else {
       showToast('error', `ပေးပို့မှု မအောင်မြင်ပါ: ${res.errors.join(', ')}`);
     }
   };
 
   const handleScanRecentChats = async () => {
+    if (!config.botToken) {
+      showToast('error', 'Telegram Bot Token အရင်ထည့်သွင်းပေးပါ။');
+      return;
+    }
     setScanningChats(true);
     const res = await fetchRecentBotChats(config.botToken, true);
+    const updatedSubs = await loadSubscribers();
     setScanningChats(false);
-    
+
     if (res.ok) {
       setDiscoveredChats(res.chats);
-
-      // 🌟 အဓိက ပြင်ဆင်ချက်: ရှာတွေ့သမျှ Private Chat များကို Firestore သို့ တိုက်ရိုက် Auto-Save လုပ်မည် 🌟
-      const { doc, setDoc } = await import('firebase/firestore');
-      let savedCount = 0;
-
-      for (const chat of res.chats) {
-        if (chat.type === 'private' || chat.type === 'PRIVATE') {
-          const chatIdStr = String(chat.chatId).trim();
-          if (chatIdStr && !chatIdStr.startsWith('-')) {
-            await setDoc(
-              doc(db, 'telegramSubscribers', chatIdStr),
-              {
-                chatId: chatIdStr,
-                customerName: chat.titleOrName || 'Telegram Customer',
-                customerPhone: '',
-                username: chat.username || '',
-                vipTier: 'Member',
-                subscribed: true,
-                source: 'bot_command',
-                updatedAt: new Date().toISOString(),
-              },
-              { merge: true }
-            );
-            savedCount++;
-          }
-        }
-      }
-
-      await loadSubscribers();
-      
-      if (res.chats.length === 0) {
-        showToast('error', 'လတ်တလော Message မတွေ့ပါ။ Telegram Bot သို့ "/start" တစ်ချက်ပို့ပြီး ပြန်နှိပ်ပါ။');
+      if (updatedSubs.length === 0 && res.chats.length === 0) {
+        showToast(
+          'error',
+          'လတ်တလော Private Chat မတွေ့သေးပါ။ Customer ဖုန်းမှ Telegram Bot သို့ "/start" တစ်ချက်ပို့ပြီး ပြန်နှိပ်ပါ။'
+        );
       } else {
         showToast(
           'success',
-          `Chat ID (${res.chats.length}) ခု တွေ့ရှိပြီး Subscribed Customers (${savedCount}) ဦးကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။`
+          `Bot Updates စစ်ဆေးပြီးပါပြီ! စုစုပေါင်း Subscribed Customers (${updatedSubs.length}) ဦး အောင်မြင်စွာ ချိတ်ဆက်ထားပါသည်။`
         );
       }
     } else {
@@ -449,9 +454,10 @@ export const TelegramNotificationCenter: React.FC = () => {
       setManualSubName('');
       setManualSubPhone('');
       setManualSubChatId('');
+      await loadSubscribers();
       showToast('success', 'Customer Subscriber အသစ်ကို အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။');
     } else {
-      showToast('error', 'Subscriber ထည့်သွင်းရာတွင် အမှားအယွင်းရှိပါသည်။');
+      showToast('error', 'Subscriber ထည့်သွင်းရာတွင် အမှားအယွင်းရှိပါသည်။ (Private Chat ID သည် ဂဏန်းသီးသန့် ဖြစ်ရပါမည်)');
     }
   };
 
@@ -459,6 +465,32 @@ export const TelegramNotificationCenter: React.FC = () => {
     const res = await sendInteractiveMiniAppMenu(sub.chatId, config, sub.lastBookingId, sub.customerPhone);
     if (res.ok) {
       showToast('success', `${sub.customerName} ထံသို့ Mini App Menu ခလုတ်များ ပေးပို့ပြီးပါပြီ။`);
+    } else {
+      showToast('error', `ပေးပို့မရပါ: ${res.error}`);
+    }
+  };
+
+  const handleTestCustomerBookingNoti = async (sub: CustomerTelegramSubscriber) => {
+    const res = await notifyCustomerBookingStatus(
+      'STATUS_UPDATE',
+      {
+        id: sub.lastBookingId || 'BK-889900',
+        customerName: sub.customerName || 'VIP Guest',
+        customerPhone: sub.customerPhone || '09-799999999',
+        customerChatId: sub.chatId,
+        serviceName: 'Shangri-La Signature Aromatherapy',
+        duration: 60,
+        price: 50000,
+        date: new Date().toISOString().split('T')[0],
+        time: '06:00 PM',
+        therapistName: 'Therapist No-1',
+        roomName: 'VIP Suite',
+        status: 'approved',
+      },
+      config
+    );
+    if (res.customerSent) {
+      showToast('success', `${sub.customerName} (${sub.chatId}) ထံသို့ Booking Approved Notification ပေးပို့ပြီးပါပြီ!`);
     } else {
       showToast('error', `ပေးပို့မရပါ: ${res.error}`);
     }
@@ -802,8 +834,8 @@ export const TelegramNotificationCenter: React.FC = () => {
               </h3>
               {[
                 { key: 'customerDirectNoti', label: '📲 Customer ဆီသို့ Booking Status တိုက်ရိုက်ပို့မည် (Direct Customer Alert)' },
-                { key: 'newBooking', label: '🔔 Booking အသစ်ဝင်ချိန် (New Booking Created)' },
-                { key: 'bookingConfirmed', label: '🟢 Booking အတည်ပြုချိန် (Status -> Confirmed)' },
+                { key: 'newBooking', label: '🔔 Booking အသစ်ဝင်ချိန် (New Booking -> Pending)' },
+                { key: 'bookingConfirmed', label: '🟢 Booking အတည်ပြုချိန် (Status -> Approved / Confirmed)' },
                 { key: 'bookingInService', label: '💆‍♂️ ဝန်ဆောင်မှု စတင်ချိန် (Status -> In-Service)' },
                 { key: 'bookingCompleted', label: '✨ ဝန်ဆောင်မှု ပြီးဆုံးချိန် (Status -> Completed)' },
                 { key: 'bookingCancelled', label: '🔴 Booking ပယ်ဖျက်ချိန် (Status -> Cancelled)' },
@@ -977,16 +1009,16 @@ export const TelegramNotificationCenter: React.FC = () => {
                     📲 Subscribed Customers (Real-Time Booking Noti & Promo List)
                   </h3>
                   <p className="text-xs text-stone-400">
-                    Customer များ Telegram Mini App ဖွင့်ချိန် သို့မဟုတ် Booking အတည်ပြုခလုတ်နှိပ်ချိန်တွင် Chat ID ကို အလိုအလျောက် ဖမ်းယူသိမ်းဆည်းပေးပါသည်။
+                    Customer များ Telegram Bot တွင် /start နှိပ်ချိန် သို့မဟုတ် Mini App ဖွင့်ချိန်တွင် Chat ID ကို အလိုအလျောက် ဖမ်းယူသိမ်းဆည်းပေးပါသည်။
                   </p>
                 </div>
                 <button
                   onClick={handleScanRecentChats}
                   disabled={scanningChats}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#C8A951] text-[#0B2419] font-bold text-xs hover:bg-[#d8b962] transition"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#C8A951] text-[#0B2419] font-bold text-xs hover:bg-[#d8b962] transition"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${scanningChats ? 'animate-spin' : ''}`} />
-                  Auto-Sync New Bot Subscribers
+                  {scanningChats ? 'Syncing...' : 'Auto-Sync New Bot Subscribers'}
                 </button>
               </div>
 
@@ -1049,7 +1081,7 @@ export const TelegramNotificationCenter: React.FC = () => {
                   {subscribers.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-6 text-center text-stone-400">
-                        Subscribed လုပ်ထားသော Customer မရှိသေးပါ။
+                        Subscribed လုပ်ထားသော Customer မရှိသေးပါ။ "Auto-Sync New Bot Subscribers" ခလုတ်ကို နှိပ်ပါ။
                       </td>
                     </tr>
                   ) : (
@@ -1084,12 +1116,18 @@ export const TelegramNotificationCenter: React.FC = () => {
                           <td className="py-2.5 px-3 text-stone-400 uppercase text-[10px]">
                             {sub.source || 'mini_app'}
                           </td>
-                          <td className="py-2.5 px-3 text-right space-x-2">
+                          <td className="py-2.5 px-3 text-right space-x-1.5 whitespace-nowrap">
+                            <button
+                              onClick={() => handleTestCustomerBookingNoti(sub)}
+                              className="px-2.5 py-1 rounded bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/50 text-[11px] font-semibold"
+                            >
+                              🔔 Test Booking Alert
+                            </button>
                             <button
                               onClick={() => handleSendCustomerMenu(sub)}
                               className="px-2.5 py-1 rounded bg-[#C8A951]/20 text-[#C8A951] hover:bg-[#C8A951]/30 text-[11px] font-semibold"
                             >
-                              Send Mini App Menu
+                              Send Menu
                             </button>
                           </td>
                         </tr>
