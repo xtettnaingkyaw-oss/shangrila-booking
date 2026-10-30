@@ -3,6 +3,7 @@ import { collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, order
 import { db } from '../firebase';
 import { Calendar, Wallet, Banknote, Trash2, X, CheckCircle, Search } from 'lucide-react';
 import { THEME, formatPrice } from '../shared';
+import { notifyStaffUpdate } from '../telegramService';
 
 const CATEGORIES = [
   "ဆိုင်သန့်ရှင်းရေးတာဝန် ပျက်ကွက်ခြင်း", 
@@ -95,13 +96,32 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     e.preventDefault();
     if(!formData.amount) return alert("ပမာဏဖြည့်ပါ");
     const tObj = uniqueTherapists.find(t => String(t.id) === String(formData.therapistId));
+    const targetStaffName = tObj?.name || 'Unknown';
+    const penaltyAmountNum = Number(formData.amount);
+
     await addDoc(collection(db, 'penalties'), { 
       ...formData, 
-      amount: Number(formData.amount), 
-      therapistName: tObj?.name || 'Unknown', 
+      amount: penaltyAmountNum, 
+      therapistName: targetStaffName, 
       isPaid: false, 
       createdAt: Date.now() 
     });
+
+    // 🌟 ဝန်ထမ်းထံ ဒဏ်ကြေးတပ်ဆင်ကြောင်း Telegram ပို့ခြင်း 🌟
+    notifyStaffUpdate({
+        type: 'PENALTY_ISSUED',
+        staffId: formData.therapistId,
+        staffName: targetStaffName,
+        title: '⚠️ စည်းကမ်းထိန်းသိမ်းရေး / ဒဏ်ကြေး သတိပေးချက် (Penalty Notice)',
+        details: [
+            `📋 အကြောင်းအရာ: ${formData.category}`,
+            formData.remark ? `📝 မှတ်ချက်: ${formData.remark}` : null
+        ].filter(Boolean).join('\n'),
+        amount: penaltyAmountNum,
+        effectiveDate: formData.date || new Date().toISOString().split('T')[0],
+        issuedBy: 'Management (Admin Panel)'
+    }).catch((err) => console.warn('Telegram penalty alert error:', err));
+
     setFormData({...formData, amount: '', remark: ''});
     alert("ဒဏ်ကြေး မှတ်တမ်းတင်ပြီးပါပြီ");
     setSubTab('dashboard');
@@ -111,15 +131,32 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     e.preventDefault();
     if(!depositForm.amount) return alert("ပမာဏဖြည့်ပါ");
     const tObj = uniqueTherapists.find(t => String(t.id) === String(depositForm.therapistId));
+    const targetStaffName = tObj?.name || 'Unknown';
+    const depositAmountNum = Number(depositForm.amount);
+    const todayDateStr = new Date().toISOString().split('T')[0];
+
     await addDoc(collection(db, 'deposits'), {
       therapistId: depositForm.therapistId,
-      therapistName: tObj?.name || 'Unknown',
-      amount: Number(depositForm.amount), 
-      date: new Date().toISOString().split('T')[0],
+      therapistName: targetStaffName,
+      amount: depositAmountNum, 
+      date: todayDateStr,
       type: 'deposit',
       note: depositForm.note || 'အပ်ငွေသွင်းခြင်း',
       createdAt: Date.now()
     });
+
+    // 🌟 အပ်ငွေသွင်းမှုအတွက် Telegram နိုတီပို့ခြင်း 🌟
+    notifyStaffUpdate({
+        type: 'GENERAL_ANNOUNCEMENT',
+        staffId: depositForm.therapistId,
+        staffName: targetStaffName,
+        title: '💰 အပ်ငွေသွင်းခြင်း မှတ်တမ်း (Deposit Recorded)',
+        details: `မှတ်ချက်: ${depositForm.note || 'အပ်ငွေသွင်းခြင်း'}`,
+        amount: depositAmountNum,
+        effectiveDate: todayDateStr,
+        issuedBy: 'Shop Accountant / Management'
+    }).catch((err) => console.warn('Telegram deposit alert error:', err));
+
     setDepositForm({...depositForm, amount: '', note: ''});
     alert("အပ်ငွေ မှတ်တမ်းတင်ပြီးပါပြီ");
   };
@@ -141,7 +178,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       if (!finalNote) finalNote = 'ကြိုထုတ်ငွေ';
     }
 
-    await addDoc(collection(db, 'loans'), {
+   await addDoc(collection(db, 'loans'), {
       therapistId: loanForm.therapistId,
       therapistName: tObj?.name || 'Unknown',
       amount: finalAmount, 
@@ -151,6 +188,19 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       note: finalNote,
       createdAt: Date.now()
     });
+
+    // 🌟 ကြိုထုတ်ငွေ သို့မဟုတ် ပြန်ဆပ်ငွေအတွက် Telegram နိုတီပို့ခြင်း 🌟
+    notifyStaffUpdate({
+        type: 'GENERAL_ANNOUNCEMENT',
+        staffId: loanForm.therapistId,
+        staffName: tObj?.name || 'Unknown',
+        title: loanForm.type === 'borrow' ? '💸 ငွေကြိုထုတ်ယူမှု မှတ်တမ်း (Loan / Advance)' : '💵 ချေးငွေပြန်ဆပ်ပြီးစီးမှု မှတ်တမ်း (Loan Repayment)',
+        details: `အမျိုးအစား: ${loanForm.type === 'borrow' ? 'ကြိုထုတ်ငွေ' : 'ပြန်ဆပ်ငွေ'}\nမှတ်ချက်: ${finalNote}`,
+        amount: Math.abs(finalAmount),
+        effectiveDate: loanForm.date,
+        issuedBy: 'Management (Admin Panel)'
+    }).catch((err) => console.warn('Telegram loan alert error:', err));
+
     setLoanForm({...loanForm, amount: '', note: ''});
     alert("မှတ်တမ်းတင်ပြီးပါပြီ");
   };
