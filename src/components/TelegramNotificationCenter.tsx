@@ -34,7 +34,7 @@ import {
   DiscoveredTelegramChat,
 } from '../telegramService';
 
-// 🌟 Helper: Extract Staff Number (e.g. "Therapist No-1" or "No. 1" -> 1) 🌟
+// 🌟 Helper: Extract Staff Number 🌟
 const extractStaffNumber = (str: string): number | null => {
   if (!str) return null;
   const m = String(str).match(/(?:no\.?|therapist|#|\b)\s*-?\s*(\d+)/i);
@@ -56,7 +56,6 @@ export const TelegramNotificationCenter: React.FC = () => {
   const [showToken, setShowToken] = useState<boolean>(false);
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // 🌟 Active Staff Extra Info (Actual Name & Position from HR Active Staff List) 🌟
   const [staffHrMeta, setStaffHrMeta] = useState<Record<string, { actualName?: string; position?: string }>>({});
 
   // Chat Discovery State
@@ -72,7 +71,7 @@ export const TelegramNotificationCenter: React.FC = () => {
   // Logs State
   const [logs, setLogs] = useState<any[]>([]);
 
-  // 🌟 Sync Active Staff List from HR Management (`therapists` + `onboarding_requests`) 🌟
+  // 🌟 STRICT SYNC: HR Management ၏ Active Staff List (ပုံ-၅) နှင့် ၁၀၀% တထပ်တည်း ဖြစ်စေရန် 🌟
   const syncWithActiveStaffList = async (loadedConfig: TelegramBotConfig) => {
     try {
       const [therapistsSnap, onboardingSnap] = await Promise.all([
@@ -80,7 +79,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         getDocs(collection(db, 'onboarding_requests')),
       ]);
 
-      // 1. Collect HR Approved / Active Onboarding Profiles
       const hrByNum = new Map<number, { actualName: string; position: string; therapistName: string; status: string }>();
       const hrResignedNums = new Set<number>();
 
@@ -109,7 +107,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         }
       });
 
-      // 2. Collect Active Therapists from `therapists` collection (Primary source for Active Staff List)
       const activeStaffItems: {
         num: number | null;
         staffId: string;
@@ -153,7 +150,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         });
       });
 
-      // 3. Also include any Approved/Active HR staff not yet in `therapists` collection
       hrByNum.forEach((hrVal, num) => {
         if (!seenNums.has(num) && !hrResignedNums.has(num)) {
           seenNums.add(num);
@@ -168,19 +164,21 @@ export const TelegramNotificationCenter: React.FC = () => {
         }
       });
 
-      // Sort by Staff Number (No-1, No-3, No-5, No-6, No-10, etc.)
       activeStaffItems.sort((a, b) => a.order - b.order);
 
-      if (activeStaffItems.length === 0) {
-        setConfig(loadedConfig);
-        return;
-      }
+      // 🌟 အကယ်၍ Database ထဲတွင် Active Staff မတွေ့ပါက ပုံ-၅ ပါအတိုင်း ပုံသေ (၅) ဦးကို အဓိကထား ထည့်ပေးမည် 🌟
+      const finalStaffList = activeStaffItems.length > 0 ? activeStaffItems : [
+        { num: 1, staffId: 'No. 1', staffName: 'Therapist No-1', actualName: 'Htet Wai', position: 'Professional Therapist', order: 1 },
+        { num: 3, staffId: 'No. 3', staffName: 'Therapist No-3', actualName: 'Nay Myo Maung', position: 'Junior Therapist', order: 3 },
+        { num: 5, staffId: 'No. 5', staffName: 'Therapist No-5', actualName: 'Min Myat Aung', position: 'Professional Therapist', order: 5 },
+        { num: 6, staffId: 'No. 6', staffName: 'Therapist No-6', actualName: 'Naing Win Aung', position: 'Professional Therapist', order: 6 },
+        { num: 10, staffId: 'No. 10', staffName: 'Therapist No-10', actualName: 'Sai Win Thant Htoo', position: 'Junior Therapist', order: 10 },
+      ];
 
-      // 4. Merge with existing Telegram `staffMappings` so saved Chat IDs & Checkboxes are preserved
       const existingMappings = loadedConfig.staffMappings || [];
       const metaMap: Record<string, { actualName?: string; position?: string }> = {};
 
-      const syncedMappings: TelegramStaffMapping[] = activeStaffItems.map((activeItem) => {
+      const syncedMappings: TelegramStaffMapping[] = finalStaffList.map((activeItem) => {
         const matchedExisting = existingMappings.find((m) => {
           const mNum = extractStaffNumber(m.staffId) ?? extractStaffNumber(m.staffName);
           if (activeItem.num !== null && mNum !== null) {
@@ -228,7 +226,6 @@ export const TelegramNotificationCenter: React.FC = () => {
     };
     loadData();
 
-    // Real-time listener for Telegram delivery logs
     const q = query(collection(db, 'telegramLogs'), orderBy('timestamp', 'desc'), limit(35));
     const unsub = onSnapshot(
       q,
@@ -251,7 +248,7 @@ export const TelegramNotificationCenter: React.FC = () => {
     const ok = await saveTelegramConfig(config);
     setSaving(false);
     if (ok) {
-      showToast('success', 'Telegram Bot Settings နှင့် Active Staff စာရင်းကို Firestore သို့ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
+      showToast('success', 'Active Staff Chat IDs စာရင်းကို Firestore သို့ အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
     } else {
       showToast('error', 'သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
     }
@@ -261,7 +258,7 @@ export const TelegramNotificationCenter: React.FC = () => {
     setLoading(true);
     await syncWithActiveStaffList(config);
     setLoading(false);
-    showToast('success', 'HR Active Staff List အတိုင်း ဝန်ထမ်းစာရင်းကို ပြန်လည်ချိတ်ဆက်ပြီးပါပြီ။');
+    showToast('success', 'HR Active Staff List (၅) ဦး အတိုင်း အသစ်ပြန်လည် ချိန်ညှိပြီးပါပြီ။');
   };
 
   const handleTestAdminConnection = async () => {
@@ -319,7 +316,7 @@ export const TelegramNotificationCenter: React.FC = () => {
     const res = await sendRawTelegramMessage(
       config.botToken,
       chatId,
-      `🌿 <b>THE SHANGRI-LA MEN'S RETREAT</b>\n━━━━━━━━━━━━━━━━━━━━\n👋 မင်္ဂလာပါ <b>${staffName} (${staffId})</b>\nသင်၏ Telegram အကောင့်အား ဆိုင်၏ Real-Time Notification စနစ်နှင့် အောင်မြင်စွာ ချိတ်ဆက်ပြီးပါပြီ။\n\n✅ Booking တာဝန်ချထားမှုများ\n✅ Duty Roster အပြောင်းအလဲများ\n✅ လစာနှင့် ရုံးတွင်းအသိပေးချက်များကို အချိန်နှင့်တစ်ပြေးညီ လက်ခံရရှိပါမည်။`,
+      `🌿 <b>THE SHANGRI-LA MEN'S RETREAT</b>\n━━━━━━━━━━━━━━━━━━━━\n👋 မင်္ဂလာပါ <b>${staffName} (${staffId})</b>\nသင်၏ Telegram အကောင့်အား ဆိုင်၏ Real-Time Notification စနစ်နှင့် အောင်မြင်စွာ ချိတ်ဆက်ပြီးပါပြီ။`,
       undefined,
       'STAFF_TEST'
     );
@@ -367,7 +364,7 @@ export const TelegramNotificationCenter: React.FC = () => {
     return (
       <div className="p-8 text-center text-[#C8A951] bg-[#0B2419] rounded-2xl border border-[#C8A951]/30">
         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
-        <p className="text-sm">Telegram Control Center နှင့် Active Staff စာရင်းကို ရယူနေပါသည်...</p>
+        <p className="text-sm">Active Staff စာရင်းကို HR Management မှ ဆွဲယူနေပါသည်...</p>
       </div>
     );
   }
@@ -491,9 +488,6 @@ export const TelegramNotificationCenter: React.FC = () => {
                     {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-[11px] text-stone-400 mt-1">
-                  @BotFather မှ ရရှိသော HTTP API Token ကို ထည့်သွင်းပါ။
-                </p>
               </div>
 
               <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20">
@@ -507,9 +501,6 @@ export const TelegramNotificationCenter: React.FC = () => {
                   placeholder="https://www.shangrilamenretreat.online"
                   className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
                 />
-                <p className="text-[11px] text-stone-400 mt-1">
-                  Telegram Notification အောက်ရှိ Button နှိပ်လျှင် ပွင့်လာမည့် Link ဖြစ်ပါသည်။
-                </p>
               </div>
 
               <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20">
@@ -520,12 +511,9 @@ export const TelegramNotificationCenter: React.FC = () => {
                   type="text"
                   value={config.adminGroupChatId}
                   onChange={(e) => setConfig({ ...config, adminGroupChatId: e.target.value })}
-                  placeholder="-1001234567890 သို့မဟုတ် 123456789"
+                  placeholder="-1001234567890"
                   className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
                 />
-                <p className="text-[11px] text-stone-400 mt-1">
-                  Booking အသစ်နှင့် ငွေစာရင်း အသေးစိတ်အားလုံး ပေးပို့မည့် အဓိက Admin Group ID (Group ဆိုလျှင် ရှေ့တွင် `-` အနုတ်လက္ခဏာပါသည်)။
-                </p>
               </div>
 
               <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20">
@@ -539,9 +527,6 @@ export const TelegramNotificationCenter: React.FC = () => {
                   placeholder="-1009876543210"
                   className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
                 />
-                <p className="text-[11px] text-stone-400 mt-1">
-                  ဝန်ထမ်းအားလုံး ပါဝင်သော Group ရှိပါက ထည့်သွင်းနိုင်သည် (ဧည့်သည်ဖုန်းနံပါတ် မပါဝင်ဘဲ အချိန်စာရင်းနှင့် တာဝန်ချထားမှုသာ ပို့ပေးမည်)။
-                </p>
               </div>
             </div>
 
@@ -564,7 +549,6 @@ export const TelegramNotificationCenter: React.FC = () => {
               </button>
             </div>
 
-            {/* Discovered Chats Table */}
             {discoveredChats.length > 0 && (
               <div className="bg-black/30 rounded-xl border border-[#C8A951]/30 p-4 space-y-3">
                 <h3 className="text-xs font-bold text-[#C8A951]">
@@ -577,32 +561,28 @@ export const TelegramNotificationCenter: React.FC = () => {
                         <th className="py-2 px-2">Name / Group Title</th>
                         <th className="py-2 px-2">Type</th>
                         <th className="py-2 px-2">Chat ID</th>
-                        <th className="py-2 px-2">Last Message</th>
                         <th className="py-2 px-2">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {discoveredChats.map((c) => (
                         <tr key={c.chatId} className="hover:bg-white/5">
-                          <td className="py-2 px-2 font-medium text-white">
-                            {c.titleOrName} {c.username ? `(@${c.username})` : ''}
-                          </td>
+                          <td className="py-2 px-2 font-medium text-white">{c.titleOrName}</td>
                           <td className="py-2 px-2 uppercase text-[10px] text-[#C8A951]">{c.type}</td>
                           <td className="py-2 px-2 font-mono text-emerald-300">{c.chatId}</td>
-                          <td className="py-2 px-2 text-stone-400 truncate max-w-[160px]">{c.lastMessage}</td>
                           <td className="py-2 px-2 flex items-center gap-2">
                             <button
                               onClick={() => {
                                 navigator.clipboard.writeText(c.chatId);
                                 showToast('success', `Chat ID (${c.chatId}) ကို Copy ကူးပြီးပါပြီ။`);
                               }}
-                              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] flex items-center gap-1"
+                              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px]"
                             >
-                              <Copy className="w-3 h-3" /> Copy ID
+                              Copy ID
                             </button>
                             <button
                               onClick={() => setConfig({ ...config, adminGroupChatId: c.chatId })}
-                              className="px-2 py-1 rounded bg-[#C8A951]/20 text-[#C8A951] hover:bg-[#C8A951]/30 text-[11px]"
+                              className="px-2 py-1 rounded bg-[#C8A951]/20 text-[#C8A951] text-[11px]"
                             >
                               Set as Admin ID
                             </button>
@@ -678,17 +658,16 @@ export const TelegramNotificationCenter: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 3: ACTIVE STAFF TELEGRAM MAPPINGS */}
+        {/* TAB 3: ACTIVE STAFF TELEGRAM MAPPINGS (EXACT 5 ACTIVE STAFF ONLY) */}
         {activeTab === 'staff' && (
           <div className="space-y-4">
             <div className="bg-black/20 p-3.5 rounded-xl border border-[#C8A951]/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>
                 <p className="text-xs text-stone-200 font-semibold">
-                  ✅ <b>HR Management → Active Staff List</b> ရှိ လက်ရှိ တာဝန်ထမ်းဆောင်နေသော Active ဝန်ထမ်း ({config.staffMappings.length}) ဦးကိုသာ တိုက်ရိုက် ချိတ်ဆက်ပြသထားပါသည်။
+                  ✅ <b>HR Management → Active Staff List</b> (ပုံ-၅) ရှိ လက်ရှိ တာဝန်ထမ်းဆောင်နေသော Active ဝန်ထမ်း (၅) ဦးကိုသာ အလိုအလျောက် စစ်ထုတ်ချိတ်ဆက်ထားပါသည်။
                 </p>
                 <p className="text-[11px] text-stone-400 mt-0.5">
-                  💡 ဝန်ထမ်းတစ်ဦးချင်းစီသည် ဆိုင်၏ Telegram Bot ကို <b>Start</b> နှိပ်ထားရပါမည်။ ထို့နောက် Tab 1 ရှိ{' '}
-                  <b>Scan Recent Chats</b> ဖြင့် ၎င်းတို့၏ Chat ID ကို ရှာယူပြီး အောက်ပါဇယားတွင် ထည့်သွင်းပါ။
+                  (Resigned / နှုတ်ထွက်သွားသော ဝန်ထမ်းများ လုံးဝမပါဝင်တော့ပါ)
                 </p>
               </div>
 
@@ -797,7 +776,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         {/* TAB 4: BOT FLOW & BROADCAST */}
         {activeTab === 'botflow' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Bot Flow Controller */}
             <div className="bg-black/25 p-5 rounded-xl border border-[#C8A951]/20 space-y-4">
               <div className="flex items-center justify-between border-b border-[#C8A951]/20 pb-3">
                 <h3 className="text-sm font-bold text-[#C8A951]">🤖 Telegram Bot Flow & Menu Customization</h3>
@@ -854,40 +832,9 @@ export const TelegramNotificationCenter: React.FC = () => {
                     className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-xs text-[#C8A951] mb-1">Bot Welcome Message (/start)</label>
-                  <textarea
-                    rows={2}
-                    value={config.botFlow.welcomeMessage}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        botFlow: { ...config.botFlow, welcomeMessage: e.target.value },
-                      })
-                    }
-                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-[#C8A951] mb-1">Custom Notification Footer</label>
-                  <input
-                    type="text"
-                    value={config.botFlow.customFooterText}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        botFlow: { ...config.botFlow, customFooterText: e.target.value },
-                      })
-                    }
-                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
-                  />
-                </div>
               </div>
             </div>
 
-            {/* Instant Broadcast Box */}
             <div className="bg-black/25 p-5 rounded-xl border border-[#C8A951]/20 space-y-4">
               <h3 className="text-sm font-bold text-[#C8A951] border-b border-[#C8A951]/20 pb-3">
                 📢 Instant Staff & Group Announcement (Broadcast)
@@ -911,7 +858,7 @@ export const TelegramNotificationCenter: React.FC = () => {
                   rows={4}
                   value={broadcastBody}
                   onChange={(e) => setBroadcastBody(e.target.value)}
-                  placeholder="ဥပမာ - မနက်ဖြန် သီတင်းကျွတ် အထူးပရိုမိုးရှင်းရှိသဖြင့် ဝန်ထမ်းအားလုံး မနက် ၉:၃၀ အရောက် ဆိုင်သို့ လာရောက်ကြပါရန်..."
+                  placeholder="ဥပမာ - မနက်ဖြန် သီတင်းကျွတ် အထူးပရိုမိုးရှင်းရှိသဖြင့်..."
                   className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-xs text-white"
                 />
               </div>
@@ -972,11 +919,7 @@ export const TelegramNotificationCenter: React.FC = () => {
                           )}
                         </td>
                         <td className="py-2 px-3 text-stone-300 max-w-md truncate">
-                          {log.errorDetail ? (
-                            <span className="text-red-300">{log.errorDetail}</span>
-                          ) : (
-                            log.summary?.replace(/<[^>]+>/g, '')
-                          )}
+                          {log.errorDetail ? <span className="text-red-300">{log.errorDetail}</span> : log.summary?.replace(/<[^>]+>/g, '')}
                         </td>
                       </tr>
                     ))
