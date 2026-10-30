@@ -8,6 +8,8 @@ import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, forma
 
 import { useAppStore } from '../AppDataContext';
 import ThadingyutCampaign from './ThadingyutCampaign';
+import { notifyBookingEvent, notifyStaffUpdate } from '../telegramService';
+
 
 // ==========================================
 // CONSTANTS & HELPERS
@@ -306,6 +308,17 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           });
           setGeneratedOtp(otp);
           setOtpState('waiting');
+
+          // 🌟 Admin Telegram Group သို့ OTP တောင်းခံမှု ချက်ချင်းပေးပို့ခြင်း 🌟
+          notifyStaffUpdate({
+              type: 'GENERAL_ANNOUNCEMENT',
+              staffName: `Customer (${phone.trim()})`,
+              title: '🔐 Password Reset (OTP) တောင်းခံမှု ဝင်ရောက်လာပါသည်',
+              details: `ဖုန်းနံပါတ်: ${phone.trim()}\nGenerated OTP: ${otp}\n\nAdmin Panel > Users စာရင်းထဲတွင် Approve နှိပ်ပေးပါရန်။`,
+              effectiveDate: getLocalTodayStr(),
+              issuedBy: 'Customer App (OTP System)'
+          }).catch(err => console.warn('Telegram OTP alert error:', err));
+
       } catch (e) { setError('Error requesting OTP.'); }
       setLoading(false);
   };
@@ -2054,8 +2067,63 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
           };
 
           Object.keys(dataToSave).forEach(key => dataToSave[key] === undefined ? delete dataToSave[key] : {});
-          await addDoc(collection(db, 'bookings'), dataToSave);
-        // 🌟 Booking တင်ပြီးသွားပါက Campaign Discount ကို ဖျက်ပစ်မည် 🌟
+          const bookingDocRef = await addDoc(collection(db, 'bookings'), dataToSave);
+
+          // 🌟 REAL-TIME TELEGRAM NOTIFICATION ပေးပို့ခြင်း 🌟
+          const plainCustomerName = formData.name || (staffClockIn ? 'Walk-in (Staff-initiated)' : 'Walk-in Guest');
+          const plainServiceTitle = `${formData.selectedItem?.name || ''} ${formData.isVvipUpgrade ? '+ VVIP Upgrade' : ''} ${formData.selectedItem?.vvipIncluded ? '(VVIP Included)' : ''}`.trim();
+          const roomLabel = (formData.isVvipUpgrade || formData.selectedItem?.vvipIncluded) ? 'VVIP Master Room' : 'Standard Room';
+          const paymentSummary = isStaffMode
+              ? 'Cash Payment in Shop'
+              : `${formData.paymentMethod || '-'} (TxID: ${formData.txId || '-'} | စရံ: ${formatPrice(calculateTotal() / 2)})`;
+          const combinedNotes = [
+              `💳 ငွေပေးချေမှု: ${paymentSummary}`,
+              discountLabel ? `🏷️ Discount: ${discountLabel} (-${finalDiscountPercent}%)` : null,
+              formData.specialRequest ? `📝 မှတ်ချက်: ${formData.specialRequest}` : null
+          ].filter(Boolean).join(' | ');
+
+          const bookingStatusForNoti = isStaffImmediate ? 'in-service' : (isStaffMode ? 'confirmed' : 'pending');
+
+          // 1. Admin Group နှင့် Primary Therapist ထံသို့ ပေးပို့ခြင်း
+          notifyBookingEvent(isStaffImmediate ? 'STATUS_UPDATE' : 'NEW_BOOKING', {
+              id: bookingDocRef.id,
+              customerName: plainCustomerName,
+              customerPhone: phoneToUse || '-',
+              serviceName: plainServiceTitle,
+              duration: formData.selectedItem?.duration || '',
+              price: Number(calculateTotal()) || 0,
+              date: formData.date || todayStr,
+              time: finalTimeStr || '00:00',
+              therapistId: formData.therapist?.id || formData.therapist?.name || '',
+              therapistName: combinedTherapistName,
+              roomName: roomLabel,
+              vipTier: userTier ? `${userTier.name} (${userTier.discountPercent}% OFF)` : undefined,
+              status: bookingStatusForNoti,
+              notes: combinedNotes,
+              updatedBy: isStaffMode ? (staffClockIn ? 'Staff Clock-In' : 'Staff Walk-In') : 'Customer Online App'
+          }).catch(err => console.warn('Telegram booking notification error:', err));
+
+          // 2. Four Hands ဖြစ်၍ ဒုတိယ Therapist ပါဝင်ပါက ဒုတိယ Therapist ထံသို့လည်း သီးသန့် ထပ်ပို့ပေးခြင်း
+          if (isFourHands && formData.therapist2) {
+              notifyBookingEvent('STAFF_ASSIGNED', {
+                  id: bookingDocRef.id,
+                  customerName: plainCustomerName,
+                  customerPhone: phoneToUse || '-',
+                  serviceName: `${plainServiceTitle} (Four Hands Partner: ${formData.therapist?.name || '-'})`,
+                  duration: formData.selectedItem?.duration || '',
+                  price: Number(calculateTotal()) || 0,
+                  date: formData.date || todayStr,
+                  time: finalTimeStr || '00:00',
+                  therapistId: formData.therapist2.id || formData.therapist2.name,
+                  therapistName: formData.therapist2.name,
+                  roomName: roomLabel,
+                  status: bookingStatusForNoti,
+                  notes: formData.specialRequest || '',
+                  updatedBy: 'Four Hands Assignment'
+              }).catch(err => console.warn('Telegram 2nd therapist notification error:', err));
+          }
+
+          // 🌟 Booking တင်ပြီးသွားပါက Campaign Discount ကို ဖျက်ပစ်မည် 🌟
           localStorage.removeItem('shangrila_campaign_discount');
           localStorage.removeItem('shangrila_campaign_label');
           setSuccessMsg('Booking အောင်မြင်စွာ တင်ပြီးပါပြီ။' + (isStaffMode ? '' : ' Admin မှ မကြာမီ ပြန်လည်ဆက်သွယ် အတည်ပြုပေးပါမည်။'));
