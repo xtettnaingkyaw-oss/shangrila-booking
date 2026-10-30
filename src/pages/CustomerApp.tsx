@@ -2977,30 +2977,16 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 // ==========================================
 export default function CustomerApp({ appData }: { appData: AppData }) {
    const { appData: globalAppData } = useAppStore(); // 🌟 Context မှ Data ကို ယူသုံးခြင်း
-  
-// 🌟 Telegram User ကို Auto-detect လုပ်ရန် State 🌟
-   const [tgUser, setTgUser] = useState<{ chatId: string; firstName: string; username?: string } | null>(null);
 
-   useEffect(() => {
-       import('../telegramService').then(async (tgService) => {
-           // 1. Mini App မှ ဝင်လာလျှင် Auto-subscribe လုပ်မည်
-           const detectedChatId = await tgService.autoSubscribeFromTelegramWebApp();
-           const webAppUser = tgService.getDetectedTelegramWebAppUser();
-           if (webAppUser) {
-               setTgUser({
-                   chatId: webAppUser.chatId,
-                   firstName: webAppUser.firstName || 'Telegram User',
-                   username: webAppUser.username
-               });
-           }
-           if (detectedChatId && !userPhone) {
-               const cachedPhone = localStorage.getItem('shangrila_user_phone');
-               if (cachedPhone) {
-                   setUserPhone(cachedPhone);
-               }
-           }
-       }).catch(() => {});
-   }, [userPhone]);
+   // 🌟 ၁။ State များကို ရှေ့ဆုံးတွင် အရင်ဆုံး ကြေညာပါ 🌟
+   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
+   const [tgUser, setTgUser] = useState<{ chatId: string; firstName: string; username?: string } | null>(null);
+   const [hasNoti, setHasNoti] = useState(false);
+   const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
+   const prevStatuses = useRef<Record<string, string>>({});
+   const isFirstLoad = useRef(true);
+
+   // 🌟 ၂။ Merged AppData တွက်ချက်ခြင်း 🌟
    const mergedAppData = { 
         ...appData,
         ...globalAppData,
@@ -3009,14 +2995,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
         categories: globalAppData?.categories?.length ? globalAppData.categories : (appData.categories || [])
    };
 
-   // 🌟 1. state များကို ရှေ့ဆုံးတွင် အရင်ဆုံး ကြေညာပါ 🌟
-   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
-   const [hasNoti, setHasNoti] = useState(false);
-   const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
-   const prevStatuses = useRef<Record<string, string>>({});
-   const isFirstLoad = useRef(true);
-
-   // 🌟 ULTRA-STRICT CAMPAIGN & URL LINK GUARD 🌟
+   // 🌟 ၃။ ULTRA-STRICT CAMPAIGN & URL LINK GUARD 🌟
    const [showCampaign, setShowCampaign] = useState(() => {
         const searchParams = new URLSearchParams(window.location.search);
         const modeParam = searchParams.get('mode');
@@ -3036,10 +3015,19 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
         return true;
    });
 
-   // 🌟 2. state ကြေညာပြီးမှ userPhone ကို သုံးသော useEffect များကို ထည့်ပါ 🌟
+   // 🌟 ၄။ Telegram Mini App & userPhone ကို သုံးသော useEffect များကို အောက်တွင် ဆက်ထည့်ပါ 🌟
    useEffect(() => {
         import('../telegramService').then(async (tgService) => {
+            // 1. Mini App မှ ဝင်လာလျှင် Auto-subscribe လုပ်မည်
             const detectedChatId = await tgService.autoSubscribeFromTelegramWebApp();
+            const webAppUser = tgService.getDetectedTelegramWebAppUser();
+            if (webAppUser) {
+                setTgUser({
+                    chatId: webAppUser.chatId,
+                    firstName: webAppUser.firstName || 'Telegram User',
+                    username: webAppUser.username
+                });
+            }
             if (detectedChatId && !userPhone) {
                 const cachedPhone = localStorage.getItem('shangrila_user_phone');
                 if (cachedPhone) {
@@ -3055,7 +3043,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
         const modeParam = searchParams.get('mode');
         const campaignParam = searchParams.get('campaign');
         const hasCampaignIntent = modeParam === 'campaign' || campaignParam === 'true' || campaignParam || searchParams.has('campaign');
-        
+
         if (!hasCampaignIntent) return;
 
         const promo = mergedAppData.promotion;
@@ -3071,7 +3059,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
         const searchParams = new URLSearchParams(window.location.search);
         const view = searchParams.get('view') || searchParams.get('tab');
-        
+
         if (view === 'therapists') return 'therapists';
         if (view === 'dashboard' || view === 'available') return 'dashboard';
         if (view === 'vip') return 'vip';
@@ -3080,7 +3068,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
         if (view === 'booking') return 'book';
         return 'book';
    });
-   
+
    useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
    useEffect(() => {
@@ -3129,7 +3117,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      <div className="w-full relative" onClick={handleInteraction}>
        <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
 
-    {/* 🌟 ညာဘက်ထောင့်နားတွင် ပေါ်မည့် Telegram Pop-up Icon 🌟 */}
+       {/* 🌟 ညာဘက်ထောင့်နားတွင် ပေါ်မည့် Telegram Pop-up Icon 🌟 */}
        <div className="max-w-4xl mx-auto px-4 pt-2.5 flex justify-end">
            {tgUser ? (
                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#123524] text-[#D4AF37] border border-[#D4AF37]/40 text-[10px] font-bold shadow-md animate-fade-in">
@@ -3159,7 +3147,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
                </button>
            )}
        </div>
-       
+
        {/* 🌟 ULTRA-COMPACT LUXURY GLASS STICKY TAB BAR 🌟 */}
        <div 
          className="sticky z-[90] w-full bg-white/70 backdrop-blur-2xl shadow-[0_4px_15px_rgba(0,0,0,0.03)] border-b border-white/40 transition-all duration-300 pt-1 pb-1 mb-4 rounded-b-[1rem]"
