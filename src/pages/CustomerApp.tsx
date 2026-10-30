@@ -2977,69 +2977,73 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    const { appData: globalAppData } = useAppStore(); // 🌟 Context မှ Data ကို ယူသုံးခြင်း
 
    const mergedAppData = { 
-       ...appData,
-       ...globalAppData,
-       vipSettings: globalAppData?.vipSettings || appData.vipSettings || FALLBACK_VIP_SETTINGS,
-       therapists: Array.from(new Map((globalAppData?.therapists?.length ? globalAppData.therapists : (appData.therapists || [])).map(t => [t.name, t])).values()),
-       categories: globalAppData?.categories?.length ? globalAppData.categories : (appData.categories || [])
+        ...appData,
+        ...globalAppData,
+        vipSettings: globalAppData?.vipSettings || appData.vipSettings || FALLBACK_VIP_SETTINGS,
+        therapists: Array.from(new Map((globalAppData?.therapists?.length ? globalAppData.therapists : (appData.therapists || [])).map(t => [t.name, t])).values()),
+        categories: globalAppData?.categories?.length ? globalAppData.categories : (appData.categories || [])
    };
 
+   // 🌟 1. state များကို ရှေ့ဆုံးတွင် အရင်ဆုံး ကြေညာပါ 🌟
+   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
+   const [hasNoti, setHasNoti] = useState(false);
+   const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
+   const prevStatuses = useRef<Record<string, string>>({});
+   const isFirstLoad = useRef(true);
+
    // 🌟 ULTRA-STRICT CAMPAIGN & URL LINK GUARD 🌟
-   // Admin မှ Mini Game Popup / Promotion ကို အပြီးပိတ်ထားပါက (isPopupActive !== true) 
-   // ?mode=campaign သို့မဟုတ် ?campaign=... ဖြင့် ဘယ်လိုပဲ ဝင်လာပါစေ လုံးဝ (Absolute) ပိတ်ပင်မည်။
    const [showCampaign, setShowCampaign] = useState(() => {
-       const searchParams = new URLSearchParams(window.location.search);
-       const modeParam = searchParams.get('mode');
-       const campaignParam = searchParams.get('campaign');
-       const hasCampaignIntent = modeParam === 'campaign' || campaignParam === 'true' || campaignParam || searchParams.has('campaign');
-       
-       if (!hasCampaignIntent) return false;
+        const searchParams = new URLSearchParams(window.location.search);
+        const modeParam = searchParams.get('mode');
+        const campaignParam = searchParams.get('campaign');
+        const hasCampaignIntent = modeParam === 'campaign' || campaignParam === 'true' || campaignParam || searchParams.has('campaign');
+        
+        if (!hasCampaignIntent) return false;
 
-       const promo = mergedAppData.promotion;
-       const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
+        const promo = mergedAppData.promotion;
+        const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
 
-       if (!isPromoLive) {
-           // 🚫 URL ကို ချက်ချင်းရှင်းလင်းပြီး ဂိမ်းကို လုံးဝ မပြပါ
-           window.history.replaceState({}, document.title, window.location.pathname);
-           return false;
-       }
+        if (!isPromoLive) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return false;
+        }
 
-       return true;
+        return true;
    });
 
-  // 🌟 Telegram Mini App ဖြင့် ဝင်လာပါက Chat ID ကို အလိုအလျောက် ဖမ်းယူပြီး Auto-Subscribe လုပ်ခြင်း 🌟
+   // 🌟 2. state ကြေညာပြီးမှ userPhone ကို သုံးသော useEffect များကို ထည့်ပါ 🌟
    useEffect(() => {
-       import('../telegramService').then(async (tgService) => {
-           const detectedChatId = await tgService.autoSubscribeFromTelegramWebApp();
-           if (detectedChatId && !userPhone) {
-               const cachedPhone = localStorage.getItem('shangrila_user_phone');
-               if (cachedPhone) {
-                   setUserPhone(cachedPhone);
-               }
-           }
-       }).catch(() => {});
+        import('../telegramService').then(async (tgService) => {
+            const detectedChatId = await tgService.autoSubscribeFromTelegramWebApp();
+            if (detectedChatId && !userPhone) {
+                const cachedPhone = localStorage.getItem('shangrila_user_phone');
+                if (cachedPhone) {
+                    setUserPhone(cachedPhone);
+                }
+            }
+        }).catch(() => {});
    }, [userPhone]);
 
    // Real-time effect to guard against any lingering state or manual URL tampering
    useEffect(() => {
-       const searchParams = new URLSearchParams(window.location.search);
-       const modeParam = searchParams.get('mode');
-       const campaignParam = searchParams.get('campaign');
-       const hasCampaignIntent = modeParam === 'campaign' || campaignParam === 'true' || campaignParam || searchParams.has('campaign');
-       
-       if (!hasCampaignIntent) return;
+        const searchParams = new URLSearchParams(window.location.search);
+        const modeParam = searchParams.get('mode');
+        const campaignParam = searchParams.get('campaign');
+        const hasCampaignIntent = modeParam === 'campaign' || campaignParam === 'true' || campaignParam || searchParams.has('campaign');
+        
+        if (!hasCampaignIntent) return;
 
-       const promo = mergedAppData.promotion;
-       const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
+        const promo = mergedAppData.promotion;
+        const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
 
-       if (!isPromoLive && showCampaign) {
-           setShowCampaign(false);
-           window.history.replaceState({}, document.title, window.location.pathname);
-           alert("🙏 ဤအထူးပရိုမိုးရှင်း / မဲဖောက်သည့် အစီအစဉ် ပြီးဆုံးသွားပါပြီခင်ဗျာ။ (Campaign Ended)");
-       }
+        if (!isPromoLive && showCampaign) {
+            setShowCampaign(false);
+            window.history.replaceState({}, document.title, window.location.pathname);
+            alert("🙏 ဤအထူးပရိုမိုးရှင်း / မဲဖောက်သည့် အစီအစဉ် ပြီးဆုံးသွားပါပြီခင်ဗျာ။ (Campaign Ended)");
+        }
    }, [mergedAppData.promotion, showCampaign]);
 
- const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
+   const [activeTab, setActiveTab] = useState<'book' | 'therapists' | 'dashboard' | 'history' | 'profile' | 'vip'>(() => {
         const searchParams = new URLSearchParams(window.location.search);
         const view = searchParams.get('view') || searchParams.get('tab');
         
@@ -3052,12 +3056,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
         return 'book';
    });
    
-   const [userPhone, setUserPhone] = useState(localStorage.getItem('shangrila_user_phone') || '');
-   const [hasNoti, setHasNoti] = useState(false);
-   const [prefillTherapist, setPrefillTherapist] = useState<TherapistProfile | null>(null);
-   const prevStatuses = useRef<Record<string, string>>({});
-   const isFirstLoad = useRef(true);
-
    useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [activeTab]);
 
    useEffect(() => {
@@ -3164,30 +3162,29 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        
        {/* 🌟 Main Content Area */}
        <div className="max-w-2xl mx-auto px-4 sm:px-0">
-           {/* 🌟 FIX: showCampaign True ဖြစ်နေပါက ThadingyutCampaign ကိုသာ ပြသမည် (Strict Guard ဖြင့် ကာကွယ်ထားသည်) 🌟 */}
-           {showCampaign ? (
-               <div className="fixed inset-0 z-[100] bg-black">
-                   <ThadingyutCampaign appData={mergedAppData} />
-                   <button 
-                       onClick={() => {
-                           setShowCampaign(false);
-                           window.history.pushState({}, '', '/');
-                       }}
-                       className="absolute top-4 right-4 z-[200] text-white bg-black/50 p-2 rounded-full hover:bg-black/80"
-                   >
-                       <X className="w-6 h-6"/>
-                   </button>
-               </div>
-           ) : (
-               <>
-                   {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
-                   {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
-                   {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
-                   {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
-                   {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
-                   {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
-               </>
-           )}
+            {showCampaign ? (
+                <div className="fixed inset-0 z-[100] bg-black">
+                    <ThadingyutCampaign appData={mergedAppData} />
+                    <button 
+                        onClick={() => {
+                            setShowCampaign(false);
+                            window.history.pushState({}, '', '/');
+                        }}
+                        className="absolute top-4 right-4 z-[200] text-white bg-black/50 p-2 rounded-full hover:bg-black/80"
+                    >
+                        <X className="w-6 h-6"/>
+                    </button>
+                </div>
+            ) : (
+                <>
+                    {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
+                    {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
+                    {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
+                    {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
+                    {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
+                    {activeTab === 'vip' && <VipProgramView appData={mergedAppData} onGoToProfile={() => setActiveTab('profile')} />}
+                </>
+            )}
        </div>
      </div>
    );
