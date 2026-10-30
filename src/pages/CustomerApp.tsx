@@ -2016,6 +2016,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const processBooking = async (phoneToUse: string) => {
       setLoading(true);
       try {
+          const activeTgChatId = localStorage.getItem('shangrila_customer_chat_id') || localStorage.getItem('shangrila_tg_user') ? JSON.parse(localStorage.getItem('shangrila_tg_user') || '{}').chatId || '' : '';
           const freshSnap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', todayStr)));
           const freshBookings: Booking[] = [];
           freshSnap.forEach(d => { const raw = d.data(); freshBookings.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking); });
