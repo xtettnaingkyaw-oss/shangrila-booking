@@ -14,7 +14,9 @@ import AdminSalesSummaryView from './AdminSalesSummaryView';
 import { AdminEmployeeHandbookManager } from './EmployeeHandbookSystem';
 import { AdminStaffPayrollManager, calculateBookingCommissionForStaff, getStaffSeniority, isSameStaffMember } from './StaffPayrollSystem';
 import { AdminExpenseManager, AdminExpenseReportDashboard, AdminRevenueProfitDashboard } from './ExpenseAndRevenueSystem';
-import { BookOpen, Wallet, PieChart } from 'lucide-react';
+import { BookOpen, Wallet, PieChart, Send } from 'lucide-react';
+import { TelegramNotificationCenter } from '../components/TelegramNotificationCenter';
+import { notifyBookingEvent, notifyStaffUpdate } from '../telegramService';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -100,7 +102,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
   const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
-  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'revenue_dashboard' | 'expenses' | 'expense_report' | 'reports' | 'payroll' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook'>('sales_summary');
+  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'revenue_dashboard' | 'expenses' | 'expense_report' | 'reports' | 'payroll' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook' | 'telegram_bot'>('sales_summary');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -133,8 +135,8 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           setAdminPermissions(p);
           const isAllowedExtraTab =
             (p.includes('bookings') && (tab === 'sales_summary' || tab === 'pos_sales' || tab === 'revenue_dashboard' || tab === 'expenses' || tab === 'expense_report')) ||
-            (p.includes('admins') && tab === 'pos_users') ||
-            (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns' || tab === 'handbook' || tab === 'pos_users'));
+            (p.includes('admins') && (tab === 'pos_users' || tab === 'telegram_bot')) ||
+            (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns' || tab === 'handbook' || tab === 'pos_users' || tab === 'telegram_bot'));
           if (r !== 'super_admin' && !p.includes(tab) && !isAllowedExtraTab && p.length > 0) {
             setTab(p[0] as any);
           }
@@ -401,6 +403,14 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
     {
       groupTitle: 'System & Security',
       items: [
+        {
+          id: 'telegram_bot',
+          label: 'Telegram Bot & Alerts',
+          subLabel: 'Bot Flow & Real-Time Noti',
+          icon: Send,
+          visible: hasAccess('admins') || hasAccess('settings'),
+          badge: 0
+        },
         {
           id: 'pos_users',
           label: 'POS Staff Accounts',
@@ -717,6 +727,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 {tab === 'expense_report' && (hasAccess('bookings') || hasAccess('reports')) && <AdminExpenseReportDashboard bookings={bookings} therapists={appData.therapists} adminRole={adminRole} onOpenEntry={() => setTab('expenses')} />}
             {tab === 'handbook' && hasAccess('settings') && <AdminEmployeeHandbookManager />}
             {tab === 'pos_users' && (hasAccess('admins') || hasAccess('settings')) && <AdminPOSUsersManager adminRole={adminRole} />}
+            {tab === 'telegram_bot' && (hasAccess('admins') || hasAccess('settings')) && <TelegramNotificationCenter />}
           </div>
         </main>
       </div>
@@ -1002,6 +1013,40 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
 
     let updateData: any = { status: newStatus, cancelReason: '' };
 
+    // 🌟 Telegram Status Mapping Helper 🌟
+    const triggerBookingTelegramAlert = (extraNote?: string) => {
+      const mappedStatus =
+        newStatus === 'approved'
+          ? 'confirmed'
+          : newStatus === 'in_progress'
+          ? 'in-service'
+          : newStatus === 'payment_checking'
+          ? 'pending'
+          : newStatus;
+
+      notifyBookingEvent('STATUS_UPDATE', {
+        id: b.id || 'ONLINE',
+        customerName: b.name || 'Online Guest',
+        customerPhone: b.phone || '-',
+        serviceName: b.service || 'Spa Service',
+        price: Number(b.totalPrice) || 0,
+        date: b.date || getLocalTodayStr(),
+        time: b.time || '-',
+        therapistId: b.therapist || '',
+        therapistName: b.therapist || 'Any Available',
+        vipTier: b.vipTierName,
+        status: mappedStatus,
+        notes: [
+          `TxID: ${b.txId || '-'} (${b.paymentMethod || 'Online Pay'})`,
+          b.specialRequest ? `Note: ${b.specialRequest}` : null,
+          extraNote || null
+        ]
+          .filter(Boolean)
+          .join(' | '),
+        updatedBy: `Admin (${adminRole === 'super_admin' ? 'Super Admin' : 'Staff Admin'})`
+      }).catch((err) => console.warn('Telegram status update error:', err));
+    };
+
     // အကယ်၍ Approved လုပ်ခြင်းဖြစ်ပြီး ပွိုင့်မထည့်ရသေးပါက Points များကို လုံခြုံစွာ ပေါင်းထည့်မည်
     if (newStatus === 'approved' && !(b as any).pointsAdded && b.totalPrice >= 35000) {
       const earnedPts = Math.floor(b.totalPrice / 35000);
@@ -1027,7 +1072,6 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         });
 
         if (targetDocRef) {
-          // အကယ်၍ Customer အကောင့် ရှိပြီးသားဆိုလျှင် Points ပေါင်းမည်
           await runTransaction(db, async (transaction) => {
             const userDoc = await transaction.get(targetDocRef);
             if (!userDoc.exists()) throw new Error("User does not exist!");
@@ -1053,10 +1097,10 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
             transaction.update(bookingRef, { ...updateData, pointsAdded: true });
           });
 
+          triggerBookingTelegramAlert(`⭐ VIP Points (+${earnedPts} Pts) ထည့်သွင်းပြီး`);
           alert(`✅ Booking Confirmed! Customer ထံသို့ Point (${earnedPts} Pts) အလိုအလျောက် ပေါင်းထည့်ပေးလိုက်ပါပြီ။`);
           return;
         } else {
-          // အကယ်၍ Customer အကောင့် မရှိသေးပါက အလိုအလျောက် အကောင့်သစ် ဖွင့်ပေးပြီး Points ထည့်မည်
           const newUserRef = doc(collection(db, 'users'));
           await setDoc(newUserRef, {
             phone: encryptText(cleanBookingPhone),
@@ -1078,13 +1122,14 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
           });
 
           await updateDoc(doc(db, 'bookings', b.id!), { ...updateData, pointsAdded: true });
+          triggerBookingTelegramAlert(`⭐ အကောင့်သစ်ဖွင့်ပြီး VIP Points (+${earnedPts} Pts) ထည့်သွင်းပြီး`);
           alert(`✅ Booking Confirmed! Customer အကောင့်အသစ် ဖွင့်လှစ်ပေးပြီး Point (${earnedPts} Pts) ထည့်သွင်းပြီးပါပြီ။`);
           return;
         }
       } catch (e) {
         console.error("Transaction Error:", e);
-        // အကယ်၍ Transaction Fail ခدခဲ့ရင်တောင် Booking Status ကို အရင် Approved ဖြစ်အောင် Update လုပ်ပေးမည် (အရေးကြီးဆုံးဖြစ်သောကြောင့်)
         await updateDoc(doc(db, 'bookings', b.id!), updateData);
+        triggerBookingTelegramAlert();
         alert("⚠️ Booking Status ကို အတည်ပြုပြီးပါပြီ (သို့သော် Point ပေါင်းရာတွင် အကြိမ်ရေကန့်သတ်ချက်/ချိတ်ဆက်မှု အနည်းငယ်နှောင့်နှေးသွားပါသည်။)");
         return;
       }
@@ -1092,6 +1137,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
 
     try {
       await updateDoc(doc(db, 'bookings', b.id!), updateData);
+      triggerBookingTelegramAlert();
     } catch (e) {
       alert("Error Update Status");
     }
@@ -1113,6 +1159,23 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         cancelReason: reason,
         cancelledAt: Date.now()
       });
+
+      // 🌟 Booking Cancel ဖြစ်ကြောင်း Admin Group နှင့် Therapist ထံသို့ Telegram ပို့ခြင်း 🌟
+      notifyBookingEvent('STATUS_UPDATE', {
+        id: cancellingBooking.id || 'CANCELLED',
+        customerName: cancellingBooking.name || 'Online Guest',
+        customerPhone: cancellingBooking.phone || '-',
+        serviceName: cancellingBooking.service || '-',
+        price: Number(cancellingBooking.totalPrice) || 0,
+        date: cancellingBooking.date || getLocalTodayStr(),
+        time: cancellingBooking.time || '-',
+        therapistId: cancellingBooking.therapist || '',
+        therapistName: cancellingBooking.therapist || '-',
+        status: 'cancelled',
+        notes: `🚫 ပယ်ဖျက်ရသည့် အကြောင်းရင်း: ${reason}`,
+        updatedBy: 'Admin Panel (Cancelled)'
+      }).catch((err) => console.warn('Telegram cancel booking alert error:', err));
+
       setCancellingBooking(null);
       setCancelReasonInput('');
     } catch (err) {
@@ -2726,6 +2789,22 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
         actualEndTimeMillis: currentNow,
         overtimeSeconds: overtimeSecs
       });
+
+      // 🌟 Service ပြီးဆုံးကြောင်း Telegram ပို့ခြင်း 🌟
+      notifyBookingEvent('STATUS_UPDATE', {
+        id: b.id,
+        customerName: b.name || 'Guest',
+        customerPhone: b.phone || '-',
+        serviceName: b.service || '-',
+        price: Number(b.totalPrice) || 0,
+        date: b.date || todayStr,
+        time: `${formatTimeAMPM(startMs)} - ${formatTimeAMPM(currentNow)}`,
+        therapistId: b.therapist || '',
+        therapistName: b.therapist || '-',
+        status: 'completed',
+        notes: overtimeSecs > 60 ? `⚠️ အချိန်ပို (Overtime): +${formatSecondsToBurmeseWords(overtimeSecs)}` : '✅ အချိန်မှန် ပြီးဆုံးပါသည်',
+        updatedBy: 'Admin Live Monitor'
+      }).catch((err) => console.warn('Telegram complete alert error:', err));
     }
   };
 
@@ -3044,7 +3123,7 @@ const getTodayServiceStats = (tName: string) => {
                       )
                     ) {
                       try {
-                        await addDoc(collection(db, 'bookings'), {
+                        const manualDocRef = await addDoc(collection(db, 'bookings'), {
                           name: encryptText('Walk-in (Admin Manual)'),
                           phone: encryptText('09000000000'),
                           service: finalService,
@@ -3060,6 +3139,23 @@ const getTodayServiceStats = (tName: string) => {
                           startTimeMillis: startMs,
                           expectedEndTimeMillis: expectedEndMs
                         });
+
+                        // 🌟 Admin Manual Clock-In အတွက် သက်ဆိုင်ရာ Therapist နှင့် Group သို့ Telegram ပို့ခြင်း 🌟
+                        notifyBookingEvent('STAFF_ASSIGNED', {
+                          id: manualDocRef.id,
+                          customerName: 'Walk-in (Admin Manual Clock-In)',
+                          customerPhone: '-',
+                          serviceName: finalService,
+                          duration: durationFormatted,
+                          date: todayStr,
+                          time: `${formatTimeAMPM(startMs)} မှ ${formatTimeAMPM(expectedEndMs)} အထိ`,
+                          therapistId: tName,
+                          therapistName: tName,
+                          status: 'in-service',
+                          notes: `သတ်မှတ်ကြာချိန်: ${durationFormatted} (${durationMins} မိနစ်)`,
+                          updatedBy: 'Admin Manual Clock-In'
+                        }).catch((err) => console.warn('Telegram manual clock-in alert error:', err));
+
                         setShowClockInModal(false);
                         alert(`✅ ${tName} အား ${durationFormatted} (${durationMins} မိနစ်) ဖြင့် အောင်မြင်စွာ Clock-in ဝင်ပေးပြီးပါပြီ။`);
                       } catch (err) {
@@ -3924,6 +4020,15 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
       if (adminRole !== 'super_admin') { alert('Super Admin သာလျှင် ခွင့်ပြုနိုင်ပါသည်။'); return; }
       try {
           await updateDoc(doc(db, 'users', docId), { otpApproved: true });
+          const targetUser = users.find(u => u.docId === docId);
+          notifyStaffUpdate({
+              type: 'GENERAL_ANNOUNCEMENT',
+              staffName: targetUser ? `${targetUser.name || 'Customer'} (${targetUser.phone})` : 'Customer Account',
+              title: '✅ Password Reset OTP အတည်ပြုပေးပြီးပါပြီ',
+              details: `ဖုန်းနံပါတ် (${targetUser?.phone || '-'}) အတွက် OTP ကုဒ် (${targetUser?.resetOtp || '-'}) အား Super Admin မှ အတည်ပြုပေးလိုက်ပါပြီ။`,
+              effectiveDate: getLocalTodayStr(),
+              issuedBy: 'Super Admin'
+          }).catch(() => {});
           alert('OTP အတည်ပြုပြီးပါပြီ။ User ဘက်တွင် စကားဝှက်အသစ် ပြောင်းနိုင်ပါပြီ။');
           fetchUsers();
       } catch(e) { alert('Error approving OTP'); }
@@ -9036,6 +9141,22 @@ function AdminPOSSalesList({ bookings, adminRole }: { bookings: Booking[], admin
                 cancelReason: reason,
                 cancelledAt: Date.now()
             });
+
+            // 🌟 POS ဘောင်ချာ Cancel လုပ်ကြောင်း Admin Group နှင့် Therapist ထံ Telegram ပို့ခြင်း 🌟
+            notifyBookingEvent('STATUS_UPDATE', {
+                id: rawTx || cancellingSale.id,
+                customerName: safeParseText(cancellingSale.name) || 'Walk-in Guest',
+                customerPhone: safeParseText(cancellingSale.phone) || '-',
+                serviceName: cancellingSale.service || '-',
+                price: safeParseNumber(cancellingSale.totalPrice),
+                date: cancellingSale.date || getLocalTodayStr(),
+                time: cancellingSale.time || '-',
+                therapistId: cancellingSale.therapist || '',
+                therapistName: cancellingSale.therapist || '-',
+                status: 'cancelled',
+                notes: `🚫 POS Receipt Cancelled (${rawTx}) | အကြောင်းရင်း: ${reason}`,
+                updatedBy: 'Admin Panel (POS Audit)'
+            }).catch((err) => console.warn('Telegram POS cancel alert error:', err));
 
             alert(`✅ ဘောင်ချာ [${rawTx}] အား ပယ်ဖျက်ပြီး မှတ်တမ်းတင်လိုက်ပါပြီ။\nShop POS မှ အလိုအလျောက် ပျက်သွားပြီး အရောင်းစာရင်းချုပ်မှ နှုတ်ပေးထားပါသည်။`);
             setCancellingSale(null);
