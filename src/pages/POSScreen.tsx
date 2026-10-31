@@ -8,7 +8,7 @@ import {
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
   ArrowLeft, History, Search, Banknote, Bluetooth, Settings, Upload, X,
   Menu, PackagePlus, Trash2, ChevronRight, Tag, AlertCircle, Calendar,
-  Lock, LogOut, UserPlus, Shield, Eye, EyeOff, Users, KeyRound, Ban
+  Lock, LogOut, UserPlus, Shield, Eye, EyeOff, Users, KeyRound, Ban, Phone
 } from 'lucide-react';
 
 // Project ထဲရှိ THE SHANGRI LA - LOGO.png ကို Build Error မတက်စေဘဲ လှမ်းယူခြင်း
@@ -72,10 +72,12 @@ interface OfflineSaleRecord {
   synced: boolean;
   startTimeMillis?: number;
   expectedEndTimeMillis?: number;
-  cashierId?: string;
+ cashierId?: string;
   cashierName?: string;
   editingOnlineBookingId?: string;
   originalOnlineTxId?: string;
+  bookingTag?: string;
+  bookingSource?: string;
 }
 
 export interface PosUserAccount {
@@ -291,7 +293,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   // 🌟 Navigation Views & Slide-Out Side Menu State 🌟
   const [activePosView, setActivePosView] = useState<
-    'register' | 'online_bookings' | 'history' | 'extra_items' | 'discounts' | 'pos_users' | 'settings'
+    'register'| 'walkin_booking' | 'online_bookings' | 'history' | 'extra_items' | 'discounts' | 'pos_users' | 'settings'
   >('register');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
 
@@ -505,19 +507,21 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     await deleteDoc(doc(db, 'pos_users', u.id));
   };
 
-  // 🌟 Live Online Bookings & Multi-Device POS History Cloud Sync 🌟
+  // 🌟 Live Online Bookings, Walk-in Phone Bookings & Multi-Device POS History Cloud Sync 🌟
   const [liveOnlineBookings, setLiveOnlineBookings] = useState<any[]>([]);
+  const [walkInPhoneBookings, setWalkInPhoneBookings] = useState<any[]>([]);
   const [onlineSearchQuery, setOnlineSearchQuery] = useState('');
   const [onlineFilterTab, setOnlineFilterTab] = useState<'all' | 'today' | 'deposit_due'>('all');
   const [posDepositModalBooking, setPosDepositModalBooking] = useState<any | null>(null);
   const [posCustomDepositStr, setPosCustomDepositStr] = useState('');
 
- useEffect(() => {
+  useEffect(() => {
     const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'), limit(3000));
     const unsub = onSnapshot(
       q,
       (snap) => {
         const list: any[] = [];
+        const walkInsList: any[] = [];
         const activePosInvoiceSet = new Set<string>();
         const cancelledPosInvoiceSet = new Set<string>();
         const paidInFullPosInvoiceSet = new Set<string>();
@@ -527,8 +531,26 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           const raw = d.data();
           const decTx = String(decryptText(raw.txId) || raw.txId || '').trim();
           const decDiscLabel = raw.discountLabel ? decryptText(raw.discountLabel) || raw.discountLabel : '';
+
+          // 1) ဖုန်းဆက် ကြိုတင်ဘိုကင် (Walk-in Phone Booking) များကို သီးသန့်ဖမ်းယူမည်
+          if (raw.bookingSource === 'walkin_phone' || decTx.startsWith('WB-')) {
+            walkInsList.push({
+              id: d.id,
+              ...raw,
+              name: decryptText(raw.name) || raw.name || 'Walk-in Guest',
+              phone: decryptText(raw.phone) || raw.phone || '',
+              txId: decTx,
+              specialRequest: decryptText(raw.specialRequest) || raw.specialRequest || '',
+            });
+            // ဘောင်ချာမထုတ်ရသေးသရွေ့ (voucherIssued !== true) Receipts History ထဲသို့ မထည့်သေးပါ
+            if (!raw.voucherIssued) {
+              return;
+            }
+          }
+
           const isWalkInPos =
             decTx.startsWith('SL-') ||
+            raw.voucherIssued === true ||
             (raw.paymentMethod && String(raw.paymentMethod).includes('Shop POS')) ||
             String(decDiscLabel).includes('[Shop Walk-in');
 
@@ -610,6 +632,8 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 serviceStatus: raw.status === 'completed' ? 'completed' : 'in_progress',
                 pointsEarned: Math.floor(total / 35000),
                 note: decryptText(raw.specialRequest) || raw.specialRequest || '',
+                bookingTag: raw.bookingTag || (raw.bookingSource === 'walkin_phone' ? 'ကြိုတင်ဘိုကင်' : undefined),
+                bookingSource: raw.bookingSource,
                 synced: true
               });
             }
@@ -643,6 +667,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         }); 
 
         setLiveOnlineBookings(list);
+        setWalkInPhoneBookings(walkInsList);
 
         // 🌟 Real-Time Sync: Remove Cancelled bills AND Restore any missing valid Cloud POS bills! 🌟
         setSalesHistory((prevHistory) => {
@@ -710,6 +735,284 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     () => liveOnlineBookings.filter((b) => b.status === 'pending' || b.status === 'payment_checking').length,
     [liveOnlineBookings]
   );
+
+  // 🌟 Active Walk-in Phone Bookings (completed ဖြစ်သွားသည်နှင့် Tab မှ အလိုအလျောက် ပျောက်သွားမည်) 🌟
+  const activeWalkInBookings = useMemo(
+    () => walkInPhoneBookings.filter((b) => b.status !== 'completed' && b.status !== 'cancelled'),
+    [walkInPhoneBookings]
+  );
+
+  // 🌟 Walk-in Booking Form States 🌟
+  const [wbCustomerName, setWbCustomerName] = useState('Walk-in Guest');
+  const [wbCustomerPhone, setWbCustomerPhone] = useState('');
+  const [wbDate, setWbDate] = useState(() => getLocalTodayStr());
+  const [wbTime, setWbTime] = useState('2:00 PM');
+  const [wbTherapist, setWbTherapist] = useState('Therapist No-1');
+  const [wbPaymentMethod, setWbPaymentMethod] = useState('Cash');
+  const [wbNotes, setWbNotes] = useState('');
+  const [wbSelectedItems, setWbSelectedItems] = useState<
+    { name: string; durationMins: number; price: number; qty: number }[]
+  >([]);
+  const [wbProcessing, setWbProcessing] = useState(false);
+
+  const wbTotalAmount = useMemo(
+    () => wbSelectedItems.reduce((sum, item) => sum + item.price * item.qty, 0),
+    [wbSelectedItems]
+  );
+
+  const wbTotalDurationMins = useMemo(
+    () =>
+      wbSelectedItems.reduce(
+        (sum, item) => sum + (item.durationMins > 0 ? item.durationMins * item.qty : 0),
+        0
+      ) || 60,
+    [wbSelectedItems]
+  );
+
+  // 🌟 10-MINUTE RECURRING OVERDUE CLOCK-OUT REMINDER ENGINE 🌟
+  useEffect(() => {
+    const checkOverdueServices = async () => {
+      const now = Date.now();
+      const TEN_MINUTES_MS = 10 * 60 * 1000;
+      const allActive = [...walkInPhoneBookings, ...liveOnlineBookings];
+
+      for (const b of allActive) {
+        if (b.status !== 'in_progress' || !b.expectedEndTimeMillis) continue;
+
+        if (now > b.expectedEndTimeMillis) {
+          const lastSent = Number(b.lastOverdueNotiSentAt || 0);
+          if (now - lastSent >= TEN_MINUTES_MS) {
+            const overdueMins = Math.max(1, Math.round((now - b.expectedEndTimeMillis) / 60000));
+            const startD = b.startTimeMillis ? new Date(b.startTimeMillis) : new Date();
+            const endD = new Date(b.expectedEndTimeMillis);
+
+            try {
+              await updateDoc(doc(db, 'bookings', b.id), {
+                lastOverdueNotiSentAt: now,
+              });
+
+              const { notifyServiceOverdueReminder } = await import('../telegramService');
+              await notifyServiceOverdueReminder({
+                bookingId: b.id,
+                invoiceNo: b.invoiceNo || b.txId || `SL-${String(b.id).slice(-4).toUpperCase()}`,
+                customerName: b.name || 'Walk-in Guest',
+                customerPhone: b.phone || '',
+                serviceName: b.service || 'Spa Service',
+                durationMins:
+                  Number(b.durationMins) ||
+                  Math.round((b.expectedEndTimeMillis - (b.startTimeMillis || now)) / 60000) ||
+                  60,
+                totalPrice: Number(b.totalPrice) || 0,
+                therapistName: b.therapist || 'Therapist',
+                appointmentDate: b.date || '',
+                appointmentTime: b.time || '',
+                startTimeStr: startD.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                expectedEndTimeStr: endD.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                overdueMinutes: overdueMins,
+              });
+            } catch (err) {
+              console.warn('Overdue reminder error:', err);
+            }
+          }
+        }
+      }
+    };
+
+    const timer = setInterval(checkOverdueServices, 30000);
+    checkOverdueServices();
+    return () => clearInterval(timer);
+  }, [walkInPhoneBookings, liveOnlineBookings]);
+
+  // 1️⃣ ဖုန်းဆက် ကြိုတင်ဘိုကင်အသစ် မှတ်သားခြင်း (ဘောင်ချာမထုတ်မချင်း ဝန်ထမ်း App တွင် အချိန်မစသေးပါ)
+  const handleCreateWalkInBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (wbSelectedItems.length === 0) {
+      alert('ကျေးဇူးပြု၍ အနည်းဆုံး Service (၁) ခု ရွေးချယ်ပေးပါ။');
+      return;
+    }
+    setWbProcessing(true);
+    try {
+      const now = new Date();
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      const bookingInvoiceNo = `WB-${yy}${mm}${dd}-${rand}`;
+
+      const serviceSummary = wbSelectedItems
+        .map((i) => `${i.name}${i.qty > 1 ? ` (x${i.qty})` : ''}`)
+        .join(', ');
+
+      const newBookingDoc = {
+        invoiceNo: bookingInvoiceNo,
+        bookingSource: 'walkin_phone',
+        bookingTag: 'ကြိုတင်ဘိုကင်',
+        name: encryptText(wbCustomerName.trim() || 'Walk-in Guest'),
+        phone: encryptText(wbCustomerPhone.trim() || '-'),
+        service: serviceSummary,
+        items: wbSelectedItems,
+        durationMins: wbTotalDurationMins,
+        therapist: wbTherapist,
+        date: wbDate,
+        time: wbTime,
+        paymentMethod: wbPaymentMethod,
+        paymentStatus: 'paid_in_full',
+        txId: encryptText(bookingInvoiceNo),
+        totalPrice: wbTotalAmount,
+        originalPrice: encryptText(String(wbTotalAmount)),
+        discountPercent: encryptText('0'),
+        discountLabel: encryptText('[Shop Walk-in] ကြိုတင်ဘိုကင်'),
+        status: 'approved', // ဘောင်ချာမထုတ်မချင်း 'approved' ဖြစ်နေမည် (Timer မစသေးပါ)
+        voucherIssued: false,
+        specialRequest: encryptText(wbNotes.trim()),
+        createdAt: Date.now(),
+      };
+
+      const docRef = await addDoc(collection(db, 'bookings'), newBookingDoc);
+
+      const { notifyWalkInBookingCreated } = await import('../telegramService');
+      await notifyWalkInBookingCreated({
+        bookingId: docRef.id,
+        invoiceNo: bookingInvoiceNo,
+        customerName: wbCustomerName.trim() || 'Walk-in Guest',
+        customerPhone: wbCustomerPhone.trim(),
+        serviceName: serviceSummary,
+        durationMins: wbTotalDurationMins,
+        totalPrice: wbTotalAmount,
+        therapistName: wbTherapist,
+        appointmentDate: wbDate,
+        appointmentTime: wbTime,
+        notes: wbNotes.trim(),
+      });
+
+      setWbCustomerName('Walk-in Guest');
+      setWbCustomerPhone('');
+      setWbSelectedItems([]);
+      setWbNotes('');
+      alert(`✅ Walk-in ကြိုတင်ဘိုကင် (${bookingInvoiceNo}) မှတ်သားပြီး Telegram Noti ပို့ပြီးပါပြီ။`);
+    } catch (err: any) {
+      alert('Error saving walk-in booking: ' + err.message);
+    }
+    setWbProcessing(false);
+  };
+
+  // 2️⃣ ဘောင်ချာထုတ်ပြီး ဝန်ထမ်း App တွင် Clock-In အချိန်စမှတ်ပေးခြင်း + Receipt Modal ပြသခြင်း
+  const handleIssueVoucherAndStartClockIn = async (booking: any) => {
+    setWbProcessing(true);
+    try {
+      const startMillis = Date.now();
+      const durationMins = Number(booking.durationMins) || 60;
+      const expectedEndMillis = startMillis + durationMins * 60 * 1000;
+
+      const now = new Date();
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      const officialReceiptNo =
+        booking.invoiceNo && String(booking.invoiceNo).startsWith('WB-')
+          ? String(booking.invoiceNo).replace('WB-', 'SL-')
+          : `SL-${yy}${mm}${dd}-${rand}`;
+
+      const nowTimeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+      const newReceiptRecord: OfflineSaleRecord = {
+        localId: `walkin_phone_${booking.id}`,
+        firestoreDocId: booking.id,
+        invoiceNo: officialReceiptNo,
+        createdAt: startMillis,
+        date: booking.date || getLocalTodayStr(),
+        time: nowTimeStr,
+        customerName: booking.name || 'Walk-in Guest',
+        customerPhone: booking.phone || '',
+        therapistName: booking.therapist || 'Therapist No-1',
+        items: Array.isArray(booking.items)
+          ? booking.items.map((i: any, idx: number) => ({
+              cartId: `wb_${booking.id}_${idx}`,
+              id: `wb_${idx}`,
+              name: i.name,
+              price: Number(i.price) || 0,
+              qty: Number(i.qty) || 1,
+            }))
+          : [
+              {
+                cartId: `wb_${booking.id}_0`,
+                id: 'wb_0',
+                name: booking.service || 'Spa Service',
+                price: Number(booking.totalPrice) || 0,
+                qty: 1,
+              },
+            ],
+        subTotal: Number(booking.totalPrice) || 0,
+        discountType: 'percent',
+        discountValue: 0,
+        discountAmount: 0,
+        discountReason: '',
+        totalPrice: Number(booking.totalPrice) || 0,
+        paymentMethod: booking.paymentMethod || 'Cash',
+        paymentStatus: 'paid_in_full',
+        depositPaid: Number(booking.totalPrice) || 0,
+        balanceDue: 0,
+        cashReceived: Number(booking.totalPrice) || 0,
+        changeDue: 0,
+        serviceStatus: 'in_progress',
+        pointsEarned: Math.floor((Number(booking.totalPrice) || 0) / 35000),
+        note: booking.specialRequest || '',
+        bookingTag: 'ကြိုတင်ဘိုကင်',
+        bookingSource: 'walkin_phone',
+        synced: true,
+        startTimeMillis: startMillis,
+        expectedEndTimeMillis: expectedEndMillis,
+      };
+
+      // မူလ booking document ကို တိုက်ရိုက် update လုပ်သဖြင့် Sale History ၂ ခါ လုံးဝ မထပ်ပါ!
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status: 'in_progress',
+        voucherIssued: true,
+        bookingTag: 'ကြိုတင်ဘိုကင်',
+        invoiceNo: officialReceiptNo,
+        txId: encryptText(officialReceiptNo),
+        time: nowTimeStr,
+        startTimeMillis: startMillis,
+        expectedEndTimeMillis: expectedEndMillis,
+        lastOverdueNotiSentAt: 0,
+      });
+
+      addToLocalHistory(newReceiptRecord);
+      setActiveReceipt(newReceiptRecord);
+
+      const { notifyServiceClockInStarted } = await import('../telegramService');
+      await notifyServiceClockInStarted({
+        bookingId: booking.id,
+        invoiceNo: officialReceiptNo,
+        customerName: booking.name || 'Walk-in Guest',
+        customerPhone: booking.phone || '',
+        serviceName: booking.service,
+        durationMins,
+        totalPrice: Number(booking.totalPrice) || 0,
+        therapistName: booking.therapist,
+        appointmentDate: booking.date,
+        appointmentTime: booking.time,
+        startTimeStr: new Date(startMillis).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        expectedEndTimeStr: new Date(expectedEndMillis).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      });
+    } catch (err: any) {
+      alert('Error issuing voucher & starting clock-in: ' + err.message);
+    }
+    setWbProcessing(false);
+  };
+
+  // 3️⃣ Walk-in Booking Complete လုပ်ခြင်း (Booking Tab မှ ပျောက်သွားပြီး Receipts History တွင်သာ ကျန်ခဲ့မည်)
+  const handleCompleteWalkInBooking = async (booking: any) => {
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status: 'completed',
+        completedAt: Date.now(),
+      });
+    } catch (err: any) {
+      alert('Error completing booking: ' + err.message);
+    }
+  };
 
   // 🌟 လက်ရှိ ပြင်ဆင်နေသော Online Booking ကို မှတ်သားထားမည့် State 🌟
   const [editingOnlineBooking, setEditingOnlineBooking] = useState<any | null>(null);
@@ -3187,6 +3490,24 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                 <button
                   type="button"
                   onClick={() => {
+                    setActivePosView('walkin_booking');
+                    setIsSideMenuOpen(false);
+                  }}
+                  className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                    activePosView === 'walkin_booking'
+                      ? 'bg-[#D4AF37] text-[#123524] shadow-md font-black'
+                      : 'text-gray-200 hover:bg-white/10'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Phone className="w-4 h-4" /> Walk-in Booking ({activeWalkInBookings.length})
+                  </span>
+                  <ChevronRight className="w-4 h-4 opacity-70" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
                     setActivePosView('online_bookings');
                     setIsSideMenuOpen(false);
                   }}
@@ -3622,7 +3943,293 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
         </div>
       )}
 
-      
+      {/* ==========================================
+          VIEW: WALK-IN PHONE BOOKING & VOUCHER CLOCK-IN
+         ========================================== */}
+      {activePosView === 'walkin_booking' ? (
+        <div className="max-w-6xl w-full mx-auto p-3.5 sm:p-5 space-y-5 animate-fade-in">
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-[#123524] flex items-center gap-2">
+                <Phone className="w-5 h-5 text-[#D4AF37]" />
+                Walk-in Phone Booking & Voucher Clock-In Center
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                ဖုန်းဆက် ကြိုတင်ဘိုကင်မှတ်ထားရန် နှင့် ဘောင်ချာထုတ်မှသာ ဝန်ထမ်း App တွင် အချိန်စမှတ်ရန်
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-bold">
+              <span className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                ⏳ ဘောင်ချာမထုတ်ရသေး: {activeWalkInBookings.filter((b) => b.status === 'approved').length}
+              </span>
+              <span className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                💆‍♂️ ဝန်ဆောင်မှုပေးနေဆဲ (In-Service): {activeWalkInBookings.filter((b) => b.status === 'in_progress').length}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* LEFT: Create Walk-in Booking Form */}
+            <form
+              onSubmit={handleCreateWalkInBooking}
+              className="lg:col-span-5 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4"
+            >
+              <h3 className="text-sm font-black text-[#123524] border-b border-gray-100 pb-2.5">
+                📝 ဖုန်းဆက် ကြိုတင်ဘိုကင်အသစ် မှတ်သားရန်
+              </h3>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">ဧည့်သည်အမည်</label>
+                  <input
+                    type="text"
+                    value={wbCustomerName}
+                    onChange={(e) => setWbCustomerName(e.target.value)}
+                    placeholder="Walk-in Guest"
+                    className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">ဖုန်းနံပါတ်</label>
+                  <input
+                    type="tel"
+                    value={wbCustomerPhone}
+                    onChange={(e) => setWbCustomerPhone(e.target.value)}
+                    placeholder="09xxxxxxxxx"
+                    className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">နေ့ရက်</label>
+                  <input
+                    type="date"
+                    value={wbDate}
+                    onChange={(e) => setWbDate(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-gray-200 text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">ချိန်းဆိုချိန်</label>
+                  <input
+                    type="text"
+                    value={wbTime}
+                    onChange={(e) => setWbTime(e.target.value)}
+                    placeholder="3:00 PM"
+                    className="w-full p-2 rounded-xl border border-gray-200 text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">ငွေချေစနစ်</label>
+                  <select
+                    value={wbPaymentMethod}
+                    onChange={(e) => setWbPaymentMethod(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-gray-200 text-xs font-bold"
+                  >
+                    {paymentOptions.map((pm) => (
+                      <option key={pm} value={pm}>{pm}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1">တာဝန်ကျ Therapist</label>
+                <select
+                  value={wbTherapist}
+                  onChange={(e) => setWbTherapist(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-bold text-[#123524]"
+                >
+                  {(localAppData?.therapists || []).map((t) => (
+                    <option key={t.id} value={t.name}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1.5">
+                  ဝန်ဆောင်မှုများ ရွေးချယ်ရန် (နှိပ်၍ ထည့်ပါ)
+                </label>
+                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1.5 bg-gray-50">
+                  {(localAppData?.categories || [])
+                    .flatMap((c) => c.items || [])
+                    .map((srv) => {
+                      const dMatch = String(srv.duration || '').match(/(\d+)/);
+                      const mins = dMatch ? parseInt(dMatch[1], 10) : 60;
+                      const fullTitle = `${srv.name}${srv.duration ? ` (${srv.duration})` : ''}`;
+                      return (
+                        <button
+                          key={srv.id}
+                          type="button"
+                          onClick={() => {
+                            const exists = wbSelectedItems.find((x) => x.name === fullTitle);
+                            if (exists) {
+                              setWbSelectedItems(
+                                wbSelectedItems.map((x) =>
+                                  x.name === fullTitle ? { ...x, qty: x.qty + 1 } : x
+                                )
+                              );
+                            } else {
+                              setWbSelectedItems([
+                                ...wbSelectedItems,
+                                { name: fullTitle, durationMins: mins, price: Number(srv.price) || 0, qty: 1 },
+                              ]);
+                            }
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white hover:bg-yellow-50 border border-gray-200 text-xs font-bold transition"
+                        >
+                          <span className="text-[#123524] text-left">{fullTitle}</span>
+                          <span className="text-[#D4AF37] bg-[#123524] px-2 py-0.5 rounded text-[10px]">
+                            +{formatPrice(srv.price)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {wbSelectedItems.length > 0 && (
+                <div className="bg-[#123524] text-white p-3.5 rounded-xl space-y-2">
+                  <div className="text-[10px] font-bold text-[#D4AF37] uppercase">
+                    Selected Services ({wbTotalDurationMins} Mins)
+                  </div>
+                  {wbSelectedItems.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <span>{item.name} (x{item.qty})</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-[#D4AF37]">{formatPrice(item.price * item.qty)}</span>
+                        <button
+                          type="button"
+                          onClick={() => setWbSelectedItems(wbSelectedItems.filter((_, i) => i !== idx))}
+                          className="text-red-400 font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="border-t border-white/15 pt-2 flex justify-between items-center text-sm font-black">
+                    <span>Total Amount</span>
+                    <span className="text-[#D4AF37]">{formatPrice(wbTotalAmount)}</span>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1">မှတ်ချက် (Optional)</label>
+                <input
+                  type="text"
+                  value={wbNotes}
+                  onChange={(e) => setWbNotes(e.target.value)}
+                  placeholder="အထူးမှာကြားချက်..."
+                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={wbProcessing}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] font-black text-xs uppercase tracking-wider shadow-md"
+              >
+                {wbProcessing ? 'Saving...' : '📞 Save Walk-in Booking & Send Telegram Noti'}
+              </button>
+            </form>
+
+            {/* RIGHT: Active Walk-in Bookings List */}
+            <div className="lg:col-span-7 space-y-3">
+              {activeWalkInBookings.length === 0 ? (
+                <div className="bg-white p-12 rounded-2xl border border-gray-200 text-center text-gray-400 font-bold text-xs">
+                  လက်ရှိ စောင့်ဆိုင်းနေသော Walk-in ကြိုတင်ဘိုကင် မရှိပါ။ (Complete ဖြစ်သွားသော ဘိုကင်များသည် Receipts History သို့ ရောက်ရှိသွားပါသည်)
+                </div>
+              ) : (
+                activeWalkInBookings.map((b) => {
+                  const isInService = b.status === 'in_progress';
+                  const isOverdue = isInService && b.expectedEndTimeMillis && Date.now() > b.expectedEndTimeMillis;
+                  const overdueMins = isOverdue ? Math.round((Date.now() - b.expectedEndTimeMillis) / 60000) : 0;
+
+                  return (
+                    <div
+                      key={b.id}
+                      className={`bg-white p-4 rounded-2xl border shadow-xs transition ${
+                        isOverdue
+                          ? 'border-red-400 ring-2 ring-red-200 bg-red-50/20'
+                          : isInService
+                          ? 'border-emerald-300 bg-emerald-50/10'
+                          : 'border-gray-200'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-black text-xs bg-[#123524] text-[#D4AF37] px-2.5 py-1 rounded-lg">
+                              {b.invoiceNo || b.txId || `WB-${String(b.id).slice(-4).toUpperCase()}`}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-[#123524] border border-[#D4AF37]">
+                              🏷️ ကြိုတင်ဘိုကင်
+                            </span>
+                            {isInService ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 animate-pulse">
+                                💆‍♂️ In-Service (ဝန်ထမ်း App တွင် အချိန်မှတ်နေဆဲ)
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
+                                ⏳ ဘောင်ချာမထုတ်ရသေးပါ
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs font-extrabold text-gray-800 mt-1.5">{b.service}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">
+                            Customer: <b>{b.name}</b> {b.phone && b.phone !== '-' ? `(${b.phone})` : ''} | Therapist:{' '}
+                            <b className="text-[#123524]">{b.therapist}</b>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-base font-black text-[#123524]">{formatPrice(b.totalPrice)}</div>
+                          <div className="text-[11px] font-bold text-[#D4AF37]">
+                            📅 {b.date} • ⏰ {b.time}
+                          </div>
+                        </div>
+                      </div>
+
+                      {isOverdue && (
+                        <div className="mb-3 px-3 py-2 rounded-xl bg-red-100 border border-red-300 text-red-800 text-xs font-extrabold">
+                          🚨 သတ်မှတ်ချိန်ထက် (+{overdueMins} မိနစ်) ကျော်လွန်နေပါပြီ! (၁၀ မိနစ်တစ်ခါ Telegram Remind ပို့နေပါသည်)
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                        {!isInService ? (
+                          <button
+                            type="button"
+                            disabled={wbProcessing}
+                            onClick={() => handleIssueVoucherAndStartClockIn(b)}
+                            className="px-4 py-2.5 rounded-xl bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] text-xs font-black shadow-sm flex items-center gap-1.5"
+                          >
+                            <Printer className="w-4 h-4" />
+                            ဘောင်ချာထုတ် & Start Clock-In (အချိန်စမှတ်မည်)
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteWalkInBooking(b)}
+                            className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 text-xs font-black shadow-sm flex items-center gap-1.5"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Clock Out & Complete (Receipts History သို့ပေါင်းမည်)
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      ) : activePosView === 'pos_users' ? (
 
       {/* ==========================================
           VIEW 5: DISCOUNTS & PROMOTIONS SETTING TAB
@@ -4921,11 +5528,16 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                                   {formatPrice(sale.balanceDue)}
                                 </span>
                               ) : (
-                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                                  Paid in Full
-                                </span>
-                              )}
-                            </div>
+                                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
+                                    Paid in Full
+                                  </span>
+                                )}
+                                {(sale.bookingTag || sale.bookingSource === 'walkin_phone') && (
+                                  <span className="bg-amber-100 text-[#123524] border border-[#D4AF37] px-2 py-0.5 rounded-full text-[9px] font-black">
+                                    🏷️ {sale.bookingTag || 'ကြိုတင်ဘိုကင်'}
+                                  </span>
+                                )}
+                              </div>
 
                             <div className="text-xs font-bold text-gray-800">
                               {sale.items.map((i) => `${i.name} (x${i.qty})`).join(', ')}
