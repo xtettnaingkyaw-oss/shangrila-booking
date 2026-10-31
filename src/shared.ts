@@ -55,12 +55,17 @@ export interface AppBranding {
 
 export interface PromotionSettings {
   // Box အတွက် Settings
-  isBoxActive: boolean;          // 🌟 Customer App ထဲက Box အဟောင်းအတွက်
-  boxTitle?: string;             // Box ခေါင်းစဉ် (ဥပမာ: "Special Discount")
+  isBoxActive: boolean;           // 🌟 Customer App ထဲက Box အဟောင်းအတွက်
+  boxTitle?: string;              // Box ခေါင်းစဉ် (ဥပမာ: "Special Discount")
   
   // Popup/Campaign အတွက် Settings
-  isPopupActive: boolean;        // 🌟 App အဖွင့်မှာတက်လာမယ့် Popup အတွက်
-  campaignTitle?: string;        // Popup/Game ခေါင်းစဉ် (ဥပမာ: "သီတင်းကျွတ် အထူးပရိုမိုးရှင်း")
+  isPopupActive: boolean;         // 🌟 App အဖွင့်မှာတက်လာမယ့် Popup အတွက်
+  campaignTitle?: string;         // Popup/Game ခေါင်းစဉ် (ဥပမာ: "သီတင်းကျွတ် အထူးပရိုမိုးရှင်း")
+  
+  // 🌟 အသစ်ထပ်တိုးရန် (Admin Backoffice All OFF & Card Controls များအတွက်) 🌟
+  allOff?: boolean;               // Admin မှ All OFF ပိတ်ထားခြင်း ရှိ/မရှိ
+  campaigns?: any[];              // Saved Promotion & Campaign Cards စာရင်း
+  cards?: any[];                  // Fallback cards array
   
   // အခြား Settings
   hotelDiscountPercent: number;
