@@ -1837,3 +1837,282 @@ export const syncBotCommandsAndMenu = async (config: TelegramBotConfig): Promise
     return { ok: false, message: err?.message || 'Failed to sync bot commands' };
   }
 };
+
+// ==========================================
+// 10. WALK-IN BOOKING, CLOCK-IN START & 10-MIN OVERDUE REMINDER ALERTS
+// ==========================================
+
+export interface WalkInServiceAlertPayload {
+  bookingId: string;
+  invoiceNo?: string;
+  customerName: string;
+  customerPhone?: string;
+  serviceName: string;
+  durationMins: number;
+  totalPrice: number;
+  therapistName: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  startTimeStr?: string;
+  expectedEndTimeStr?: string;
+  overdueMinutes?: number;
+  notes?: string;
+}
+
+/**
+ * Therapist အမည် ("Therapist No-1 & Therapist No-10" စသည်) မှ သက်ဆိုင်ရာ ဝန်ထမ်းအားလုံး၏ Chat ID များကို ရှာဖွေပေးခြင်း
+ */
+export const resolveAssignedStaffChatIds = (
+  therapistNameStr: string,
+  staffMappings: StaffTelegramMapping[]
+): { staffId: string; staffName: string; chatId: string }[] => {
+  if (!therapistNameStr || !Array.isArray(staffMappings)) return [];
+  const results: { staffId: string; staffName: string; chatId: string }[] = [];
+  const seenChatIds = new Set<string>();
+
+  const parts = String(therapistNameStr)
+    .split(/&|,|\+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  for (const part of parts) {
+    const numMatch = part.match(/(?:no\.?|therapist|#|\b)\s*-?\s*(\d+)/i);
+    const targetNum = numMatch ? numMatch[1] : '';
+
+    const matched = staffMappings.find((m) => {
+      const mNumMatch =
+        String(m.staffId || '').match(/(\d+)/) || String(m.staffName || '').match(/(\d+)/);
+      const mNum = mNumMatch ? mNumMatch[1] : '';
+
+      if (targetNum && mNum && targetNum === mNum) return true;
+      return (
+        String(m.staffName || '').toLowerCase() === part.toLowerCase() ||
+        String(m.staffId || '').toLowerCase() === part.toLowerCase()
+      );
+    });
+
+    if (
+      matched &&
+      matched.telegramChatId &&
+      String(matched.telegramChatId).trim() &&
+      matched.receiveBookingAssign !== false
+    ) {
+      const cleanId = String(matched.telegramChatId).trim();
+      if (!seenChatIds.has(cleanId)) {
+        seenChatIds.add(cleanId);
+        results.push({
+          staffId: matched.staffId,
+          staffName: matched.staffName,
+          chatId: cleanId,
+        });
+      }
+    }
+  }
+
+  return results;
+};
+
+/**
+ * 1) Walk-in ဖုန်းဆက် ကြိုတင်ဘိုကင် သတ်မှတ်လိုက်သည့်အချိန်တွင် Admin + သက်ဆိုင်ရာ Therapist သို့ Noti ပို့ပေးခြင်း
+ */
+export const notifyWalkInBookingCreated = async (
+  payload: WalkInServiceAlertPayload
+): Promise<{ adminSent: boolean; staffSent: boolean }> => {
+  const config = await getTelegramConfig();
+  if (!config.enabled || !config.botToken) {
+    return { adminSent: false, staffSent: false };
+  }
+
+  const cleanCustomerName = safeDecryptValue(payload.customerName || 'Walk-in Guest');
+  const cleanCustomerPhone =
+    normalizePhone(payload.customerPhone) || safeDecryptValue(payload.customerPhone || '');
+
+  const msgHtml = [
+    `📞 <b>WALK-IN ကြိုတင်ဘိုကင်အသစ် (PHONE RESERVATION)</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `🧾 <b>Booking Invoice:</b> <code>${escapeHtml(payload.invoiceNo || payload.bookingId.slice(-6).toUpperCase())}</code>`,
+    `📊 <b>အခြေအနေ:</b> 🟡 <b>ကြိုတင်ဘိုကင်မှတ်ထားဆဲ (ဘောင်ချာမထုတ်ရသေးပါ)</b>`,
+    `👤 <b>ဧည့်သည်:</b> ${escapeHtml(cleanCustomerName)} ${cleanCustomerPhone ? `(<code>${escapeHtml(cleanCustomerPhone)}</code>)` : ''}`,
+    `💆‍♂️ <b>ဝန်ဆောင်မှု:</b> ${escapeHtml(payload.serviceName)} (${payload.durationMins} Mins)`,
+    `💰 <b>ကျသင့်ငွေ:</b> ${Number(payload.totalPrice || 0).toLocaleString()} Ks`,
+    `📅 <b>ချိန်းဆိုချိန်:</b> ${escapeHtml(payload.appointmentDate)} | ⏰ <b>${escapeHtml(payload.appointmentTime)}</b>`,
+    `👨‍💼 <b>တာဝန်ကျဝန်ထမ်း:</b> <b>${escapeHtml(payload.therapistName)}</b>`,
+    payload.notes ? `📝 <b>မှတ်ချက်:</b> <i>${escapeHtml(safeDecryptValue(payload.notes))}</i>` : null,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `📌 <i>ဧည့်သည်ရောက်ရှိ၍ POS မှ ဘောင်ချာထုတ်ပေးမှသာ ဝန်ထမ်း App တွင် အချိန်စမှတ်ပါမည်။</i>`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  let adminSent = false;
+  let staffSent = false;
+
+  if (config.adminGroupChatId) {
+    const res = await sendRawTelegramMessage(
+      config.botToken,
+      config.adminGroupChatId,
+      msgHtml,
+      undefined,
+      'WALKIN_BOOKING_NEW'
+    );
+    adminSent = res.ok;
+  }
+
+  const staffTargets = resolveAssignedStaffChatIds(payload.therapistName, config.staffMappings);
+  for (const st of staffTargets) {
+    const sRes = await sendRawTelegramMessage(
+      config.botToken,
+      st.chatId,
+      msgHtml,
+      undefined,
+      'STAFF_WALKIN_BOOKING'
+    );
+    staffSent = staffSent || sRes.ok;
+  }
+
+  if (config.staffGroupChatId && config.staffGroupChatId !== config.adminGroupChatId) {
+    const gRes = await sendRawTelegramMessage(
+      config.botToken,
+      config.staffGroupChatId,
+      msgHtml,
+      undefined,
+      'GROUP_WALKIN_BOOKING'
+    );
+    staffSent = staffSent || gRes.ok;
+  }
+
+  return { adminSent, staffSent };
+};
+
+/**
+ * 2) ဘောင်ချာထုတ်ပြီး Service Clock-In Start Time စတင်ချိန်တွင် Admin + သက်ဆိုင်ရာ Therapist သို့ Noti ပို့ပေးခြင်း
+ */
+export const notifyServiceClockInStarted = async (
+  payload: WalkInServiceAlertPayload
+): Promise<{ adminSent: boolean; staffSent: boolean }> => {
+  const config = await getTelegramConfig();
+  if (!config.enabled || !config.botToken) {
+    return { adminSent: false, staffSent: false };
+  }
+
+  const cleanCustomerName = safeDecryptValue(payload.customerName || 'Walk-in Guest');
+
+  const msgHtml = [
+    `▶️ <b>SERVICE CLOCK-IN စတင်ပါပြီ (TIMER STARTED)</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `🧾 <b>ဘောင်ချာနံပါတ်:</b> <code>${escapeHtml(payload.invoiceNo || payload.bookingId.slice(-6).toUpperCase())}</code>`,
+    `🏷️ <b>အမျိုးအစား:</b> ကြိုတင်ဘိုကင် (Voucher Issued & In-Service)`,
+    `👨‍💼 <b>Therapist:</b> <b>${escapeHtml(payload.therapistName)}</b>`,
+    `👤 <b>ဧည့်သည်:</b> ${escapeHtml(cleanCustomerName)}`,
+    `💆‍♂️ <b>ဝန်ဆောင်မှု:</b> ${escapeHtml(payload.serviceName)} (${payload.durationMins} Mins)`,
+    `🟢 <b>စတင်ချိန် (Start Time):</b> <b>${escapeHtml(payload.startTimeStr || '-')}</b>`,
+    `🏁 <b>ပြီးဆုံးရမည့်အချိန် (End Time):</b> <b>${escapeHtml(payload.expectedEndTimeStr || '-')}</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `⏱️ <i>ဝန်ထမ်း App တွင် အချိန်စတင်မှတ်သားနေပါပြီ။ ဝန်ဆောင်မှုပြီးဆုံးပါက Clock Out နှိပ်ပေးပါရန်။</i>`,
+  ].join('\n');
+
+  let adminSent = false;
+  let staffSent = false;
+
+  if (config.adminGroupChatId) {
+    const res = await sendRawTelegramMessage(
+      config.botToken,
+      config.adminGroupChatId,
+      msgHtml,
+      undefined,
+      'SERVICE_CLOCK_IN'
+    );
+    adminSent = res.ok;
+  }
+
+  const staffTargets = resolveAssignedStaffChatIds(payload.therapistName, config.staffMappings);
+  for (const st of staffTargets) {
+    const sRes = await sendRawTelegramMessage(
+      config.botToken,
+      st.chatId,
+      msgHtml,
+      undefined,
+      'STAFF_CLOCK_IN'
+    );
+    staffSent = staffSent || sRes.ok;
+  }
+
+  if (config.staffGroupChatId && config.staffGroupChatId !== config.adminGroupChatId) {
+    const gRes = await sendRawTelegramMessage(
+      config.botToken,
+      config.staffGroupChatId,
+      msgHtml,
+      undefined,
+      'GROUP_CLOCK_IN'
+    );
+    staffSent = staffSent || gRes.ok;
+  }
+
+  return { adminSent, staffSent };
+};
+
+/**
+ * 3) Service သတ်မှတ်ချိန်ကျော်လွန်ပြီး Clock Out မနှိပ်သေးပါက ၁၀ မိနစ်တစ်ခါ Admin + သက်ဆိုင်ရာ Therapist သို့ Remind လုပ်ခြင်း
+ */
+export const notifyServiceOverdueReminder = async (
+  payload: WalkInServiceAlertPayload
+): Promise<{ adminSent: boolean; staffSent: boolean }> => {
+  const config = await getTelegramConfig();
+  if (!config.enabled || !config.botToken) {
+    return { adminSent: false, staffSent: false };
+  }
+
+  const msgHtml = [
+    `⚠️⏰ <b>CLOCK-OUT REMINDER (သတ်မှတ်ချိန် ကျော်လွန်နေပါပြီ!)</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `❓ <b>Service သတ်မှတ်ချိန်ထက် ကျော်လွန်နေပြီဖြစ်၍ Clock Out လုပ်ဖို့ မေ့နေသလား?</b>`,
+    ``,
+    `👨‍💼 <b>Therapist:</b> <b>${escapeHtml(payload.therapistName)}</b>`,
+    `🧾 <b>ဘောင်ချာ / ID:</b> <code>${escapeHtml(payload.invoiceNo || payload.bookingId.slice(-6).toUpperCase())}</code>`,
+    `💆‍♂️ <b>ဝန်ဆောင်မှု:</b> ${escapeHtml(payload.serviceName)} (${payload.durationMins} Mins)`,
+    `🟢 <b>စတင်ခဲ့သည့်အချိန်:</b> ${escapeHtml(payload.startTimeStr || '-')}`,
+    `🏁 <b>ပြီးဆုံးရမည့်အချိန်:</b> ${escapeHtml(payload.expectedEndTimeStr || '-')}`,
+    `🚨 <b>ကျော်လွန်ချိန် (Overdue):</b> <b>+${payload.overdueMinutes || 10} မိနစ် ကျော်လွန်နေပါသည်</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `🔔 <i>ဝန်ထမ်း App သို့မဟုတ် POS မှ "Clock Out / Complete" ခလုတ်ကို မနှိပ်မချင်း (၁၀) မိနစ်တစ်ခါ အလိုအလျောက် သတိပေးနေပါမည်။</i>`,
+  ].join('\n');
+
+  let adminSent = false;
+  let staffSent = false;
+
+  if (config.adminGroupChatId) {
+    const res = await sendRawTelegramMessage(
+      config.botToken,
+      config.adminGroupChatId,
+      msgHtml,
+      undefined,
+      'OVERDUE_CLOCKOUT_ALERT'
+    );
+    adminSent = res.ok;
+  }
+
+  const staffTargets = resolveAssignedStaffChatIds(payload.therapistName, config.staffMappings);
+  for (const st of staffTargets) {
+    const sRes = await sendRawTelegramMessage(
+      config.botToken,
+      st.chatId,
+      msgHtml,
+      undefined,
+      'STAFF_OVERDUE_ALERT'
+    );
+    staffSent = staffSent || sRes.ok;
+  }
+
+  if (config.staffGroupChatId && config.staffGroupChatId !== config.adminGroupChatId) {
+    const gRes = await sendRawTelegramMessage(
+      config.botToken,
+      config.staffGroupChatId,
+      msgHtml,
+      undefined,
+      'GROUP_OVERDUE_ALERT'
+    );
+    staffSent = staffSent || gRes.ok;
+  }
+
+  return { adminSent, staffSent };
+};
