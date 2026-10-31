@@ -26,7 +26,7 @@ const DEFAULT_BRANDING: AppBranding = {
 };
 const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [{ id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' }];
 const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i, password: '' }));
-const DEFAULT_PROMOTION: PromotionSettings = { isActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' };
+const DEFAULT_PROMOTION: PromotionSettings = { isBoxActive: false, isPopupActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' };
 
 const DEFAULT_CATEGORIES: MenuCategory[] = [
   { 
@@ -71,7 +71,6 @@ const getInitialAppData = (): AppData | null => {
       if (parsed && parsed.categories?.length > 0) return parsed;
     }
   } catch {}
-  // Offline ဖြစ်နေပါက သို့မဟုတ် POS mode ဖြစ်နေပါက Fallback Data ဖြင့် ချက်ချင်း ပွင့်စေမည်
   const isPos = window.location.search.includes('mode=pos');
   if (!navigator.onLine || isPos) {
     return FALLBACK_APPDATA;
@@ -95,27 +94,12 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
 }
 
 function MainApp() {
-  // 🌟 URL မှ Mode ကို စဖွင့်ဖွင့်ချင်း ချက်ချင်း ဖတ်ယူမည် (Admin မှ ပိတ်ထားပါက campaign mode သို့ ဝင်ခွင့်မပြုပါ) 🌟
   const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff' | 'pos' | 'campaign'>(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const mode = searchParams.get('mode');
     
-    // POS နှင့် Admin / Staff တို့အတွက် သီးသန့်ခွင့်ပြုမည်
     if (mode === 'admin' || mode === 'staff' || mode === 'pos') return mode;
-
-    // အကယ်၍ mode=campaign ဖြင့် ဝင်လာပါက appData ရှိ promotion အခြေအနေကို ကြိုတင်စစ်ဆေးမည်
-    if (mode === 'campaign') {
-      const cached = localStorage.getItem(CACHED_APPDATA_KEY);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          const isPromoLive = Boolean(parsed?.promotion?.isPopupActive || parsed?.promotion?.isActive);
-          if (isPromoLive) return 'campaign';
-        } catch {}
-      }
-      // မပွင့်ရသေးပါက customer mode သို့ ပြန်ပို့မည်
-      return 'customer';
-    }
+    if (mode === 'campaign') return 'campaign';
 
     return 'customer';
   });
@@ -123,7 +107,6 @@ function MainApp() {
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
   const [appData, setAppData] = useState<AppData | null>(() => getInitialAppData());
 
-  // 🌟 POS Mode သို့မဟုတ် Offline ဖြစ်နေပါက Loading Screen ကို လုံးဝကျော်သွားမည် 🌟
   const [isLoaderFinished, setIsLoaderFinished] = useState<boolean>(() => {
     const isPos = window.location.search.includes('mode=pos');
     return isPos || !navigator.onLine;
@@ -189,7 +172,25 @@ function MainApp() {
     }
   }, [appData?.branding?.logoUrl, appData?.branding?.name]);
 
-  // 🌟 FIX: အင်တာနက်လိုင်း လေးနေလျှင် ၂.၅ စက္ကန့်ထက် ပိုမစောင့်ဘဲ Cache/Fallback Data ဖြင့် Loading ကို ချက်ချင်း ဖွင့်ပေးမည် 🌟
+  // 🌟 REAL-TIME CAMPAIGN & POPUP LOCKOUT GUARD (Admin မှ ပိတ်ထားလျှင် customer mode သို့ အလိုအလျောက် ပြန်ပို့မည်) 🌟
+  useEffect(() => {
+    const promo: any = appData?.promotion;
+    if (!promo) return;
+
+    const isExplicitlyOff =
+      promo.allOff === true ||
+      promo.isPopupActive === false ||
+      promo.isActive === false ||
+      promo.popupEnabled === false ||
+      promo.miniGamePopup === false;
+
+    if (isExplicitlyOff && appMode === 'campaign') {
+      setAppMode('customer');
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  }, [appData?.promotion, appMode]);
+
   useEffect(() => {
     const safetyTimer = setTimeout(() => {
       setAppData((prev) => prev || getInitialAppData() || FALLBACK_APPDATA);
@@ -207,20 +208,6 @@ function MainApp() {
         return;
       }
 
-    // 🌟 REAL-TIME CAMPAIGN LOCKOUT GUARD 🌟
-  // Admin မှ Promotion ပိတ်လိုက်သည်နှင့် တစ်ပြိုင်နက် campaign mode ဖြင့် ဝင်ရောက်နေပါက customer mode သို့ အလိုအလျောက် လွှဲပြောင်းပေးမည်
-  useEffect(() => {
-    if (appMode !== 'campaign') return;
-    const promo = appData?.promotion;
-    const isPromoLive = Boolean(promo?.isPopupActive === true || promo?.isActive === true);
-
-    if (!isPromoLive) {
-      setAppMode('customer');
-      window.history.replaceState({}, document.title, window.location.pathname);
-      alert("🙏 ဤအထူးပရိုမိုးရှင်း / မဲဖောက်သည့် အစီအစဉ် ပြီးဆုံးသွားပါပြီခင်ဗျာ။ (Campaign Ended)");
-    }
-  }, [appData?.promotion, appMode]);
-
       try {
         const [settingsSnap, therapistsSnap] = await Promise.all([
             getDoc(doc(db, 'settings', 'appData')).catch(err => { console.warn(err); return null; }),
@@ -237,7 +224,6 @@ function MainApp() {
           therapistsSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); 
         }
 
-        // Firebase မှ Data ရလာပါက အသစ်ဖြင့် Update လုပ်မည်၊ မရပါက Cache/Default ကိုသုံးမည် (Network Error လုံးဝ မပြတော့ပါ)
         if ((settingsSnap && settingsSnap.exists()) || loadedTherapists.length > 0) {
           const freshAppData: AppData = { 
             categories: Array.isArray(loadedData.categories) && loadedData.categories.length > 0 ? loadedData.categories : DEFAULT_CATEGORIES, 
@@ -269,7 +255,6 @@ function MainApp() {
     return () => clearInterval(interval);
   }, [loggedInAdmin]);
 
-  // POS Mode မဟုတ်မှသာ Loading Screen ပြသမည်
   if (!isLoaderFinished && appMode !== 'pos') { 
       return <PremiumLoadingScreen isDataReady={!!appData} onFinish={() => setIsLoaderFinished(true)} />; 
   }
@@ -277,14 +262,24 @@ function MainApp() {
   const safeAppData = appData || FALLBACK_APPDATA;
   const stepsToShow = safeAppData.installSteps && safeAppData.installSteps.length > 0 ? safeAppData.installSteps : DEFAULT_INSTALL_STEPS;
 
-  // 🌟 Check if we are in full-screen modes (POS or Campaign)
   const isFullScreenMode = appMode === 'pos' || appMode === 'campaign';
+
+  // 🌟 Admin မှ All OFF သို့မဟုတ် Popup ပိတ်ထားခြင်း ရှိမရှိ စစ်ဆေးခြင်း 🌟
+  const promoSettings: any = safeAppData?.promotion;
+  const isGlobalPopupAllowed = Boolean(
+    promoSettings &&
+    promoSettings.allOff !== true &&
+    promoSettings.isPopupActive !== false &&
+    promoSettings.isActive !== false &&
+    promoSettings.popupEnabled !== false &&
+    promoSettings.miniGamePopup !== false
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col relative">
       
-      {/* 🌟 Promotion Popup (Customer Mode Only) 🌟 */}
-      {appMode === 'customer' && safeAppData && <ThadingyutPopup appData={safeAppData} />}
+      {/* 🌟 Promotion Popup (Customer Mode Only & When Allowed by Admin) 🌟 */}
+      {appMode === 'customer' && isGlobalPopupAllowed && safeAppData && <ThadingyutPopup appData={safeAppData} />}
 
       {showInstallModal && (
         <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
@@ -301,7 +296,6 @@ function MainApp() {
         </div>
       )}
 
-      {/* 🌟 Hide Header for Full Screen Modes (POS / Campaign) 🌟 */}
       {!isFullScreenMode && (
         <header 
           className={`sticky top-0 z-[100] w-full transition-all duration-300 border-b border-gray-200 flex flex-col items-center justify-center ${isScrolled ? 'bg-white/95 backdrop-blur-md shadow-sm' : 'bg-white shadow-sm'} px-4 text-center`}
@@ -349,7 +343,6 @@ function MainApp() {
         </Suspense>
       </main>
 
-      {/* 🌟 Hide Footer for Full Screen Modes (POS / Campaign) 🌟 */}
       {!isFullScreenMode && appMode !== 'admin' && (
         <footer className="bg-white border-t border-gray-200 mt-10 py-8 text-center text-sm text-gray-500 px-4">
           <h3 className="font-bold text-base mb-3" style={{ color: THEME.primary }}>{safeAppData.branding?.name || 'The Shangri-La'} Men's Retreat</h3>
