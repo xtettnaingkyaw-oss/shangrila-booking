@@ -1,8 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { PartyPopper, ArrowLeft, Sparkles, Timer, UserCircle, LogIn, MessageCircle, AlertCircle, Info, CalendarCheck } from 'lucide-react';
+import {
+  PartyPopper,
+  ArrowLeft,
+  Sparkles,
+  Timer,
+  UserCircle,
+  LogIn,
+  MessageCircle,
+  AlertCircle,
+  Info,
+  CalendarCheck,
+  BellRing,
+  CheckCircle2
+} from 'lucide-react';
 import { AppData } from '../shared';
 import { db } from '../firebase';
-import { collection, addDoc, getDocs, query, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, updateDoc, doc, setDoc } from 'firebase/firestore';
 
 interface ThadingyutCampaignProps {
   appData: AppData;
@@ -59,20 +72,118 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   const [recordId, setRecordId] = useState<string | null>(null);
   const [alreadyPlayedToday, setAlreadyPlayedToday] = useState(false);
 
-  const campaignTitle = appData?.promotion?.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း';
-
-  useEffect(() => {
-    const savedPhone = localStorage.getItem('shangrila_user_phone');
-    if (savedPhone) {
-      setUserPhone(savedPhone);
-      checkInitialStatus(savedPhone);
-    }
-  }, []);
+  // 🌟 Promotion ပြီးဆုံးချိန် Real-time Noti ရယူရန် State များ 🌟
+  const [subscribingNoti, setSubscribingNoti] = useState(false);
+  const [isPromoSubscribed, setIsPromoSubscribed] = useState<boolean>(
+    () => localStorage.getItem('shangrila_promo_noti_subscribed') === 'true'
+  );
+  const [notiFeedbackMsg, setNotiFeedbackMsg] = useState<string>('');
 
   const getTodayStr = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
+
+  // ============================================================================
+  // 🌟 UNIVERSAL CAMPAIGN STATUS CHECKER (လက်ရှိနှင့် အသစ်ထပ်လုပ်မည့် Campaign အားလုံးအတွက်) 🌟
+  // ============================================================================
+  const evaluateCampaignStatus = () => {
+    const promo: any = appData?.promotion || {};
+    const urlParams = new URLSearchParams(window.location.search);
+    const requestedCampaignId = urlParams.get('campaign');
+    const today = getTodayStr();
+
+    // 1. Admin Studio ထဲရှိ Campaign Cards စာရင်း (ရှိပါက) စစ်ဆေးခြင်း
+    const cards: any[] =
+      promo.campaigns ||
+      promo.cards ||
+      promo.savedCampaigns ||
+      (appData as any)?.campaigns ||
+      [];
+
+    let matchedCard: any = null;
+    if (Array.isArray(cards) && cards.length > 0) {
+      if (requestedCampaignId) {
+        matchedCard = cards.find(
+          (c) =>
+            String(c.id) === requestedCampaignId ||
+            String(c.slug) === requestedCampaignId ||
+            String(c.code) === requestedCampaignId
+        );
+      } else {
+        matchedCard = cards.find(
+          (c) =>
+            (c.isActive === true || c.active === true || c.enabled === true) &&
+            c.miniGamePopup !== false &&
+            c.popupEnabled !== false
+        );
+      }
+    }
+
+    // 2. Global Promotion & Popup Setting ဖွင့်/ပိတ် စစ်ဆေးခြင်း
+    const isGlobalEnabled =
+      promo.enabled === true ||
+      promo.isActive === true ||
+      promo.popupEnabled === true ||
+      promo.miniGamePopup === true ||
+      promo.gameEnabled === true;
+
+    const isExplicitlyAllOff =
+      promo.allOff === true ||
+      promo.enabled === false ||
+      promo.popupEnabled === false ||
+      promo.miniGamePopup === false;
+
+    // 3. သတ်မှတ်ထားသော Campaign Card တစ်ခုချင်းစီ အတွက် ဖွင့်/ပိတ် စစ်ဆေးခြင်း
+    if (matchedCard) {
+      const cardActive =
+        (matchedCard.isActive === true || matchedCard.active === true || matchedCard.enabled === true) &&
+        matchedCard.miniGamePopup !== false &&
+        matchedCard.popupEnabled !== false &&
+        matchedCard.gameEnabled !== false;
+
+      const withinCardDate =
+        (!matchedCard.startDate || today >= matchedCard.startDate) &&
+        (!matchedCard.endDate || today <= matchedCard.endDate);
+
+      return {
+        isActive: cardActive && withinCardDate && !isExplicitlyAllOff,
+        title: matchedCard.title || matchedCard.campaignTitle || promo.campaignTitle || 'အထူးပရိုမိုးရှင်း အစီအစဉ်',
+        campaignId: matchedCard.id || requestedCampaignId || 'campaign'
+      };
+    }
+
+    // 4. Card သီးသန့်မတွေ့ပါက Global Promotion Setting နှင့် ရက်စွဲကို စစ်ဆေးခြင်း
+    if (requestedCampaignId && Array.isArray(cards) && cards.length > 0 && !matchedCard) {
+      return {
+        isActive: false,
+        title: promo.campaignTitle || 'အထူးပရိုမိုးရှင်း အစီအစဉ်',
+        campaignId: requestedCampaignId
+      };
+    }
+
+    const withinGlobalDate =
+      (!promo.startDate || today >= promo.startDate) &&
+      (!promo.endDate || today <= promo.endDate);
+
+    return {
+      isActive: Boolean(isGlobalEnabled && !isExplicitlyAllOff && withinGlobalDate),
+      title: promo.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
+      campaignId: requestedCampaignId || promo.id || 'main_campaign'
+    };
+  };
+
+  const { isActive: isCampaignActive, title: campaignTitle, campaignId: activeCampaignId } = evaluateCampaignStatus();
+
+  useEffect(() => {
+    const savedPhone = localStorage.getItem('shangrila_user_phone');
+    if (savedPhone) {
+      setUserPhone(savedPhone);
+      if (isCampaignActive) {
+        checkInitialStatus(savedPhone);
+      }
+    }
+  }, [isCampaignActive]);
 
   const checkInitialStatus = async (phone: string) => {
     try {
@@ -91,6 +202,117 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     } catch (e) {}
   };
 
+  // ============================================================================
+  // 🌟 AUTO SAVE TELEGRAM CHAT ID FOR REAL-TIME PROMO NOTIFICATIONS 🌟
+  // ============================================================================
+  const handleSubscribePromoNoti = async () => {
+    if (subscribingNoti) return;
+    setSubscribingNoti(true);
+    setNotiFeedbackMsg('');
+
+    try {
+      // 1. Telegram WebApp သို့မဟုတ် LocalStorage ထဲမှ Chat ID ကို အလိုအလျောက် ရှာဖွေခြင်း
+      const tgWebAppUser = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user;
+      let detectedChatId: string | null =
+        tgWebAppUser?.id?.toString() ||
+        localStorage.getItem('shangrila_telegram_chat_id') ||
+        localStorage.getItem('shangrila_tg_chat_id') ||
+        localStorage.getItem('telegram_chat_id') ||
+        localStorage.getItem('telegramChatId') ||
+        null;
+
+      const savedPhone = userPhone || localStorage.getItem('shangrila_user_phone') || '';
+      let customerName =
+        tgWebAppUser?.first_name ||
+        localStorage.getItem('shangrila_user_name') ||
+        'VIP Customer';
+
+      // 2. LocalStorage တွင် Chat ID မရှိသေးသော်လည်း ဖုန်းနံပါတ်ရှိပါက AppData သို့မဟုတ် Firestore Users ထဲမှ Chat ID ကို Auto ရှာဖွေခြင်း
+      if (!detectedChatId && savedPhone) {
+        const contextUsers: any[] = (appData as any)?.users || (appData as any)?.vipMembers || (appData as any)?.customers || [];
+        const matchedUser = contextUsers.find((u: any) => u.phone === savedPhone);
+        if (matchedUser) {
+          detectedChatId =
+            matchedUser.telegramChatId?.toString() ||
+            matchedUser.chatId?.toString() ||
+            matchedUser.telegram_chat_id?.toString() ||
+            null;
+          if (matchedUser.name) customerName = matchedUser.name;
+        }
+      }
+
+      if (!detectedChatId && savedPhone) {
+        try {
+          const usersSnap = await getDocs(query(collection(db, 'users')));
+          usersSnap.forEach((uDoc) => {
+            const uData = uDoc.data();
+            if (uData.phone === savedPhone && (uData.telegramChatId || uData.chatId || uData.telegram_chat_id)) {
+              detectedChatId = String(uData.telegramChatId || uData.chatId || uData.telegram_chat_id);
+              if (uData.name) customerName = uData.name;
+            }
+          });
+        } catch (err) {}
+      }
+
+      // 3. Firestore `promo_subscribers` collection ထဲသို့ Real-time Noti ပို့နိုင်ရန် Auto သိမ်းဆည်းခြင်း
+      const subscriberDocId = detectedChatId || (savedPhone ? `phone_${savedPhone}` : `guest_${Date.now()}`);
+      await setDoc(
+        doc(db, 'promo_subscribers', subscriberDocId),
+        {
+          chatId: detectedChatId || '',
+          telegramChatId: detectedChatId || '',
+          phone: savedPhone,
+          name: customerName,
+          campaignId: activeCampaignId,
+          campaignTitle: campaignTitle,
+          subscribed: true,
+          updatedAt: new Date().toISOString(),
+          createdAt: Date.now()
+        },
+        { merge: true }
+      );
+
+      if (detectedChatId) {
+        localStorage.setItem('shangrila_telegram_chat_id', detectedChatId);
+      }
+      localStorage.setItem('shangrila_promo_noti_subscribed', 'true');
+      setIsPromoSubscribed(true);
+
+      // 4. Chat ID ရရှိပြီးသူဖြစ်ပါက တိုက်ရိုက် အတည်ပြုစာပြမည်၊ Chat ID မချိတ်ရသေးသူဖြစ်ပါက Telegram Bot သို့ Auto ချိတ်ပေးမည်
+      if (detectedChatId) {
+        setNotiFeedbackMsg(
+          'လူကြီးမင်း၏ Chat ID ကို အလိုအလျောက် သိမ်းဆည်းပြီးပါပြီ။ Promotion ပြန်လည်စတင်သည်နှင့် Real-time အကြောင်းကြားပေးပါမည်။'
+        );
+      } else {
+        const botUsername =
+          (appData as any)?.telegramBot?.username ||
+          (appData as any)?.promotion?.botUsername ||
+          appData?.branding?.telegram?.replace('https://t.me/', '')?.replace('@', '') ||
+          '';
+
+        if (botUsername && !botUsername.startsWith('http')) {
+          window.open(`https://t.me/${botUsername}?start=subscribe_promo`, '_blank');
+        }
+        setNotiFeedbackMsg(
+          'Promotion အကြောင်းကြားစာ ရယူမှု को သိမ်းဆည်းပြီးပါပြီ။ Promotion ပြန်လည်စတင်သည်နှင့် ချက်ချင်း အကြောင်းကြားပေးပါမည်။'
+        );
+      }
+    } catch (error) {
+      console.error('Error auto-saving promo notification chatId:', error);
+      localStorage.setItem('shangrila_promo_noti_subscribed', 'true');
+      setIsPromoSubscribed(true);
+      setNotiFeedbackMsg('Promotion အကြောင်းကြားစာ ရယူမှုကို သိမ်းဆည်းပြီးပါပြီ။');
+    } finally {
+      setSubscribingNoti(false);
+    }
+  };
+
+  // 🌟 "နားလည်ပါပြီ" နှိပ်လျှင် မူလ Booking Page သို့ ပြန်ပို့မည့် Function 🌟
+  const handleBackToMainBooking = () => {
+    window.history.replaceState({}, document.title, '/');
+    window.location.href = '/';
+  };
+
   const calculatePrize = () => {
     const rand = Math.random() * 100;
     if (rand < 40) return 15;
@@ -101,7 +323,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   };
 
   const startGame = async () => {
-    if (!userPhone) return;
+    if (!userPhone || !isCampaignActive) return;
     setCheckingUser(true);
 
     try {
@@ -146,7 +368,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
         opacity: 0.45 + Math.random() * 0.45
       }));
       setMiniLanterns(initial);
-    } else if (gameState === 'playing') {
+    } else if (gameState === 'playing' && isCampaignActive) {
       lanternInterval = setInterval(() => {
         setLanterns((prev) => [
           ...prev,
@@ -174,7 +396,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       clearInterval(lanternInterval);
       clearInterval(timerInterval);
     };
-  }, [gameState]);
+  }, [gameState, isCampaignActive]);
 
   const saveRecordToDB = async (finalPrize: number) => {
     try {
@@ -196,7 +418,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
   const catchLantern = (e: React.MouseEvent | React.TouchEvent, id: number) => {
     e.stopPropagation();
-    if (gameState !== 'playing') return;
+    if (gameState !== 'playing' || !isCampaignActive) return;
     let clientX = window.innerWidth / 2;
     let clientY = window.innerHeight / 2;
     if ('touches' in e && e.touches.length > 0) {
@@ -215,7 +437,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     saveRecordToDB(wonPrize);
   };
 
-  // 🌟 FIX: မီးပုံးဖွင့်သည့် မီးပန်း Effect ကို သေချာမြင်ရစေရန် 1.75 စက္ကန့် (1750ms) အထိ နှေးပေးထားသည် 🌟
   const openCaughtLantern = () => {
     if (isBursting) return;
     setIsBursting(true);
@@ -254,7 +475,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     }
   };
 
-  // 🌟 ခလုတ်နှိပ်လိုက်သည့်အခါ Ripple Click Effect ပေါ်စေရန် Function 🌟
   const handleButtonClickWithEffect = (e: React.MouseEvent<HTMLButtonElement>, callback: () => void) => {
     const button = e.currentTarget;
     button.style.transform = 'scale(0.95)';
@@ -342,7 +562,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
           to { transform: scale(4); opacity: 0; }
         }
 
-        /* 🌟 ၁။ ဖမ်းမိသော မီးပုံး အလယ်သို့ ဖြည်းညင်းစွာပျံလာပြီး လှုပ်ခါနေမည့် Animation 🌟 */
         @keyframes flyToCenterSlow {
           0% { left: var(--start-x); top: var(--start-y); transform: translate(-50%, -50%) scale(0.6); }
           100% { left: 50%; top: 45%; transform: translate(-50%, -50%) scale(1); }
@@ -367,7 +586,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
           user-select: none;
         }
 
-        /* 🌟 ၂။ မီးပုံးကို နှိပ်ဖွင့်လိုက်သည့်အခါ ဖြည်းဖြည်းနှင့် ထင်ရှားစွာ ပေါက်ကွဲထွက်မည့် Animation (1.75s) 🌟 */
         @keyframes lanternGrandBurst {
           0% { transform: scale(1) rotate(0deg); opacity: 1; }
           25% { transform: scale(1.35) rotate(-10deg); filter: brightness(1.8) drop-shadow(0 0 50px #FFD700); opacity: 1; }
@@ -412,7 +630,6 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
           animation: shockwaveRingSlow 1.4s ease-out forwards;
         }
 
-        /* 🌟 ၃။ Result Card အပေါ်ထိပ်တွင် အဆက်မပြတ် ပေါက်ကွဲဖွာထွက်နေမည့် Continuous Fireworks CSS 🌟 */
         @keyframes continuousSparkRay {
           0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
           20% { opacity: 1; }
@@ -441,7 +658,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       {/* 🌟 Luxury Header Bar 🌟 */}
       <div className="px-4 py-3.5 z-50 flex items-center justify-between bg-[#140705]/90 backdrop-blur-md border-b border-[#D4AF37]/25 shadow-md">
         <button
-          onClick={() => (window.location.href = '/')}
+          onClick={handleBackToMainBooking}
           className="flex items-center text-[#D4AF37] hover:text-yellow-300 font-bold text-xs sm:text-sm bg-white/5 px-3 py-1.5 rounded-full border border-[#D4AF37]/30 active:scale-95 transition"
         >
           <ArrowLeft className="w-4 h-4 mr-1" /> နောက်သို့
@@ -453,389 +670,453 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       </div>
 
       <div className="flex-1 relative flex items-center justify-center p-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#2b0f08] via-[#0f0504] to-[#070302]">
-        
-        {/* ==========================================
-            1. START SCREEN
-           ========================================== */}
-        {gameState === 'start' && (
-          <div className="relative z-10 w-full max-w-[355px] rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37]/85 via-[#D4AF37]/25 to-[#D4AF37]/65 shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_45px_rgba(212,175,55,0.18)] animate-fade-in overflow-hidden">
+        {/* =========================================================================
+            0. CAMPAIGN ENDED / OFF SCREEN (Setting ပိတ်ထားချိန် Link မှ ဝင်လာလျှင် ပြသမည့်ကဒ်)
+           ========================================================================= */}
+        {!isCampaignActive ? (
+          <div className="relative z-10 w-full max-w-[365px] rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37]/85 via-[#D4AF37]/25 to-[#D4AF37]/65 shadow-[0_20px_60px_rgba(0,0,0,0.92),0_0_45px_rgba(212,175,55,0.2)] result-card-slow-enter overflow-hidden">
             <div className="relative w-full h-full rounded-[calc(2rem-1.5px)] bg-gradient-to-b from-[#2a0e08] via-[#140705] to-[#0a0403] px-6 pt-7 pb-7 text-center overflow-hidden">
-              
               <div className="absolute inset-2.5 rounded-[1.5rem] border border-[#D4AF37]/15 pointer-events-none z-20"></div>
-              <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/35 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
+              <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/30 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
 
-              <div
-                className="absolute top-0 left-0 right-0 h-48 overflow-hidden pointer-events-none z-0"
-                style={{
-                  WebkitMaskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)',
-                  maskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)'
-                }}
+              {/* Top Emblem */}
+              <div className="relative z-10 mt-1 mb-5 flex flex-col items-center">
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] text-[9px] font-extrabold uppercase tracking-[0.2em] mb-4 shadow-sm">
+                  <Sparkles className="w-3 h-3" /> Promotion Ended
+                </div>
+
+                <div className="relative w-16 h-16 rounded-full bg-gradient-to-b from-amber-500/25 to-orange-900/40 border border-[#D4AF37]/50 flex items-center justify-center shadow-[0_0_25px_rgba(245,158,11,0.35)] center-emblem-float">
+                  <div className="absolute inset-1 rounded-full border border-yellow-300/20"></div>
+                  <BellRing className="w-7 h-7 text-[#D4AF37]" />
+                </div>
+              </div>
+
+              {/* Main Message */}
+              <h2
+                className="relative z-10 text-base sm:text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-100 via-[#D4AF37] to-yellow-100 mb-3 px-1"
+                style={{ lineHeight: '1.8' }}
               >
-                {miniLanterns.map((lantern) => (
+                Promotion ပြီးဆုံးသွားပါပီ၊ပြန်လည်စတင်တဲ့အခါအကြောင်းကြားပေးပါမည်။
+              </h2>
+
+              <p
+                className="relative z-10 text-gray-300/90 text-xs mb-6 px-1 font-medium"
+                style={{ lineHeight: '1.75' }}
+              >
+                နောက်ထပ် အထူး Promotion နှင့် ကံစမ်းမဲအစီအစဉ်များ ပြန်လည်စတင်ချိန်တွင် အချိန်နှင့်တစ်ပြေးညီ (Real-time) သိရှိနိုင်ရန် အောက်ပါခလုတ်ကို နှိပ်ထားနိုင်ပါသည်။
+              </p>
+
+              {/* Status Feedback Message */}
+              {notiFeedbackMsg && (
+                <div
+                  className="relative z-10 mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-[11px] text-emerald-200 font-medium"
+                  style={{ lineHeight: '1.7' }}
+                >
+                  {notiFeedbackMsg}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="relative z-10 space-y-3">
+                {/* ခလုတ် ၁ - Promotion အကြောင်းကြားစာများယူရန် (Auto Chat ID Save) */}
+                <button
+                  type="button"
+                  disabled={subscribingNoti || isPromoSubscribed}
+                  onClick={(e) => handleButtonClickWithEffect(e, handleSubscribePromoNoti)}
+                  className="relative overflow-hidden w-full py-3.5 px-4 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-xs sm:text-sm shadow-[0_6px_25px_rgba(212,175,55,0.4)] hover:shadow-[0_8px_30px_rgba(212,175,55,0.6)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center disabled:opacity-80"
+                  style={{ lineHeight: '1.6' }}
+                >
+                  <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
+                  {subscribingNoti ? (
+                    <span className="relative z-10">သိမ်းဆည်းနေပါသည်...</span>
+                  ) : isPromoSubscribed ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
+                      <span className="relative z-10">အကြောင်းကြားစာ ရယူပြီးပါပြီ</span>
+                    </>
+                  ) : (
+                    <>
+                      <BellRing className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
+                      <span className="relative z-10">Promotion အကြောင်းကြားစာများယူရန်</span>
+                    </>
+                  )}
+                </button>
+
+                {/* ခလုတ် ၂ - နားလည်ပါပြီ (မူလ Booking Page သို့ ပြန်ရောက်သွားမည်) */}
+                <button
+                  type="button"
+                  onClick={(e) => handleButtonClickWithEffect(e, handleBackToMainBooking)}
+                  className="relative overflow-hidden w-full py-3 px-4 bg-white/[0.07] hover:bg-white/[0.12] text-gray-200 rounded-xl font-bold text-xs sm:text-sm border border-[#D4AF37]/35 transition-all duration-200 flex items-center justify-center"
+                  style={{ lineHeight: '1.6' }}
+                >
+                  <span className="relative z-10">နားလည်ပါပြီ</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ==========================================
+                1. START SCREEN (Campaign ဖွင့်ထားချိန်မှသာ ပြသမည်)
+               ========================================== */}
+            {gameState === 'start' && (
+              <div className="relative z-10 w-full max-w-[355px] rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37]/85 via-[#D4AF37]/25 to-[#D4AF37]/65 shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_45px_rgba(212,175,55,0.18)] animate-fade-in overflow-hidden">
+                <div className="relative w-full h-full rounded-[calc(2rem-1.5px)] bg-gradient-to-b from-[#2a0e08] via-[#140705] to-[#0a0403] px-6 pt-7 pb-7 text-center overflow-hidden">
+                  <div className="absolute inset-2.5 rounded-[1.5rem] border border-[#D4AF37]/15 pointer-events-none z-20"></div>
+                  <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/35 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
+
+                  <div
+                    className="absolute top-0 left-0 right-0 h-48 overflow-hidden pointer-events-none z-0"
+                    style={{
+                      WebkitMaskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)',
+                      maskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)'
+                    }}
+                  >
+                    {miniLanterns.map((lantern) => (
+                      <div
+                        key={lantern.id}
+                        className="ambient-lantern"
+                        style={{
+                          left: `${lantern.left}%`,
+                          animationDuration: `${lantern.duration}s`,
+                          animationDelay: `${lantern.delay || 0}s`,
+                          fontSize: `${lantern.size}rem`,
+                          ['--max-op' as any]: lantern.opacity || 0.75
+                        }}
+                      >
+                        🏮
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="relative z-10 mt-1 mb-4 flex flex-col items-center">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] text-[9px] font-extrabold uppercase tracking-[0.2em] mb-3.5 shadow-sm">
+                      <Sparkles className="w-3 h-3" /> Lucky Draw Game
+                    </div>
+
+                    <div className="relative w-16 h-16 rounded-full bg-gradient-to-b from-amber-500/25 to-orange-900/40 border border-[#D4AF37]/50 flex items-center justify-center shadow-[0_0_25px_rgba(245,158,11,0.35)] center-emblem-float">
+                      <div className="absolute inset-1 rounded-full border border-yellow-300/20"></div>
+                      <span className="text-3xl filter drop-shadow-[0_2px_8px_rgba(255,165,0,0.8)]">🏮</span>
+                    </div>
+                  </div>
+
+                  <h2 className="relative z-10 text-xl sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-[#D4AF37] to-yellow-200 mb-2.5 tracking-wide leading-snug drop-shadow-sm">
+                    {campaignTitle}
+                  </h2>
+                  <p className="relative z-10 text-gray-300/95 text-xs mb-6 leading-relaxed px-1 font-medium">
+                    မီးပုံးလေးတွေကို ဖမ်းပြီး{' '}
+                    <span className="text-yellow-400 font-extrabold underline decoration-[#D4AF37]/50 underline-offset-4">
+                      ၅၀% အထိ Discount
+                    </span>{' '}
+                    ရယူပါ။ <span className="block text-[10.5px] text-gray-400 mt-1">(တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</span>
+                  </p>
+
+                  <div className="relative z-10">
+                    {userPhone ? (
+                      <div className="space-y-3.5">
+                        <div className="bg-black/50 border border-[#D4AF37]/35 rounded-xl py-3 px-4 flex items-center justify-center shadow-inner">
+                          <UserCircle className="w-4 h-4 text-[#D4AF37] mr-2" />
+                          <span className="text-xs sm:text-sm font-black text-yellow-400 tracking-[0.18em]">{userPhone}</span>
+                        </div>
+
+                        {alreadyPlayedToday ? (
+                          <div className="animate-fade-in space-y-3">
+                            <div className="bg-amber-950/40 border border-[#D4AF37]/30 rounded-xl p-3.5 text-center shadow-sm">
+                              <p className="text-[11px] text-yellow-200/90 font-semibold leading-relaxed">
+                                လူကြီးမင်းသည် ယနေ့အတွက် ကံစမ်းခွင့် ပြည့်သွားပါပြီ။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => handleButtonClickWithEffect(e, viewPreviousResult)}
+                              className="relative overflow-hidden w-full py-3.5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-xs sm:text-sm shadow-[0_6px_20px_rgba(212,175,55,0.4)] hover:shadow-[0_8px_25px_rgba(212,175,55,0.6)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center tracking-wide"
+                            >
+                              <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
+                              <AlertCircle className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
+                              <span className="relative z-10">ရရှိထားသော Discount အား ကြည့်မည်</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => handleButtonClickWithEffect(e, startGame)}
+                            disabled={checkingUser}
+                            className="relative overflow-hidden w-full py-4 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-sm sm:text-base shadow-[0_6px_25px_rgba(212,175,55,0.45)] hover:shadow-[0_8px_30px_rgba(212,175,55,0.65)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center disabled:opacity-50 tracking-wide"
+                          >
+                            <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
+                            {checkingUser ? (
+                              <span className="relative z-10">စစ်ဆေးနေပါသည်...</span>
+                            ) : (
+                              <>
+                                <Sparkles className="w-5 h-5 mr-2 relative z-10 stroke-[2.5]" />
+                                <span className="relative z-10">ကစားမည် (Play Now)</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3.5">
+                        <div className="bg-red-950/50 border border-red-500/30 rounded-xl p-3.5 text-xs text-red-200 font-medium leading-relaxed">
+                          ကံစမ်းမဲ ကစားရန်အတွက် အရင်ဆုံး အကောင့် ဝင်ရန် (Login) လိုအပ်ပါသည်။
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => handleButtonClickWithEffect(e, goToLogin)}
+                          className="relative overflow-hidden w-full py-3.5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-xs sm:text-sm shadow-[0_6px_20px_rgba(212,175,55,0.4)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center"
+                        >
+                          <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
+                          <LogIn className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
+                          <span className="relative z-10">Login အရင်ဝင်မည်</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ==========================================
+                2. PLAYING SCREEN
+               ========================================== */}
+            {gameState === 'playing' && (
+              <>
+                <div className="absolute top-5 z-50 bg-[#140705]/90 border border-[#D4AF37]/60 px-6 py-2.5 rounded-full flex items-center text-[#D4AF37] font-black text-lg shadow-[0_0_25px_rgba(212,175,55,0.35)] backdrop-blur-md">
+                  <Timer className="w-5 h-5 mr-2 animate-pulse text-yellow-400" /> {timeLeft} စက္ကန့်
+                </div>
+                <div className="absolute bottom-8 z-40 text-center pointer-events-none">
+                  <span className="text-xs font-bold text-yellow-200/70 bg-black/50 px-4 py-1.5 rounded-full border border-white/10">
+                    ကျလာသော မီးပုံးလေးတစ်လုံးကို အမိဖမ်းနှိပ်ပါ 🏮
+                  </span>
+                </div>
+                {lanterns.map((lantern) => (
                   <div
                     key={lantern.id}
-                    className="ambient-lantern"
+                    onMouseDown={(e) => catchLantern(e, lantern.id)}
+                    onTouchStart={(e) => catchLantern(e, lantern.id)}
+                    className="lantern-anim hover:brightness-125"
                     style={{
                       left: `${lantern.left}%`,
                       animationDuration: `${lantern.duration}s`,
-                      animationDelay: `${lantern.delay || 0}s`,
                       fontSize: `${lantern.size}rem`,
-                      ['--max-op' as any]: lantern.opacity || 0.75
+                      top: '-10vh'
                     }}
                   >
                     🏮
                   </div>
                 ))}
-              </div>
+              </>
+            )}
 
-              <div className="relative z-10 mt-1 mb-4 flex flex-col items-center">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 text-[#D4AF37] text-[9px] font-extrabold uppercase tracking-[0.2em] mb-3.5 shadow-sm">
-                  <Sparkles className="w-3 h-3" /> Lucky Draw Game
-                </div>
+            {/* ==========================================
+                3. OPENING CAUGHT LANTERN
+               ========================================== */}
+            {gameState === 'opening' && caughtLantern && (
+              <div
+                className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center cursor-pointer"
+                onClick={openCaughtLantern}
+              >
+                <div
+                  className="caught-lantern-wrapper flex items-center justify-center"
+                  style={{ '--start-x': `${caughtLantern.left}px`, '--start-y': `${caughtLantern.top}px` } as React.CSSProperties}
+                >
+                  {!isBursting && (
+                    <>
+                      <div className="absolute w-44 h-44 rounded-full bg-amber-500/30 blur-2xl animate-pulse pointer-events-none"></div>
+                      <div className="absolute w-32 h-32 rounded-full border-2 border-[#D4AF37]/50 animate-ping pointer-events-none" style={{ animationDuration: '2s' }}></div>
+                    </>
+                  )}
 
-                <div className="relative w-16 h-16 rounded-full bg-gradient-to-b from-amber-500/25 to-orange-900/40 border border-[#D4AF37]/50 flex items-center justify-center shadow-[0_0_25px_rgba(245,158,11,0.35)] center-emblem-float">
-                  <div className="absolute inset-1 rounded-full border border-yellow-300/20"></div>
-                  <span className="text-3xl filter drop-shadow-[0_2px_8px_rgba(255,165,0,0.8)]">🏮</span>
-                </div>
-              </div>
-
-              <h2 className="relative z-10 text-xl sm:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-[#D4AF37] to-yellow-200 mb-2.5 tracking-wide leading-snug drop-shadow-sm">
-                {campaignTitle}
-              </h2>
-              <p className="relative z-10 text-gray-300/95 text-xs mb-6 leading-relaxed px-1 font-medium">
-                မီးပုံးလေးတွေကို ဖမ်းပြီး{' '}
-                <span className="text-yellow-400 font-extrabold underline decoration-[#D4AF37]/50 underline-offset-4">
-                  ၅၀% အထိ Discount
-                </span>{' '}
-                ရယူပါ။ <span className="block text-[10.5px] text-gray-400 mt-1">(တစ်ရက်လျှင် ၁ ကြိမ်သာ ကံစမ်းခွင့်ရှိသည်)</span>
-              </p>
-
-              <div className="relative z-10">
-                {userPhone ? (
-                  <div className="space-y-3.5">
-                    <div className="bg-black/50 border border-[#D4AF37]/35 rounded-xl py-3 px-4 flex items-center justify-center shadow-inner">
-                      <UserCircle className="w-4 h-4 text-[#D4AF37] mr-2" />
-                      <span className="text-xs sm:text-sm font-black text-yellow-400 tracking-[0.18em]">{userPhone}</span>
-                    </div>
-
-                    {alreadyPlayedToday ? (
-                      <div className="animate-fade-in space-y-3">
-                        <div className="bg-amber-950/40 border border-[#D4AF37]/30 rounded-xl p-3.5 text-center shadow-sm">
-                          <p className="text-[11px] text-yellow-200/90 font-semibold leading-relaxed">
-                            လူကြီးမင်းသည် ယနေ့အတွက် ကံစမ်းခွင့် ပြည့်သွားပါပြီ။ မနက်ဖြန်တွင် ထပ်မံကံစမ်းနိုင်ပါသည်။
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => handleButtonClickWithEffect(e, viewPreviousResult)}
-                          className="relative overflow-hidden w-full py-3.5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-xs sm:text-sm shadow-[0_6px_20px_rgba(212,175,55,0.4)] hover:shadow-[0_8px_25px_rgba(212,175,55,0.6)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center tracking-wide"
+                  {isBursting && (
+                    <>
+                      <div className="firework-ring"></div>
+                      <div className="firework-ring" style={{ animationDelay: '0.25s' }}></div>
+                      {OPENING_FIREWORKS.map((p) => (
+                        <div
+                          key={p.id}
+                          className="firework-particle flex items-center justify-center"
+                          style={
+                            {
+                              '--tx': p.tx,
+                              '--ty': p.ty,
+                              animationDelay: p.delay,
+                              width: p.size,
+                              height: p.size,
+                              backgroundColor: p.emoji ? 'transparent' : p.color,
+                              boxShadow: p.emoji ? 'none' : `0 0 14px ${p.color}`
+                            } as React.CSSProperties
+                          }
                         >
-                          <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
-                          <AlertCircle className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
-                          <span className="relative z-10">ရရှိထားသော Discount အား ကြည့်မည်</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => handleButtonClickWithEffect(e, startGame)}
-                        disabled={checkingUser}
-                        className="relative overflow-hidden w-full py-4 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-sm sm:text-base shadow-[0_6px_25px_rgba(212,175,55,0.45)] hover:shadow-[0_8px_30px_rgba(212,175,55,0.65)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center disabled:opacity-50 tracking-wide"
-                      >
-                        <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
-                        {checkingUser ? (
-                          <span className="relative z-10">စစ်ဆေးနေပါသည်...</span>
-                        ) : (
-                          <>
-                            <Sparkles className="w-5 h-5 mr-2 relative z-10 stroke-[2.5]" />
-                            <span className="relative z-10">ကစားမည် (Play Now)</span>
-                          </>
-                        )}
-                      </button>
-                    )}
+                          {p.emoji && <span className="text-xl drop-shadow-[0_0_10px_rgba(255,215,0,0.9)]">{p.emoji}</span>}
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  <div className={isBursting ? 'lantern-bursting' : 'lantern-shake-continuous'}>
+                    🏮
+                  </div>
+                </div>
+
+                {!isBursting ? (
+                  <div className="absolute bottom-24 text-center px-6 animate-fade-in">
+                    <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-[#D4AF37]/25 via-amber-500/35 to-[#D4AF37]/25 border border-[#D4AF37]/70 text-yellow-200 font-extrabold text-sm sm:text-base shadow-[0_0_30px_rgba(212,175,55,0.4)] animate-bounce">
+                      <Sparkles className="w-5 h-5 text-yellow-400" /> ဆုမဲဖွင့်ရန် မီးပုံးလေးကို နှိပ်ပါ
+                    </div>
                   </div>
                 ) : (
-                  <div className="space-y-3.5">
-                    <div className="bg-red-950/50 border border-red-500/30 rounded-xl p-3.5 text-xs text-red-200 font-medium leading-relaxed">
-                      ကံစမ်းမဲ ကစားရန်အတွက် အရင်ဆုံး အကောင့် ဝင်ရန် (Login) လိုအပ်ပါသည်။
+                  <div className="absolute bottom-24 text-center px-6 animate-fade-in">
+                    <div className="text-yellow-300 font-black text-base sm:text-lg tracking-wider drop-shadow-[0_0_12px_rgba(255,215,0,0.8)] animate-pulse">
+                      ✨ ကံထူးဆုမဲ ပွင့်နေပါပြီ... ✨
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => handleButtonClickWithEffect(e, goToLogin)}
-                      className="relative overflow-hidden w-full py-3.5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-xs sm:text-sm shadow-[0_6px_20px_rgba(212,175,55,0.4)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center"
-                    >
-                      <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
-                      <LogIn className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
-                      <span className="relative z-10">Login အရင်ဝင်မည်</span>
-                    </button>
                   </div>
                 )}
               </div>
+            )}
 
-            </div>
-          </div>
-        )}
+            {/* ==========================================
+                4. RESULT SCREEN
+               ========================================== */}
+            {gameState === 'result' && (
+              <div className="w-full max-w-[365px] mx-auto max-h-[85vh] overflow-y-auto scrollbar-hide z-50 rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37] via-[#D4AF37]/30 to-[#D4AF37]/70 shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_50px_rgba(212,175,55,0.25)] result-card-slow-enter">
+                <div className="relative text-center p-6 bg-gradient-to-b from-[#2a0e08] via-[#140705] to-[#0a0403] rounded-[calc(2rem-1.5px)] overflow-hidden">
+                  <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/35 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
 
-        {/* ==========================================
-            2. PLAYING SCREEN
-           ========================================== */}
-        {gameState === 'playing' && (
-          <>
-            <div className="absolute top-5 z-50 bg-[#140705]/90 border border-[#D4AF37]/60 px-6 py-2.5 rounded-full flex items-center text-[#D4AF37] font-black text-lg shadow-[0_0_25px_rgba(212,175,55,0.35)] backdrop-blur-md">
-              <Timer className="w-5 h-5 mr-2 animate-pulse text-yellow-400" /> {timeLeft} စက္ကန့်
-            </div>
-            <div className="absolute bottom-8 z-40 text-center pointer-events-none">
-              <span className="text-xs font-bold text-yellow-200/70 bg-black/50 px-4 py-1.5 rounded-full border border-white/10">
-                ကျလာသော မီးပုံးလေးတစ်လုံးကို အမိဖမ်းနှိပ်ပါ 🏮
-              </span>
-            </div>
-            {lanterns.map((lantern) => (
-              <div
-                key={lantern.id}
-                onMouseDown={(e) => catchLantern(e, lantern.id)}
-                onTouchStart={(e) => catchLantern(e, lantern.id)}
-                className="lantern-anim hover:brightness-125"
-                style={{
-                  left: `${lantern.left}%`,
-                  animationDuration: `${lantern.duration}s`,
-                  fontSize: `${lantern.size}rem`,
-                  top: '-10vh'
-                }}
-              >
-                🏮
-              </div>
-            ))}
-          </>
-        )}
-
-        {/* ==========================================
-            3. OPENING CAUGHT LANTERN (Slow & Grandiose Burst!)
-           ========================================== */}
-        {gameState === 'opening' && caughtLantern && (
-          <div
-            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center cursor-pointer"
-            onClick={openCaughtLantern}
-          >
-            <div
-              className="caught-lantern-wrapper flex items-center justify-center"
-              style={{ '--start-x': `${caughtLantern.left}px`, '--start-y': `${caughtLantern.top}px` } as React.CSSProperties}
-            >
-              {/* Ambient Pulsing Rings behind Shaking Lantern */}
-              {!isBursting && (
-                <>
-                  <div className="absolute w-44 h-44 rounded-full bg-amber-500/30 blur-2xl animate-pulse pointer-events-none"></div>
-                  <div className="absolute w-32 h-32 rounded-full border-2 border-[#D4AF37]/50 animate-ping pointer-events-none" style={{ animationDuration: '2s' }}></div>
-                </>
-              )}
-
-              {/* 🌟 နှိပ်လိုက်သည့်အခါ ဖြည်းဖြည်းနှင့် ကြီးကျယ်စွာ ဖွာထွက်လာမည့် Fireworks Effect 🌟 */}
-              {isBursting && (
-                <>
-                  <div className="firework-ring"></div>
-                  <div className="firework-ring" style={{ animationDelay: '0.25s' }}></div>
-                  {OPENING_FIREWORKS.map((p) => (
-                    <div
-                      key={p.id}
-                      className="firework-particle flex items-center justify-center"
-                      style={
-                        {
-                          '--tx': p.tx,
-                          '--ty': p.ty,
-                          animationDelay: p.delay,
-                          width: p.size,
-                          height: p.size,
-                          backgroundColor: p.emoji ? 'transparent' : p.color,
-                          boxShadow: p.emoji ? 'none' : `0 0 14px ${p.color}`
-                        } as React.CSSProperties
-                      }
-                    >
-                      {p.emoji && <span className="text-xl drop-shadow-[0_0_10px_rgba(255,215,0,0.9)]">{p.emoji}</span>}
+                  <div className="absolute top-0 left-0 right-0 h-44 overflow-hidden pointer-events-none z-0">
+                    <div className="absolute top-12 left-1/2 -translate-x-1/2">
+                      {HEADER_SPARK_RAYS.map((r) => (
+                        <div
+                          key={`center-${r.id}`}
+                          className="continuous-firework-ray"
+                          style={{
+                            '--tx': r.tx,
+                            '--ty': r.ty,
+                            backgroundColor: r.color,
+                            boxShadow: `0 0 10px ${r.color}`,
+                            animationDelay: '0s'
+                          } as React.CSSProperties}
+                        />
+                      ))}
                     </div>
-                  ))}
-                </>
-              )}
+                    <div className="absolute top-10 left-[20%]">
+                      {HEADER_SPARK_RAYS.map((r) => (
+                        <div
+                          key={`left-${r.id}`}
+                          className="continuous-firework-ray"
+                          style={{
+                            '--tx': r.tx,
+                            '--ty': r.ty,
+                            backgroundColor: r.color,
+                            boxShadow: `0 0 10px ${r.color}`,
+                            animationDelay: '0.8s'
+                          } as React.CSSProperties}
+                        />
+                      ))}
+                    </div>
+                    <div className="absolute top-10 left-[80%]">
+                      {HEADER_SPARK_RAYS.map((r) => (
+                        <div
+                          key={`right-${r.id}`}
+                          className="continuous-firework-ray"
+                          style={{
+                            '--tx': r.tx,
+                            '--ty': r.ty,
+                            backgroundColor: r.color,
+                            boxShadow: `0 0 10px ${r.color}`,
+                            animationDelay: '1.6s'
+                          } as React.CSSProperties}
+                        />
+                      ))}
+                    </div>
+                  </div>
 
-              {/* 🌟 လှုပ်ခါနေသော မီးပုံး 🌟 */}
-              <div className={isBursting ? 'lantern-bursting' : 'lantern-shake-continuous'}>
-                🏮
-              </div>
-            </div>
+                  <div className="relative z-10 w-16 h-16 rounded-full bg-gradient-to-b from-[#D4AF37]/30 to-amber-900/40 border border-[#D4AF37]/60 flex items-center justify-center mx-auto mb-3 shadow-[0_0_25px_rgba(212,175,55,0.4)] center-emblem-float">
+                    <PartyPopper className="w-8 h-8 text-yellow-300" />
+                  </div>
 
-            {!isBursting ? (
-              <div className="absolute bottom-24 text-center px-6 animate-fade-in">
-                <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-[#D4AF37]/25 via-amber-500/35 to-[#D4AF37]/25 border border-[#D4AF37]/70 text-yellow-200 font-extrabold text-sm sm:text-base shadow-[0_0_30px_rgba(212,175,55,0.4)] animate-bounce">
-                  <Sparkles className="w-5 h-5 text-yellow-400" /> ဆုမဲဖွင့်ရန် မီးပုံးလေးကို နှိပ်ပါ
-                </div>
-              </div>
-            ) : (
-              <div className="absolute bottom-24 text-center px-6 animate-fade-in">
-                <div className="text-yellow-300 font-black text-base sm:text-lg tracking-wider drop-shadow-[0_0_12px_rgba(255,215,0,0.8)] animate-pulse">
-                  ✨ ကံထူးဆုမဲ ပွင့်နေပါပြီ... ✨
+                  <h2 className="text-lg sm:text-xl font-extrabold text-white mb-4 relative z-10 tracking-wide">
+                    ဂုဏ်ယူပါတယ် ခင်ဗျာ! 🎉
+                  </h2>
+
+                  <div className="relative z-10 bg-gradient-to-b from-black/70 to-black/50 border border-[#D4AF37]/50 rounded-2xl p-5 mb-4 shadow-[inset_0_0_25px_rgba(212,175,55,0.12)]">
+                    <div className="text-[10px] font-extrabold uppercase tracking-[0.25em] text-[#D4AF37]/80 mb-1">
+                      Special Reward
+                    </div>
+                    <div className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-[#D4AF37] to-amber-400 drop-shadow-md my-1">
+                      {prize}% OFF
+                    </div>
+                    <p className="text-yellow-400/90 text-xs font-bold tracking-wide mt-1">
+                      အထူး Discount ရရှိသွားပါပြီ
+                    </p>
+                  </div>
+
+                  <div className="text-left bg-white/[0.06] px-4 py-3 rounded-xl mb-4 border border-[#D4AF37]/25 relative z-10 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-gray-400 font-semibold mb-0.5">Promo Code ({userPhone}):</p>
+                      <span className="font-mono font-black text-base tracking-widest text-yellow-300">
+                        PROMO-{prize}
+                      </span>
+                    </div>
+                    <span className="text-[9px] bg-[#D4AF37] text-[#123524] px-2.5 py-1 rounded-full font-black uppercase tracking-wider shadow-sm">
+                      Applied
+                    </span>
+                  </div>
+
+                  <div className="bg-[#0088cc]/10 border border-[#0088cc]/35 rounded-2xl p-4 mb-4 relative z-10">
+                    <p className="text-[11px] leading-relaxed text-blue-100/90 mb-3 font-medium">
+                      ယခု Discount ခံစားခွင့်အား ဆိုင်တွင် Walk-in လာရောက်သည့်အခါ အသုံးပြုနိုင်ရန် အောက်ပါခလုတ်ကိုနှိပ်၍ Telegram မှတဆင့် Admin ထံသို့ အကြောင်းကြားပေးပါ။
+                    </p>
+                    <a
+                      href={getTelegramLink()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={markTelegramClicked}
+                      className="w-full py-3 bg-gradient-to-r from-[#0088cc] to-[#0077b5] text-white rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition flex items-center justify-center relative z-20 cursor-pointer active:scale-95"
+                    >
+                      <MessageCircle className="w-4 h-4 mr-2" /> Telegram Admin သို့ ပို့မည်
+                    </a>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => handleButtonClickWithEffect(e, handleBackToMainBooking)}
+                    className="relative overflow-hidden w-full py-4 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-sm sm:text-base shadow-[0_6px_25px_rgba(212,175,55,0.45)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center z-10"
+                  >
+                    <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
+                    <CalendarCheck className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
+                    <span className="relative z-10">App မှ Booking ပြန်တင်မည်</span>
+                  </button>
+
+                  <div className="mt-6 text-left border-t border-[#D4AF37]/20 pt-5 relative z-10">
+                    <h4 className="text-[10px] font-extrabold text-[#D4AF37] uppercase tracking-widest mb-2.5 flex items-center">
+                      <Info className="w-3.5 h-3.5 mr-1.5" /> Terms & Conditions
+                    </h4>
+                    <ul className="space-y-2">
+                      <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
+                        <span className="text-[#D4AF37] mr-2 font-bold">•</span>
+                        <span>တစ်ရက်လျှင် တစ်ကြိမ်သာ ကံစမ်းခွင့်ရှိပါသည်။</span>
+                      </li>
+                      <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
+                        <span className="text-[#D4AF37] mr-2 font-bold">•</span>
+                        <span>ရရှိထားသော Discount ခံစားခွင့်အား (Waxing Service) များမှလွဲ၍ ဆိုင်၏ ဝန်ဆောင်မှုအားလုံးအပေါ်တွင် အသုံးပြုနိုင်ပါသည်။</span>
+                      </li>
+                      <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
+                        <span className="text-[#D4AF37] mr-2 font-bold">•</span>
+                        <span>ရရှိထားသော Discount ခံစားခွင့်သည် သင်ရရှိလိုက်သော နေ့ရက် တစ်ရက်တည်းအတွက်သာ (24 Hours) အကျုံးဝင်ပါသည်။</span>
+                      </li>
+                      <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
+                        <span className="text-[#D4AF37] mr-2 font-bold">•</span>
+                        <span>
+                          VIP Member Card ရှိသူများ အနေဖြင့် ပုံမှန် VIP Discount နှင့် ဤ Campaign Discount အား နှစ်ထပ်ကွမ်း (Double Promotion) အသုံးပြုခွင့် မရှိပါ။ မိမိအတွက် ပိုမိုသက်သာသော Discount တစ်ခုကိုသာ အသုံးပြုနိုင်ပါသည်။
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             )}
-          </div>
+          </>
         )}
-
-        {/* ==========================================
-            4. RESULT SCREEN (With Continuous Top Fireworks!)
-           ========================================== */}
-        {gameState === 'result' && (
-          <div className="w-full max-w-[365px] mx-auto max-h-[85vh] overflow-y-auto scrollbar-hide z-50 rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37] via-[#D4AF37]/30 to-[#D4AF37]/70 shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_50px_rgba(212,175,55,0.25)] result-card-slow-enter">
-            <div className="relative text-center p-6 bg-gradient-to-b from-[#2a0e08] via-[#140705] to-[#0a0403] rounded-[calc(2rem-1.5px)] overflow-hidden">
-              
-              {/* Top Golden Spotlight */}
-              <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/35 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
-
-              {/* 🌟 FIX: Result Card အပေါ်ထိပ်တွင် မီးရှူးမီးပန်းများ အဆက်မပြတ် ဖွာထွက်နေမည့် အပိုင်း (ဘယ်၊ အလယ်၊ ညာ ၃ နေရာ) 🌟 */}
-              <div className="absolute top-0 left-0 right-0 h-44 overflow-hidden pointer-events-none z-0">
-                {/* ၁။ အလယ်ဗဟို မီးပန်း */}
-                <div className="absolute top-12 left-1/2 -translate-x-1/2">
-                  {HEADER_SPARK_RAYS.map((r) => (
-                    <div
-                      key={`center-${r.id}`}
-                      className="continuous-firework-ray"
-                      style={{
-                        '--tx': r.tx,
-                        '--ty': r.ty,
-                        backgroundColor: r.color,
-                        boxShadow: `0 0 10px ${r.color}`,
-                        animationDelay: '0s'
-                      } as React.CSSProperties}
-                    />
-                  ))}
-                </div>
-                {/* ၂။ ဘယ်ဘက်အပေါ် မီးပန်း */}
-                <div className="absolute top-10 left-[20%]">
-                  {HEADER_SPARK_RAYS.map((r) => (
-                    <div
-                      key={`left-${r.id}`}
-                      className="continuous-firework-ray"
-                      style={{
-                        '--tx': r.tx,
-                        '--ty': r.ty,
-                        backgroundColor: r.color,
-                        boxShadow: `0 0 10px ${r.color}`,
-                        animationDelay: '0.8s'
-                      } as React.CSSProperties}
-                    />
-                  ))}
-                </div>
-                {/* ၃။ ညာဘက်အပေါ် မီးပန်း */}
-                <div className="absolute top-10 left-[80%]">
-                  {HEADER_SPARK_RAYS.map((r) => (
-                    <div
-                      key={`right-${r.id}`}
-                      className="continuous-firework-ray"
-                      style={{
-                        '--tx': r.tx,
-                        '--ty': r.ty,
-                        backgroundColor: r.color,
-                        boxShadow: `0 0 10px ${r.color}`,
-                        animationDelay: '1.6s'
-                      } as React.CSSProperties}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Celebration Emblem */}
-              <div className="relative z-10 w-16 h-16 rounded-full bg-gradient-to-b from-[#D4AF37]/30 to-amber-900/40 border border-[#D4AF37]/60 flex items-center justify-center mx-auto mb-3 shadow-[0_0_25px_rgba(212,175,55,0.4)] center-emblem-float">
-                <PartyPopper className="w-8 h-8 text-yellow-300" />
-              </div>
-
-              <h2 className="text-lg sm:text-xl font-extrabold text-white mb-4 relative z-10 tracking-wide">
-                ဂုဏ်ယူပါတယ် ခင်ဗျာ! 🎉
-              </h2>
-
-              {/* 🌟 Luxury Discount Prize Box 🌟 */}
-              <div className="relative z-10 bg-gradient-to-b from-black/70 to-black/50 border border-[#D4AF37]/50 rounded-2xl p-5 mb-4 shadow-[inset_0_0_25px_rgba(212,175,55,0.12)]">
-                <div className="text-[10px] font-extrabold uppercase tracking-[0.25em] text-[#D4AF37]/80 mb-1">
-                  Special Reward
-                </div>
-                <div className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-[#D4AF37] to-amber-400 drop-shadow-md my-1">
-                  {prize}% OFF
-                </div>
-                <p className="text-yellow-400/90 text-xs font-bold tracking-wide mt-1">
-                  အထူး Discount ရရှိသွားပါပြီ
-                </p>
-              </div>
-
-              {/* 🌟 Promo Code Ticket Bar 🌟 */}
-              <div className="text-left bg-white/[0.06] px-4 py-3 rounded-xl mb-4 border border-[#D4AF37]/25 relative z-10 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] text-gray-400 font-semibold mb-0.5">Promo Code ({userPhone}):</p>
-                  <span className="font-mono font-black text-base tracking-widest text-yellow-300">
-                    PROMO-{prize}
-                  </span>
-                </div>
-                <span className="text-[9px] bg-[#D4AF37] text-[#123524] px-2.5 py-1 rounded-full font-black uppercase tracking-wider shadow-sm">
-                  Applied
-                </span>
-              </div>
-
-              {/* 🌟 Telegram Walk-in Section 🌟 */}
-              <div className="bg-[#0088cc]/10 border border-[#0088cc]/35 rounded-2xl p-4 mb-4 relative z-10">
-                <p className="text-[11px] leading-relaxed text-blue-100/90 mb-3 font-medium">
-                  ယခု Discount ခံစားခွင့်အား ဆိုင်တွင် Walk-in လာရောက်သည့်အခါ အသုံးပြုနိုင်ရန် အောက်ပါခလုတ်ကိုနှိပ်၍ Telegram မှတဆင့် Admin ထံသို့ အကြောင်းကြားပေးပါ။
-                </p>
-                <a
-                  href={getTelegramLink()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={markTelegramClicked}
-                  className="w-full py-3 bg-gradient-to-r from-[#0088cc] to-[#0077b5] text-white rounded-xl font-bold text-xs shadow-md hover:opacity-95 transition flex items-center justify-center relative z-20 cursor-pointer active:scale-95"
-                >
-                  <MessageCircle className="w-4 h-4 mr-2" /> Telegram Admin သို့ ပို့မည်
-                </a>
-              </div>
-
-              {/* 🌟 Primary Booking CTA Button 🌟 */}
-              <button
-                type="button"
-                onClick={(e) =>
-                  handleButtonClickWithEffect(e, () => {
-                    window.location.href = '/';
-                  })
-                }
-                className="relative overflow-hidden w-full py-4 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-sm sm:text-base shadow-[0_6px_25px_rgba(212,175,55,0.45)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center z-10"
-              >
-                <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
-                <CalendarCheck className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
-                <span className="relative z-10">App မှ Booking ပြန်တင်မည်</span>
-              </button>
-
-              {/* 🌟 Terms & Conditions 🌟 */}
-              <div className="mt-6 text-left border-t border-[#D4AF37]/20 pt-5 relative z-10">
-                <h4 className="text-[10px] font-extrabold text-[#D4AF37] uppercase tracking-widest mb-2.5 flex items-center">
-                  <Info className="w-3.5 h-3.5 mr-1.5" /> Terms & Conditions
-                </h4>
-                <ul className="space-y-2">
-                  <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
-                    <span className="text-[#D4AF37] mr-2 font-bold">•</span>
-                    <span>တစ်ရက်လျှင် တစ်ကြိမ်သာ ကံစမ်းခွင့်ရှိပါသည်။</span>
-                  </li>
-                  <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
-                    <span className="text-[#D4AF37] mr-2 font-bold">•</span>
-                    <span>ရရှိထားသော Discount ခံစားခွင့်အား (Waxing Service) များမှလွဲ၍ ဆိုင်၏ ဝန်ဆောင်မှုအားလုံးအပေါ်တွင် အသုံးပြုနိုင်ပါသည်။</span>
-                  </li>
-                  <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
-                    <span className="text-[#D4AF37] mr-2 font-bold">•</span>
-                    <span>ရရှိထားသော Discount ခံစားခွင့်သည် သင်ရရှိလိုက်သော နေ့ရက် တစ်ရက်တည်းအတွက်သာ (24 Hours) အကျုံးဝင်ပါသည်။</span>
-                  </li>
-                  <li className="text-[10px] text-gray-300/90 font-medium leading-relaxed flex items-start">
-                    <span className="text-[#D4AF37] mr-2 font-bold">•</span>
-                    <span>
-                      VIP Member Card ရှိသူများ အနေဖြင့် ပုံမှန် VIP Discount နှင့် ဤ Campaign Discount အား နှစ်ထပ်ကွမ်း (Double Promotion) အသုံးပြုခွင့် မရှိပါ။ မိမိအတွက် ပိုမိုသက်သာသော Discount တစ်ခုကိုသာ အသုံးပြုနိုင်ပါသည်။
-                    </span>
-                  </li>
-                </ul>
-              </div>
-
-            </div>
-          </div>
-        )}
-
       </div>
     </div>
   );
