@@ -1014,6 +1014,38 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     }
   };
 
+  // 🌟 Walk-in Phone Booking ကို Cancel လုပ်ခြင်း & Telegram Noti ပို့ခြင်း 🌟
+  const handleCancelWalkInBooking = async (booking: any) => {
+    if (!confirm(`(${booking.invoiceNo || booking.txId}) ဘိုကင်ကို ဖျက်သိမ်းမည်မှာ သေချာပါသလား?`)) return;
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status: 'cancelled',
+        cancelledAt: Date.now(),
+        cancelReason: 'POS မှ ဘိုကင်ဖျက်သိမ်းသည်'
+      });
+
+      const { notifyBookingEvent } = await import('../telegramService');
+      await notifyBookingEvent('STATUS_UPDATE', {
+        id: booking.invoiceNo || booking.txId || booking.id,
+        customerName: booking.name || 'Walk-in Guest',
+        customerPhone: booking.phone || '-',
+        serviceName: booking.service || 'Spa Service',
+        durationMins: booking.durationMins || 60,
+        price: Number(booking.totalPrice) || 0,
+        date: booking.date || getLocalTodayStr(),
+        time: booking.time || '',
+        therapistName: booking.therapist || 'Therapist',
+        status: 'cancelled',
+        notes: '⚠️ ဤဖုန်းဆက်ကြိုတင်ဘိုကင်ကို POS မှ Cancel လုပ်လိုက်ပါပြီ။',
+        updatedBy: `${currentPosUser?.displayName || 'Cashier'} (POS)`
+      });
+
+      alert('✅ ဘိုကင်ကို အောင်မြင်စွာ ဖျက်သိမ်းပြီး Cancel Noti ပို့ပြီးပါပြီ။');
+    } catch (err: any) {
+      alert('Error cancelling booking: ' + err.message);
+    }
+  };
+
   // 🌟 လက်ရှိ ပြင်ဆင်နေသော Online Booking ကို မှတ်သားထားမည့် State 🌟
   const [editingOnlineBooking, setEditingOnlineBooking] = useState<any | null>(null);
 
@@ -4018,11 +4050,10 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                 <div>
                   <label className="block text-[11px] font-bold text-gray-600 mb-1">ချိန်းဆိုချိန်</label>
                   <input
-                    type="text"
+                    type="time"
                     value={wbTime}
                     onChange={(e) => setWbTime(e.target.value)}
-                    placeholder="3:00 PM"
-                    className="w-full p-2 rounded-xl border border-gray-200 text-xs font-bold"
+                    className="w-full p-2 rounded-xl border border-gray-200 text-xs font-black text-[#123524]"
                   />
                 </div>
                 <div>
@@ -4050,6 +4081,62 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                     <option key={t.id} value={t.name}>{t.name}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* 🌟 Quick Add VIP Room & Extra Items (Towel, Oil, Drinks) 🌟 */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#D4AF37] uppercase mb-1.5">
+                  ★ အပိုပစ္စည်း နှင့် VVIP Room ထပ်ပေါင်းရန် (Quick Add)
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {/* VVIP Room Add Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const vvipName = '+ VVIP Room Upgrade';
+                      const exists = wbSelectedItems.find((x) => x.name === vvipName);
+                      if (exists) {
+                        setWbSelectedItems(
+                          wbSelectedItems.map((x) => (x.name === vvipName ? { ...x, qty: x.qty + 1 } : x))
+                        );
+                      } else {
+                        setWbSelectedItems([
+                          ...wbSelectedItems,
+                          { name: vvipName, durationMins: 0, price: 10000, qty: 1 }
+                        ]);
+                      }
+                    }}
+                    className="p-2 rounded-xl bg-yellow-50 hover:bg-yellow-100 border border-[#D4AF37]/50 text-xs font-bold text-[#123524] flex items-center justify-between"
+                  >
+                    <span>👑 VVIP Room</span>
+                    <span className="text-[10px] font-black text-[#D4AF37] bg-[#123524] px-1.5 py-0.5 rounded">+10,000 Ks</span>
+                  </button>
+
+                  {/* Saved Extra Items (Towel, Oil, Drink) */}
+                  {savedExtraItems.map((ext) => (
+                    <button
+                      key={ext.id}
+                      type="button"
+                      onClick={() => {
+                        const exists = wbSelectedItems.find((x) => x.name === ext.name);
+                        if (exists) {
+                          setWbSelectedItems(
+                            wbSelectedItems.map((x) => (x.name === ext.name ? { ...x, qty: x.qty + 1 } : x))
+                          );
+                        } else {
+                          setWbSelectedItems([
+                            ...wbSelectedItems,
+                            { name: ext.name, durationMins: 0, price: ext.price, qty: 1 }
+                          ]);
+                        }
+                      }}
+                      className="p-2 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 text-xs font-bold text-gray-800 flex items-center justify-between truncate"
+                    >
+                      <span className="truncate pr-1">• {ext.name}</span>
+                      <span className="text-[10px] font-bold text-gray-600 whitespace-nowrap">{formatPrice(ext.price)}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>
@@ -4204,12 +4291,37 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                         </div>
                       )}
 
-                      <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                     <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                        {!isInService && b.status !== 'cancelled' && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelWalkInBooking(b)}
+                            className="px-3 py-2.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold transition flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Cancel Booking
+                          </button>
+                        )}
                         {!isInService ? (
                           <button
                             type="button"
                             disabled={wbProcessing}
                             onClick={() => handleIssueVoucherAndStartClockIn(b)}
+                            className="px-4 py-2.5 rounded-xl bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] text-xs font-black shadow-sm flex items-center gap-1.5"
+                          >
+                            <Printer className="w-4 h-4" />
+                            ဘောင်ချာထုတ် & Start Clock-In
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleCompleteWalkInBooking(b)}
+                            className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 text-xs font-black shadow-sm flex items-center gap-1.5"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Clock Out & Complete
+                          </button>
+                        )}
+                      </div>
                             className="px-4 py-2.5 rounded-xl bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] text-xs font-black shadow-sm flex items-center gap-1.5"
                           >
                             <Printer className="w-4 h-4" />
