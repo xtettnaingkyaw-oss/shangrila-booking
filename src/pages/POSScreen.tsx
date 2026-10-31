@@ -4291,7 +4291,7 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                         </div>
                       )}
 
-                     <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-gray-100">
                         {!isInService && b.status !== 'cancelled' && (
                           <button
                             type="button"
@@ -4301,27 +4301,12 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                             <Trash2 className="w-3.5 h-3.5" /> Cancel Booking
                           </button>
                         )}
+
                         {!isInService ? (
                           <button
                             type="button"
                             disabled={wbProcessing}
                             onClick={() => handleIssueVoucherAndStartClockIn(b)}
-                            className="px-4 py-2.5 rounded-xl bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] text-xs font-black shadow-sm flex items-center gap-1.5"
-                          >
-                            <Printer className="w-4 h-4" />
-                            ဘောင်ချာထုတ် & Start Clock-In
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleCompleteWalkInBooking(b)}
-                            className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 text-xs font-black shadow-sm flex items-center gap-1.5"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            Clock Out & Complete
-                          </button>
-                        )}
-                      </div>
                             className="px-4 py-2.5 rounded-xl bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] text-xs font-black shadow-sm flex items-center gap-1.5"
                           >
                             <Printer className="w-4 h-4" />
