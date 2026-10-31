@@ -623,46 +623,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
 
     return () => unsubscribe();
   }, [liveStaff.name, appData]);
-          const durInfo = extractAccurateServiceDurationMins(b, appData);
-          const startMs = b.startTimeMillis || parseBookingDateTimeToMillis(b.date, b.time, b.createdAt);
-          const expectedEndMs = startMs + durInfo.totalMins * 60 * 1000;
-
-          if (b.date !== todayStr) {
-            updateDoc(doc(db, 'bookings', docSnap.id), {
-              status: 'completed',
-              actualEndTimeMillis: expectedEndMs,
-              overtimeSeconds: 0
-            }).catch(() => {});
-            return;
-          }
-
-          if (isStrictlyAdminClockIn(b) && now >= expectedEndMs) {
-            updateDoc(doc(db, 'bookings', docSnap.id), {
-              status: 'completed',
-              startTimeMillis: startMs,
-              expectedEndTimeMillis: expectedEndMs,
-              actualEndTimeMillis: expectedEndMs,
-              overtimeSeconds: 0
-            }).catch(() => {});
-            return;
-          }
-
-          myActiveCandidates.push(b);
-        } else if (b.date === todayStr && (b.status === 'approved' || b.status === 'payment_checking')) {
-          myUpcomingToday.push(b);
-        }
-      });
-
-      myActiveCandidates.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setActiveSession(myActiveCandidates[0] || null);
-
-      myUpcomingToday.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-      setUpcomingBookings(myUpcomingToday);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [liveStaff.name, appData]);
+      
 
   useEffect(() => {
     const q = query(collection(db, 'penalties'), where('therapistName', '==', liveStaff.name));
