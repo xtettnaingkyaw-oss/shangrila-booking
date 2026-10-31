@@ -574,7 +574,55 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
           specialRequest: decryptText(raw.specialRequest) || raw.specialRequest || ''
         } as Booking;
 
+        // 🌟 Walk-in Phone Booking ၍ ဘောင်ချာမထုတ်ရသေးပါက (Upcoming တွင် စောင့်ဆိုင်းဆဲအဖြစ် ပြမည်) 🌟
+        if (b.bookingSource === 'walkin_phone' && !b.voucherIssued && b.status !== 'completed' && b.status !== 'cancelled') {
+          if (b.date === todayStr) {
+            myUpcomingToday.push(b);
+          }
+          return;
+        }
+
         if (b.status === 'in_progress') {
+          const durInfo = extractAccurateServiceDurationMins(b, appData);
+          const startMs = b.startTimeMillis || parseBookingDateTimeToMillis(b.date, b.time, b.createdAt);
+          const expectedEndMs = startMs + durInfo.totalMins * 60 * 1000;
+
+          if (b.date !== todayStr) {
+            updateDoc(doc(db, 'bookings', docSnap.id), {
+              status: 'completed',
+              actualEndTimeMillis: expectedEndMs,
+              overtimeSeconds: 0
+            }).catch(() => {});
+            return;
+          }
+
+          if (isStrictlyAdminClockIn(b) && now >= expectedEndMs) {
+            updateDoc(doc(db, 'bookings', docSnap.id), {
+              status: 'completed',
+              startTimeMillis: startMs,
+              expectedEndTimeMillis: expectedEndMs,
+              actualEndTimeMillis: expectedEndMs,
+              overtimeSeconds: 0
+            }).catch(() => {});
+            return;
+          }
+
+          myActiveCandidates.push(b);
+        } else if (b.date === todayStr && (b.status === 'approved' || b.status === 'payment_checking')) {
+          myUpcomingToday.push(b);
+        }
+      });
+
+      myActiveCandidates.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setActiveSession(myActiveCandidates[0] || null);
+
+      myUpcomingToday.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+      setUpcomingBookings(myUpcomingToday);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [liveStaff.name, appData]);
           const durInfo = extractAccurateServiceDurationMins(b, appData);
           const startMs = b.startTimeMillis || parseBookingDateTimeToMillis(b.date, b.time, b.createdAt);
           const expectedEndMs = startMs + durInfo.totalMins * 60 * 1000;
@@ -997,14 +1045,14 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
             </div>
           )}
 
-          {/* Today's Upcoming Online Bookings */}
+          {/* Today's Upcoming Bookings */}
           {upcomingBookings.length > 0 && (
             <div className="bg-gray-50 p-4 sm:p-5 rounded-2xl border border-gray-200 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-xs sm:text-sm font-black text-[#123524] flex items-center">
                     <Hourglass className="w-4 h-4 mr-1.5 text-[#D4AF37]" />
-                    ယနေ့ ကြိုတင်ဘိုကင်စာရင်း (Upcoming Online Bookings)
+                    ယနေ့ ကြိုတင်ဘိုကင်စာရင်း (Upcoming Bookings)
                   </h4>
                   <p className="text-[10px] text-gray-500 font-semibold mt-0.5">
                     ဧည့်သည်ရောက်ရှိပြီး POS မှ ဘောင်ချာထုတ်လိုက်သည်နှင့် အချိန်စတင်မှတ်သားပေးပါမည်
@@ -1017,23 +1065,35 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
               <div className="space-y-2">
                 {upcomingBookings.map((ub) => {
                   const dur = extractAccurateServiceDurationMins(ub, appData);
+                  const isWalkInPhone = ub.bookingSource === 'walkin_phone';
                   return (
                     <div
                       key={ub.id}
                       className="bg-white p-3.5 rounded-xl border border-gray-200 flex flex-wrap items-center justify-between gap-2 shadow-xs"
                     >
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-black text-[#123524] bg-yellow-50 border border-[#D4AF37]/40 px-2 py-0.5 rounded">
                             ချိန်းဆိုချိန်: {ub.time}
                           </span>
+                          {isWalkInPhone && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-[#123524] border border-[#D4AF37]">
+                              🏷️ ဖုန်းဆက်ဘိုကင်
+                            </span>
+                          )}
                           <span className="font-bold text-xs sm:text-sm text-gray-800">{ub.service}</span>
                         </div>
                         <div className="text-[11px] text-gray-500 mt-1">
-                          Customer: <strong className="text-gray-700">{ub.name}</strong> • သတ်မှတ်ချိန်: <strong>{formatMinsToHrMinBurmese(dur.totalMins)}</strong>
+                          Customer: <strong className="text-gray-700">{ub.name}</strong> {ub.phone && ub.phone !== '-' ? `(${ub.phone})` : ''} • သတ်မှတ်ချိန်: <strong>{formatMinsToHrMinBurmese(dur.totalMins)}</strong>
                         </div>
                       </div>
-                      <StatusBadge status={ub.status} />
+                      {isWalkInPhone ? (
+                        <span className="text-amber-700 border border-amber-200 bg-amber-50 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                          ⏳ ဘောင်ချာစောင့်ဆိုင်းဆဲ
+                        </span>
+                      ) : (
+                        <StatusBadge status={ub.status} />
+                      )}
                     </div>
                   );
                 })}
