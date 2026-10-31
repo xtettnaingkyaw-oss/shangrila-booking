@@ -4,55 +4,136 @@ import { AppData } from '../shared';
 
 const getLocalTodayStr = () => {
   const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  return (
+    d.getFullYear() +
+    '-' +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(d.getDate()).padStart(2, '0')
+  );
 };
 
 export default function ThadingyutPopup({ appData }: { appData: AppData }) {
   const [isVisible, setIsVisible] = useState(false);
-  const [fallingLanterns, setFallingLanterns] = useState<{ id: number; left: number; duration: number; size: number; delay: number; opacity: number }[]>([]);
+  const [fallingLanterns, setFallingLanterns] = useState<
+    { id: number; left: number; duration: number; size: number; delay: number; opacity: number }[]
+  >([]);
+
+  // ============================================================================
+  // 🌟 UNIVERSAL POPUP & CAMPAIGN CHECKER (လက်ရှိနှင့် အသစ်ထပ်လုပ်မည့် Campaign အားလုံးအတွက်) 🌟
+  // ============================================================================
+  const getActivePopupCampaign = () => {
+    const promo: any = appData?.promotion;
+    if (!promo) return null;
+
+    const todayStr = getLocalTodayStr();
+
+    // 1. Admin Dashboard မှ "All OFF" သို့မဟုတ် Popup Game ပိတ်ထားပါက လုံးဝ မပြပါ
+    if (
+      promo.allOff === true ||
+      promo.isActive === false ||
+      promo.enabled === false ||
+      promo.popupEnabled === false ||
+      promo.miniGamePopup === false ||
+      promo.gameEnabled === false ||
+      promo.isPopupActive === false
+    ) {
+      return null;
+    }
+
+    // 2. Saved Promotion & Campaign Cards စာရင်းရှိပါက Active ဖြစ်ပြီး Mini Game Popup ဖွင့်ထားသော ကဒ်ကို ရှာမည်
+    const cards: any[] =
+      promo.campaigns ||
+      promo.cards ||
+      promo.savedCampaigns ||
+      (appData as any)?.campaigns ||
+      [];
+
+    if (Array.isArray(cards) && cards.length > 0) {
+      const activeCard = cards.find((c: any) => {
+        const cardEnabled =
+          c.isActive === true || c.active === true || c.enabled === true || c.status === 'ACTIVE';
+        const popupAllowed =
+          c.miniGamePopup !== false &&
+          c.popupEnabled !== false &&
+          c.gameEnabled !== false &&
+          c.isPopupActive !== false;
+        const withinDate =
+          (!c.startDate || todayStr >= c.startDate) &&
+          (!c.endDate || todayStr <= c.endDate);
+
+        return cardEnabled && popupAllowed && withinDate;
+      });
+
+      // Cards စာရင်းရှိသော်လည်း မည်သည့် Card မှ Popup ဖွင့်မထားပါက Popup လုံးဝ မတက်ရပါ
+      if (!activeCard) return null;
+
+      return {
+        id: activeCard.id || activeCard.slug || '',
+        title: activeCard.title || activeCard.campaignTitle || promo.campaignTitle || 'အထူးပရိုမိုးရှင်း အစီအစဉ်',
+        maxDiscount: activeCard.otherDiscount || activeCard.maxDiscount || 50
+      };
+    }
+
+    // 3. Card စာရင်းမသုံးဘဲ Single Promotion Object သုံးထားပါက isActive နှင့် ရက်စွဲကို တိကျစွာ စစ်ဆေးမည်
+    if (promo.isActive !== true || !promo.startDate || !promo.endDate) {
+      return null;
+    }
+
+    const withinPromoDate = todayStr >= promo.startDate && todayStr <= promo.endDate;
+    if (!withinPromoDate) return null;
+
+    return {
+      id: promo.id || '',
+      title: promo.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
+      maxDiscount: 50
+    };
+  };
+
+  const activePopupCampaign = getActivePopupCampaign();
 
   useEffect(() => {
-    const promo = appData?.promotion;
-    if (!promo?.isActive || !promo.startDate || !promo.endDate) return;
-
-    const todayMillis = new Date(getLocalTodayStr()).getTime();
-    const sDate = new Date(promo.startDate).getTime();
-    const eDate = new Date(promo.endDate).getTime();
-
-    if (todayMillis >= sDate && todayMillis <= eDate) {
-      const dismissed = sessionStorage.getItem('shangrila_popup_dismissed');
-      const searchParams = new URLSearchParams(window.location.search);
-      if (!dismissed && searchParams.get('campaign') !== 'true') {
-        // 🌟 FIX: App ပွင့်ပြီး ၃ စက္ကန့် (3000ms) ကြာမှ Popup ပေါ်လာမည် 🌟
-        const timer = setTimeout(() => {
-          setIsVisible(true);
-        }, 3000);
-        return () => clearTimeout(timer);
-      }
+    // 🌟 Admin Setting မှ ပိတ်ထားလျှင် (သို့မဟုတ် သက်တမ်းကုန်လျှင်) Popup ကို ချက်ချင်းပိတ်မည် 🌟
+    if (!activePopupCampaign) {
+      setIsVisible(false);
+      return;
     }
-  }, [appData]);
+
+    const dismissed = sessionStorage.getItem('shangrila_popup_dismissed');
+    const searchParams = new URLSearchParams(window.location.search);
+    const isCampaignMode =
+      searchParams.get('mode') === 'campaign' || Boolean(searchParams.get('campaign'));
+
+    if (!dismissed && !isCampaignMode) {
+      // App ပွင့်ပြီး ၃ စက္ကန့် (3000ms) ကြာမှ Popup ပေါ်လာမည်
+      const timer = setTimeout(() => {
+        setIsVisible(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [appData, activePopupCampaign?.id, activePopupCampaign?.title]);
 
   // 🌟 နောက်ခံတွင် ညင်သာစွာ ကျဆင်းလာမည့် Ambient Lanterns 🌟
   useEffect(() => {
-    if (!isVisible) return;
+    if (!isVisible || !activePopupCampaign) return;
 
     const initial = Array.from({ length: 9 }).map((_, i) => ({
       id: i,
-      left: 6 + (i * 10.5) + (Math.random() * 4 - 2),
+      left: 6 + i * 10.5 + (Math.random() * 4 - 2),
       duration: 4 + Math.random() * 3,
       size: 0.85 + Math.random() * 0.65,
       delay: Math.random() * 2.5,
       opacity: 0.45 + Math.random() * 0.45
     }));
     setFallingLanterns(initial);
-  }, [isVisible]);
+  }, [isVisible, activePopupCampaign]);
 
   const handleClose = () => {
     sessionStorage.setItem('shangrila_popup_dismissed', 'true');
     setIsVisible(false);
   };
 
-  // 🌟 ခလုတ်နှိပ်လိုက်သည့်အခါ Ripple Click Effect ပေါ်ပြီးမှ သွားမည့် Function 🌟
+  // 🌟 ခလုတ်နှိပ်လိုက်သည့်အခါ Ripple Click Effect ပေါ်ပြီးမှ သက်ဆိုင်ရာ Campaign သို့ သွားမည့် Function 🌟
   const handlePlayNowClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     const button = e.currentTarget;
     button.style.transform = 'scale(0.95)';
@@ -74,16 +155,20 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
       circle.remove();
       sessionStorage.setItem('shangrila_popup_dismissed', 'true');
       setIsVisible(false);
-      window.location.href = '/?mode=campaign';
+
+      const targetUrl = activePopupCampaign?.id
+        ? `/?mode=campaign&campaign=${encodeURIComponent(activePopupCampaign.id)}`
+        : '/?mode=campaign';
+      window.location.href = targetUrl;
     }, 320);
   };
 
-  if (!isVisible) return null;
+  // Setting ပိတ်ထားပါက လုံးဝ Render မလုပ်ပါ
+  if (!isVisible || !activePopupCampaign) return null;
 
-  const campaignTitle = appData?.promotion?.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း';
+  const campaignTitle = activePopupCampaign.title;
 
   return (
-    /* 🌟 FIX: အောက်ခံ Screen ကို မြင်သာစေရန် bg-black/45 နှင့် backdrop-blur-[2px] သို့ လျှော့ချထားသည် 🌟 */
     <div className="fixed inset-0 z-[999] bg-black/45 backdrop-blur-[2px] flex items-center justify-center p-5 animate-fade-in">
       <style>{`
         @keyframes ambientLanternDrift {
@@ -134,9 +219,7 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
 
       {/* 🌟 Main Luxury Modal Card 🌟 */}
       <div className="relative w-full max-w-[340px] rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37]/90 via-[#D4AF37]/30 to-[#D4AF37]/70 shadow-[0_20px_50px_rgba(0,0,0,0.75),0_0_35px_rgba(212,175,55,0.25)] animate-slide-up overflow-hidden">
-        
         <div className="relative w-full h-full rounded-[calc(2rem-1.5px)] bg-gradient-to-b from-[#2a0e08] via-[#140705] to-[#0a0403] px-6 pt-7 pb-6 text-center overflow-hidden">
-          
           {/* Inner Luxury Thin Gold Frame */}
           <div className="absolute inset-2.5 rounded-[1.5rem] border border-[#D4AF37]/15 pointer-events-none z-20"></div>
 
@@ -144,9 +227,12 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
           <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-52 bg-gradient-to-b from-amber-500/35 via-orange-600/15 to-transparent rounded-full blur-2xl pointer-events-none"></div>
 
           {/* 🌟 Softly Falling Lanterns in Upper Sky 🌟 */}
-          <div 
+          <div
             className="absolute top-0 left-0 right-0 h-44 overflow-hidden pointer-events-none z-0"
-            style={{ WebkitMaskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)', maskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)' }}
+            style={{
+              WebkitMaskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)',
+              maskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)'
+            }}
           >
             {fallingLanterns.map((l) => (
               <div
@@ -188,11 +274,17 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
 
           {/* 🌟 Typography & Offer Details 🌟 */}
           <div className="relative z-10">
-            <h2 className="text-lg sm:text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-[#D4AF37] to-yellow-200 mb-2.5 tracking-wide leading-snug drop-shadow-sm">
+            <h2
+              className="text-lg sm:text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-[#D4AF37] to-yellow-200 mb-2.5 tracking-wide drop-shadow-sm"
+              style={{ lineHeight: '1.75' }}
+            >
               {campaignTitle}
             </h2>
 
-            <p className="text-[11.5px] sm:text-xs text-gray-300/95 font-medium leading-relaxed mb-6 px-1">
+            <p
+              className="text-[11.5px] sm:text-xs text-gray-300/95 font-medium mb-6 px-1"
+              style={{ lineHeight: '1.75' }}
+            >
               မီးပုံးလေးတွေကို အမိဖမ်းပြီး လူကြီးမင်းအတွက်{' '}
               <span className="text-yellow-400 font-extrabold underline decoration-[#D4AF37]/50 underline-offset-4">
                 ၅၀% အထိ Discount
@@ -205,6 +297,7 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
               type="button"
               onClick={handlePlayNowClick}
               className="relative overflow-hidden w-full py-3.5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] text-[#123524] rounded-xl font-black text-xs sm:text-sm shadow-[0_6px_20px_rgba(212,175,55,0.4)] hover:shadow-[0_8px_25px_rgba(212,175,55,0.6)] border border-yellow-200/60 transition-all duration-200 flex items-center justify-center tracking-wide"
+              style={{ lineHeight: '1.6' }}
             >
               <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/50 to-transparent btn-shimmer-sweep pointer-events-none"></span>
               <Gift className="w-4 h-4 mr-2 relative z-10 stroke-[2.5]" />
@@ -215,11 +308,11 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
               type="button"
               onClick={handleClose}
               className="mt-3.5 text-[11px] font-semibold text-gray-400 hover:text-[#D4AF37] transition py-1 px-4 active:scale-95 tracking-wide"
+              style={{ lineHeight: '1.6' }}
             >
               နောက်မှ ကံစမ်းတော့မည်
             </button>
           </div>
-
         </div>
       </div>
     </div>
