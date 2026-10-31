@@ -4233,11 +4233,13 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
             </div>
           </div>
         </div>
-      ) : activePosView === 'pos_users' ? (
+      
 
-      {/* ==========================================
+      /* ==========================================
           VIEW 5: DISCOUNTS & PROMOTIONS SETTING TAB
-         ========================================== */}
+         ========================================== */
+      
+        ) : activePosView === 'pos_users' ? (
         <div className="max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-5 animate-fade-in">
           <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-4">
