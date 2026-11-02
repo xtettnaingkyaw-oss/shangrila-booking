@@ -5,7 +5,7 @@ import { db, auth, requestNotificationPermission } from './firebase';
 import { Download, X, MapPin, Phone, LogOut } from 'lucide-react';
 import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
 
-// 🌟 Premium Loading Screen ကို Import ခေါ်ယူခြင်း 🌟
+// 🌟 Premium Loading Screen ကို Import ခေါ်ယူခြင်း (မူလ public folder မှ logo အတိုင်း သုံးမည်) 🌟
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
 import CustomerApp from './pages/CustomerApp'; 
 
@@ -19,6 +19,7 @@ const StaffApp = lazy(() => import('./pages/StaffApp'));
 
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
+const PREFERRED_MODE_KEY = 'shangrila_preferred_portal_mode';
 
 const DEFAULT_BRANDING: AppBranding = {
   logoUrl: '', name: "The Shangri-La", address: "33th(B) St, Between 65th & 65th(A) Sts, Mandalay",
@@ -49,8 +50,8 @@ const DEFAULT_CATEGORIES: MenuCategory[] = [
 
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
    { id: '1', text: 'Browser ၏ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပါ။', imageUrl: '' },
-   { id: '2', text: '"Add to Home Screen" ကို ရွေးချယ်ပါ။', imageUrl: '' },
-   { id: '3', text: '"Add" ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။', imageUrl: '' }
+   { id: '2', text: '"Install app" သို့မဟုတ် "Add to Home Screen" ကို ရွေးချယ်ပါ။', imageUrl: '' },
+   { id: '3', text: '"Install" သို့မဟုတ် "Add" ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။', imageUrl: '' }
 ];
 
 const FALLBACK_APPDATA: AppData = {
@@ -60,6 +61,59 @@ const FALLBACK_APPDATA: AppData = {
   paymentMethods: DEFAULT_PAYMENT_METHODS,
   promotion: DEFAULT_PROMOTION,
   installSteps: DEFAULT_INSTALL_STEPS
+};
+
+// 🌟 Admin Panel မှ Logo URL ကို PWA စံချိန်မီ 192x192 နှင့် 512x512 PNG အဖြစ် ပြောင်းပေးမည့် Helper 🌟
+const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> => {
+  return new Promise((resolve) => {
+    const createFallbackIcon = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#123524';
+        ctx.fillRect(0, 0, size, size);
+        ctx.strokeStyle = '#D4AF37';
+        ctx.lineWidth = Math.max(8, size * 0.04);
+        ctx.strokeRect(size * 0.06, size * 0.06, size * 0.88, size * 0.88);
+        ctx.fillStyle = '#D4AF37';
+        ctx.font = `bold ${Math.floor(size * 0.52)}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('S', size / 2, size / 2 + size * 0.03);
+      }
+      return canvas.toDataURL('image/png');
+    };
+
+    if (!logoUrl) {
+      resolve(createFallbackIcon());
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#123524';
+          ctx.fillRect(0, 0, size, size);
+          ctx.drawImage(img, 0, 0, size, size);
+          resolve(canvas.toDataURL('image/png'));
+          return;
+        }
+      } catch {
+        // CORS ကန့်သတ်ချက်ရှိသော ပြင်ပပုံဖြစ်ပါက မူလ URL သို့မဟုတ် Fallback သုံးမည်
+      }
+      resolve(logoUrl);
+    };
+    img.onerror = () => resolve(createFallbackIcon());
+    img.src = logoUrl;
+  });
 };
 
 // LocalStorage မှ သိမ်းထားသော Cache Data ကို ချက်ချင်း ဆွဲထုတ်မည့် Helper Function
@@ -98,8 +152,27 @@ function MainApp() {
     const searchParams = new URLSearchParams(window.location.search);
     const mode = searchParams.get('mode');
     
-    if (mode === 'admin' || mode === 'staff' || mode === 'pos') return mode;
+    if (mode === 'admin' || mode === 'staff' || mode === 'pos') {
+      try {
+        // ဝန်ထမ်း သို့မဟုတ် POS အဖြစ် ဝင်ရောက်ပါက PWA Standalone ပြန်ဖွင့်ချိန်တွင် မှတ်မိစေရန် သိမ်းထားမည်
+        if (mode === 'staff' || mode === 'pos') {
+          localStorage.setItem(PREFERRED_MODE_KEY, mode);
+        }
+      } catch {}
+      return mode;
+    }
     if (mode === 'campaign') return 'campaign';
+
+    // အကယ်၍ ဖုန်း Home Screen မှ Standalone App အဖြစ် တိုက်ရိုက်ဖွင့်ချိန် URL တွင် ?mode မပါသော်လည်း ယခင်က Staff/POS အဖြစ် သွင်းထားပါက ၎င်း Mode သို့ တိုက်ရိုက်ပို့ပေးမည်
+    const isStandaloneLaunch = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    if (isStandaloneLaunch && !mode) {
+      try {
+        const savedMode = localStorage.getItem(PREFERRED_MODE_KEY);
+        if (savedMode === 'staff' || savedMode === 'pos') {
+          return savedMode;
+        }
+      } catch {}
+    }
 
     return 'customer';
   });
@@ -151,26 +224,118 @@ function MainApp() {
   }, []);
 
   const handleDownloadApp = async () => {
+    try {
+      if (appMode === 'staff' || appMode === 'pos') {
+        localStorage.setItem(PREFERRED_MODE_KEY, appMode);
+      }
+    } catch {}
+
     if (deferredPrompt) {
       deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') { setDeferredPrompt(null); setIsStandalone(true); }
     } else { setShowInstallModal(true); }
   };
 
+  // 🌟 Admin Panel မှ Logo နှင့် Branding အမည်ကို Browser Favicon နှင့် PWA Manifest သို့ အလိုအလျောက် ချိတ်ဆက်ပေးခြင်း 🌟
   useEffect(() => {
-    document.title = appData?.branding?.name ? `${appData.branding.name} | Men's Retreat` : "The Shangri-La | Men's Retreat";
-    const updateFavicon = (url: string) => {
-      const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon']"); 
-      existingIcons.forEach(icon => document.head.removeChild(icon));
-      
-      const newIcon = document.createElement('link'); newIcon.rel = 'shortcut icon'; newIcon.type = 'image/png'; newIcon.href = url; document.head.appendChild(newIcon);
-      const appleIcon = document.createElement('link'); appleIcon.rel = 'apple-touch-icon'; appleIcon.href = url; document.head.appendChild(appleIcon);
+    const brandName = appData?.branding?.name || "The Shangri-La";
+    const isStaffMode = appMode === 'staff';
+    const isPosMode = appMode === 'pos';
+
+    document.title = isStaffMode
+      ? `${brandName} | Staff Portal`
+      : isPosMode
+      ? `${brandName} | POS`
+      : `${brandName} | Men's Retreat`;
+
+    const rawLogoUrl = appData?.branding?.logoUrl || localStorage.getItem('shangrila_logo_cache') || '';
+
+    const syncBrandingAndManifest = async () => {
+      if (rawLogoUrl) {
+        try { localStorage.setItem('shangrila_logo_cache', rawLogoUrl); } catch {}
+      }
+
+      const [icon192, icon512] = await Promise.all([
+        generatePwaIconFromUrl(rawLogoUrl, 192),
+        generatePwaIconFromUrl(rawLogoUrl, 512)
+      ]);
+
+      // 1. Favicon နှင့် Apple Touch Icon အသစ်ပြောင်းလဲခြင်း
+      const faviconEl = document.getElementById('app-favicon') as HTMLLinkElement | null;
+      if (faviconEl) {
+        faviconEl.href = icon192;
+      } else {
+        const newIcon = document.createElement('link');
+        newIcon.id = 'app-favicon';
+        newIcon.rel = 'icon';
+        newIcon.type = 'image/png';
+        newIcon.href = icon192;
+        document.head.appendChild(newIcon);
+      }
+
+      const appleIconEl = document.getElementById('app-apple-icon') as HTMLLinkElement | null;
+      if (appleIconEl) {
+        appleIconEl.href = icon192;
+      }
+
+      // 2. Dynamic PWA Manifest တည်ဆောက်ခြင်း (Staff Portal ဖြစ်ပါက Staff Portal အမည်နှင့် URL ဖြင့် သိမ်းဆည်းပေးမည်)
+      const startUrl = isStaffMode
+        ? `${window.location.origin}/?mode=staff`
+        : isPosMode
+        ? `${window.location.origin}/?mode=pos`
+        : `${window.location.origin}/`;
+
+      const dynamicManifest = {
+        id: isStaffMode ? '/?mode=staff' : isPosMode ? '/?mode=pos' : '/',
+        short_name: isStaffMode ? `${brandName} Staff` : isPosMode ? `${brandName} POS` : brandName,
+        name: isStaffMode
+          ? `${brandName} - Staff Portal`
+          : isPosMode
+          ? `${brandName} - POS System`
+          : `${brandName} Men's Retreat`,
+        description: "Premium Men's Wellness & Spa in Mandalay",
+        start_url: startUrl,
+        scope: `${window.location.origin}/`,
+        display: 'standalone',
+        orientation: 'portrait',
+        theme_color: '#123524',
+        background_color: '#ffffff',
+        icons: [
+          {
+            src: icon192,
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: icon512,
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any'
+          }
+        ]
+      };
+
+      try {
+        const manifestJson = JSON.stringify(dynamicManifest);
+        const manifestDataUrl = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(manifestJson);
+        const manifestEl = document.getElementById('app-manifest') as HTMLLinkElement | null;
+        if (manifestEl) {
+          manifestEl.href = manifestDataUrl;
+        } else {
+          const newManifest = document.createElement('link');
+          newManifest.id = 'app-manifest';
+          newManifest.rel = 'manifest';
+          newManifest.href = manifestDataUrl;
+          document.head.appendChild(newManifest);
+        }
+      } catch (e) {
+        console.warn('Dynamic manifest update warning:', e);
+      }
     };
-    if (appData?.branding?.logoUrl) { 
-        updateFavicon(appData.branding.logoUrl); 
-        try { localStorage.setItem('shangrila_logo_cache', appData.branding.logoUrl); } catch {}
-    }
-  }, [appData?.branding?.logoUrl, appData?.branding?.name]);
+
+    syncBrandingAndManifest();
+  }, [appData?.branding?.logoUrl, appData?.branding?.name, appMode]);
 
   // 🌟 REAL-TIME CAMPAIGN & POPUP LOCKOUT GUARD (Admin မှ ပိတ်ထားလျှင် customer mode သို့ အလိုအလျောက် ပြန်ပို့မည်) 🌟
   useEffect(() => {
@@ -315,9 +480,9 @@ function MainApp() {
           
           <p className={`font-bold uppercase tracking-[0.2em] transition-all duration-300 overflow-hidden ${isScrolled ? 'h-0 opacity-0 m-0' : 'h-auto opacity-100 text-[10px] sm:text-[11px] mt-1.5'}`} style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
           
-          {!isStandalone && appMode === 'customer' && (
+          {!isStandalone && (appMode === 'customer' || appMode === 'staff') && (
              <button onClick={handleDownloadApp} className={`transition-all duration-300 font-bold text-white flex items-center justify-center bg-gradient-to-r from-[#D4AF37] to-yellow-600 rounded-full shadow-sm border border-yellow-500 hover:opacity-90 ${isScrolled ? 'absolute right-3 sm:right-6 text-[9px] px-2.5 py-1.5' : 'mt-4 text-[10px] sm:text-xs px-4 py-2'}`} style={{ top: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'auto' }}>
-               <Download className={`${isScrolled ? 'w-3 h-3 mr-1' : 'w-3.5 h-3.5 mr-1.5'}`} /> {isScrolled ? 'App' : 'Download App'}
+               <Download className={`${isScrolled ? 'w-3 h-3 mr-1' : 'w-3.5 h-3.5 mr-1.5'}`} /> {isScrolled ? 'App' : appMode === 'staff' ? 'Install Staff App' : 'Download App'}
              </button>
           )}
           {appMode === 'admin' && loggedInAdmin && (
