@@ -1,21 +1,20 @@
 {
+  "id": "/",
   "short_name": "Shangrila",
   "name": "The Shangri-La Men's Retreat",
   "description": "Premium Men's Wellness & Spa in Mandalay",
   "icons": [
     {
-      "src": "logo192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "logo512.png",
-      "type": "image/png",
-      "sizes": "512x512"
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%23123524'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' fill='%23C8A951' font-family='serif' font-size='260' font-weight='bold'>S</text></svg>",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512",
+      "purpose": "any"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#123524",
   "background_color": "#ffffff"
 }
