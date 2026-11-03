@@ -379,6 +379,140 @@ export const buildCustomerMiniAppInlineKeyboard = (baseUrl: string = 'https://ww
   };
 };
 
+// src/telegramService.ts ထဲတွင် ထပ်တိုးရမည့် Outcall Lifecycle Notification Functions များ
+
+export async function sendOutcallStageNotification(params: {
+  stage: 'on_the_way' | 'in_service' | 'overtime' | 'returning' | 'reminder' | 'completed';
+  bookingId: string;
+  staffName: string;
+  staffTelegramChatId?: string;
+  customerName?: string;
+  serviceName: string;
+  durationMinutes?: number;
+  dispatchedTimeStr?: string;
+  startTimeStr?: string;
+  endTimeStr?: string;
+  elapsedReturnMinutes?: number;
+  gpsLocation?: { lat: number; lng: number } | null;
+}) {
+  const {
+    stage,
+    bookingId,
+    staffName,
+    staffTelegramChatId,
+    customerName = 'VIP Guest',
+    serviceName,
+    durationMinutes = 100,
+    startTimeStr,
+    endTimeStr,
+    elapsedReturnMinutes = 0,
+    gpsLocation,
+  } = params;
+
+  const mapLink =
+    gpsLocation && gpsLocation.lat && gpsLocation.lng
+      ? `\n📍 <b>GPS တည်နေရာ:</b> <a href="https://www.google.com/maps?q=${gpsLocation.lat},${gpsLocation.lng}">Google Maps တွင်ကြည့်ရန်</a>`
+      : '';
+
+  let adminMsg = '';
+  let staffMsg = '';
+
+  switch (stage) {
+    case 'on_the_way':
+      adminMsg =
+        `🚗 <b>[Outcall Dispatched - သွားနေဆဲ]</b>\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `🧾 <b>ဘောင်ချာ:</b> #${bookingId}\n` +
+        `💆‍♂️ <b>ဝန်ထမ်း:</b> ${staffName}\n` +
+        `👤 <b>ဧည့်သည်:</b> ${customerName}\n` +
+        `✨ <b>ဝန်ဆောင်မှု:</b> ${serviceName} (${durationMinutes} မိနစ်)\n` +
+        `🕒 <b>စတင်ထွက်ခွာချိန်:</b> ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}\n` +
+        `ℹ️ <i>ဧည့်သည်ထံ ရောက်ရှိမှသာ ဝန်ဆောင်မှုအချိန် စတင်မှတ်သားပါမည်။</i>`;
+
+      staffMsg =
+        `🚗 <b>Outcall လမ်းညွှန်ချက် (#${bookingId})</b>\n` +
+        `ဧည့်သည် (${customerName}) ထံသို့ ရောက်ရှိပါက Staff Portal တွင် <b>"📍 ဧည့်သည်ထံရောက်ရှိကြောင်း အကြောင်းကြားရန် (Start Service)"</b> ခလုတ်ကို နှိပ်ပေးပါရန်။`;
+      break;
+
+    case 'in_service':
+      adminMsg =
+        `💆‍♂️ <b>[Outcall In Service - ဝန်ဆောင်မှုစတင်ပြီ]</b>\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `🧾 <b>ဘောင်ချာ:</b> #${bookingId}\n` +
+        `💆‍♂️ <b>ဝန်ထမ်း:</b> ${staffName}\n` +
+        `👤 <b>ဧည့်သည်:</b> ${customerName}\n` +
+        `✨ <b>ဝန်ဆောင်မှု:</b> ${serviceName} (${durationMinutes} မိနစ်)\n` +
+        `▶️ <b>စတင်ချိန်:</b> ${startTimeStr}\n` +
+        `⏹️ <b>ပြီးဆုံးမည့်အချိန်:</b> ${endTimeStr}${mapLink}`;
+
+      staffMsg =
+        `✅ <b>ဝန်ဆောင်မှု စတင်မှတ်သားပါပြီ (#${bookingId})</b>\n` +
+        `▶️ စတင်ချိန်: ${startTimeStr}\n` +
+        `⏹️ ပြီးဆုံးမည့်အချိန်: ${endTimeStr}\n` +
+        `ဝန်ဆောင်မှုပြီးဆုံးပါက Staff Portal တွင် <b>"✅ ဝန်ဆောင်မှုပြီးဆုံးပြီ (ဆိုင်သို့ပြန်ထွက်မည်)"</b> ခလုတ်ကို နှိပ်ပေးပါ။`;
+      break;
+
+    case 'overtime':
+      adminMsg =
+        `⏰ <b>[Outcall Time Up - သတ်မှတ်ချိန်ပြည့်ပြီ]</b>\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `🧾 <b>ဘောင်ချာ:</b> #${bookingId}\n` +
+        `💆‍♂️ <b>ဝန်ထမ်း:</b> ${staffName}\n` +
+        `✨ <b>ဝန်ဆောင်မှု:</b> ${serviceName}\n` +
+        `⚠️ သတ်မှတ်ချိန် (${durationMinutes} မိနစ်) ပြည့်သွားပြီဖြစ်ပါသည်။`;
+
+      staffMsg =
+        `⏰ <b>သတ်မှတ်ချိန် ပြည့်သွားပါပြီ (#${bookingId})</b>\n` +
+        `ဝန်ဆောင်မှုပြီးဆုံး၍ ဆိုင်သို့ပြန်ထွက်ချိန်တွင် Staff Portal ၌ <b>"✅ ဝန်ဆောင်မှုပြီးဆုံးပြီ (ဆိုင်သို့ပြန်ထွက်မည်)"</b> ခလုတ်ကို နှိပ်ပေးပါရန်။`;
+      break;
+
+    case 'returning':
+      adminMsg =
+        `🛵 <b>[Returning to Shop - ဆိုင်သို့ပြန်လာနေဆဲ]</b>\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `🧾 <b>ဘောင်ချာ:</b> #${bookingId}\n` +
+        `💆‍♂️ <b>ဝန်ထမ်း:</b> ${staffName}\n` +
+        `✨ <b>ဝန်ဆောင်မှု:</b> ${serviceName}\n` +
+        `🕒 <b>ပြန်ထွက်လာချိန်:</b> ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}${mapLink}\n` +
+        `ℹ️ <i>ဝန်ထမ်းသည် ဝန်ဆောင်မှုပြီးဆုံး၍ ဆိုင်သို့ စတင်ပြန်လာနေပြီဖြစ်ပါသည်။</i>`;
+
+      staffMsg =
+        `🛵 <b>ဆိုင်သို့ ပြန်လည်ထွက်ခွာမှု မှတ်တမ်းတင်ပြီးပါပြီ</b>\n` +
+        `ဆိုင်သို့ ပြန်ရောက်သည်နှင့် Staff Portal တွင် <b>"🏠 ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)"</b> ခလုတ်ကို မမေ့မလျော့ နှိပ်ပေးပါရန်။`;
+      break;
+
+    case 'reminder':
+      staffMsg =
+        `🔔 <b>သတိပေးချက် (Reminder)</b>\n` +
+        `ဆိုင်သို့ ပြန်လည်ရောက်ရှိပါက Staff Portal တွင် <b>'🏠 ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)'</b> ခလုတ်ကို မမေ့မလျော့ နှိပ်ပေးပါရန် (ပြန်ထွက်လာချိန်မှ <b>မိနစ် ${elapsedReturnMinutes}</b> ကြာမြင့်နေပါပြီ)။`;
+
+      // မိနစ် ၃၀ နှင့်အထက် ကျော်လွန်ပါက Admin ထံသို့ပါ ပူးတွဲအသိပေးမည်
+      if (elapsedReturnMinutes >= 30) {
+        adminMsg =
+          `⚠️ <b>[Outcall Return Delay Alert]</b>\n` +
+          `ဝန်ထမ်း <b>${staffName}</b> သည် ဘောင်ချာ #${bookingId} ပြီးဆုံး၍ ဆိုင်သို့ပြန်ထွက်လာသည်မှာ <b>${elapsedReturnMinutes} မိနစ်</b> ကြာမြင့်နေပြီဖြစ်သော်လည်း Clock-Out မနှိပ်ရသေးပါ။`;
+      }
+      break;
+
+    case 'completed':
+      adminMsg =
+        `✅ <b>[Outcall Completed & Clocked Out]</b>\n` +
+        `ဝန်ထမ်း <b>${staffName}</b> ဆိုင်သို့ ပြန်လည်ရောက်ရှိပြီး Clock-Out ပြီးဆုံးပါပြီ (ဘောင်ချာ #${bookingId})။\n` +
+        `🟢 လက်ရှိအခြေအနေ: <b>Available at Shop</b>`;
+      break;
+  }
+
+  // Send to Admin Group if adminMsg is present
+  if (adminMsg) {
+    await sendTelegramMessageToAdmin(adminMsg);
+  }
+
+  // Send to Staff Private Chat / Group if staffMsg is present
+  if (staffMsg && staffTelegramChatId) {
+    await sendTelegramMessageToChatId(staffTelegramChatId, staffMsg);
+  }
+}
+
 // ==========================================
 // 4. CORE TELEGRAM API SENDERS
 // ==========================================
