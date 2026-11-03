@@ -1248,104 +1248,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
           expectedEndTimeStr: new Date(expectedEndMillis).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
         });
       }
-    } catch (err: any) {
-      alert('Error issuing voucher & starting clock-in: ' + err.message);
-    }
-    setWbProcessing(false);
-  };
-      const now = new Date();
-      const yy = String(now.getFullYear()).slice(-2);
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const rand = Math.floor(1000 + Math.random() * 9000);
-      const officialReceiptNo =
-        booking.invoiceNo && String(booking.invoiceNo).startsWith('WB-')
-          ? String(booking.invoiceNo).replace('WB-', 'SL-')
-          : `SL-${yy}${mm}${dd}-${rand}`;
-
-      const nowTimeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-      const newReceiptRecord: OfflineSaleRecord = {
-        localId: `walkin_phone_${booking.id}`,
-        firestoreDocId: booking.id,
-        invoiceNo: officialReceiptNo,
-        createdAt: startMillis,
-        date: booking.date || getLocalTodayStr(),
-        time: nowTimeStr,
-        customerName: booking.name || 'Walk-in Guest',
-        customerPhone: booking.phone || '',
-        therapistName: booking.therapist || 'Therapist No-1',
-        items: Array.isArray(booking.items)
-          ? booking.items.map((i: any, idx: number) => ({
-              cartId: `wb_${booking.id}_${idx}`,
-              id: `wb_${idx}`,
-              name: i.name,
-              price: Number(i.price) || 0,
-              qty: Number(i.qty) || 1,
-            }))
-          : [
-              {
-                cartId: `wb_${booking.id}_0`,
-                id: 'wb_0',
-                name: booking.service || 'Spa Service',
-                price: Number(booking.totalPrice) || 0,
-                qty: 1,
-              },
-            ],
-        subTotal: Number(booking.totalPrice) || 0,
-        discountType: 'percent',
-        discountValue: 0,
-        discountAmount: 0,
-        discountReason: '',
-        totalPrice: Number(booking.totalPrice) || 0,
-        paymentMethod: booking.paymentMethod || 'Cash',
-        paymentStatus: 'paid_in_full',
-        depositPaid: Number(booking.totalPrice) || 0,
-        balanceDue: 0,
-        cashReceived: Number(booking.totalPrice) || 0,
-        changeDue: 0,
-        serviceStatus: 'in_progress',
-        pointsEarned: Math.floor((Number(booking.totalPrice) || 0) / 35000),
-        note: booking.specialRequest || '',
-        bookingTag: 'ကြိုတင်ဘိုကင်',
-        bookingSource: 'walkin_phone',
-        synced: true,
-        startTimeMillis: startMillis,
-        expectedEndTimeMillis: expectedEndMillis,
-      };
-
-      // မူလ booking document ကို တိုက်ရိုက် update လုပ်သဖြင့် Sale History ၂ ခါ လုံးဝ မထပ်ပါ!
-      await updateDoc(doc(db, 'bookings', booking.id), {
-        status: 'in_progress',
-        voucherIssued: true,
-        bookingTag: 'ကြိုတင်ဘိုကင်',
-        invoiceNo: officialReceiptNo,
-        txId: encryptText(officialReceiptNo),
-        time: nowTimeStr,
-        startTimeMillis: startMillis,
-        expectedEndTimeMillis: expectedEndMillis,
-        lastOverdueNotiSentAt: 0,
-      });
-
-      addToLocalHistory(newReceiptRecord);
-      setActiveReceipt(newReceiptRecord);
-
-      const { notifyServiceClockInStarted } = await import('../telegramService');
-      await notifyServiceClockInStarted({
-        bookingId: booking.id,
-        invoiceNo: officialReceiptNo,
-        customerName: booking.name || 'Walk-in Guest',
-        customerPhone: booking.phone || '',
-        serviceName: booking.service,
-        durationMins,
-        totalPrice: Number(booking.totalPrice) || 0,
-        therapistName: booking.therapist,
-        appointmentDate: booking.date,
-        appointmentTime: booking.time,
-        startTimeStr: new Date(startMillis).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        expectedEndTimeStr: new Date(expectedEndMillis).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      });
-    } catch (err: any) {
+   } catch (err: any) {
       alert('Error issuing voucher & starting clock-in: ' + err.message);
     }
     setWbProcessing(false);
@@ -4508,11 +4411,10 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                   ဝန်ဆောင်မှုများ ရွေးချယ်ရန် (နှိပ်၍ ထည့်ပါ)
                 </label>
                 <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-xl p-2 space-y-1.5 bg-gray-50">
-                  {(localAppData?.categories || [])
+                 {(localAppData?.categories || [])
                     .flatMap((c) => c.items || [])
                     .map((srv) => {
-                      const dMatch = String(srv.duration || '').match(/(\d+)/);
-                      const mins = dMatch ? parseInt(dMatch[1], 10) : 60;
+                      const mins = parseServiceDurationMinutes(srv.name, srv.duration);
                       const fullTitle = `${srv.name}${srv.duration ? ` (${srv.duration})` : ''}`;
                       return (
                         <button
@@ -4620,9 +4522,6 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono font-black text-xs bg-[#123524] text-[#D4AF37] px-2.5 py-1 rounded-lg">
                               {b.invoiceNo || b.txId || `WB-${String(b.id).slice(-4).toUpperCase()}`}
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-[#123524] border border-[#D4AF37]">
-                              🏷️ ကြိုတင်ဘိုကင်
                             </span>
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-[#123524] border border-[#D4AF37]">
                                 🏷️ ကြိုတင်ဘိုကင်
@@ -6008,11 +5907,6 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                                   </span>
                                 )}
                                 {(sale.bookingTag || sale.bookingSource === 'walkin_phone') && (
-                                  <span className="bg-amber-100 text-[#123524] border border-[#D4AF37] px-2 py-0.5 rounded-full text-[9px] font-black">
-                                    🏷️ {sale.bookingTag || 'ကြိုတင်ဘိုကင်'}
-                                  </span>
-                                )}
-                              {(sale.bookingTag || sale.bookingSource === 'walkin_phone') && (
                                   <span className="bg-amber-100 text-[#123524] border border-[#D4AF37] px-2 py-0.5 rounded-full text-[9px] font-black">
                                     🏷️ {sale.bookingTag || 'ကြိုတင်ဘိုကင်'}
                                   </span>
