@@ -1993,8 +1993,28 @@ export interface WalkInServiceAlertPayload {
   notes?: string;
 }
 
+export interface OutcallServiceNotificationPayload {
+  bookingId: string;
+  invoiceNo?: string;
+  customerName: string;
+  customerPhone?: string;
+  serviceName: string;
+  durationMins: number;
+  totalPrice: number;
+  therapistName: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  outcallPhase: 'on_the_way' | 'in_service' | 'time_up' | 'returning' | 'return_reminder' | 'completed';
+  dispatchedTimeStr?: string;
+  arrivalStartTimeStr?: string;
+  expectedEndTimeStr?: string;
+  returningTimeStr?: string;
+  overdueMinutes?: number;
+  notes?: string;
+}
+
 /**
- * Therapist အမည် ("Therapist No-1 & Therapist No-10" စသည်) မှ သက်ဆိုင်ရာ ဝန်ထမ်းအားလုံး၏ Chat ID များကို ရှာဖွေပေးခြင်း
+ * Therapist အမည် ("Therapist No-3", "No. 3" စသည်) မှ သက်ဆိုင်ရာ ဝန်ထမ်းအားလုံး၏ Chat ID များကို တိကျစွာ ရှာဖွေပေးခြင်း
  */
 export const resolveAssignedStaffChatIds = (
   therapistNameStr: string,
@@ -2010,18 +2030,18 @@ export const resolveAssignedStaffChatIds = (
     .filter(Boolean);
 
   for (const part of parts) {
-    const numMatch = part.match(/(?:no\.?|therapist|#|\b)\s*-?\s*(\d+)/i);
-    const targetNum = numMatch ? numMatch[1] : '';
+    const numMatch = part.match(/0*(\d+)\b/);
+    const targetNum = numMatch ? String(parseInt(numMatch[1], 10)) : '';
 
     const matched = staffMappings.find((m) => {
-      const mNumMatch =
-        String(m.staffId || '').match(/(\d+)/) || String(m.staffName || '').match(/(\d+)/);
-      const mNum = mNumMatch ? mNumMatch[1] : '';
+      const mIdNum = String(m.staffId || '').match(/0*(\d+)\b/);
+      const mNameNum = String(m.staffName || '').match(/0*(\d+)\b/);
+      const mNum = mIdNum ? String(parseInt(mIdNum[1], 10)) : mNameNum ? String(parseInt(mNameNum[1], 10)) : '';
 
       if (targetNum && mNum && targetNum === mNum) return true;
       return (
-        String(m.staffName || '').toLowerCase() === part.toLowerCase() ||
-        String(m.staffId || '').toLowerCase() === part.toLowerCase()
+        String(m.staffName || '').trim().toLowerCase() === part.toLowerCase() ||
+        String(m.staffId || '').trim().toLowerCase() === part.toLowerCase()
       );
     });
 
@@ -2047,8 +2067,148 @@ export const resolveAssignedStaffChatIds = (
 };
 
 /**
- * 1) Walk-in ဖုန်းဆက် ကြိုတင်ဘိုကင် သတ်မှတ်လိုက်သည့်အချိန်တွင် Admin + သက်ဆိုင်ရာ Therapist သို့ Noti ပို့ပေးခြင်း
+ * Hotel & Home Services (Outcall) 4-Stage Real-Time Telegram Notification
  */
+export const notifyOutcallServiceEvent = async (
+  payload: OutcallServiceNotificationPayload
+): Promise<{ adminSent: boolean; staffSent: boolean }> => {
+  try {
+    const config = await getTelegramConfig();
+    if (!config.enabled || !config.botToken) {
+      return { adminSent: false, staffSent: false };
+    }
+
+    const cleanCustomerName = safeDecryptValue(payload.customerName || 'Walk-in Guest');
+    const cleanCustomerPhone =
+      normalizePhone(payload.customerPhone) || safeDecryptValue(payload.customerPhone || '');
+    const invCode = payload.invoiceNo || String(payload.bookingId || '').slice(-6).toUpperCase();
+
+    let title = '';
+    let statusBadge = '';
+    let detailLines: string[] = [];
+
+    switch (payload.outcallPhase) {
+      case 'on_the_way':
+        title = '🚗 OUTCALL DISPATCHED (ဧည့်သည်ထံ သွားနေဆဲ)';
+        statusBadge = '🚗 <b>သွားနေဆဲ (ON THE WAY TO CLIENT)</b>';
+        detailLines = [
+          `🕒 <b>ဘောင်ချာထုတ်ချိန်:</b> ${escapeHtml(payload.dispatchedTimeStr || payload.appointmentTime)}`,
+          `⏳ <b>Service Timer:</b> ဧည့်သည်ထံရောက်ရှိ၍ ဝန်ထမ်းမှ <b>"ဧည့်သည်ထံရောက်ရှိကြောင်း အကြောင်းကြားရန်"</b> နှိပ်မှသာ အချိန်စတင်မှတ်သားပါမည်။`,
+        ];
+        break;
+
+      case 'in_service':
+        title = '💆‍♂️ OUTCALL STARTED (ဧည့်သည်ထံရောက်ရှိပြီး ဝန်ဆောင်မှုစတင်နေပါပြီ)';
+        statusBadge = '💆‍♂️ <b>ဝန်ဆောင်မှုပေးနေဆဲ (IN SERVICE)</b>';
+        detailLines = [
+          `🟢 <b>ဧည့်သည်ထံရောက်ရှိ/စတင်ချိန်:</b> <b>${escapeHtml(payload.arrivalStartTimeStr || '-')}</b>`,
+          `🏁 <b>ပြီးဆုံးရမည့်အချိန် (End Time):</b> <b>${escapeHtml(payload.expectedEndTimeStr || '-')}</b>`,
+          `⏱️ <i>ဝန်ထမ်း App တွင် သတ်မှတ်ချိန် (${payload.durationMins} မိနစ်) စတင်မှတ်သားနေပါပြီ။</i>`,
+        ];
+        break;
+
+      case 'time_up':
+        title = '⏰ OUTCALL TIME UP (ဝန်ဆောင်မှု သတ်မှတ်ချိန် ပြည့်ပါပြီ!)';
+        statusBadge = '⏰ <b>သတ်မှတ်ချိန်ပြည့်ပြီ (SERVICE TIME UP)</b>';
+        detailLines = [
+          `🟢 <b>စတင်ခဲ့သည့်အချိန်:</b> ${escapeHtml(payload.arrivalStartTimeStr || '-')}`,
+          `🏁 <b>သတ်မှတ်ပြီးဆုံးချိန်:</b> <b>${escapeHtml(payload.expectedEndTimeStr || '-')}</b>`,
+          `🔔 <i>ဝန်ဆောင်မှုသတ်မှတ်ချိန် ပြည့်သွားပါပြီ။ ဝန်ဆောင်မှုပြီးဆုံးပါက Staff Portal တွင် <b>"ဝန်ဆောင်မှုပြီးဆုံးပြီ — ဆိုင်သို့ပြန်ထွက်မည်"</b> ခလုတ်ကို နှိပ်ပေးပါရန်။</i>`,
+        ];
+        break;
+
+      case 'returning':
+        title = '🛵 OUTCALL RETURNING (ဝန်ဆောင်မှုပြီးဆုံး၍ ဆိုင်သို့ပြန်လာနေဆဲ)';
+        statusBadge = '🛵 <b>ဆိုင်သို့ပြန်လာနေဆဲ (RETURNING TO SHOP)</b>';
+        detailLines = [
+          `🟢 <b>စတင်ခဲ့သည့်အချိန်:</b> ${escapeHtml(payload.arrivalStartTimeStr || '-')}`,
+          `🛵 <b>ပြန်ထွက်လာချိန်:</b> <b>${escapeHtml(payload.returningTimeStr || '-')}</b>`,
+          `🏠 <i>ဆိုင်သို့ ပြန်လည်ရောက်ရှိပါက Staff Portal တွင် <b>"🏠 ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)"</b> ခလုတ်ကို နှိပ်ပေးပါရန် (မနှိပ်သေးမချင်း ၁၀ မိနစ်တစ်ခါ သတိပေးပါမည်)။</i>`,
+        ];
+        break;
+
+      case 'return_reminder':
+        title = '🔔🛵 RETURN CLOCK-OUT REMINDER (ဆိုင်သို့ပြန်ရောက်ကြောင်း နှိပ်ရန် သတိပေးချက်)';
+        statusBadge = '🛵 <b>ဆိုင်သို့ပြန်လာနေဆဲ — Clock Out မနှိပ်ရသေးပါ</b>';
+        detailLines = [
+          `🛵 <b>ဧည့်သည်ထံမှ ပြန်ထွက်လာချိန်:</b> ${escapeHtml(payload.returningTimeStr || '-')}`,
+          `⏳ <b>ကြာမြင့်ချိန်:</b> <b>${payload.overdueMinutes || 10} မိနစ် ရှိပါပြီ</b>`,
+          `⚠️ <i>ဆိုင်သို့ ပြန်လည်ရောက်ရှိပြီဖြစ်ပါက Staff Portal တွင် <b>"🏠 ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)"</b> ခလုတ်ကို မမေ့မလျော့ နှိပ်ပေးပါရန်။</i>`,
+        ];
+        break;
+
+      case 'completed':
+        title = '🏠✅ OUTCALL COMPLETED (ဆိုင်သို့ပြန်ရောက်ပြီး Clock-Out ပြီးဆုံးပါပြီ)';
+        statusBadge = '🟢 <b>ဆိုင်သို့ပြန်ရောက်ပြီ (AVAILABLE AT SHOP)</b>';
+        detailLines = [
+          `🟢 <b>ဝန်ဆောင်မှုစတင်ချိန်:</b> ${escapeHtml(payload.arrivalStartTimeStr || '-')}`,
+          `🏠 <b>ဆိုင်သို့ပြန်ရောက်ချိန်:</b> <b>${escapeHtml(payload.returningTimeStr || '-')}</b>`,
+          payload.notes ? `📝 <b>မှတ်ချက်:</b> ${escapeHtml(payload.notes)}` : '',
+        ].filter(Boolean);
+        break;
+    }
+
+    const msgHtml = [
+      `<b>${escapeHtml(title)}</b>`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `🧾 <b>ဘောင်ချာနံပါတ်:</b> <code>${escapeHtml(invCode)}</code>`,
+      `📊 <b>Status:</b> ${statusBadge}`,
+      `👨‍💼 <b>Therapist:</b> <b>${escapeHtml(payload.therapistName)}</b>`,
+      `👤 <b>ဧည့်သည်:</b> ${escapeHtml(cleanCustomerName)} ${cleanCustomerPhone ? `(<code>${escapeHtml(cleanCustomerPhone)}</code>)` : ''}`,
+      `💆‍♂️ <b>ဝန်ဆောင်မှု:</b> ${escapeHtml(payload.serviceName)} (${payload.durationMins} Mins)`,
+      `💰 <b>ကျသင့်ငွေ:</b> ${Number(payload.totalPrice || 0).toLocaleString()} Ks`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      ...detailLines,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `<i>${escapeHtml(config.botFlow.customFooterText)}</i>`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    let adminSent = false;
+    let staffSent = false;
+
+    if (config.adminGroupChatId) {
+      const res = await sendRawTelegramMessage(
+        config.botToken,
+        config.adminGroupChatId,
+        msgHtml,
+        undefined,
+        `OUTCALL_${payload.outcallPhase.toUpperCase()}`
+      );
+      adminSent = res.ok;
+    }
+
+    const staffTargets = resolveAssignedStaffChatIds(payload.therapistName, config.staffMappings);
+    for (const st of staffTargets) {
+      const sRes = await sendRawTelegramMessage(
+        config.botToken,
+        st.chatId,
+        msgHtml,
+        undefined,
+        `STAFF_OUTCALL_${payload.outcallPhase.toUpperCase()}`
+      );
+      staffSent = staffSent || sRes.ok;
+    }
+
+    if (config.staffGroupChatId && config.staffGroupChatId !== config.adminGroupChatId) {
+      const gRes = await sendRawTelegramMessage(
+        config.botToken,
+        config.staffGroupChatId,
+        msgHtml,
+        undefined,
+        `GROUP_OUTCALL_${payload.outcallPhase.toUpperCase()}`
+      );
+      staffSent = staffSent || gRes.ok;
+    }
+
+    return { adminSent, staffSent };
+  } catch (err) {
+    console.warn('notifyOutcallServiceEvent warning:', err);
+    return { adminSent: false, staffSent: false };
+  }
+};
+
 export const notifyWalkInBookingCreated = async (
   payload: WalkInServiceAlertPayload
 ): Promise<{ adminSent: boolean; staffSent: boolean }> => {
@@ -2111,6 +2271,133 @@ export const notifyWalkInBookingCreated = async (
       msgHtml,
       undefined,
       'GROUP_WALKIN_BOOKING'
+    );
+    staffSent = staffSent || gRes.ok;
+  }
+
+  return { adminSent, staffSent };
+};
+
+export const notifyServiceClockInStarted = async (
+  payload: WalkInServiceAlertPayload
+): Promise<{ adminSent: boolean; staffSent: boolean }> => {
+  const config = await getTelegramConfig();
+  if (!config.enabled || !config.botToken) {
+    return { adminSent: false, staffSent: false };
+  }
+
+  const cleanCustomerName = safeDecryptValue(payload.customerName || 'Walk-in Guest');
+
+  const msgHtml = [
+    `▶️ <b>SERVICE CLOCK-IN စတင်ပါပြီ (TIMER STARTED)</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `🧾 <b>ဘောင်ချာနံပါတ်:</b> <code>${escapeHtml(payload.invoiceNo || payload.bookingId.slice(-6).toUpperCase())}</code>`,
+    `🏷️ <b>အမျိုးအစား:</b> Voucher Issued & In-Service`,
+    `👨‍💼 <b>Therapist:</b> <b>${escapeHtml(payload.therapistName)}</b>`,
+    `👤 <b>ဧည့်သည်:</b> ${escapeHtml(cleanCustomerName)}`,
+    `💆‍♂️ <b>ဝန်ဆောင်မှု:</b> ${escapeHtml(payload.serviceName)} (${payload.durationMins} Mins)`,
+    `🟢 <b>စတင်ချိန် (Start Time):</b> <b>${escapeHtml(payload.startTimeStr || '-')}</b>`,
+    `🏁 <b>ပြီးဆုံးရမည့်အချိန် (End Time):</b> <b>${escapeHtml(payload.expectedEndTimeStr || '-')}</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `⏱️ <i>ဝန်ထမ်း App တွင် အချိန်စတင်မှတ်သားနေပါပြီ။ ဝန်ဆောင်မှုပြီးဆုံးပါက Clock Out နှိပ်ပေးပါရန်။</i>`,
+  ].join('\n');
+
+  let adminSent = false;
+  let staffSent = false;
+
+  if (config.adminGroupChatId) {
+    const res = await sendRawTelegramMessage(
+      config.botToken,
+      config.adminGroupChatId,
+      msgHtml,
+      undefined,
+      'SERVICE_CLOCK_IN'
+    );
+    adminSent = res.ok;
+  }
+
+  const staffTargets = resolveAssignedStaffChatIds(payload.therapistName, config.staffMappings);
+  for (const st of staffTargets) {
+    const sRes = await sendRawTelegramMessage(
+      config.botToken,
+      st.chatId,
+      msgHtml,
+      undefined,
+      'STAFF_CLOCK_IN'
+    );
+    staffSent = staffSent || sRes.ok;
+  }
+
+  if (config.staffGroupChatId && config.staffGroupChatId !== config.adminGroupChatId) {
+    const gRes = await sendRawTelegramMessage(
+      config.botToken,
+      config.staffGroupChatId,
+      msgHtml,
+      undefined,
+      'GROUP_CLOCK_IN'
+    );
+    staffSent = staffSent || gRes.ok;
+  }
+
+  return { adminSent, staffSent };
+};
+
+export const notifyServiceOverdueReminder = async (
+  payload: WalkInServiceAlertPayload
+): Promise<{ adminSent: boolean; staffSent: boolean }> => {
+  const config = await getTelegramConfig();
+  if (!config.enabled || !config.botToken) {
+    return { adminSent: false, staffSent: false };
+  }
+
+  const msgHtml = [
+    `⚠️⏰ <b>CLOCK-OUT REMINDER (သတ်မှတ်ချိန် ကျော်လွန်နေပါပြီ!)</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `❓ <b>Service သတ်မှတ်ချိန်ထက် ကျော်လွန်နေပြီဖြစ်၍ Clock Out လုပ်ဖို့ မေ့နေသလား?</b>`,
+    ``,
+    `👨‍💼 <b>Therapist:</b> <b>${escapeHtml(payload.therapistName)}</b>`,
+    `🧾 <b>ဘောင်ချာ / ID:</b> <code>${escapeHtml(payload.invoiceNo || payload.bookingId.slice(-6).toUpperCase())}</code>`,
+    `💆‍♂️ <b>ဝန်ဆောင်မှု:</b> ${escapeHtml(payload.serviceName)} (${payload.durationMins} Mins)`,
+    `🟢 <b>စတင်ခဲ့သည့်အချိန်:</b> ${escapeHtml(payload.startTimeStr || '-')}`,
+    `🏁 <b>ပြီးဆုံးရမည့်အချိန်:</b> ${escapeHtml(payload.expectedEndTimeStr || '-')}`,
+    `🚨 <b>ကျော်လွန်ချိန် (Overdue):</b> <b>+${payload.overdueMinutes || 10} မိနစ် ကျော်လွန်နေပါသည်</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `🔔 <i>ဝန်ထမ်း App သို့မဟုတ် POS မှ "Clock Out / Complete" ခလုတ်ကို မနှိပ်မချင်း (၁၀) မိနစ်တစ်ခါ အလိုအလျောက် သတိပေးနေပါမည်။</i>`,
+  ].join('\n');
+
+  let adminSent = false;
+  let staffSent = false;
+
+  if (config.adminGroupChatId) {
+    const res = await sendRawTelegramMessage(
+      config.botToken,
+      config.adminGroupChatId,
+      msgHtml,
+      undefined,
+      'OVERDUE_CLOCKOUT_ALERT'
+    );
+    adminSent = res.ok;
+  }
+
+  const staffTargets = resolveAssignedStaffChatIds(payload.therapistName, config.staffMappings);
+  for (const st of staffTargets) {
+    const sRes = await sendRawTelegramMessage(
+      config.botToken,
+      st.chatId,
+      msgHtml,
+      undefined,
+      'STAFF_OVERDUE_ALERT'
+    );
+    staffSent = staffSent || sRes.ok;
+  }
+
+  if (config.staffGroupChatId && config.staffGroupChatId !== config.adminGroupChatId) {
+    const gRes = await sendRawTelegramMessage(
+      config.botToken,
+      config.staffGroupChatId,
+      msgHtml,
+      undefined,
+      'GROUP_OVERDUE_ALERT'
     );
     staffSent = staffSent || gRes.ok;
   }
