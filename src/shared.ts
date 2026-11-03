@@ -223,6 +223,141 @@ export const compressImage = (file: File, maxWidth: number, maxHeight: number): 
   });
 };
 
+export type OutcallPhase = 'on_the_way' | 'in_service' | 'returning' | 'completed';
+
+export interface OutcallTrackingFields {
+  isOutcall?: boolean;
+  outcallPhase?: OutcallPhase;
+  outcallStatus?: OutcallPhase; // POS, Admin, Staff တစ်ပြေးညီ သုံးနိုင်ရန်
+  dispatchedAtMillis?: number;
+  startTimeMillis?: number; // 0 when 'on_the_way', Date.now() when 'in_service'
+  durationMinutes?: number;
+  returningStartedAt?: number;
+  lastReturnReminderAt?: number;
+  returnReminderCount?: number;
+  overtimeNotified?: boolean;
+  clientLocationGps?: {
+    lat: number;
+    lng: number;
+  };
+}
+
+/**
+ * Hotel & Home Services အချိန်များကို မိနစ်အဖြစ် တစ်ပြေးညီ တွက်ချက်ပေးသော Function
+ * - Part Time Outcall Service = 100 Mins
+ * - Half Day Service = 6 Hrs (360 Mins)
+ * - The Whole Night Service = 12 Hrs (720 Mins)
+ * - The Whole Day Service = 12 Hrs (720 Mins)
+ */
+export function parseOutcallDurationMinutes(
+  serviceName: string = '',
+  durationStr: string = ''
+): number {
+  const nameLower = serviceName.toLowerCase();
+  const durLower = durationStr.toLowerCase().trim();
+
+  // 1. Explicit matching for the 4 core Hotel & Home Services
+  if (nameLower.includes('part time outcall')) return 100;
+  if (nameLower.includes('half day')) return 360; // 6 Hrs
+  if (nameLower.includes('whole night')) return 720; // 12 Hrs
+  if (nameLower.includes('whole day')) return 720; // 12 Hrs
+
+  // 2. Dynamic parsing from duration string (e.g., "6 Hrs", "12 Hrs", "100 Mins")
+  const hrMatch = durLower.match(/(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours|နာရီ)/i);
+  if (hrMatch) {
+    return Math.round(parseFloat(hrMatch[1]) * 60);
+  }
+
+  const minMatch = durLower.match(/(\d+)\s*(?:min|mins|minute|minutes|မိနစ်)/i);
+  if (minMatch) {
+    return parseInt(minMatch[1], 10);
+  }
+
+  return 100; // Default Outcall fallback
+}
+
+/**
+ * ဘောင်ချာ သို့မဟုတ် Booking သည် Hotel & Home Services Category အောက်မှ ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+ */
+export function isHotelOrHomeServiceBooking(
+  bookingOrOrder: any,
+  appData?: { categories?: Array<{ id?: string; title?: string; items?: any[] }> }
+): boolean {
+  if (!bookingOrOrder) return false;
+  if (bookingOrOrder.isOutcall || bookingOrOrder.outcallPhase || bookingOrOrder.outcallStatus) {
+    return true;
+  }
+
+  // 1. Gather all service names/IDs inside the booking or POS order
+  const itemNames: string[] = [];
+  const itemIds: string[] = [];
+
+  if (typeof bookingOrOrder.service === 'string') itemNames.push(bookingOrOrder.service);
+  if (typeof bookingOrOrder.packageName === 'string') itemNames.push(bookingOrOrder.packageName);
+  if (typeof bookingOrOrder.categoryTitle === 'string') itemNames.push(bookingOrOrder.categoryTitle);
+
+  if (Array.isArray(bookingOrOrder.items)) {
+    bookingOrOrder.items.forEach((it: any) => {
+      if (it?.name) itemNames.push(String(it.name));
+      if (it?.title) itemNames.push(String(it.title));
+      if (it?.id) itemIds.push(String(it.id));
+      if (it?.categoryId) itemIds.push(String(it.categoryId));
+      if (it?.category) itemNames.push(String(it.category));
+    });
+  }
+
+  if (Array.isArray(bookingOrOrder.services)) {
+    bookingOrOrder.services.forEach((s: any) => {
+      if (typeof s === 'string') itemNames.push(s);
+      else if (s?.name || s?.title) itemNames.push(s.name || s.title);
+    });
+  }
+
+  // 2. Dynamic lookup in appData.categories (id === 'hotel' or title includes 'Hotel' / 'Home')
+  if (appData?.categories && Array.isArray(appData.categories)) {
+    const hotelCategories = appData.categories.filter((cat) => {
+      const cid = (cat.id || '').toLowerCase();
+      const ctitle = (cat.title || '').toLowerCase();
+      return (
+        cid === 'hotel' ||
+        cid.includes('outcall') ||
+        ctitle.includes('hotel') ||
+        ctitle.includes('home service')
+      );
+    });
+
+    for (const cat of hotelCategories) {
+      if (cat.items && Array.isArray(cat.items)) {
+        for (const catItem of cat.items) {
+          const cItemName = (catItem.name || catItem.title || '').toLowerCase().trim();
+          const cItemId = String(catItem.id || '').trim();
+          if (
+            (cItemId && itemIds.includes(cItemId)) ||
+            (cItemName && itemNames.some((n) => n.toLowerCase().trim() === cItemName))
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Keyword fallback for standard 4 services & future Hotel/Home items
+  const combinedText = itemNames.join(' ').toLowerCase();
+  const outcallKeywords = [
+    'outcall',
+    'hotel & home',
+    'hotel service',
+    'home service',
+    'part time outcall',
+    'half day service',
+    'the whole night service',
+    'the whole day service',
+  ];
+
+  return outcallKeywords.some((kw) => combinedText.includes(kw));
+}
+
 // 🚀 Firebase Storage Upload Function (အသစ်ထည့်သွင်းထားသည်)
 export const uploadBase64ToStorage = async (base64String: string, folderName: string, fileName: string): Promise<string> => {
   try {
@@ -235,3 +370,5 @@ export const uploadBase64ToStorage = async (base64String: string, folderName: st
     throw new Error("Image upload failed");
   }
 };
+
+
