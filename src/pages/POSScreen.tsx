@@ -78,6 +78,15 @@ interface OfflineSaleRecord {
   originalOnlineTxId?: string;
   bookingTag?: string;
   bookingSource?: string;
+  // 🌟 Outcall 4-Stage Lifecycle Fields 🌟
+  isOutcall?: boolean;
+  outcallPhase?: 'on_the_way' | 'in_service' | 'returning' | 'completed';
+  outcallStatus?: 'on_the_way' | 'in_service' | 'returning' | 'completed';
+  dispatchedAtMillis?: number;
+  returningStartedAt?: number;
+  lastReturnReminderAt?: number;
+  returnReminderCount?: number;
+  durationMins?: number;
 }
 
 export interface PosUserAccount {
@@ -186,6 +195,152 @@ const generateInvoiceNo = () => {
   const ymd = `${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `SL-${ymd}-${rand}`;
+};
+
+// 🌟 1. Hotel & Home Services အချိန်များကို မိနစ်အဖြစ် တစ်ပြေးညီ တွက်ချက်ပေးသော Function 🌟
+// Part Time Outcall = 100 Mins | Half Day = 6 Hrs (360 Mins) | Whole Night = 12 Hrs (720 Mins) | Whole Day = 12 Hrs (720 Mins)
+export const parseServiceDurationMinutes = (nameStr: string = '', durationStr: string = ''): number => {
+  const combined = `${nameStr} ${durationStr}`.toLowerCase();
+  if (combined.includes('part time outcall')) return 100;
+  if (combined.includes('half day')) return 360;
+  if (combined.includes('whole night')) return 720;
+  if (combined.includes('whole day')) return 720;
+
+  const hMatch = combined.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr|နာရီ)/i);
+  if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60);
+
+  const mMatch = combined.match(/(\d+)\s*(?:mins|min|minutes|minute|မိနစ်)/i);
+  if (mMatch) return parseInt(mMatch[1], 10);
+
+  return 60;
+};
+
+// 🌟 2. Hotel & Home Services Category အောက်ရှိ ဝန်ဆောင်မှု (၄) ခု နှင့် နောင်ထပ်တိုးမည့် Outcall အားလုံးကို စစ်ဆေးပေးသော Function 🌟
+export const isHotelOrHomeServiceBooking = (bookingOrOrder: any, appData?: AppData): boolean => {
+  if (!bookingOrOrder) return false;
+  if (bookingOrOrder.isOutcall || bookingOrOrder.outcallPhase || bookingOrOrder.outcallStatus) {
+    return true;
+  }
+
+  const namesToCheck: string[] = [];
+  const idsToCheck: string[] = [];
+
+  if (typeof bookingOrOrder.service === 'string') namesToCheck.push(bookingOrOrder.service);
+  if (Array.isArray(bookingOrOrder.items)) {
+    bookingOrOrder.items.forEach((it: any) => {
+      if (it?.name) namesToCheck.push(String(it.name));
+      if (it?.id) idsToCheck.push(String(it.id));
+    });
+  }
+  if (Array.isArray(bookingOrOrder.posItems)) {
+    bookingOrOrder.posItems.forEach((it: any) => {
+      if (it?.name) namesToCheck.push(String(it.name));
+      if (it?.id) idsToCheck.push(String(it.id));
+    });
+  }
+
+  // Dynamic Category Lookup from appData.categories (id === 'hotel' or title includes 'hotel' / 'home')
+  if (appData?.categories && Array.isArray(appData.categories)) {
+    const hotelCats = appData.categories.filter((cat) => {
+      const cid = String(cat.id || '').toLowerCase();
+      const ctitle = String(cat.title || '').toLowerCase();
+      return cid === 'hotel' || cid.includes('outcall') || ctitle.includes('hotel') || ctitle.includes('home');
+    });
+
+    for (const cat of hotelCats) {
+      for (const item of cat.items || []) {
+        const iName = String(item.name || '').trim().toLowerCase();
+        const iId = String(item.id || '').trim();
+        if (
+          (iId && idsToCheck.includes(iId)) ||
+          (iName && namesToCheck.some((n) => n.toLowerCase().includes(iName)))
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+
+  const combinedText = namesToCheck.join(' ').toLowerCase();
+  const outcallKeywords = [
+    'outcall',
+    'hotel & home',
+    'hotel service',
+    'home service',
+    'part time outcall',
+    'half day service',
+    'the whole night service',
+    'the whole day service'
+  ];
+  return outcallKeywords.some((kw) => combinedText.includes(kw));
+};
+
+// 🌟 3. Outcall 4-Stage Live Status Badge Component (POS & Admin) 🌟
+export const OutcallStageBadge: React.FC<{ booking: any; appData?: AppData }> = ({ booking, appData }) => {
+  const isOutcall = isHotelOrHomeServiceBooking(booking, appData);
+  if (!isOutcall) return null;
+
+  const phase =
+    booking.outcallPhase ||
+    booking.outcallStatus ||
+    (booking.status === 'completed' || booking.serviceStatus === 'completed' ? 'completed' : 'on_the_way');
+
+  const now = Date.now();
+  const fmtTime = (ms?: number) =>
+    ms ? new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  if (phase === 'on_the_way') {
+    const dispTime = fmtTime(booking.dispatchedAtMillis || booking.createdAt);
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-blue-600 to-orange-500 text-white shadow-xs animate-pulse">
+        🚗 သွားနေဆဲ (On the Way){dispTime ? ` • ထွက်ချိန်: ${dispTime}` : ''}
+      </span>
+    );
+  }
+
+  if (phase === 'in_service') {
+    const durMins =
+      Number(booking.durationMins) ||
+      parseServiceDurationMinutes(booking.service || '', '') ||
+      100;
+    const startMs = Number(booking.startTimeMillis) || 0;
+    const endMs = Number(booking.expectedEndTimeMillis) || (startMs > 0 ? startMs + durMins * 60 * 1000 : 0);
+    const remainMins = endMs > 0 ? Math.ceil((endMs - now) / 60000) : durMins;
+
+    if (remainMins <= 0) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-600 text-white shadow-xs animate-bounce">
+          ⏰ အချိန်ပြည့်ပြီ / Overtime (+{Math.abs(remainMins)} မိနစ်)
+        </span>
+      );
+    }
+
+    const hrs = Math.floor(remainMins / 60);
+    const mins = remainMins % 60;
+    const remainLabel = hrs > 0 ? `${hrs} နာရီ ${mins} မိနစ်` : `${remainMins} မိနစ်`;
+
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-[#123524] text-[#D4AF37] border border-[#D4AF37] shadow-xs">
+        💆‍♂️ ဝန်ဆောင်မှုပေးနေဆဲ (ကျန်ချိန် - {remainLabel})
+      </span>
+    );
+  }
+
+  if (phase === 'returning') {
+    const retStart = Number(booking.returningStartedAt) || now;
+    const elapsedMins = Math.max(1, Math.round((now - retStart) / 60000));
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-purple-700 to-amber-500 text-white shadow-xs animate-pulse">
+        🛵 ဆိုင်သို့ပြန်လာနေဆဲ (Returning • { fmtTime(retStart) } / {elapsedMins} မိနစ်ကြာပြီ)
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+      🟢 Available (ဆိုင်သို့ပြန်ရောက်ပြီး)
+    </span>
+  );
 };
 
 // 🌟 Helper to detect VIP Tier & Discount % from Customer Points or Tier String 🌟
@@ -634,6 +789,16 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 note: decryptText(raw.specialRequest) || raw.specialRequest || '',
                 bookingTag: raw.bookingTag || (raw.bookingSource === 'walkin_phone' ? 'ကြိုတင်ဘိုကင်' : undefined),
                 bookingSource: raw.bookingSource,
+                isOutcall: Boolean(raw.isOutcall || raw.outcallPhase || raw.outcallStatus),
+                outcallPhase: raw.outcallPhase || raw.outcallStatus,
+                outcallStatus: raw.outcallStatus || raw.outcallPhase,
+                dispatchedAtMillis: Number(raw.dispatchedAtMillis) || undefined,
+                startTimeMillis: Number(raw.startTimeMillis) || undefined,
+                expectedEndTimeMillis: Number(raw.expectedEndTimeMillis) || undefined,
+                returningStartedAt: Number(raw.returningStartedAt) || undefined,
+                lastReturnReminderAt: Number(raw.lastReturnReminderAt) || undefined,
+                returnReminderCount: Number(raw.returnReminderCount) || 0,
+                durationMins: Number(raw.durationMins) || undefined,
                 synced: true
               });
             }
@@ -769,15 +934,62 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     [wbSelectedItems]
   );
 
-  // 🌟 10-MINUTE RECURRING OVERDUE CLOCK-OUT REMINDER ENGINE 🌟
+  // 🌟 10-MINUTE RECURRING OVERDUE & OUTCALL RETURNING REMINDER ENGINE (MULTI-DEVICE ATOMIC LOCK) 🌟
   useEffect(() => {
-    const checkOverdueServices = async () => {
+    const checkOverdueAndOutcallReminders = async () => {
       const now = Date.now();
       const TEN_MINUTES_MS = 10 * 60 * 1000;
       const allActive = [...walkInPhoneBookings, ...liveOnlineBookings];
 
       for (const b of allActive) {
-        if (b.status !== 'in_progress' || !b.expectedEndTimeMillis) continue;
+        if (b.status !== 'in_progress') continue;
+
+        const isOutcall = isHotelOrHomeServiceBooking(b, localAppData);
+        const phase = b.outcallPhase || b.outcallStatus;
+
+        // 1) Outcall Stage 1 ('on_the_way') -> ဝန်ထမ်း ဧည့်သည်ထံ မရောက်သေးသဖြင့် အချိန်မစသေးပါ
+        if (isOutcall && phase === 'on_the_way') {
+          continue;
+        }
+
+        // 2) Outcall Stage 3 ('returning') -> ဆိုင်သို့ပြန်လာနေဆဲ ၁၀ မိနစ်ပြည့်တိုင်း Telegram Reminder ပို့မည်
+        if (isOutcall && phase === 'returning' && b.returningStartedAt) {
+          const lastReturnRem = Number(b.lastReturnReminderAt || b.returningStartedAt || 0);
+          if (now - lastReturnRem >= TEN_MINUTES_MS) {
+            const elapsedMins = Math.max(10, Math.round((now - Number(b.returningStartedAt)) / 60000));
+            const nextCount = Number(b.returnReminderCount || 0) + 1;
+            try {
+              // Multi-Device Lock: Firebase ရှိ lastReturnReminderAt ကို ချက်ချင်း update လုပ်မည်
+              await updateDoc(doc(db, 'bookings', b.id), {
+                lastReturnReminderAt: now,
+                returnReminderCount: nextCount
+              });
+
+              const { notifyBookingEvent } = await import('../telegramService');
+              await notifyBookingEvent('STATUS_UPDATE', {
+                id: b.invoiceNo || b.txId || b.id,
+                customerName: b.name || 'Outcall Guest',
+                customerPhone: b.phone || '-',
+                serviceName: b.service || 'Hotel & Home Service',
+                durationMins: Number(b.durationMins) || 100,
+                price: Number(b.totalPrice) || 0,
+                date: b.date || getLocalTodayStr(),
+                time: b.time || '',
+                therapistName: b.therapist || 'Therapist',
+                status: 'in-service',
+                notes:
+                  `🔔 သတိပေးချက် (Reminder #${nextCount}) - ဆိုင်သို့ ပြန်လည်ရောက်ရှိပါက Staff Portal တွင် '🏠 ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)' ခလုတ်ကို မမေ့မလျော့ နှိပ်ပေးပါရန် (ပြန်ထွက်လာချိန်မှ မိနစ် ${elapsedMins} ကြာမြင့်နေပါပြီ)` +
+                  (elapsedMins >= 30 ? ` ⚠️ [Admin Alert: မိနစ် ၃၀ ကျော်လွန်နေပါပြီ]` : '')
+              });
+            } catch (err) {
+              console.warn('Outcall returning reminder error:', err);
+            }
+          }
+          continue;
+        }
+
+        // 3) In-Spa သို့မဟုတ် Outcall Stage 2 ('in_service') သတ်မှတ်ချိန်ပြည့် / ကျော်လွန်ချိန် Reminder
+        if (!b.expectedEndTimeMillis || b.expectedEndTimeMillis <= 0) continue;
 
         if (now > b.expectedEndTimeMillis) {
           const lastSent = Number(b.lastOverdueNotiSentAt || 0);
@@ -788,7 +1000,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
             try {
               await updateDoc(doc(db, 'bookings', b.id), {
-                lastOverdueNotiSentAt: now,
+                lastOverdueNotiSentAt: now
               });
 
               const { notifyServiceOverdueReminder } = await import('../telegramService');
@@ -808,7 +1020,7 @@ export default function POSScreen({ appData }: { appData: AppData }) {
                 appointmentTime: b.time || '',
                 startTimeStr: startD.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
                 expectedEndTimeStr: endD.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-                overdueMinutes: overdueMins,
+                overdueMinutes: overdueMins
               });
             } catch (err) {
               console.warn('Overdue reminder error:', err);
@@ -818,10 +1030,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       }
     };
 
-    const timer = setInterval(checkOverdueServices, 30000);
-    checkOverdueServices();
+    const timer = setInterval(checkOverdueAndOutcallReminders, 30000);
+    checkOverdueAndOutcallReminders();
     return () => clearInterval(timer);
-  }, [walkInPhoneBookings, liveOnlineBookings]);
+  }, [walkInPhoneBookings, liveOnlineBookings, localAppData]);
 
   // 1️⃣ ဖုန်းဆက် ကြိုတင်ဘိုကင်အသစ် မှတ်သားခြင်း (ဘောင်ချာမထုတ်မချင်း ဝန်ထမ်း App တွင် အချိန်မစသေးပါ)
   const handleCreateWalkInBooking = async (e: React.FormEvent) => {
@@ -896,14 +1108,151 @@ export default function POSScreen({ appData }: { appData: AppData }) {
     setWbProcessing(false);
   };
 
-  // 2️⃣ ဘောင်ချာထုတ်ပြီး ဝန်ထမ်း App တွင် Clock-In အချိန်စမှတ်ပေးခြင်း + Receipt Modal ပြသခြင်း
+  // 2️⃣ ဘောင်ချာထုတ်ပြီး ဝန်ထမ်း App တွင် Clock-In အချိန်စမှတ်ပေးခြင်း (Outcall ဖြစ်ပါက Stage 1: 'on_the_way' ဖြင့် စတင်မည်)
   const handleIssueVoucherAndStartClockIn = async (booking: any) => {
     setWbProcessing(true);
     try {
-      const startMillis = Date.now();
-      const durationMins = Number(booking.durationMins) || 60;
-      const expectedEndMillis = startMillis + durationMins * 60 * 1000;
+      const nowMillis = Date.now();
+      const isOutcall = isHotelOrHomeServiceBooking(booking, localAppData);
+      const durationMins =
+        Number(booking.durationMins) ||
+        parseServiceDurationMinutes(booking.service || '', '') ||
+        (isOutcall ? 100 : 60);
 
+      // Outcall ဖြစ်ပါက ဧည့်သည်ထံ မရောက်သေးသဖြင့် startTimeMillis = 0 ထားမည်
+      const startMillis = isOutcall ? 0 : nowMillis;
+      const expectedEndMillis = isOutcall ? 0 : nowMillis + durationMins * 60 * 1000;
+
+      const now = new Date();
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      const officialReceiptNo =
+        booking.invoiceNo && String(booking.invoiceNo).startsWith('WB-')
+          ? String(booking.invoiceNo).replace('WB-', 'SL-')
+          : `SL-${yy}${mm}${dd}-${rand}`;
+
+      const nowTimeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+      const newReceiptRecord: OfflineSaleRecord = {
+        localId: `walkin_phone_${booking.id}`,
+        firestoreDocId: booking.id,
+        invoiceNo: officialReceiptNo,
+        createdAt: nowMillis,
+        date: booking.date || getLocalTodayStr(),
+        time: nowTimeStr,
+        customerName: booking.name || 'Walk-in Guest',
+        customerPhone: booking.phone || '',
+        therapistName: booking.therapist || 'Therapist No-1',
+        items: Array.isArray(booking.items)
+          ? booking.items.map((i: any, idx: number) => ({
+              cartId: `wb_${booking.id}_${idx}`,
+              id: `wb_${idx}`,
+              name: i.name,
+              price: Number(i.price) || 0,
+              qty: Number(i.qty) || 1
+            }))
+          : [
+              {
+                cartId: `wb_${booking.id}_0`,
+                id: 'wb_0',
+                name: booking.service || 'Spa Service',
+                price: Number(booking.totalPrice) || 0,
+                qty: 1
+              }
+            ],
+        subTotal: Number(booking.totalPrice) || 0,
+        discountType: 'percent',
+        discountValue: 0,
+        discountAmount: 0,
+        discountReason: '',
+        totalPrice: Number(booking.totalPrice) || 0,
+        paymentMethod: booking.paymentMethod || 'Cash',
+        paymentStatus: 'paid_in_full',
+        depositPaid: Number(booking.totalPrice) || 0,
+        balanceDue: 0,
+        cashReceived: Number(booking.totalPrice) || 0,
+        changeDue: 0,
+        serviceStatus: 'in_progress',
+        pointsEarned: Math.floor((Number(booking.totalPrice) || 0) / 35000),
+        note: booking.specialRequest || '',
+        bookingTag: 'ကြိုတင်ဘိုကင်',
+        bookingSource: 'walkin_phone',
+        synced: true,
+        isOutcall,
+        outcallPhase: isOutcall ? 'on_the_way' : undefined,
+        outcallStatus: isOutcall ? 'on_the_way' : undefined,
+        dispatchedAtMillis: isOutcall ? nowMillis : undefined,
+        durationMins,
+        startTimeMillis: startMillis,
+        expectedEndTimeMillis: expectedEndMillis
+      };
+
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status: 'in_progress',
+        voucherIssued: true,
+        bookingTag: 'ကြိုတင်ဘိုကင်',
+        invoiceNo: officialReceiptNo,
+        txId: encryptText(officialReceiptNo),
+        time: nowTimeStr,
+        isOutcall,
+        durationMins,
+        ...(isOutcall
+          ? {
+              outcallPhase: 'on_the_way',
+              outcallStatus: 'on_the_way',
+              dispatchedAtMillis: nowMillis,
+              startTimeMillis: 0,
+              expectedEndTimeMillis: 0
+            }
+          : {
+              startTimeMillis: startMillis,
+              expectedEndTimeMillis: expectedEndMillis
+            }),
+        lastOverdueNotiSentAt: 0
+      });
+
+      addToLocalHistory(newReceiptRecord);
+      setActiveReceipt(newReceiptRecord);
+
+      if (isOutcall) {
+        const { notifyBookingEvent } = await import('../telegramService');
+        await notifyBookingEvent('STATUS_UPDATE', {
+          id: officialReceiptNo,
+          customerName: booking.name || 'Outcall Guest',
+          customerPhone: booking.phone || '',
+          serviceName: booking.service,
+          durationMins,
+          price: Number(booking.totalPrice) || 0,
+          date: booking.date,
+          time: nowTimeStr,
+          therapistName: booking.therapist,
+          status: 'in-service',
+          notes: `🚗 [Outcall Dispatched - သွားနေဆဲ] ဘောင်ချာထုတ်ပြီး ဝန်ထမ်း စတင်ထွက်ခွာနေပါပြီ။ ဧည့်သည်ထံရောက်ရှိပြီး Start Service နှိပ်မှ အချိန်စတင်မှတ်သားပါမည်။`
+        });
+      } else {
+        const { notifyServiceClockInStarted } = await import('../telegramService');
+        await notifyServiceClockInStarted({
+          bookingId: booking.id,
+          invoiceNo: officialReceiptNo,
+          customerName: booking.name || 'Walk-in Guest',
+          customerPhone: booking.phone || '',
+          serviceName: booking.service,
+          durationMins,
+          totalPrice: Number(booking.totalPrice) || 0,
+          therapistName: booking.therapist,
+          appointmentDate: booking.date,
+          appointmentTime: booking.time,
+          startTimeStr: new Date(startMillis).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          expectedEndTimeStr: new Date(expectedEndMillis).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+        });
+      }
+    } catch (err: any) {
+      alert('Error issuing voucher & starting clock-in: ' + err.message);
+    }
+    setWbProcessing(false);
+  };
       const now = new Date();
       const yy = String(now.getFullYear()).slice(-2);
       const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -1003,11 +1352,18 @@ export default function POSScreen({ appData }: { appData: AppData }) {
   };
 
   // 3️⃣ Walk-in Booking Complete လုပ်ခြင်း (Booking Tab မှ ပျောက်သွားပြီး Receipts History တွင်သာ ကျန်ခဲ့မည်)
-  const handleCompleteWalkInBooking = async (booking: any) => {
+const handleCompleteWalkInBooking = async (booking: any) => {
     try {
+      const isOutcall = isHotelOrHomeServiceBooking(booking, localAppData);
       await updateDoc(doc(db, 'bookings', booking.id), {
         status: 'completed',
         completedAt: Date.now(),
+        ...(isOutcall
+          ? {
+              outcallPhase: 'completed',
+              outcallStatus: 'completed'
+            }
+          : {})
       });
     } catch (err: any) {
       alert('Error completing booking: ' + err.message);
@@ -2107,8 +2463,15 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       posItems: record.items,
       cashierId: currentPosUser?.id || '',
       cashierName: encryptText(currentPosUser?.displayName || 'POS Staff'),
-      ...(record.startTimeMillis && { startTimeMillis: record.startTimeMillis }),
-      ...(record.expectedEndTimeMillis && { expectedEndTimeMillis: record.expectedEndTimeMillis })
+      isOutcall: Boolean(record.isOutcall),
+      ...(record.durationMins && { durationMins: record.durationMins }),
+      ...(record.outcallPhase && {
+        outcallPhase: record.outcallPhase,
+        outcallStatus: record.outcallStatus || record.outcallPhase,
+        dispatchedAtMillis: record.dispatchedAtMillis || record.createdAt
+      }),
+      startTimeMillis: record.isOutcall ? 0 : (record.startTimeMillis || record.createdAt),
+      expectedEndTimeMillis: record.isOutcall ? 0 : (record.expectedEndTimeMillis || 0)
     };
 
     const docRef = await addDoc(collection(db, 'bookings'), bookingPayload);
@@ -2646,20 +3009,16 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
 
     let totalMins = 0;
     cart.forEach((c) => {
-      const dStr = `${c.duration || ''} ${c.name || ''}`.toLowerCase();
-      const mMatch = dStr.match(/(\d+)\s*(?:mins|min)/i);
-      const hMatch = dStr.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr)/i);
-      let itemMins = 0;
-      if (mMatch) itemMins = parseInt(mMatch[1], 10);
-      else if (hMatch) itemMins = Math.round(parseFloat(hMatch[1]) * 60);
-      else if (dStr.includes('whole day')) itemMins = 480;
-      else if (dStr.includes('whole night')) itemMins = 600;
-      else if (!c.isCustomItem) itemMins = 60;
+      if (c.isCustomItem) return;
+      const itemMins = parseServiceDurationMinutes(c.name || '', c.duration || '');
       totalMins += itemMins * (c.qty || 1);
     });
-    if (totalMins <= 0) totalMins = 60;
-    const expectedEndTimeMillis = startTimeMillis + totalMins * 60 * 1000;
+    const isOutcallOrder = isHotelOrHomeServiceBooking({ items: cart }, localAppData);
+    if (totalMins <= 0) totalMins = isOutcallOrder ? 100 : 60;
 
+    // Outcall ဖြစ်ပါက ဘောင်ချာစထုတ်ချိန်တွင် အချိန်စမမှတ်သေးဘဲ (startTimeMillis: 0) 'on_the_way' အဖြစ် သတ်မှတ်မည်
+    const effectiveStartMillis = isOutcallOrder ? 0 : startTimeMillis;
+    const expectedEndTimeMillis = isOutcallOrder ? 0 : startTimeMillis + totalMins * 60 * 1000;
    const combinedTherapist =
       therapist1 && therapist2
         ? `${therapist1.name} & ${therapist2.name}`
@@ -2704,7 +3063,12 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       pointsEarned,
       note: specialNote.trim(),
       synced: false,
-      startTimeMillis,
+      isOutcall: isOutcallOrder,
+      outcallPhase: isOutcallOrder ? (serviceStatus === 'completed' ? 'completed' : 'on_the_way') : undefined,
+      outcallStatus: isOutcallOrder ? (serviceStatus === 'completed' ? 'completed' : 'on_the_way') : undefined,
+      dispatchedAtMillis: isOutcallOrder ? now : undefined,
+      durationMins: totalMins,
+      startTimeMillis: effectiveStartMillis,
       expectedEndTimeMillis
     };
 
@@ -4260,6 +4624,10 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-[#123524] border border-[#D4AF37]">
                               🏷️ ကြိုတင်ဘိုကင်
                             </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-[#123524] border border-[#D4AF37]">
+                                🏷️ ကြိုတင်ဘိုကင်
+                              </span>
+                              <OutcallStageBadge booking={b} appData={localAppData} />
                             {isInService ? (
                               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 animate-pulse">
                                 💆‍♂️ In-Service (ဝန်ထမ်း App တွင် အချိန်မှတ်နေဆဲ)
@@ -4751,23 +5119,28 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                           // 🌟 Admin Approve လုပ်ပြီးသား Online Booking ကို POS ကနေ ဘောင်ချာထုတ်လိုက်ပြီဆိုတာနဲ့ ဝန်ထမ်း App မှာ အချိန်စမှတ်ပေးမည်! 🌟
                           if (b.status === 'approved' && b.id) {
                             const nowMs = Date.now();
-                            const sText = String(b.service || '').toLowerCase();
-                            const mMatch = sText.match(/(\d+)\s*(?:mins|min)/i);
-                            const hMatch = sText.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr)/i);
-                            let totalMins = 60;
-                            if (mMatch) totalMins = parseInt(mMatch[1], 10);
-                            else if (hMatch) totalMins = Math.round(parseFloat(hMatch[1]) * 60);
-                            else if (sText.includes('whole day')) totalMins = 480;
-                            else if (sText.includes('whole night')) totalMins = 600;
-
-                            const expectedEndMs = nowMs + totalMins * 60 * 1000;
+                            const isOutcall = isHotelOrHomeServiceBooking(b, localAppData);
+                            const totalMins = parseServiceDurationMinutes(b.service || '', '');
+                            const expectedEndMs = isOutcall ? 0 : nowMs + totalMins * 60 * 1000;
                             const nowTimeStr = new Date(nowMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                             try {
                               await updateDoc(doc(db, 'bookings', b.id), {
                                 status: 'in_progress',
-                                startTimeMillis: nowMs,
-                                expectedEndTimeMillis: expectedEndMs,
+                                isOutcall,
+                                durationMins: totalMins,
+                                ...(isOutcall
+                                  ? {
+                                      outcallPhase: 'on_the_way',
+                                      outcallStatus: 'on_the_way',
+                                      dispatchedAtMillis: nowMs,
+                                      startTimeMillis: 0,
+                                      expectedEndTimeMillis: 0
+                                    }
+                                  : {
+                                      startTimeMillis: nowMs,
+                                      expectedEndTimeMillis: expectedEndMs
+                                    }),
                                 posPrintedAt: nowMs
                               });
                               receiptObj.serviceStatus = 'in_progress';
@@ -5639,6 +6012,12 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                                     🏷️ {sale.bookingTag || 'ကြိုတင်ဘိုကင်'}
                                   </span>
                                 )}
+                              {(sale.bookingTag || sale.bookingSource === 'walkin_phone') && (
+                                  <span className="bg-amber-100 text-[#123524] border border-[#D4AF37] px-2 py-0.5 rounded-full text-[9px] font-black">
+                                    🏷️ {sale.bookingTag || 'ကြိုတင်ဘိုကင်'}
+                                  </span>
+                                )}
+                                <OutcallStageBadge booking={sale} appData={localAppData} />
                               </div>
 
                             <div className="text-xs font-bold text-gray-800">
