@@ -28,6 +28,150 @@ interface CartItem {
   qty: number;
 }
 
+// 🌟 1. Outcall အချိန်များကို မိနစ်အဖြစ် တွက်ချက်ပေးသော Function 🌟
+export const parseServiceDurationMinutes = (nameStr: string = '', durationStr: string = ''): number => {
+  const combined = `${nameStr} ${durationStr}`.toLowerCase();
+  if (combined.includes('part time outcall')) return 100;
+  if (combined.includes('half day')) return 360;
+  if (combined.includes('whole night')) return 720;
+  if (combined.includes('whole day')) return 720;
+
+  const hMatch = combined.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr|နာရီ)/i);
+  if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60);
+
+  const mMatch = combined.match(/(\d+)\s*(?:mins|min|minutes|minute|မိနစ်)/i);
+  if (mMatch) return parseInt(mMatch[1], 10);
+
+  return 60;
+};
+
+// 🌟 2. Hotel & Home Services Category အောက်ရှိ ဝန်ဆောင်မှုအားလုံးကို စစ်ဆေးပေးသော Function 🌟
+export const isHotelOrHomeServiceBooking = (bookingOrOrder: any, appData?: AppData): boolean => {
+  if (!bookingOrOrder) return false;
+  if (bookingOrOrder.isOutcall || bookingOrOrder.outcallPhase || bookingOrOrder.outcallStatus) {
+    return true;
+  }
+
+  const namesToCheck: string[] = [];
+  const idsToCheck: string[] = [];
+
+  if (typeof bookingOrOrder.service === 'string') namesToCheck.push(bookingOrOrder.service);
+  if (Array.isArray(bookingOrOrder.items)) {
+    bookingOrOrder.items.forEach((it: any) => {
+      if (it?.name) namesToCheck.push(String(it.name));
+      if (it?.id) idsToCheck.push(String(it.id));
+    });
+  }
+  if (Array.isArray(bookingOrOrder.posItems)) {
+    bookingOrOrder.posItems.forEach((it: any) => {
+      if (it?.name) namesToCheck.push(String(it.name));
+      if (it?.id) idsToCheck.push(String(it.id));
+    });
+  }
+
+  if (appData?.categories && Array.isArray(appData.categories)) {
+    const hotelCats = appData.categories.filter((cat) => {
+      const cid = String(cat.id || '').toLowerCase();
+      const ctitle = String(cat.title || '').toLowerCase();
+      return cid === 'hotel' || cid.includes('outcall') || ctitle.includes('hotel') || ctitle.includes('home');
+    });
+
+    for (const cat of hotelCats) {
+      for (const item of cat.items || []) {
+        const iName = String(item.name || '').trim().toLowerCase();
+        const iId = String(item.id || '').trim();
+        if (
+          (iId && idsToCheck.includes(iId)) ||
+          (iName && namesToCheck.some((n) => n.toLowerCase().includes(iName)))
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+
+  const combinedText = namesToCheck.join(' ').toLowerCase();
+  const outcallKeywords = [
+    'outcall',
+    'hotel & home',
+    'hotel service',
+    'home service',
+    'part time outcall',
+    'half day service',
+    'the whole night service',
+    'the whole day service'
+  ];
+  return outcallKeywords.some((kw) => combinedText.includes(kw));
+};
+
+// 🌟 3. POS & Admin တွင် Outcall Live Status ပြသပေးမည့် Badge Component 🌟
+export const OutcallStageBadge: React.FC<{ booking: any; appData?: AppData }> = ({ booking, appData }) => {
+  const isOutcall = isHotelOrHomeServiceBooking(booking, appData);
+  if (!isOutcall) return null;
+
+  const phase =
+    booking.outcallPhase ||
+    booking.outcallStatus ||
+    (booking.status === 'completed' || booking.serviceStatus === 'completed' ? 'completed' : 'on_the_way');
+
+  const now = Date.now();
+  const fmtTime = (ms?: number) =>
+    ms ? new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  if (phase === 'on_the_way') {
+    const dispTime = fmtTime(booking.dispatchedAtMillis || booking.createdAt);
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-blue-600 to-orange-500 text-white shadow-xs animate-pulse">
+        🚗 သွားနေဆဲ (On the Way){dispTime ? ` • ထွက်ချိန်: ${dispTime}` : ''}
+      </span>
+    );
+  }
+
+  if (phase === 'in_service') {
+    const durMins =
+      Number(booking.durationMins) ||
+      parseServiceDurationMinutes(booking.service || '', '') ||
+      100;
+    const startMs = Number(booking.startTimeMillis) || 0;
+    const endMs = Number(booking.expectedEndTimeMillis) || (startMs > 0 ? startMs + durMins * 60 * 1000 : 0);
+    const remainMins = endMs > 0 ? Math.ceil((endMs - now) / 60000) : durMins;
+
+    if (remainMins <= 0) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-600 text-white shadow-xs animate-bounce">
+          ⏰ အချိန်ပြည့်ပြီ / Overtime (+{Math.abs(remainMins)} မိနစ်)
+        </span>
+      );
+    }
+
+    const hrs = Math.floor(remainMins / 60);
+    const mins = remainMins % 60;
+    const remainLabel = hrs > 0 ? `${hrs} နာရီ ${mins} မိနစ်` : `${remainMins} မိနစ်`;
+
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-[#123524] text-[#D4AF37] border border-[#D4AF37] shadow-xs">
+        💆‍♂️ ဝန်ဆောင်မှုပေးနေဆဲ (ကျန်ချိန် - {remainLabel})
+      </span>
+    );
+  }
+
+  if (phase === 'returning') {
+    const retStart = Number(booking.returningStartedAt) || now;
+    const elapsedMins = Math.max(1, Math.round((now - retStart) / 60000));
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-purple-700 to-amber-500 text-white shadow-xs animate-pulse">
+        🛵 ဆိုင်သို့ပြန်လာနေဆဲ (Returning • {fmtTime(retStart)} / {elapsedMins} မိနစ်ကြာပြီ)
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+      🟢 Available (ဆိုင်သို့ပြန်ရောက်ပြီး)
+    </span>
+  );
+};
+
 interface SavedExtraItem {
   id: string;
   name: string;
@@ -2367,14 +2511,12 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       cashierId: currentPosUser?.id || '',
       cashierName: encryptText(currentPosUser?.displayName || 'POS Staff'),
       isOutcall: Boolean(record.isOutcall),
-      ...(record.durationMins && { durationMins: record.durationMins }),
-      ...(record.outcallPhase && {
-        outcallPhase: record.outcallPhase,
-        outcallStatus: record.outcallStatus || record.outcallPhase,
-        dispatchedAtMillis: record.dispatchedAtMillis || record.createdAt
-      }),
-      startTimeMillis: record.isOutcall ? 0 : (record.startTimeMillis || record.createdAt),
-      expectedEndTimeMillis: record.isOutcall ? 0 : (record.expectedEndTimeMillis || 0)
+      outcallPhase: record.outcallPhase || (record.isOutcall ? 'on_the_way' : undefined),
+      outcallStatus: record.outcallStatus || (record.isOutcall ? 'on_the_way' : undefined),
+      dispatchedAtMillis: record.dispatchedAtMillis || record.createdAt,
+      durationMins: Number(record.durationMins) || 60,
+      startTimeMillis: Number(record.startTimeMillis) || 0,
+      expectedEndTimeMillis: Number(record.expectedEndTimeMillis) || 0
     };
 
     const docRef = await addDoc(collection(db, 'bookings'), bookingPayload);
@@ -2913,16 +3055,21 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
     let totalMins = 0;
     cart.forEach((c) => {
       if (c.isCustomItem) return;
+      conslet totalMins = 0;
+    cart.forEach((c) => {
+      if (c.isCustomItem) return;
       const itemMins = parseServiceDurationMinutes(c.name || '', c.duration || '');
       totalMins += itemMins * (c.qty || 1);
     });
+
     const isOutcallOrder = isHotelOrHomeServiceBooking({ items: cart }, localAppData);
     if (totalMins <= 0) totalMins = isOutcallOrder ? 100 : 60;
 
-    // Outcall ဖြစ်ပါက ဘောင်ချာစထုတ်ချိန်တွင် အချိန်စမမှတ်သေးဘဲ (startTimeMillis: 0) 'on_the_way' အဖြစ် သတ်မှတ်မည်
+    // 🌟 Outcall ဖြစ်ပါက ဘောင်ချာထုတ်ချိန်တွင် အချိန်စမမှတ်သေးဘဲ startTimeMillis = 0 နှင့် outcallPhase = 'on_the_way' ထားမည် 🌟
     const effectiveStartMillis = isOutcallOrder ? 0 : startTimeMillis;
     const expectedEndTimeMillis = isOutcallOrder ? 0 : startTimeMillis + totalMins * 60 * 1000;
-   const combinedTherapist =
+
+    const combinedTherapist =
       therapist1 && therapist2
         ? `${therapist1.name} & ${therapist2.name}`
         : therapist1
@@ -2980,6 +3127,26 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
         const docId = await uploadSaleToFirebase(newRecord);
         newRecord.synced = true;
         newRecord.firestoreDocId = docId;
+
+        // 🌟 Outcall ဖြစ်ပါက Telegram သို့ Dispatched Noti တိုက်ရိုက်ပို့ခြင်း 🌟
+        if (isOutcallOrder && serviceStatus === 'in_progress') {
+          const srvSummary = cart.map((i) => `${i.name}${i.qty > 1 ? ` x${i.qty}` : ''}`).join(', ');
+          const { notifyOutcallServiceEvent } = await import('../telegramService');
+          await notifyOutcallServiceEvent({
+            bookingId: docId,
+            invoiceNo: newRecord.invoiceNo,
+            customerName: newRecord.customerName,
+            customerPhone: newRecord.customerPhone,
+            serviceName: srvSummary,
+            durationMins: totalMins,
+            totalPrice: finalTotal,
+            therapistName: combinedTherapist,
+            appointmentDate: saleDate,
+            appointmentTime: newRecord.time,
+            outcallPhase: 'on_the_way',
+            dispatchedTimeStr: newRecord.time
+          });
+        }
       } catch (err) {
         console.warn('Saved to offline queue due to network error:', err);
         updateOfflineQueue([...offlineQueue, newRecord]);
@@ -4526,7 +4693,7 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-[#123524] border border-[#D4AF37]">
                                 🏷️ ကြိုတင်ဘိုကင်
                               </span>
-                              <OutcallStageBadge booking={b} appData={localAppData} />
+                             <OutcallStageBadge appData={localAppData} booking={b} />
                             {isInService ? (
                               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 animate-pulse">
                                 💆‍♂️ In-Service (ဝန်ထမ်း App တွင် အချိန်မှတ်နေဆဲ)
@@ -4921,6 +5088,7 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                         <span className="font-mono font-black text-xs bg-[#123524] text-[#D4AF37] px-2.5 py-1 rounded-lg">
                           TxID: {b.txId || '-'}
                         </span>
+                        <OutcallStageBadge appData={localAppData} booking={b} />
                         <span className="text-xs font-extrabold text-[#123524]">
                           {b.date} • {b.time}
                         </span>
