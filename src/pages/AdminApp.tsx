@@ -2453,6 +2453,70 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
 function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }: { bookings: Booking[], allBookings?: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
   const [view, setView] = useState<'dashboard' | 'service' | 'outpass' | 'performance'>('dashboard');
   const [outpasses, setOutpasses] = useState<OutPass[]>([]);
+
+   // 🌟 Outcall 4-Stage Live Helper & Badge Component for Admin 🌟
+  const isHotelOrHomeService = (b: any) => {
+    if (!b) return false;
+    if (b.isOutcall || b.outcallPhase || b.outcallStatus) return true;
+    const sName = String(b.service || '').toLowerCase();
+    return (
+      sName.includes('outcall') ||
+      sName.includes('hotel & home') ||
+      sName.includes('part time outcall') ||
+      sName.includes('half day') ||
+      sName.includes('whole night') ||
+      sName.includes('whole day')
+    );
+  };
+
+  const AdminOutcallStageBadge: React.FC<{ booking: any }> = ({ booking }) => {
+    if (!isHotelOrHomeService(booking)) return null;
+    const phase = booking.outcallPhase || booking.outcallStatus || 'on_the_way';
+    const now = Date.now();
+    const fmt = (ms?: number) => (ms ? new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '');
+
+    if (phase === 'on_the_way') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-blue-600 to-orange-500 text-white shadow-2xs animate-pulse">
+          🚗 သွားနေဆဲ (On the Way){booking.dispatchedAtMillis ? ` • ${fmt(booking.dispatchedAtMillis)}` : ''}
+        </span>
+      );
+    }
+    if (phase === 'in_service') {
+      const durMins = Number(booking.durationMins) || 100;
+      const startMs = Number(booking.startTimeMillis) || 0;
+      const endMs = startMs > 0 ? startMs + durMins * 60 * 1000 : 0;
+      const remain = endMs > 0 ? Math.ceil((endMs - now) / 60000) : durMins;
+
+      if (remain <= 0) {
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-600 text-white shadow-2xs animate-bounce">
+            ⏰ အချိန်ပြည့်ပြီ / Overtime (+{Math.abs(remain)} မိနစ်)
+          </span>
+        );
+      }
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-[#123524] text-[#D4AF37] border border-[#D4AF37] shadow-2xs">
+          💆‍♂️ ဝန်ဆောင်မှုပေးနေဆဲ (ကျန်ချိန် - {remain} မိနစ်)
+        </span>
+      );
+    }
+    if (phase === 'returning') {
+      const retStart = Number(booking.returningStartedAt) || now;
+      const elapsed = Math.max(1, Math.round((now - retStart) / 60000));
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-purple-700 to-amber-500 text-white shadow-2xs animate-pulse">
+          🛵 ဆိုင်သို့ပြန်လာနေဆဲ (Returning • {elapsed} မိနစ်ကြာပြီ)
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+        🟢 Available (ဆိုင်သို့ပြန်ရောက်ပြီး)
+      </span>
+    );
+  };
+   
   const [serviceDateFilter, setServiceDateFilter] = useState<'today' | 'yesterday' | 'custom' | 'all'>('today');
   const [customFilterDate, setCustomFilterDate] = useState<string>(getLocalTodayStr());
   const [historySearch, setHistorySearch] = useState<string>('');
@@ -2854,12 +2918,25 @@ const getTodayServiceStats = (tName: string) => {
   }, [bookings, todayStr, now, getAccurateSessionTimes, isStrictlyAdminClockIn]);
 
   // လက်ရှိ Overtime ဖြစ်နေသော Active Session အရေအတွက်
-  const activeOvertimeCount = useMemo(() => {
-    return activeBookings.filter((b) => {
+const activeBookings = useMemo(() => {
+    return bookings.filter((b) => {
+      if (b.status !== 'in_progress') return false;
+      if (b.date !== todayStr) return false;
+
+      // Outcall ဖြစ်ပါက outcallPhase သည် completed ဖြစ်မှသာ Active List မှ ဖယ်ထုတ်မည်
+      const isOutcall = isHotelOrHomeService(b);
+      if (isOutcall) {
+        const ph = b.outcallPhase || b.outcallStatus;
+        if (ph === 'completed') return false;
+        return true;
+      }
+
       const { expectedEndMs } = getAccurateSessionTimes(b);
-      return !isStrictlyAdminClockIn(b) && now > expectedEndMs;
-    }).length;
-  }, [activeBookings, now, getAccurateSessionTimes, isStrictlyAdminClockIn]);
+      if (isStrictlyAdminClockIn(b) && now >= expectedEndMs) return false;
+
+      return true;
+    });
+  }, [bookings, todayStr, now, getAccurateSessionTimes, isStrictlyAdminClockIn]);
 
   // ဒီနေ့အတွက် Out Pass များသာ ပြသမည်
   const activeOutpasses = useMemo(() => {
@@ -3295,17 +3372,20 @@ const getTodayServiceStats = (tName: string) => {
 
                       {/* Row 1: Therapist Name & Live Remaining / Overtime Badge (with Hours & Mins) */}
                       <div className="flex justify-between items-start mb-2.5 gap-2">
-                        <div>
-                          <div className={`font-black text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>
-                            {b.therapist}
-                          </div>
-                          {b.txId && b.txId !== 'ADMIN' && (
-                            <span className="font-mono text-[10px] font-black text-gray-500">
-                              Bill: {b.txId}
-                            </span>
-                          )}
-                        </div>
-
+                    <div>
+                      <div className={`font-black text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>
+                        {b.therapist}
+                      </div>
+                      <div className="mt-1">
+                        <AdminOutcallStageBadge booking={b} />
+                      </div>
+                      {b.txId && b.txId !== 'ADMIN' && (
+                        <span className="font-mono text-[10px] font-black text-gray-500 block mt-1">
+                          Bill: {b.txId}
+                        </span>
+                      )}
+                    </div>
+                         
                         <div className="text-right">
                           <span
                             className={`inline-block text-[10px] font-black px-2.5 py-1 rounded-lg tracking-wide shadow-2xs ${
@@ -3711,16 +3791,19 @@ const getTodayServiceStats = (tName: string) => {
 
                   return (
                     <tr key={b.id} className="border-b border-gray-100 hover:bg-gray-50/80 transition text-sm">
-                      <td className="p-3.5">
-                        <div className="font-black text-[#123524]">{b.therapist}</div>
-                        <span
-                          className={`inline-block mt-1 text-[9px] font-black px-2 py-0.5 rounded ${
-                            isAdminAuto ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {isAdminAuto ? '⚡ Admin Clock-In' : '🧾 POS / Online'}
-                        </span>
-                      </td>
+                    <td className="p-3.5">
+                      <div className="font-black text-[#123524]">{b.therapist}</div>
+                      <div className="mt-1">
+                        <AdminOutcallStageBadge booking={b} />
+                      </div>
+                      <span
+                        className={`inline-block mt-1 text-[9px] font-black px-2 py-0.5 rounded ${
+                          isAdminAuto ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}
+                      >
+                        {isAdminAuto ? '⚡ Admin Clock-In' : '🧾 POS / Online'}
+                      </span>
+                    </td>
 
                       <td className="p-3.5 max-w-xs">
                         <div className="font-bold text-gray-800 leading-snug">
