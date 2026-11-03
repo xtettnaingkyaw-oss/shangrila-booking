@@ -1082,6 +1082,203 @@ function ActiveSessionDisplay({
   stopping: boolean;
 }) {
   const isAdminAutoSession = useMemo(() => isStrictlyAdminClockIn(session), [session]);
+  const isOutcallService = useMemo(() => {
+    if (!session) return false;
+    if (session.isOutcall || session.outcallPhase || session.outcallStatus) return true;
+    const sName = String(session.service || '').toLowerCase();
+    return (
+      sName.includes('outcall') ||
+      sName.includes('hotel & home') ||
+      sName.includes('part time outcall') ||
+      sName.includes('half day') ||
+      sName.includes('whole night') ||
+      sName.includes('whole day')
+    );
+  }, [session]);
+
+  const outcallPhase = session.outcallPhase || session.outcallStatus || 'on_the_way';
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showReminderPopup, setShowReminderPopup] = useState(false);
+  const [reminderElapsedMins, setReminderElapsedMins] = useState(10);
+
+  // GPS Location ရယူသည့် Helper
+  const fetchGpsCoord = (): Promise<{ lat: number; lng: number } | null> => {
+    return new Promise((resolve) => {
+      if (!('geolocation' in navigator)) return resolve(null);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    });
+  };
+
+  // 🌟 ဖုန်းမြည်သံ (Audio Beep) နှင့် Vibration ဖွင့်ပေးသော Function 🌟
+  const triggerLocalAudioVibrationAlert = useCallback(() => {
+    try {
+      if ('vibrate' in navigator) {
+        navigator.vibrate([400, 200, 400, 200, 600]);
+      }
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime); // A5 tone
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.6);
+      }
+    } catch (e) {
+      console.warn('Audio alert restricted:', e);
+    }
+  }, []);
+
+  // 🌟 Outcall Stage 3 ('returning') တွင် ၁၀ မိနစ်ပြည့်တိုင်း Local Alert ပြသခြင်း 🌟
+  useEffect(() => {
+    if (!isOutcallService || outcallPhase !== 'returning' || !session.returningStartedAt) {
+      setShowReminderPopup(false);
+      return;
+    }
+
+    const checkInterval = setInterval(() => {
+      const now = Date.now();
+      const lastRem = Number(session.lastReturnReminderAt || session.returningStartedAt || 0);
+      const TEN_MINS = 10 * 60 * 1000;
+
+      if (now - lastRem >= TEN_MINS) {
+        const totalElapsed = Math.max(10, Math.round((now - Number(session.returningStartedAt)) / 60000));
+        setReminderElapsedMins(totalElapsed);
+        setShowReminderPopup(true);
+        triggerLocalAudioVibrationAlert();
+      }
+    }, 10000);
+
+    return () => clearInterval(checkInterval);
+  }, [isOutcallService, outcallPhase, session.returningStartedAt, session.lastReturnReminderAt, triggerLocalAudioVibrationAlert]);
+
+  // Stage 1 -> Stage 2: 📍 ဧည့်သည်ထံရောက်ရှိကြောင်း အကြောင်းကြားရန် (Start Service)
+  const handleStartOutcallService = async () => {
+    if (!session?.id) return;
+    setActionLoading(true);
+    try {
+      const gps = await fetchGpsCoord();
+      const startMs = Date.now();
+      const durMins = session.durationMins || extractAccurateServiceDurationMins(session, appData).totalMins || 100;
+      const endMs = startMs + durMins * 60 * 1000;
+
+      await updateDoc(doc(db, 'bookings', session.id), {
+        outcallPhase: 'in_service',
+        outcallStatus: 'in_service',
+        startTimeMillis: startMs,
+        expectedEndTimeMillis: endMs,
+        ...(gps ? { clientLocationGps: gps } : {})
+      });
+
+      const { notifyBookingEvent } = await import('../telegramService');
+      await notifyBookingEvent('STATUS_UPDATE', {
+        id: session.txId || session.id,
+        customerName: session.name || 'Outcall Guest',
+        customerPhone: session.phone || '-',
+        serviceName: session.service || 'Hotel & Home Service',
+        durationMins: durMins,
+        price: Number(session.totalPrice) || 0,
+        date: session.date || getLocalTodayStr(),
+        time: `${formatTimeAMPM(startMs)} - ${formatTimeAMPM(endMs)}`,
+        therapistName: loggedInStaff.name,
+        status: 'in-service',
+        notes: `💆‍♂️ [Outcall In-Service] ဝန်ထမ်း <b>${loggedInStaff.name}</b> ဧည့်သည်ထံရောက်ရှိပြီး ဝန်ဆောင်မှု စတင်နေပြီဖြစ်ပါသည်။ (သတ်မှတ်ချိန်: ${durMins} မိနစ်)`
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Error starting outcall service.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Stage 2 -> Stage 3: ✅ ဝန်ဆောင်မှုပြီးဆုံးပြီ (ဆိုင်သို့ပြန်ထွက်မည်)
+  const handleStartReturning = async () => {
+    if (!session?.id) return;
+    if (!window.confirm('ဝန်ဆောင်မှု ပြီးဆုံး၍ ဆိုင်သို့ စတင်ပြန်ထွက်မည်မှာ သေချာပါသလား?')) return;
+    setActionLoading(true);
+    try {
+      const gps = await fetchGpsCoord();
+      const nowMs = Date.now();
+
+      await updateDoc(doc(db, 'bookings', session.id), {
+        outcallPhase: 'returning',
+        outcallStatus: 'returning',
+        returningStartedAt: nowMs,
+        lastReturnReminderAt: nowMs,
+        returnReminderCount: 0,
+        actualEndTimeMillis: nowMs
+      });
+
+      const { notifyBookingEvent } = await import('../telegramService');
+      await notifyBookingEvent('STATUS_UPDATE', {
+        id: session.txId || session.id,
+        customerName: session.name || 'Outcall Guest',
+        customerPhone: session.phone || '-',
+        serviceName: session.service || 'Hotel & Home Service',
+        durationMins: session.durationMins || 100,
+        price: Number(session.totalPrice) || 0,
+        date: session.date || getLocalTodayStr(),
+        time: formatTimeAMPM(nowMs),
+        therapistName: loggedInStaff.name,
+        status: 'in-service',
+        notes: `🛵 [Returning to Shop] ဝန်ထမ်း <b>${loggedInStaff.name}</b> သည် ဧည့်သည်ထံတွင် ဝန်ဆောင်မှုပြီးဆုံး၍ ဆိုင်သို့ စတင်ပြန်လာနေပြီဖြစ်ပါသည်။`
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Error updating returning status.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Stage 3 -> Stage 4: 🏠 ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)
+  const handleCompleteOutcallClockOut = async () => {
+    if (!session?.id) return;
+    if (!window.confirm('ဆိုင်သို့ ပြန်လည်ရောက်ရှိပြီး အလုပ်သိမ်းမည် (Clock Out) မှာ သေချာပါသလား?')) return;
+    setActionLoading(true);
+    try {
+      const nowMs = Date.now();
+      await updateDoc(doc(db, 'bookings', session.id), {
+        status: 'completed',
+        outcallPhase: 'completed',
+        outcallStatus: 'completed',
+        completedAtMillis: nowMs
+      });
+
+      setShowReminderPopup(false);
+
+      const { notifyBookingEvent } = await import('../telegramService');
+      await notifyBookingEvent('STATUS_UPDATE', {
+        id: session.txId || session.id,
+        customerName: session.name || 'Outcall Guest',
+        customerPhone: session.phone || '-',
+        serviceName: session.service || 'Hotel & Home Service',
+        durationMins: session.durationMins || 100,
+        price: Number(session.totalPrice) || 0,
+        date: session.date || getLocalTodayStr(),
+        time: formatTimeAMPM(nowMs),
+        therapistName: loggedInStaff.name,
+        status: 'completed',
+        notes: `✅ [Outcall Completed & Clocked Out] ဝန်ထမ်း <b>${loggedInStaff.name}</b> ဆိုင်သို့ ပြန်လည်ရောက်ရှိပြီး Clock-Out ပြီးဆုံးပါပြီ။ (Available at Shop)`
+      });
+
+      onStop();
+    } catch (err) {
+      console.error(err);
+      alert('Error completing outcall clock-out.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
   const durationInfo = useMemo(() => extractAccurateServiceDurationMins(session, appData), [session, appData]);
   const totalServiceSeconds = durationInfo.totalMins * 60;
 
@@ -1139,7 +1336,36 @@ function ActiveSessionDisplay({
   const cleanServiceTitle = (session.service || 'Spa Service').replace(/\(\d+\s*Mins\)/gi, '').trim();
 
   return (
-    <div className="animate-fade-in space-y-5">
+    <div className="animate-fade-in space-y-5 relative">
+      {/* 🌟 10-Minute Returning Reminder Popup Modal 🌟 */}
+      {showReminderPopup && (
+        <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border-4 border-amber-500 space-y-4 animate-bounce">
+            <div className="w-16 h-16 bg-amber-100 rounded-full mx-auto flex items-center justify-center text-amber-600 shadow-inner">
+              <Bell className="w-8 h-8 animate-ping" />
+            </div>
+            <h3 className="text-lg font-black text-[#123524]">🔔 ဆိုင်သို့ ပြန်ရောက်ပြီလား?</h3>
+            <p className="text-xs font-bold text-gray-600 leading-relaxed">
+              ဆိုင်သို့ ပြန်လည်ရောက်ရှိပါက Staff Portal တွင် <b>'🏠 ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)'</b> ခလုတ်ကို မမေ့မလျော့ နှိပ်ပေးပါရန်။
+              <br />
+              <span className="text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded mt-2 inline-block">
+                (ပြန်ထွက်လာချိန်မှ <b>မိနစ် {reminderElapsedMins}</b> ကြာမြင့်နေပါပြီ)
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                triggerLocalAudioVibrationAlert();
+                setShowReminderPopup(false);
+              }}
+              className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-wider shadow-md"
+            >
+              သိရှိပါပြီ (Dismiss Alert)
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] text-white p-5 sm:p-7 rounded-3xl shadow-xl border-2 border-[#D4AF37]/60 relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-white/10">
           <StatusBadge status={session.status} />
@@ -1280,29 +1506,70 @@ function ActiveSessionDisplay({
       </div>
 
       {/* 🌟 ပုံ (၂) - အတည်ပြုရန်ခလုတ်တွင် Icon နှင့် စာသား တစ်သားတည်း ကပ်လျက် လှပစွာ ပေါ်စေရန် ပြင်ဆင်ချက် 🌟 */}
-      <button
-        type="button"
-        disabled={stopping}
-        onClick={onStop}
-        className="w-full py-3.5 sm:py-4 px-5 bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-2xl font-black shadow-xl flex flex-col items-center justify-center mx-auto transition active:scale-[0.99] border-2 border-emerald-400/30 disabled:opacity-50"
-      >
-        {stopping ? (
-          <div className="flex items-center justify-center gap-2 text-sm sm:text-base">
-            <CheckCircle2 className="w-5 h-5 text-yellow-300 animate-spin flex-shrink-0" />
-            <span>သိမ်းဆည်းနေပါသည်...</span>
-          </div>
-        ) : (
-          <>
-            <div className="inline-flex items-center justify-center gap-2 text-sm sm:text-base leading-snug">
-              <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-300 flex-shrink-0" />
-              <span>ဝန်ဆောင်မှု ပြီးဆုံးကြောင်း အတည်ပြုမည်</span>
+      {/* 🌟 In-Spa Service vs Outcall 4-Stage Dynamic Action Buttons 🌟 */}
+      {isOutcallService ? (
+        <div className="space-y-3">
+          {outcallPhase === 'on_the_way' && (
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={handleStartOutcallService}
+              className="w-full py-4 px-5 bg-gradient-to-r from-blue-600 to-orange-500 hover:opacity-95 text-white rounded-2xl font-black shadow-xl flex items-center justify-center gap-2 text-sm sm:text-base border-2 border-orange-300/40 active:scale-[0.99] transition disabled:opacity-50"
+            >
+              <span>📍</span>
+              <span>ဧည့်သည်ထံရောက်ရှိကြောင်း အကြောင်းကြားရန် (Start Service)</span>
+            </button>
+          )}
+
+          {outcallPhase === 'in_service' && (
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={handleStartReturning}
+              className="w-full py-4 px-5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] hover:opacity-95 text-[#123524] rounded-2xl font-black shadow-xl flex items-center justify-center gap-2 text-sm sm:text-base border-2 border-[#123524]/30 active:scale-[0.99] transition disabled:opacity-50"
+            >
+              <span>✅</span>
+              <span>ဝန်ဆောင်မှုပြီးဆုံးပြီ — ဆိုင်သို့ပြန်ထွက်မည် (Returning)</span>
+            </button>
+          )}
+
+          {outcallPhase === 'returning' && (
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={handleCompleteOutcallClockOut}
+              className="w-full py-4 px-5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-2xl font-black shadow-xl flex items-center justify-center gap-2 text-sm sm:text-base border-2 border-emerald-300/40 active:scale-[0.99] transition animate-pulse disabled:opacity-50"
+            >
+              <span>🏠</span>
+              <span>ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={stopping}
+          onClick={onStop}
+          className="w-full py-3.5 sm:py-4 px-5 bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-2xl font-black shadow-xl flex flex-col items-center justify-center mx-auto transition active:scale-[0.99] border-2 border-emerald-400/30 disabled:opacity-50"
+        >
+          {stopping ? (
+            <div className="flex items-center justify-center gap-2 text-sm sm:text-base">
+              <CheckCircle2 className="w-5 h-5 text-yellow-300 animate-spin flex-shrink-0" />
+              <span>သိမ်းဆည်းနေပါသည်...</span>
             </div>
-            <span className="text-xs sm:text-sm font-extrabold text-emerald-100 mt-0.5 tracking-wide">
-              (Complete Service)
-            </span>
-          </>
-        )}
-      </button>
+          ) : (
+            <>
+              <div className="inline-flex items-center justify-center gap-2 text-sm sm:text-base leading-snug">
+                <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-300 flex-shrink-0" />
+                <span>ဝန်ဆောင်မှု ပြီးဆုံးကြောင်း အတည်ပြုမည်</span>
+              </div>
+              <span className="text-xs sm:text-sm font-extrabold text-emerald-100 mt-0.5 tracking-wide">
+                (Complete Service)
+              </span>
+            </>
+          )}
+        </button>
+      )}
     </div>
   );
 }
