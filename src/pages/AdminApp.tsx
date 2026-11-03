@@ -2904,21 +2904,8 @@ const getTodayServiceStats = (tName: string) => {
     return outpasses.filter((o) => o.therapist === tName && o.date === todayStr).length;
   };
 
-  // 🌟 DBOARD ACTIVE FILTER: ဒီနေ့ရက်စွဲ (`b.date === todayStr`) ဖြစ်သော Active Session များကိုသာ ပြသမည်! 🌟
+  // 🌟 DBOARD ACTIVE FILTER: Outcall နှင့် အခြား Active Session များကို စစ်ဆေးပေးသော နေရာ 🌟
   const activeBookings = useMemo(() => {
-    return bookings.filter((b) => {
-      if (b.status !== 'in_progress') return false;
-      if (b.date !== todayStr) return false;
-
-      const { expectedEndMs } = getAccurateSessionTimes(b);
-      if (isStrictlyAdminClockIn(b) && now >= expectedEndMs) return false;
-
-      return true;
-    });
-  }, [bookings, todayStr, now, getAccurateSessionTimes, isStrictlyAdminClockIn]);
-
-  // လက်ရှိ Overtime ဖြစ်နေသော Active Session အရေအတွက်
-const activeBookings = useMemo(() => {
     return bookings.filter((b) => {
       if (b.status !== 'in_progress') return false;
       if (b.date !== todayStr) return false;
