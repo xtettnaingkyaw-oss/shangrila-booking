@@ -16,7 +16,7 @@ import { StaffPenaltyView } from './PenaltySystem';
 import { NewEmployeeOnboardingForm, StaffProfileView } from './OnboardingSystem';
 import { StaffEmployeeHandbookReader } from './EmployeeHandbookSystem';
 import { calculateBookingCommissionForStaff, getStaffSeniority, StaffPaySlipView } from './StaffPayrollSystem';
-import { notifyBookingEvent, notifyStaffUpdate } from '../telegramService';
+import { notifyBookingEvent, notifyStaffUpdate, notifyOutcallServiceEvent } from '../telegramService';
 
 const formatPrice = (price: any) => {
   const num = Number(price);
@@ -126,6 +126,52 @@ export const isStrictlyAdminClockIn = (b: any): boolean => {
     payMethod.includes('cash payment in shop') ||
     b.time === 'Walk-in'
   );
+};
+
+// 🌟 Hotel & Home Services Category အောက်ရှိ ဝန်ဆောင်မှုအားလုံး (Part Time Outcall, Half Day, Whole Night, Whole Day) ဟုတ်/မဟုတ် စစ်ဆေးခြင်း 🌟
+export const isHotelOrHomeServiceBooking = (session: any, appData: AppData): boolean => {
+  if (!session) return false;
+  if (session.isOutcall === true || session.outcallPhase) return true;
+
+  const checkText = (txt: string) => {
+    const clean = String(txt || '').toLowerCase();
+    if (
+      clean.includes('outcall') ||
+      clean.includes('half day') ||
+      clean.includes('whole night') ||
+      clean.includes('whole day') ||
+      clean.includes('hotel') ||
+      clean.includes('home service')
+    ) {
+      return true;
+    }
+    if (appData?.categories) {
+      for (const cat of appData.categories) {
+        const cid = String(cat.id || '').toLowerCase();
+        const ctitle = String(cat.title || '').toLowerCase();
+        if (cid === 'hotel' || ctitle.includes('hotel') || ctitle.includes('home')) {
+          for (const item of cat.items || []) {
+            const iName = String(item.name || '').trim().toLowerCase();
+            if (iName && clean.includes(iName)) return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  if (checkText(session.service || '')) return true;
+  if (Array.isArray(session.posItems)) {
+    for (const it of session.posItems) {
+      if (checkText(it.name || '')) return true;
+    }
+  }
+  if (Array.isArray(session.items)) {
+    for (const it of session.items) {
+      if (checkText(it.name || '')) return true;
+    }
+  }
+  return false;
 };
 
 // 🌟 အပိုပစ္စည်းများ (Towel, Underwear, Oil Bottle, Drink, VVIP Upgrade) ဟုတ်/မဟုတ် စစ်ဆေးသည့် Helper 🌟
@@ -302,13 +348,28 @@ const XCircleIcon = ({ className }: any) => (
   </svg>
 );
 
-function StatusBadge({ status, cancelReason }: { status: string; cancelReason?: string }) {
-  if (status === 'in_progress')
+function StatusBadge({ status, cancelReason, outcallPhase }: { status: string; cancelReason?: string; outcallPhase?: string }) {
+  if (status === 'in_progress') {
+    if (outcallPhase === 'on_the_way') {
+      return (
+        <span className="text-sky-300 border border-sky-400/50 bg-sky-500/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center w-fit animate-pulse">
+          🚗 သွားနေဆဲ (On the Way to Guest)
+        </span>
+      );
+    }
+    if (outcallPhase === 'returning') {
+      return (
+        <span className="text-purple-200 border border-purple-400/50 bg-purple-500/25 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center w-fit animate-pulse">
+          🛵 ဆိုင်သို့ပြန်လာနေဆဲ (Returning to Shop)
+        </span>
+      );
+    }
     return (
       <span className="text-orange-600 border border-orange-200 bg-orange-50 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center w-fit animate-pulse">
         <Droplets className="w-3.5 h-3.5 mr-1" /> In Progress (ဝန်ဆောင်မှုပေးနေဆဲ)
       </span>
     );
+  }
   if (status === 'completed')
     return (
       <span className="text-emerald-700 border border-emerald-200 bg-emerald-50 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center w-fit">
@@ -582,12 +643,15 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
           return;
         }
 
-        if (b.status === 'in_progress') {
+       if (b.status === 'in_progress') {
+          const isOutcall = isHotelOrHomeServiceBooking(b, appData);
           const durInfo = extractAccurateServiceDurationMins(b, appData);
-          const startMs = b.startTimeMillis || parseBookingDateTimeToMillis(b.date, b.time, b.createdAt);
-          const expectedEndMs = startMs + durInfo.totalMins * 60 * 1000;
+          const startMs = isOutcall
+            ? Number(b.startTimeMillis) || 0
+            : b.startTimeMillis || parseBookingDateTimeToMillis(b.date, b.time, b.createdAt);
+          const expectedEndMs = startMs > 0 ? startMs + durInfo.totalMins * 60 * 1000 : 0;
 
-          if (b.date !== todayStr) {
+          if (!isOutcall && b.date !== todayStr && expectedEndMs > 0) {
             updateDoc(doc(db, 'bookings', docSnap.id), {
               status: 'completed',
               actualEndTimeMillis: expectedEndMs,
@@ -596,7 +660,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
             return;
           }
 
-          if (isStrictlyAdminClockIn(b) && now >= expectedEndMs) {
+          if (!isOutcall && isStrictlyAdminClockIn(b) && expectedEndMs > 0 && now >= expectedEndMs) {
             updateDoc(doc(db, 'bookings', docSnap.id), {
               status: 'completed',
               startTimeMillis: startMs,
@@ -608,8 +672,6 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
           }
 
           myActiveCandidates.push(b);
-        } else if (b.date === todayStr && (b.status === 'approved' || b.status === 'payment_checking')) {
-          myUpcomingToday.push(b);
         }
       });
 
@@ -1068,7 +1130,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
 }
 
 // ============================================================================
-// 🌟 ACTIVE SESSION DISPLAY (AM/PM, Hours & Mins Support, Centered Button Icon) 🌟
+// 🌟 ACTIVE SESSION DISPLAY (4-Stage Outcall + In-Shop Timer + 10-Min Reminder) 🌟
 // ============================================================================
 function ActiveSessionDisplay({
   session,
@@ -1081,34 +1143,46 @@ function ActiveSessionDisplay({
   onStop: () => void;
   stopping: boolean;
 }) {
-  const isAdminAutoSession = useMemo(() => isStrictlyAdminClockIn(session), [session]);
-  const isOutcallService = useMemo(() => {
-    if (!session) return false;
-    if (session.isOutcall || session.outcallPhase || session.outcallStatus) return true;
-    const sName = String(session.service || '').toLowerCase();
-    return (
-      sName.includes('outcall') ||
-      sName.includes('hotel & home') ||
-      sName.includes('part time outcall') ||
-      sName.includes('half day') ||
-      sName.includes('whole night') ||
-      sName.includes('whole day')
-    );
-  }, [session]);
+  const isOutcallService = useMemo(() => isHotelOrHomeServiceBooking(session, appData), [session, appData]);
+  const isAdminAutoSession = useMemo(() => !isOutcallService && isStrictlyAdminClockIn(session), [session, isOutcallService]);
+  const durationInfo = useMemo(() => extractAccurateServiceDurationMins(session, appData), [session, appData]);
+  const totalServiceSeconds = durationInfo.totalMins * 60;
 
-  const outcallPhase = session.outcallPhase || session.outcallStatus || 'on_the_way';
+  // 🌟 Outcall Phase ကို တိကျစွာ သတ်မှတ်ခြင်း (POS မှ ဘောင်ချာထုတ်ခါစတွင် 'on_the_way' အဖြစ် သတ်မှတ်မည်) 🌟
+  const outcallPhase: 'on_the_way' | 'in_service' | 'returning' = useMemo(() => {
+    const rawPhase = (session as any).outcallPhase || (session as any).outcallStatus;
+    if (rawPhase === 'on_the_way' || rawPhase === 'in_service' || rawPhase === 'returning') {
+      return rawPhase;
+    }
+    if (isOutcallService && !(session as any).arrivedAtMillis) {
+      return 'on_the_way';
+    }
+    return 'in_service';
+  }, [session, isOutcallService]);
+
   const [actionLoading, setActionLoading] = useState(false);
   const [showReminderPopup, setShowReminderPopup] = useState(false);
   const [reminderElapsedMins, setReminderElapsedMins] = useState(10);
 
-  // GPS Location ရယူသည့် Helper
+  const staffNameForAlert = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('shangrila_staff_profile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.name) return String(parsed.name);
+      }
+    } catch {}
+    return String(session.therapist || 'Therapist');
+  }, [session.therapist]);
+
+  // GPS Location ရယူသည့် Helper (5 စက္ကန့်အတွင်း မရပါကလည်း လုပ်ငန်းမပျက်စေရန် null ပြန်ပေးမည်)
   const fetchGpsCoord = (): Promise<{ lat: number; lng: number } | null> => {
     return new Promise((resolve) => {
       if (!('geolocation' in navigator)) return resolve(null);
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
         () => resolve(null),
-        { enableHighAccuracy: true, timeout: 5000 }
+        { enableHighAccuracy: true, timeout: 4000 }
       );
     });
   };
@@ -1125,7 +1199,7 @@ function ActiveSessionDisplay({
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime); // A5 tone
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
         gain.gain.setValueAtTime(0.3, ctx.currentTime);
         osc.connect(gain);
         gain.connect(ctx.destination);
@@ -1137,157 +1211,16 @@ function ActiveSessionDisplay({
     }
   }, []);
 
-  // 🌟 Outcall Stage 3 ('returning') တွင် ၁၀ မိနစ်ပြည့်တိုင်း Local Alert ပြသခြင်း 🌟
-  useEffect(() => {
-    if (!isOutcallService || outcallPhase !== 'returning' || !session.returningStartedAt) {
-      setShowReminderPopup(false);
-      return;
-    }
-
-    const checkInterval = setInterval(() => {
-      const now = Date.now();
-      const lastRem = Number(session.lastReturnReminderAt || session.returningStartedAt || 0);
-      const TEN_MINS = 10 * 60 * 1000;
-
-      if (now - lastRem >= TEN_MINS) {
-        const totalElapsed = Math.max(10, Math.round((now - Number(session.returningStartedAt)) / 60000));
-        setReminderElapsedMins(totalElapsed);
-        setShowReminderPopup(true);
-        triggerLocalAudioVibrationAlert();
-      }
-    }, 10000);
-
-    return () => clearInterval(checkInterval);
-  }, [isOutcallService, outcallPhase, session.returningStartedAt, session.lastReturnReminderAt, triggerLocalAudioVibrationAlert]);
-
-  // Stage 1 -> Stage 2: 📍 ဧည့်သည်ထံရောက်ရှိကြောင်း အကြောင်းကြားရန် (Start Service)
-  const handleStartOutcallService = async () => {
-    if (!session?.id) return;
-    setActionLoading(true);
-    try {
-      const gps = await fetchGpsCoord();
-      const startMs = Date.now();
-      const durMins = session.durationMins || extractAccurateServiceDurationMins(session, appData).totalMins || 100;
-      const endMs = startMs + durMins * 60 * 1000;
-
-      await updateDoc(doc(db, 'bookings', session.id), {
-        outcallPhase: 'in_service',
-        outcallStatus: 'in_service',
-        startTimeMillis: startMs,
-        expectedEndTimeMillis: endMs,
-        ...(gps ? { clientLocationGps: gps } : {})
-      });
-
-      const { notifyBookingEvent } = await import('../telegramService');
-      await notifyBookingEvent('STATUS_UPDATE', {
-        id: session.txId || session.id,
-        customerName: session.name || 'Outcall Guest',
-        customerPhone: session.phone || '-',
-        serviceName: session.service || 'Hotel & Home Service',
-        durationMins: durMins,
-        price: Number(session.totalPrice) || 0,
-        date: session.date || getLocalTodayStr(),
-        time: `${formatTimeAMPM(startMs)} - ${formatTimeAMPM(endMs)}`,
-        therapistName: loggedInStaff.name,
-        status: 'in-service',
-        notes: `💆‍♂️ [Outcall In-Service] ဝန်ထမ်း <b>${loggedInStaff.name}</b> ဧည့်သည်ထံရောက်ရှိပြီး ဝန်ဆောင်မှု စတင်နေပြီဖြစ်ပါသည်။ (သတ်မှတ်ချိန်: ${durMins} မိနစ်)`
-      });
-    } catch (err) {
-      console.error(err);
-      alert('Error starting outcall service.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Stage 2 -> Stage 3: ✅ ဝန်ဆောင်မှုပြီးဆုံးပြီ (ဆိုင်သို့ပြန်ထွက်မည်)
-  const handleStartReturning = async () => {
-    if (!session?.id) return;
-    if (!window.confirm('ဝန်ဆောင်မှု ပြီးဆုံး၍ ဆိုင်သို့ စတင်ပြန်ထွက်မည်မှာ သေချာပါသလား?')) return;
-    setActionLoading(true);
-    try {
-      const gps = await fetchGpsCoord();
-      const nowMs = Date.now();
-
-      await updateDoc(doc(db, 'bookings', session.id), {
-        outcallPhase: 'returning',
-        outcallStatus: 'returning',
-        returningStartedAt: nowMs,
-        lastReturnReminderAt: nowMs,
-        returnReminderCount: 0,
-        actualEndTimeMillis: nowMs
-      });
-
-      const { notifyBookingEvent } = await import('../telegramService');
-      await notifyBookingEvent('STATUS_UPDATE', {
-        id: session.txId || session.id,
-        customerName: session.name || 'Outcall Guest',
-        customerPhone: session.phone || '-',
-        serviceName: session.service || 'Hotel & Home Service',
-        durationMins: session.durationMins || 100,
-        price: Number(session.totalPrice) || 0,
-        date: session.date || getLocalTodayStr(),
-        time: formatTimeAMPM(nowMs),
-        therapistName: loggedInStaff.name,
-        status: 'in-service',
-        notes: `🛵 [Returning to Shop] ဝန်ထမ်း <b>${loggedInStaff.name}</b> သည် ဧည့်သည်ထံတွင် ဝန်ဆောင်မှုပြီးဆုံး၍ ဆိုင်သို့ စတင်ပြန်လာနေပြီဖြစ်ပါသည်။`
-      });
-    } catch (err) {
-      console.error(err);
-      alert('Error updating returning status.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Stage 3 -> Stage 4: 🏠 ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)
-  const handleCompleteOutcallClockOut = async () => {
-    if (!session?.id) return;
-    if (!window.confirm('ဆိုင်သို့ ပြန်လည်ရောက်ရှိပြီး အလုပ်သိမ်းမည် (Clock Out) မှာ သေချာပါသလား?')) return;
-    setActionLoading(true);
-    try {
-      const nowMs = Date.now();
-      await updateDoc(doc(db, 'bookings', session.id), {
-        status: 'completed',
-        outcallPhase: 'completed',
-        outcallStatus: 'completed',
-        completedAtMillis: nowMs
-      });
-
-      setShowReminderPopup(false);
-
-      const { notifyBookingEvent } = await import('../telegramService');
-      await notifyBookingEvent('STATUS_UPDATE', {
-        id: session.txId || session.id,
-        customerName: session.name || 'Outcall Guest',
-        customerPhone: session.phone || '-',
-        serviceName: session.service || 'Hotel & Home Service',
-        durationMins: session.durationMins || 100,
-        price: Number(session.totalPrice) || 0,
-        date: session.date || getLocalTodayStr(),
-        time: formatTimeAMPM(nowMs),
-        therapistName: loggedInStaff.name,
-        status: 'completed',
-        notes: `✅ [Outcall Completed & Clocked Out] ဝန်ထမ်း <b>${loggedInStaff.name}</b> ဆိုင်သို့ ပြန်လည်ရောက်ရှိပြီး Clock-Out ပြီးဆုံးပါပြီ။ (Available at Shop)`
-      });
-
-      onStop();
-    } catch (err) {
-      console.error(err);
-      alert('Error completing outcall clock-out.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-  const durationInfo = useMemo(() => extractAccurateServiceDurationMins(session, appData), [session, appData]);
-  const totalServiceSeconds = durationInfo.totalMins * 60;
-
+  // 🌟 Outcall 'on_the_way' အဆင့်တွင် အချိန်လုံးဝ စမမှတ်သေးပါ (0 ထားမည်) 🌟
   const accurateStartMillis = useMemo(() => {
+    if (isOutcallService && outcallPhase === 'on_the_way') return 0;
     if (session.startTimeMillis && session.startTimeMillis > 0) return session.startTimeMillis;
+    if (isOutcallService) return 0;
     return parseBookingDateTimeToMillis(session.date, session.time, session.createdAt);
-  }, [session.startTimeMillis, session.date, session.time, session.createdAt]);
+  }, [isOutcallService, outcallPhase, session.startTimeMillis, session.date, session.time, session.createdAt]);
 
   const accurateExpectedEndMillis = useMemo(() => {
+    if (!accurateStartMillis || accurateStartMillis <= 0) return 0;
     return accurateStartMillis + totalServiceSeconds * 1000;
   }, [accurateStartMillis, totalServiceSeconds]);
 
@@ -1298,7 +1231,8 @@ function ActiveSessionDisplay({
       const currentNow = Date.now();
       setNowMillis(currentNow);
 
-      if (isAdminAutoSession && currentNow >= accurateExpectedEndMillis && session.id) {
+      // 1) In-Shop Admin Auto Clock-Out
+      if (isAdminAutoSession && accurateExpectedEndMillis > 0 && currentNow >= accurateExpectedEndMillis && session.id) {
         updateDoc(doc(db, 'bookings', session.id), {
           status: 'completed',
           startTimeMillis: accurateStartMillis,
@@ -1307,40 +1241,265 @@ function ActiveSessionDisplay({
           overtimeSeconds: 0
         }).catch(() => {});
       }
+
+      // 2) Outcall In-Service သတ်မှတ်ချိန်ပြည့်သည်နှင့် Time-Up Telegram Noti ပို့ခြင်း
+      if (
+        isOutcallService &&
+        outcallPhase === 'in_service' &&
+        accurateExpectedEndMillis > 0 &&
+        currentNow >= accurateExpectedEndMillis &&
+        !(session as any).timeUpNotiSent &&
+        session.id
+      ) {
+        updateDoc(doc(db, 'bookings', session.id), { timeUpNotiSent: true }).catch(() => {});
+        triggerLocalAudioVibrationAlert();
+        notifyOutcallServiceEvent({
+          bookingId: session.id,
+          invoiceNo: session.txId || session.id,
+          customerName: session.name || 'Outcall Guest',
+          customerPhone: session.phone || '',
+          serviceName: session.service || 'Hotel & Home Service',
+          durationMins: durationInfo.totalMins,
+          totalPrice: Number(session.totalPrice) || 0,
+          therapistName: staffNameForAlert,
+          appointmentDate: session.date || getLocalTodayStr(),
+          appointmentTime: session.time || '',
+          outcallPhase: 'time_up',
+          arrivalStartTimeStr: formatTimeAMPM(accurateStartMillis),
+          expectedEndTimeStr: formatTimeAMPM(accurateExpectedEndMillis)
+        }).catch(() => {});
+      }
+
+      // 3) Outcall Stage 3 ('returning') တွင် ၁၀ မိနစ်ပြည့်တိုင်း Local Popup + Telegram Reminder ပို့ခြင်း
+      if (isOutcallService && outcallPhase === 'returning' && session.id) {
+        const retStart = Number((session as any).returningStartedAt || (session as any).returningStartedAtMillis || currentNow);
+        const lastRem = Number((session as any).lastReturnReminderAt || (session as any).lastReturnReminderSentAt || retStart);
+        const TEN_MINS = 10 * 60 * 1000;
+
+        if (currentNow - lastRem >= TEN_MINS) {
+          const totalElapsed = Math.max(10, Math.round((currentNow - retStart) / 60000));
+          setReminderElapsedMins(totalElapsed);
+          setShowReminderPopup(true);
+          triggerLocalAudioVibrationAlert();
+
+          updateDoc(doc(db, 'bookings', session.id), {
+            lastReturnReminderAt: currentNow,
+            lastReturnReminderSentAt: currentNow
+          }).catch(() => {});
+
+          notifyOutcallServiceEvent({
+            bookingId: session.id,
+            invoiceNo: session.txId || session.id,
+            customerName: session.name || 'Outcall Guest',
+            customerPhone: session.phone || '',
+            serviceName: session.service || 'Hotel & Home Service',
+            durationMins: durationInfo.totalMins,
+            totalPrice: Number(session.totalPrice) || 0,
+            therapistName: staffNameForAlert,
+            appointmentDate: session.date || getLocalTodayStr(),
+            appointmentTime: session.time || '',
+            outcallPhase: 'return_reminder',
+            returningTimeStr: formatTimeAMPM(retStart),
+            overdueMinutes: totalElapsed
+          }).catch(() => {});
+        }
+      }
     }, 1000);
     return () => clearInterval(intervalId);
-  }, [isAdminAutoSession, accurateStartMillis, accurateExpectedEndMillis, session.id]);
+  }, [
+    isAdminAutoSession,
+    isOutcallService,
+    outcallPhase,
+    accurateStartMillis,
+    accurateExpectedEndMillis,
+    session,
+    durationInfo.totalMins,
+    staffNameForAlert,
+    triggerLocalAudioVibrationAlert
+  ]);
 
-  const elapsedSeconds = Math.max(0, Math.floor((nowMillis - accurateStartMillis) / 1000));
-  const remainingSeconds = Math.max(0, Math.ceil((accurateExpectedEndMillis - nowMillis) / 1000));
-  const overtimeSeconds = nowMillis > accurateExpectedEndMillis ? Math.floor((nowMillis - accurateExpectedEndMillis) / 1000) : 0;
+  // 🌟 Stage 1 -> Stage 2: 📍 ဧည့်သည်ထံရောက်ရှိကြောင်း အကြောင်းကြားရန် (Start Service) 🌟
+  const handleStartOutcallService = async () => {
+    if (!session?.id || actionLoading) return;
+    if (!window.confirm('ဧည့်သည်ထံ ရောက်ရှိပြီး ဝန်ဆောင်မှု စတင်တော့မည်မှာ သေချာပါသလား?\n(Confirm Arrival & Start Service Timer)')) return;
 
-  const progressPercent = Math.min(100, Math.max(0, Math.round((elapsedSeconds / (totalServiceSeconds || 1)) * 100)));
+    setActionLoading(true);
+    try {
+      const gps = await fetchGpsCoord();
+      const startMs = Date.now();
+      const durMins = durationInfo.totalMins || 100;
+      const endMs = startMs + durMins * 60 * 1000;
 
-  // 🌟 ပုံ (၁) - စတင်ချိန်နှင့် ပြီးဆုံးရမည့်ချိန်ကို AM / PM ဖြင့် ပြသခြင်း 🌟
-  const startTimeFormatted = formatTimeAMPM(accurateStartMillis);
-  const expectedEndFormatted = formatTimeAMPM(accurateExpectedEndMillis);
+      const updatePayload: Record<string, any> = {
+        status: 'in_progress',
+        isOutcall: true,
+        outcallPhase: 'in_service',
+        outcallStatus: 'in_service',
+        arrivedAtMillis: startMs,
+        startTimeMillis: startMs,
+        expectedEndTimeMillis: endMs,
+        timeUpNotiSent: false
+      };
+      if (gps && typeof gps.lat === 'number' && typeof gps.lng === 'number') {
+        updatePayload.clientLocationGps = { lat: gps.lat, lng: gps.lng };
+      }
 
-  // 🌟 ပုံ (၁) နှင့် ပုံ (၃) - ကျန်ရှိချိန်နှင့် အချိန်ပိုအတွက် နာရီ၊ မိနစ် Format 🌟
+      await updateDoc(doc(db, 'bookings', session.id), updatePayload);
+
+      // Non-blocking Telegram Notification (Error လုံးဝမတက်စေရပါ)
+      notifyOutcallServiceEvent({
+        bookingId: session.id,
+        invoiceNo: session.txId || session.id,
+        customerName: session.name || 'Outcall Guest',
+        customerPhone: session.phone || '',
+        serviceName: session.service || 'Hotel & Home Service',
+        durationMins: durMins,
+        totalPrice: Number(session.totalPrice) || 0,
+        therapistName: staffNameForAlert,
+        appointmentDate: session.date || getLocalTodayStr(),
+        appointmentTime: session.time || formatTimeAMPM(startMs),
+        outcallPhase: 'in_service',
+        arrivalStartTimeStr: formatTimeAMPM(startMs),
+        expectedEndTimeStr: formatTimeAMPM(endMs)
+      }).catch((e) => console.warn('Telegram start outcall warning:', e));
+    } catch (err: any) {
+      console.error('Start outcall error:', err);
+      alert('အင်တာနက်ချိတ်ဆက်မှု စစ်ဆေးပြီး ပြန်နှိပ်ပေးပါ: ' + (err?.message || ''));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 🌟 Stage 2 -> Stage 3: ✅ ဝန်ဆောင်မှုပြီးဆုံးပြီ (ဆိုင်သို့ပြန်ထွက်မည်) 🌟
+  const handleStartReturning = async () => {
+    if (!session?.id || actionLoading) return;
+    if (!window.confirm('ဝန်ဆောင်မှု ပြီးဆုံး၍ ဆိုင်သို့ စတင်ပြန်ထွက်မည်မှာ သေချာပါသလား?')) return;
+
+    setActionLoading(true);
+    try {
+      const nowMs = Date.now();
+      const startMs = accurateStartMillis > 0 ? accurateStartMillis : nowMs;
+      const expectedEndMs = accurateExpectedEndMillis > 0 ? accurateExpectedEndMillis : nowMs;
+      const overtimeSecs = Math.max(0, Math.floor((nowMs - expectedEndMs) / 1000));
+
+      await updateDoc(doc(db, 'bookings', session.id), {
+        status: 'in_progress',
+        isOutcall: true,
+        outcallPhase: 'returning',
+        outcallStatus: 'returning',
+        serviceFinishedAtMillis: nowMs,
+        returningStartedAt: nowMs,
+        returningStartedAtMillis: nowMs,
+        lastReturnReminderAt: nowMs,
+        lastReturnReminderSentAt: nowMs,
+        returnReminderCount: 0,
+        overtimeSeconds: overtimeSecs
+      });
+
+      notifyOutcallServiceEvent({
+        bookingId: session.id,
+        invoiceNo: session.txId || session.id,
+        customerName: session.name || 'Outcall Guest',
+        customerPhone: session.phone || '',
+        serviceName: session.service || 'Hotel & Home Service',
+        durationMins: durationInfo.totalMins || 100,
+        totalPrice: Number(session.totalPrice) || 0,
+        therapistName: staffNameForAlert,
+        appointmentDate: session.date || getLocalTodayStr(),
+        appointmentTime: session.time || '',
+        outcallPhase: 'returning',
+        arrivalStartTimeStr: formatTimeAMPM(startMs),
+        returningTimeStr: formatTimeAMPM(nowMs)
+      }).catch((e) => console.warn('Telegram returning warning:', e));
+    } catch (err: any) {
+      console.error('Returning update error:', err);
+      alert('အင်တာနက်ချိတ်ဆက်မှု စစ်ဆေးပြီး ပြန်နှိပ်ပေးပါ: ' + (err?.message || ''));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 🌟 Stage 3 -> Stage 4: 🏠 ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out) 🌟
+  const handleCompleteOutcallClockOut = async () => {
+    if (!session?.id || actionLoading) return;
+    if (!window.confirm('ဆိုင်သို့ ပြန်လည်ရောက်ရှိပြီး အလုပ်သိမ်းမည် (Clock Out) မှာ သေချာပါသလား?')) return;
+
+    setActionLoading(true);
+    try {
+      const nowMs = Date.now();
+      const startMs = accurateStartMillis > 0 ? accurateStartMillis : session.createdAt || nowMs;
+      const expectedEndMs = accurateExpectedEndMillis > 0 ? accurateExpectedEndMillis : startMs + totalServiceSeconds * 1000;
+
+      await updateDoc(doc(db, 'bookings', session.id), {
+        status: 'completed',
+        isOutcall: true,
+        outcallPhase: 'completed',
+        outcallStatus: 'completed',
+        startTimeMillis: startMs,
+        expectedEndTimeMillis: expectedEndMs,
+        actualEndTimeMillis: nowMs,
+        completedAtMillis: nowMs
+      });
+
+      setShowReminderPopup(false);
+
+      notifyOutcallServiceEvent({
+        bookingId: session.id,
+        invoiceNo: session.txId || session.id,
+        customerName: session.name || 'Outcall Guest',
+        customerPhone: session.phone || '',
+        serviceName: session.service || 'Hotel & Home Service',
+        durationMins: durationInfo.totalMins || 100,
+        totalPrice: Number(session.totalPrice) || 0,
+        therapistName: staffNameForAlert,
+        appointmentDate: session.date || getLocalTodayStr(),
+        appointmentTime: session.time || '',
+        outcallPhase: 'completed',
+        arrivalStartTimeStr: formatTimeAMPM(startMs),
+        returningTimeStr: formatTimeAMPM(nowMs),
+        notes: `✅ ဝန်ထမ်း ${staffNameForAlert} ဆိုင်သို့ ပြန်လည်ရောက်ရှိပြီး Clock-Out ပြီးဆုံးပါပြီ။`
+      }).catch((e) => console.warn('Telegram complete outcall warning:', e));
+    } catch (err: any) {
+      console.error('Complete outcall error:', err);
+      alert('အင်တာနက်ချိတ်ဆက်မှု စစ်ဆေးပြီး ပြန်နှိပ်ပေးပါ: ' + (err?.message || ''));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const elapsedSeconds = accurateStartMillis > 0 ? Math.max(0, Math.floor((nowMillis - accurateStartMillis) / 1000)) : 0;
+  const remainingSeconds = accurateExpectedEndMillis > 0 ? Math.max(0, Math.ceil((accurateExpectedEndMillis - nowMillis) / 1000)) : totalServiceSeconds;
+  const overtimeSeconds = accurateExpectedEndMillis > 0 && nowMillis > accurateExpectedEndMillis ? Math.floor((nowMillis - accurateExpectedEndMillis) / 1000) : 0;
+
+  const progressPercent = accurateStartMillis > 0
+    ? Math.min(100, Math.max(0, Math.round((elapsedSeconds / (totalServiceSeconds || 1)) * 100)))
+    : 0;
+
+  const startTimeFormatted = accurateStartMillis > 0 ? formatTimeAMPM(accurateStartMillis) : 'စောင့်ဆိုင်းဆဲ';
+  const expectedEndFormatted = accurateExpectedEndMillis > 0 ? formatTimeAMPM(accurateExpectedEndMillis) : 'စောင့်ဆိုင်းဆဲ';
+
   const remainingDisplay = formatTimerDisplay(remainingSeconds);
   const overtimeDisplay = formatTimerDisplay(overtimeSeconds);
 
-  // ကြာမြင့်ချိန် (Elapsed) အား ၁ နာရီကျော်ပါက နာရီ၊ မိနစ် ဖြင့်ပြသခြင်း
   const elapsedDisplayStr =
-    elapsedSeconds >= 3600
+    accurateStartMillis <= 0
+      ? '00:00 မိနစ်'
+      : elapsedSeconds >= 3600
       ? `${Math.floor(elapsedSeconds / 3600)} နာရီ ${Math.floor((elapsedSeconds % 3600) / 60)} မိနစ်`
       : `${formatSecondsMMSS(elapsedSeconds)} မိနစ်`;
 
   const totalDurationLabel = formatMinsToHrMinBurmese(durationInfo.totalMins);
-
   const cleanServiceTitle = (session.service || 'Spa Service').replace(/\(\d+\s*Mins\)/gi, '').trim();
+
+  const returningStartedAt = Number((session as any).returningStartedAt || (session as any).returningStartedAtMillis || 0);
+  const returningElapsedSecs = returningStartedAt > 0 ? Math.max(0, Math.floor((nowMillis - returningStartedAt) / 1000)) : 0;
 
   return (
     <div className="animate-fade-in space-y-5 relative">
       {/* 🌟 10-Minute Returning Reminder Popup Modal 🌟 */}
       {showReminderPopup && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border-4 border-amber-500 space-y-4 animate-bounce">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border-4 border-amber-500 space-y-4">
             <div className="w-16 h-16 bg-amber-100 rounded-full mx-auto flex items-center justify-center text-amber-600 shadow-inner">
               <Bell className="w-8 h-8 animate-ping" />
             </div>
@@ -1354,10 +1513,7 @@ function ActiveSessionDisplay({
             </p>
             <button
               type="button"
-              onClick={() => {
-                triggerLocalAudioVibrationAlert();
-                setShowReminderPopup(false);
-              }}
+              onClick={() => setShowReminderPopup(false)}
               className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-xl font-black text-xs uppercase tracking-wider shadow-md"
             >
               သိရှိပါပြီ (Dismiss Alert)
@@ -1368,9 +1524,13 @@ function ActiveSessionDisplay({
 
       <div className="bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] text-white p-5 sm:p-7 rounded-3xl shadow-xl border-2 border-[#D4AF37]/60 relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-white/10">
-          <StatusBadge status={session.status} />
+          <StatusBadge status={session.status} outcallPhase={isOutcallService ? outcallPhase : undefined} />
           <div className="flex items-center gap-2">
-            {isAdminAutoSession ? (
+            {isOutcallService ? (
+              <span className="inline-flex items-center gap-1 bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40 px-2.5 py-1 rounded-lg text-[10px] font-black">
+                🏨 Hotel & Home Service
+              </span>
+            ) : isAdminAutoSession ? (
               <span className="inline-flex items-center gap-1 bg-blue-500/20 text-blue-200 border border-blue-400/40 px-2.5 py-1 rounded-lg text-[10px] font-black">
                 <Zap className="w-3 h-3 text-yellow-300" /> Admin Clock-In (အချိန်ပြည့်လျှင် Auto ပိတ်မည်)
               </span>
@@ -1389,7 +1549,6 @@ function ActiveSessionDisplay({
 
         <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1.5">
-            {/* 🌟 ပုံ (၁) - ၁ နာရီကျော်သော ဝန်ဆောင်မှုများအား နာရီ၊ မိနစ် ဖြင့် အတိအကျ ပြသခြင်း 🌟 */}
             <div className="inline-flex items-center gap-1.5 bg-[#D4AF37] text-[#123524] px-3 py-1 rounded-lg text-xs font-black tracking-wide shadow-sm">
               <Timer className="w-3.5 h-3.5 flex-shrink-0" />
               <span>
@@ -1410,9 +1569,33 @@ function ActiveSessionDisplay({
             </div>
           </div>
 
-          {/* 🌟 ပုံ (၁) နှင့် ပုံ (၃) - ကျန်ရှိချိန် နှင့် အချိန်ပို (မိနစ် / နာရီ၊ မိနစ် တွဲလျက်) 🌟 */}
+          {/* 🌟 RIGHT DISPLAY: On the Way vs Returning vs Countdown Timer 🌟 */}
           <div className="bg-black/30 backdrop-blur-xs px-5 py-4 rounded-2xl border border-white/15 text-center sm:text-right min-w-[215px]">
-            {remainingSeconds > 0 ? (
+            {isOutcallService && outcallPhase === 'on_the_way' ? (
+              <div className="space-y-1">
+                <div className="text-[10px] font-extrabold text-sky-300 uppercase tracking-widest">
+                  🚗 လမ်းခရီးသွားနေဆဲ (ON THE WAY)
+                </div>
+                <div className="text-lg sm:text-xl font-black text-[#D4AF37]">
+                  အချိန်စမမှတ်သေးပါ
+                </div>
+                <div className="text-[10px] font-bold text-gray-300 leading-snug">
+                  ဧည့်သည်ထံရောက်ရှိမှ Start Service ခလုတ်ကို နှိပ်ပါ
+                </div>
+              </div>
+            ) : isOutcallService && outcallPhase === 'returning' ? (
+              <div className="space-y-1">
+                <div className="text-[10px] font-extrabold text-purple-300 uppercase tracking-widest">
+                  🛵 ဆိုင်သို့ပြန်လာနေဆဲ (RETURNING)
+                </div>
+                <div className="text-2xl sm:text-3xl font-mono font-black text-white">
+                  {formatSecondsMMSS(returningElapsedSecs)} မိနစ်
+                </div>
+                <div className="text-[10px] font-bold text-amber-300">
+                  ဆိုင်သို့ပြန်ရောက်လျှင် Complete နှိပ်ပါ
+                </div>
+              </div>
+            ) : remainingSeconds > 0 ? (
               <>
                 <div className="text-[10px] font-extrabold text-[#D4AF37] uppercase tracking-widest mb-1">
                   ကျန်ရှိချိန် (REMAINING TIME)
@@ -1464,7 +1647,6 @@ function ActiveSessionDisplay({
           </div>
         </div>
 
-        {/* 🌟 ပုံ (၁) - စတင်ချိန် (AM/PM)၊ ကြာမြင့်ချိန် (နာရီ/မိနစ်) နှင့် ပြီးဆုံးရမည့်ချိန် (AM/PM) 🌟 */}
         <div className="mt-6 space-y-2">
           <div className="grid grid-cols-3 gap-2 text-[11px] font-bold text-gray-300 items-end">
             <div className="text-left">
@@ -1505,7 +1687,6 @@ function ActiveSessionDisplay({
         </div>
       </div>
 
-      {/* 🌟 ပုံ (၂) - အတည်ပြုရန်ခလုတ်တွင် Icon နှင့် စာသား တစ်သားတည်း ကပ်လျက် လှပစွာ ပေါ်စေရန် ပြင်ဆင်ချက် 🌟 */}
       {/* 🌟 In-Spa Service vs Outcall 4-Stage Dynamic Action Buttons 🌟 */}
       {isOutcallService ? (
         <div className="space-y-3">
@@ -1514,10 +1695,15 @@ function ActiveSessionDisplay({
               type="button"
               disabled={actionLoading}
               onClick={handleStartOutcallService}
-              className="w-full py-4 px-5 bg-gradient-to-r from-blue-600 to-orange-500 hover:opacity-95 text-white rounded-2xl font-black shadow-xl flex items-center justify-center gap-2 text-sm sm:text-base border-2 border-orange-300/40 active:scale-[0.99] transition disabled:opacity-50"
+              className="w-full py-4 px-5 bg-gradient-to-r from-blue-600 to-orange-500 hover:opacity-95 text-white rounded-2xl font-black shadow-xl flex flex-col items-center justify-center gap-1 border-2 border-orange-300/40 active:scale-[0.99] transition disabled:opacity-50"
             >
-              <span>📍</span>
-              <span>ဧည့်သည်ထံရောက်ရှိကြောင်း အကြောင်းကြားရန် (Start Service)</span>
+              <div className="flex items-center justify-center gap-2 text-sm sm:text-base">
+                <span>📍</span>
+                <span>{actionLoading ? 'ချိတ်ဆက်နေပါသည်...' : 'ဧည့်သည်ထံရောက်ရှိကြောင်း အကြောင်းကြားရန် (Start Service)'}</span>
+              </div>
+              <span className="text-[11px] font-bold text-yellow-100">
+                (နှိပ်လိုက်သည်နှင့် Admin ထံ Noti ပို့ပြီး အချိန်စတင်မှတ်သားပါမည်)
+              </span>
             </button>
           )}
 
@@ -1526,10 +1712,12 @@ function ActiveSessionDisplay({
               type="button"
               disabled={actionLoading}
               onClick={handleStartReturning}
-              className="w-full py-4 px-5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] hover:opacity-95 text-[#123524] rounded-2xl font-black shadow-xl flex items-center justify-center gap-2 text-sm sm:text-base border-2 border-[#123524]/30 active:scale-[0.99] transition disabled:opacity-50"
+              className="w-full py-4 px-5 bg-gradient-to-r from-[#D4AF37] via-yellow-400 to-[#c59b27] hover:opacity-95 text-[#123524] rounded-2xl font-black shadow-xl flex flex-col items-center justify-center gap-1 border-2 border-[#123524]/30 active:scale-[0.99] transition disabled:opacity-50"
             >
-              <span>✅</span>
-              <span>ဝန်ဆောင်မှုပြီးဆုံးပြီ — ဆိုင်သို့ပြန်ထွက်မည် (Returning)</span>
+              <div className="flex items-center justify-center gap-2 text-sm sm:text-base">
+                <span>✅</span>
+                <span>{actionLoading ? 'သိမ်းဆည်းနေပါသည်...' : 'ဝန်ဆောင်မှုပြီးဆုံးပြီ — ဆိုင်သို့ပြန်ထွက်မည် (Returning)'}</span>
+              </div>
             </button>
           )}
 
@@ -1538,10 +1726,15 @@ function ActiveSessionDisplay({
               type="button"
               disabled={actionLoading}
               onClick={handleCompleteOutcallClockOut}
-              className="w-full py-4 px-5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-2xl font-black shadow-xl flex items-center justify-center gap-2 text-sm sm:text-base border-2 border-emerald-300/40 active:scale-[0.99] transition animate-pulse disabled:opacity-50"
+              className="w-full py-4 px-5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-2xl font-black shadow-xl flex flex-col items-center justify-center gap-1 border-2 border-emerald-300/40 active:scale-[0.99] transition animate-pulse disabled:opacity-50"
             >
-              <span>🏠</span>
-              <span>ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)</span>
+              <div className="flex items-center justify-center gap-2 text-sm sm:text-base">
+                <span>🏠</span>
+                <span>{actionLoading ? 'သိမ်းဆည်းနေပါသည်...' : 'ဆိုင်သို့ပြန်ရောက်ပြီ (Complete & Clock Out)'}</span>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-100">
+                (မနှိပ်သေးမချင်း ၁၀ မိနစ်တစ်ခါ သတိပေးနှိုးဆော်ပါမည်)
+              </span>
             </button>
           )}
         </div>
