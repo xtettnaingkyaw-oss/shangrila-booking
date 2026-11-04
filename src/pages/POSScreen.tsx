@@ -1295,22 +1295,100 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
   // 3️⃣ Walk-in Booking Complete လုပ်ခြင်း (Booking Tab မှ ပျောက်သွားပြီး Receipts History တွင်သာ ကျန်ခဲ့မည်)
 const handleCompleteWalkInBooking = async (booking: any) => {
-    try {
-      const isOutcall = isHotelOrHomeServiceBooking(booking, localAppData);
-      await updateDoc(doc(db, 'bookings', booking.id), {
-        status: 'completed',
-        completedAt: Date.now(),
-        ...(isOutcall
-          ? {
-              outcallPhase: 'completed',
-              outcallStatus: 'completed'
-            }
-          : {})
-      });
-    } catch (err: any) {
-      alert('Error completing booking: ' + err.message);
-    }
-  };
+ try {
+   const isOutcall = isHotelOrHomeServiceBooking(booking, localAppData);
+   await updateDoc(doc(db, 'bookings', booking.id), {
+     status: 'completed',
+     completedAt: Date.now(),
+     ...(isOutcall
+       ? {
+           outcallPhase: 'completed',
+           outcallStatus: 'completed'
+         }
+       : {})
+   });
+ } catch (err: any) {
+   alert('Error completing booking: ' + err.message);
+ }
+};
+
+// 🌟 4️⃣ POS Receipts History ထဲရှိ Outcall / In-Progress ဘောင်ချာကို POS & Admin နှစ်ဖက်လုံးတွင် Complete (Available) ပြောင်းပေးသည့် Function 🌟
+const handleForceCompletePosSale = async (sale: OfflineSaleRecord) => {
+ try {
+   let targetDocId = sale.firestoreDocId;
+   if (!targetDocId && navigator.onLine) {
+     const snap = await getDocs(collection(db, 'bookings'));
+     snap.forEach((d) => {
+       const bData = d.data();
+       const decTx = decryptText(bData.txId) || bData.txId;
+       if (decTx === sale.invoiceNo) targetDocId = d.id;
+     });
+   }
+
+   if (targetDocId && navigator.onLine) {
+     await updateDoc(doc(db, 'bookings', targetDocId), {
+       status: 'completed',
+       completedAt: Date.now(),
+       outcallPhase: 'completed',
+       outcallStatus: 'completed'
+     });
+   }
+
+   setSalesHistory((prev) => {
+     const updated = prev.map((item) =>
+       item.invoiceNo === sale.invoiceNo
+         ? {
+             ...item,
+             serviceStatus: 'completed' as const,
+             outcallPhase: 'completed' as const,
+             outcallStatus: 'completed' as const
+           }
+         : item
+     );
+     try {
+       localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updated));
+     } catch {}
+     return updated;
+   });
+ } catch (err: any) {
+   alert('Complete ပြောင်းရာတွင် အမှားရှိနေပါသည်: ' + err.message);
+ }
+};
+
+// 🌟 5️⃣ POS Receipts History မှ စမ်းသပ်ဘောင်ချာအဟောင်းကို Admin နှင့် POS နှစ်ဖက်လုံးမှ ပယ်ဖျက်သည့် Function 🌟
+const handleCancelPosSaleFromHistory = async (sale: OfflineSaleRecord) => {
+ if (!confirm(`ဘောင်ချာ (${sale.invoiceNo}) ကို POS နှင့် Admin စာရင်းနှစ်ဖက်လုံးမှ ပယ်ဖျက်မည်မှာ သေချာပါသလား?`)) return;
+ try {
+   let targetDocId = sale.firestoreDocId;
+   if (!targetDocId && navigator.onLine) {
+     const snap = await getDocs(collection(db, 'bookings'));
+     snap.forEach((d) => {
+       const bData = d.data();
+       const decTx = decryptText(bData.txId) || bData.txId;
+       if (decTx === sale.invoiceNo) targetDocId = d.id;
+     });
+   }
+
+   if (targetDocId && navigator.onLine) {
+     await updateDoc(doc(db, 'bookings', targetDocId), {
+       status: 'cancelled',
+       cancelledAt: Date.now(),
+       outcallPhase: 'completed',
+       outcallStatus: 'completed'
+     });
+   }
+
+   setSalesHistory((prev) => {
+     const updated = prev.filter((item) => item.invoiceNo !== sale.invoiceNo);
+     try {
+       localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updated));
+     } catch {}
+     return updated;
+   });
+ } catch (err: any) {
+   alert('ဘောင်ချာ ပယ်ဖျက်ရာတွင် အမှားရှိနေပါသည်: ' + err.message);
+ }
+};
 
   // 🌟 Walk-in Phone Booking ကို Cancel လုပ်ခြင်း & Telegram Noti ပို့ခြင်း 🌟
   const handleCancelWalkInBooking = async (booking: any) => {
@@ -6063,6 +6141,31 @@ const handleForceRefreshApp = async () => {
                               </button>
                             )}
 
+    {/* ✅ Outcall သို့မဟုတ် In-Progress ကျန်နေသော ဘောင်ချာများကို POS & Admin နှစ်ဖက်လုံးတွင် Complete လုပ်ရန် ခလုတ် */}
+                           {(sale.serviceStatus !== 'completed' ||
+                             (sale.outcallPhase && sale.outcallPhase !== 'completed')) && (
+                             <button
+                               type="button"
+                               onClick={() => handleForceCompletePosSale(sale)}
+                               className="px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[11px] flex items-center shadow-sm transition"
+                               title="ဝန်ဆောင်မှုပြီးဆုံးကြောင်း အတည်ပြုမည် (POS + Admin)"
+                             >
+                               <CheckCircle className="w-3.5 h-3.5 mr-1" /> Complete
+                             </button>
+                           )}
+
+                           {/* ✅ စမ်းသပ်ထားသော ဘောင်ချာကို POS & Admin နှစ်ဖက်လုံးမှ ပယ်ဖျက်လိုပါက နှိပ်ရန် ခလုတ် */}
+                           {(currentPosUser?.role === 'admin' || currentPosUser?.role === 'manager') && (
+                             <button
+                               type="button"
+                               onClick={() => handleCancelPosSaleFromHistory(sale)}
+                               className="p-2.5 bg-red-50 text-red-600 border border-red-200 rounded-xl hover:bg-red-100 transition"
+                               title="ဘောင်ချာ ပယ်ဖျက်မည် (Cancel in POS & Admin)"
+                             >
+                               <Trash2 className="w-4 h-4" />
+                             </button>
+                           )}
+
                             <button
                               onClick={() => setActiveReceipt(sale)}
                               className="p-2.5 bg-yellow-50 text-[#123524] border border-[#D4AF37]/40 rounded-xl hover:bg-yellow-100 transition font-bold text-xs flex items-center"
@@ -6273,37 +6376,60 @@ const handleForceRefreshApp = async () => {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto">
-                  {(localAppData?.therapists || []).map((t) => {
-                    const isSelected = therapist1?.id === t.id || therapist2?.id === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          if (therapist1?.id === t.id) setTherapist1(null);
-                          else if (therapist2?.id === t.id) setTherapist2(null);
-                          else if (!therapist1) setTherapist1(t);
-                          else setTherapist2(t);
-                        }}
-                        className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center relative ${
-                          isSelected
-                            ? 'border-[#123524] bg-[#123524] text-[#D4AF37] shadow-md scale-[1.02]'
-                            : 'border-gray-200 bg-gray-50/60 text-gray-800 hover:border-[#D4AF37]'
-                        }`}
-                      >
-                        <div className="w-11 h-11 rounded-full overflow-hidden bg-gray-200 mb-1.5 border border-[#D4AF37] flex items-center justify-center">
-                          {t.images?.[0] || t.imageUrl ? (
-                            <img src={t.images?.[0] || t.imageUrl} alt={t.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <User className="w-5 h-5 text-gray-400" />
-                          )}
-                        </div>
-                        <span className="font-bold text-[11px] truncate w-full">{t.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[62vh] overflow-y-auto p-1">
+               {(appData?.therapists?.length ? appData.therapists : localAppData?.therapists || []).map((t) => {
+                 const isSelected = therapist1?.id === t.id || therapist2?.id === t.id;
+                 const photoSrc = t.images?.[0] || t.imageUrl || '';
+                 const numMatch = t.name.match(/\d+/);
+                 const badgeNum = numMatch ? `No-${numMatch[0]}` : '';
+
+                 return (
+                   <button
+                     key={t.id}
+                     type="button"
+                     onClick={() => {
+                       if (therapist1?.id === t.id) setTherapist1(null);
+                       else if (therapist2?.id === t.id) setTherapist2(null);
+                       else if (!therapist1) setTherapist1(t);
+                       else setTherapist2(t);
+                     }}
+                     className={`p-2.5 rounded-2xl border-2 text-center transition-all flex flex-col items-center justify-between relative min-h-[128px] ${
+                       isSelected
+                         ? 'border-[#D4AF37] bg-[#123524] text-[#D4AF37] shadow-lg scale-[1.02]'
+                         : 'border-gray-200 bg-white text-gray-800 hover:border-[#D4AF37] hover:shadow-sm'
+                     }`}
+                   >
+                     {badgeNum && (
+                       <span
+                         className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-md text-[10px] font-black shadow-xs ${
+                           isSelected
+                             ? 'bg-[#D4AF37] text-[#123524]'
+                             : 'bg-[#123524] text-[#D4AF37]'
+                         }`}
+                       >
+                         {badgeNum}
+                       </span>
+                     )}
+
+                     <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 mb-2 border-2 border-[#D4AF37] shadow-sm flex items-center justify-center flex-shrink-0">
+                       {photoSrc ? (
+                         <img
+                           src={photoSrc}
+                           alt={t.name}
+                           className="w-full h-full object-cover object-top"
+                         />
+                       ) : (
+                         <User className="w-7 h-7 text-gray-400" />
+                       )}
+                     </div>
+
+                     <span className="font-extrabold text-xs leading-tight break-words w-full px-0.5">
+                       {t.name}
+                     </span>
+                   </button>
+                 );
+               })}
+             </div>
 
                 <div className="pt-3 flex justify-between gap-2.5">
                   <button
