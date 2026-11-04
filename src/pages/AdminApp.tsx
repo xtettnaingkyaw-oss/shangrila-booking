@@ -119,6 +119,17 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   const activeLogoUrl = appData?.branding?.logoUrl || '';
 
   useEffect(() => {
+    if (!activeLogoUrl) return;
+    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = activeLogoUrl;
+  }, [activeLogoUrl]);
+
+  useEffect(() => {
     const fetchRole = async () => {
       try {
         const allAdmins = await getDocs(collection(db, 'admins'));
