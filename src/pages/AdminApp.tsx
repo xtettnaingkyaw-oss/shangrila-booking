@@ -790,7 +790,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
             {tab === 'points' && hasAccess('points') && <AdminPointManagement adminRole={adminRole} appData={appData} />}
             {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
             {tab === 'payroll' && (hasAccess('reports') || hasAccess('penalties')) && (<AdminStaffPayrollManager bookings={bookings} therapists={appData.therapists} adminRole={adminRole} />)}
-            {tab === 'penalties' && hasAccess('penalties') && <AdminPenaltyManager therapists={appData.therapists} />}
+            {tab === 'penalties' && hasAccess('penalties') && <AdminPenaltyManager therapists={appData.therapists} bookings={bookings} />}
             {tab === 'roster' && hasAccess('settings') && <DutyRosterSystem therapists={appData.therapists} />}
             {tab === 'hr' && hasAccess('settings') && <AdminHRManagement />}
             {tab === 'settings' && hasAccess('settings') && <AdminSettings appData={appData} onSettingsUpdated={onSettingsUpdated} />}
