@@ -63,7 +63,7 @@ const FALLBACK_APPDATA: AppData = {
   installSteps: DEFAULT_INSTALL_STEPS
 };
 
-// 🌟 Admin Panel မှ Logo URL ကို PWA စံချိန်မီ 192x192 နှင့် 512x512 PNG အဖြစ် ပြောင်းပေးမည့် Helper 🌟
+// 🌟 Admin Panel မှ Logo URL ကို PWA စံချိန်မီ 192x192 နှင့် 512x512 PNG အဖြစ် ပြောင်းပေးမည့် Helper (Safe CORS & Fallback) 🌟
 const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> => {
   return new Promise((resolve) => {
     const createFallbackIcon = () => {
@@ -75,10 +75,10 @@ const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> 
         ctx.fillStyle = '#123524';
         ctx.fillRect(0, 0, size, size);
         ctx.strokeStyle = '#D4AF37';
-        ctx.lineWidth = Math.max(8, size * 0.04);
+        ctx.lineWidth = Math.max(6, size * 0.04);
         ctx.strokeRect(size * 0.06, size * 0.06, size * 0.88, size * 0.88);
         ctx.fillStyle = '#D4AF37';
-        ctx.font = `bold ${Math.floor(size * 0.52)}px serif`;
+        ctx.font = `bold ${Math.floor(size * 0.5)}px serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('S', size / 2, size / 2 + size * 0.03);
@@ -102,14 +102,18 @@ const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> 
         if (ctx) {
           ctx.fillStyle = '#123524';
           ctx.fillRect(0, 0, size, size);
-          ctx.drawImage(img, 0, 0, size, size);
+          // ပုံကို Center တွင် အချိုးကျ ဆွဲခြင်း
+          const minDim = Math.min(img.width, img.height);
+          const sx = (img.width - minDim) / 2;
+          const sy = (img.height - minDim) / 2;
+          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
           resolve(canvas.toDataURL('image/png'));
           return;
         }
       } catch {
-        // CORS ကန့်သတ်ချက်ရှိသော ပြင်ပပုံဖြစ်ပါက မူလ URL သို့မဟုတ် Fallback သုံးမည်
+        // CORS Error တက်ပါက Fallback သုံးမည် (Xiaomi Launcher Crash ကာကွယ်ရန်)
       }
-      resolve(logoUrl);
+      resolve(createFallbackIcon());
     };
     img.onerror = () => resolve(createFallbackIcon());
     img.src = logoUrl;
@@ -278,7 +282,7 @@ function MainApp() {
         appleIconEl.href = icon192;
       }
 
-      // 2. Dynamic PWA Manifest တည်ဆောက်ခြင်း (Staff Portal ဖြစ်ပါက Staff Portal အမည်နှင့် URL ဖြင့် သိမ်းဆည်းပေးမည်)
+      // 2. Dynamic PWA Manifest တည်ဆောက်ခြင်း (Xiaomi/Redmi Launcher များအတွက် 'any' purpose သီးသန့်သုံးမည်)
       const startUrl = isStaffMode
         ? `${window.location.origin}/?mode=staff`
         : isPosMode
@@ -287,19 +291,19 @@ function MainApp() {
 
       const dynamicManifest = {
         id: isStaffMode ? '/?mode=staff' : isPosMode ? '/?mode=pos' : '/',
-        short_name: isStaffMode ? `${brandName} Staff` : isPosMode ? `${brandName} POS` : brandName,
+        short_name: isStaffMode ? 'SL Staff' : isPosMode ? 'SL POS' : 'Shangri-La',
         name: isStaffMode
           ? `${brandName} - Staff Portal`
           : isPosMode
           ? `${brandName} - POS System`
           : `${brandName} Men's Retreat`,
-        description: "Premium Men's Wellness & Spa in Mandalay",
+        description: "The Shangri-La Men's Retreat - Beyond Relaxation",
         start_url: startUrl,
         scope: `${window.location.origin}/`,
         display: 'standalone',
         orientation: 'portrait',
         theme_color: '#123524',
-        background_color: '#ffffff',
+        background_color: '#123524',
         icons: [
           {
             src: icon192,
@@ -318,15 +322,17 @@ function MainApp() {
 
       try {
         const manifestJson = JSON.stringify(dynamicManifest);
-        const manifestDataUrl = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(manifestJson);
+        const blob = new Blob([manifestJson], { type: 'application/manifest+json' });
+        const manifestUrl = URL.createObjectURL(blob);
+        
         const manifestEl = document.getElementById('app-manifest') as HTMLLinkElement | null;
         if (manifestEl) {
-          manifestEl.href = manifestDataUrl;
+          manifestEl.href = manifestUrl;
         } else {
           const newManifest = document.createElement('link');
           newManifest.id = 'app-manifest';
           newManifest.rel = 'manifest';
-          newManifest.href = manifestDataUrl;
+          newManifest.href = manifestUrl;
           document.head.appendChild(newManifest);
         }
       } catch (e) {
