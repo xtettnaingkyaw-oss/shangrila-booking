@@ -29,7 +29,12 @@ import {
 } from 'lucide-react';
 import { THEME, formatPrice } from '../shared';
 import { notifyStaffUpdate } from '../telegramService';
-import { isSameStaffMember } from './StaffPayrollSystem';
+import {
+  isSameStaffMember,
+  calculateBookingCommissionForStaff,
+  getStaffSeniority
+} from './StaffPayrollSystem';
+import { decryptText } from '../security';
 
 const CATEGORIES = [
   'ဆိုင်သန့်ရှင်းရေးတာဝန် ပျက်ကွက်ခြင်း',
@@ -179,7 +184,7 @@ async function syncDeductionToStaffPayrollDoc(
 // ============================================================================
 // 🌟 1. ADMIN PENALTY, DEPOSIT & LOAN LUXURY MANAGEMENT STUDIO 🌟
 // ============================================================================
-export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
+export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists: any[]; bookings?: any[] }) {
   const uniqueTherapists = useMemo(() => {
     return Array.from(
       new Map(
@@ -657,6 +662,132 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       totalPayrollDeductionReady: totalUnpaidPenaltiesAmt + totalActiveLoansAmt
     };
   }, [uniqueTherapists, getStats, deposits, loans, filteredDeposits]);
+
+  // 🌟 ရွေးချယ်ထားသော လစာကာလ (loanForm.payrollMonth) အတွက် ဝန်ထမ်းရရှိမည့် လစာစုစုပေါင်းကို တိုက်ရိုက်တွက်ချက်ခြင်း 🌟
+  const [selectedMonthPayrollDoc, setSelectedMonthPayrollDoc] = useState<any>(null);
+
+  useEffect(() => {
+    if (!loanForm.payrollMonth) return;
+    const unsub = onSnapshot(
+      doc(db, 'settings', `payroll_${loanForm.payrollMonth}`),
+      (snap) => {
+        setSelectedMonthPayrollDoc(snap.exists() ? snap.data() : null);
+      },
+      () => setSelectedMonthPayrollDoc(null)
+    );
+    return () => unsub();
+  }, [loanForm.payrollMonth]);
+
+  const selectedStaffPayrollPreview = useMemo(() => {
+    const tObj =
+      uniqueTherapists.find((t) => String(t.id) === String(loanForm.therapistId)) ||
+      uniqueTherapists[0];
+    if (!tObj || !loanForm.payrollMonth) {
+      return {
+        staffName: '',
+        sectionsCount: 0,
+        grossPay: 0,
+        existingDeductions: 0,
+        availableNetSalary: 0,
+        currentLoanBalance: 0
+      };
+    }
+
+    const staffName = tObj.name.trim();
+    const ym = loanForm.payrollMonth;
+    const pDoc = selectedMonthPayrollDoc || {};
+    const seniority = getStaffSeniority(staffName, uniqueTherapists, pDoc.seniorityOverrides || {});
+
+    let serviceCommission = 0;
+    let sectionsCount = 0;
+
+    (bookings || []).forEach((b: any) => {
+      if (!b || b.status === 'cancelled') return;
+      const bDate = String(b.date || '').trim();
+      if (!bDate.startsWith(ym)) return;
+
+      const rawTx = String(decryptText(b.txId) || b.txId || '').trim().toUpperCase();
+      const rawService = String(b.service || '').trim().toLowerCase();
+      const totalAmt = Number(decryptText(String(b.totalPrice || '')) || b.totalPrice) || 0;
+
+      if (
+        totalAmt <= 0 ||
+        rawTx === 'ADMIN' ||
+        rawTx === 'CASH' ||
+        Boolean(b.isAdminClockIn) ||
+        Boolean(b.isStaffClockIn) ||
+        rawService.includes('walk-in reward redemption')
+      ) {
+        return;
+      }
+
+      const rawTherapistStr = String(b.therapist || '').trim();
+      if (!rawTherapistStr || rawTherapistStr === '-' || rawTherapistStr.toLowerCase().includes('any available')) {
+        return;
+      }
+
+      const splitNames = rawTherapistStr
+        .split(/&|,|\+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      splitNames.forEach((tNameRaw) => {
+        if (isSameStaffMember(tNameRaw, staffName, tObj.id)) {
+          const commRes = calculateBookingCommissionForStaff(b, seniority, splitNames.length);
+          sectionsCount += 1;
+          serviceCommission += commRes.totalCommission;
+        }
+      });
+    });
+
+    const adj = (pDoc.adjustments || {})[staffName] || {
+      baseSalary: 0,
+      bonus: 0,
+      customDeductions: []
+    };
+    const baseAndBonus = (Number(adj.baseSalary) || 0) + (Number(adj.bonus) || 0);
+    const grossPay = serviceCommission + baseAndBonus;
+
+    const rawCustom = Array.isArray(adj.customDeductions) ? adj.customDeductions : [];
+    const wifiInList = rawCustom.find(
+      (d: any) => String(d.reason || '').toLowerCase().includes('wifi') || d.id === 'default_wifi'
+    );
+    const otherCustom = rawCustom.filter(
+      (d: any) => !String(d.reason || '').toLowerCase().includes('wifi') && d.id !== 'default_wifi'
+    );
+
+    let wifiFee = pDoc.defaultWifiFee !== undefined ? Number(pDoc.defaultWifiFee) : 10000;
+    if (adj.wifiFeeOverride !== undefined && adj.wifiFeeOverride !== null) {
+      wifiFee = Number(adj.wifiFeeOverride);
+    } else if (wifiInList) {
+      wifiFee = Number(wifiInList.amount) || 0;
+    }
+    wifiFee = Math.max(0, isNaN(wifiFee) ? 10000 : wifiFee);
+
+    const otherCustomTotal = otherCustom.reduce((s: number, d: any) => s + (Number(d.amount) || 0), 0);
+
+    const monthPenalties = penalties
+      .filter(
+        (p) =>
+          isMatchingTherapistRecord(p, tObj.id, staffName) &&
+          String(p.date || '').startsWith(ym) &&
+          !p.isPaid
+      )
+      .reduce((s, p) => s + calculateAmount(p), 0);
+
+    const existingDeductions = wifiFee + otherCustomTotal + monthPenalties;
+    const availableNetSalary = Math.max(0, grossPay - existingDeductions);
+    const currentLoanBalance = getStats(tObj.id, staffName).totalLoan;
+
+    return {
+      staffName,
+      sectionsCount,
+      grossPay,
+      existingDeductions,
+      availableNetSalary,
+      currentLoanBalance
+    };
+  }, [loanForm.therapistId, loanForm.payrollMonth, uniqueTherapists, bookings, selectedMonthPayrollDoc, penalties, getStats]);
 
   const selectedTherapistStats = useMemo(() => {
     if (!selectedTherapistId) return null;
@@ -2371,18 +2502,134 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                     </div>
 
                     {loanForm.repayMethod === 'salary' && (
-                      <div>
-                        <label className="block text-[10px] font-extrabold text-amber-950 uppercase mb-1">
-                          နှုတ်ယူမည့် လစာကာလ (Target Payroll Month)
-                        </label>
-                        <input
-                          type="month"
-                          value={loanForm.payrollMonth}
-                          onChange={(e) =>
-                            setLoanForm({ ...loanForm, payrollMonth: e.target.value })
-                          }
-                          className="w-full p-2 bg-white border border-amber-300 rounded-xl text-xs font-black text-[#123524]"
-                        />
+                      <div className="space-y-3 pt-1">
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-amber-950 uppercase mb-1">
+                            နှုတ်ယူမည့် လစာကာလ (Target Payroll Month)
+                          </label>
+                          <input
+                            type="month"
+                            value={loanForm.payrollMonth}
+                            onChange={(e) =>
+                              setLoanForm({ ...loanForm, payrollMonth: e.target.value })
+                            }
+                            className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-xs font-black text-[#123524] outline-none"
+                          />
+                        </div>
+
+                        {/* 🌟 ရွေးချယ်ထားသောလ၏ လစာစုစုပေါင်း ပြသသည့် Box + အားလုံးဆပ်မည် / ပမာဏရိုက်ထည့်မည် ခလုတ် 🌟 */}
+                        <div className="p-3 rounded-xl bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] text-white border border-[#D4AF37]/50 space-y-2.5 shadow-sm">
+                          <div className="flex items-center justify-between border-b border-white/15 pb-2">
+                            <span className="text-[10px] font-extrabold text-[#D4AF37] uppercase">
+                              💼 {loanForm.payrollMonth} လစာစာရင်း ({selectedStaffPayrollPreview.sectionsCount} Sec)
+                            </span>
+                            <span className="text-[10px] font-bold text-emerald-200">
+                              ချေးငွေကျန်: {formatPrice(selectedStaffPayrollPreview.currentLoanBalance)}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[11px]">
+                            <div className="bg-black/25 p-2 rounded-lg border border-white/10">
+                              <span className="text-[9px] text-gray-300 block uppercase">
+                                စုစုပေါင်း ရရှိလစာ (Gross)
+                              </span>
+                              <span className="font-black text-white text-xs">
+                                {formatPrice(selectedStaffPayrollPreview.grossPay)}
+                              </span>
+                            </div>
+                            <div className="bg-black/25 p-2 rounded-lg border border-[#D4AF37]/40">
+                              <span className="text-[9px] text-[#D4AF37] block uppercase">
+                                အသားတင် ကျန်ရှိလစာ (Net)
+                              </span>
+                              <span className="font-black text-[#D4AF37] text-xs">
+                                {formatPrice(selectedStaffPayrollPreview.availableNetSalary)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* အားလုံးဆပ်မည် vs ပမာဏရိုက်ထည့်မည် ရွေးချယ်သည့် ခလုတ် (၂) ခု */}
+                          <div className="pt-1 space-y-1.5">
+                            <span className="text-[10px] font-bold text-gray-200 block">
+                              ပြန်ဆပ်မည့် ပမာဏ ရွေးချယ်ရန်:
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const maxDeduct =
+                                    selectedStaffPayrollPreview.availableNetSalary > 0
+                                      ? Math.min(
+                                          selectedStaffPayrollPreview.currentLoanBalance,
+                                          selectedStaffPayrollPreview.availableNetSalary
+                                        )
+                                      : selectedStaffPayrollPreview.currentLoanBalance;
+                                  setLoanForm({
+                                    ...loanForm,
+                                    amount: String(maxDeduct)
+                                  });
+                                }}
+                                className={`py-2 px-2.5 rounded-lg text-[10px] font-black transition border text-center ${
+                                  Number(loanForm.amount) > 0 &&
+                                  (Number(loanForm.amount) ===
+                                    selectedStaffPayrollPreview.currentLoanBalance ||
+                                    Number(loanForm.amount) ===
+                                      Math.min(
+                                        selectedStaffPayrollPreview.currentLoanBalance,
+                                        selectedStaffPayrollPreview.availableNetSalary
+                                      ))
+                                    ? 'bg-[#D4AF37] text-[#0B2419] border-[#D4AF37] shadow'
+                                    : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
+                                }`}
+                              >
+                                ✓ အားလုံးဆပ်မည် (
+                                {formatPrice(
+                                  selectedStaffPayrollPreview.availableNetSalary > 0
+                                    ? Math.min(
+                                        selectedStaffPayrollPreview.currentLoanBalance,
+                                        selectedStaffPayrollPreview.availableNetSalary
+                                      )
+                                    : selectedStaffPayrollPreview.currentLoanBalance
+                                )}
+                                )
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLoanForm({ ...loanForm, amount: '' });
+                                  const amtInput = document.getElementById(
+                                    'loan-repay-amount-input'
+                                  ) as HTMLInputElement;
+                                  if (amtInput) amtInput.focus();
+                                }}
+                                className="py-2 px-2.5 rounded-lg text-[10px] font-black bg-white/10 hover:bg-white/20 text-emerald-200 border border-white/20 transition text-center"
+                              >
+                                ✍️ ပမာဏ ကိုယ်တိုင်ရိုက်ထည့်မည်
+                              </button>
+                            </div>
+
+                            {/* အကယ်၍ ရိုက်ထည့်လိုက်သော ပမာဏက လစာထက် ပိုများနေပါက သတိပေးချက်ပြသပြီး ကျန်ရှိမည့်လစာကို တွက်ပြမည် */}
+                            {Number(loanForm.amount) > 0 && (
+                              <div className="pt-1 flex items-center justify-between text-[10px] font-bold">
+                                <span className="text-gray-300">ချေးငွေနှုတ်ပြီး ကျန်မည့်လစာ:</span>
+                                <span
+                                  className={`font-black ${
+                                    selectedStaffPayrollPreview.availableNetSalary -
+                                      Number(loanForm.amount) >=
+                                    0
+                                      ? 'text-emerald-300'
+                                      : 'text-red-300'
+                                  }`}
+                                >
+                                  {formatPrice(
+                                    selectedStaffPayrollPreview.availableNetSalary -
+                                      Number(loanForm.amount)
+                                  )}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2409,8 +2656,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                     ))}
                   </div>
                   <input
-                    type="number"
-                    placeholder="ပမာဏ (ကျပ်)"
+                    id="loan-repay-amount-input"
                     className="w-full p-3 border border-gray-300 rounded-xl text-sm bg-gray-50 font-black text-[#123524] outline-none"
                     value={loanForm.amount}
                     onChange={(e) => setLoanForm({ ...loanForm, amount: e.target.value })}
