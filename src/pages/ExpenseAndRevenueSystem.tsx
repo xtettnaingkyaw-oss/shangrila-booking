@@ -40,7 +40,11 @@ import {
   RotateCcw,
   ChevronDown,
   ChevronUp,
-  Check
+  Check,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 
 // ============================================================================
@@ -293,6 +297,8 @@ export interface ExpenseRecord {
   sourceDoc?: 'settings' | 'collection';
 }
 
+export type PayrollCycleMode = 'previous_month_5th' | 'current_month_accrued';
+
 const getLocalTodayStr = () => {
   const d = new Date();
   return (
@@ -335,18 +341,86 @@ const formatReadableDateHeader = (dateStr: string) => {
 };
 
 // ============================================================================
+// 🌟 5TH PAYDAY RULE HELPER: RESOLVE EARNED PAYROLL MONTH FOR EXPENSE MONTH 🌟
+// ============================================================================
+/**
+ * When viewing an Expense Month (e.g. "2026-11" November):
+ * - In 'previous_month_5th' mode (Default): Staff salaries paid on November 5th are earned in October ("2026-10").
+ * - In 'current_month_accrued' mode: Shows the live running salary accrued inside November ("2026-11").
+ */
+export function getPayrollTargetMonthInfo(
+  expenseYearMonth: string,
+  cycleMode: PayrollCycleMode = 'previous_month_5th'
+) {
+  const [y, m] = expenseYearMonth.split('-').map(Number);
+  if (!y || !m) {
+    return {
+      earnedPayrollMonth: expenseYearMonth,
+      earnedMonthShort: expenseYearMonth,
+      earnedMonthFull: expenseYearMonth,
+      expenseMonthShort: expenseYearMonth,
+      expenseMonthFull: expenseYearMonth,
+      payoutDateStr: `${expenseYearMonth}-05`,
+      payoutReadableLabel: `${expenseYearMonth}-05`
+    };
+  }
+
+  const expenseDateObj = new Date(y, m - 1, 1);
+  const prevDateObj = new Date(y, m - 2, 1);
+
+  const prevYearMonth = `${prevDateObj.getFullYear()}-${String(prevDateObj.getMonth() + 1).padStart(2, '0')}`;
+  const targetEarnedYm = cycleMode === 'previous_month_5th' ? prevYearMonth : expenseYearMonth;
+  const targetEarnedDateObj = cycleMode === 'previous_month_5th' ? prevDateObj : expenseDateObj;
+
+  const earnedMonthShort = targetEarnedDateObj.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+  const earnedMonthFull = targetEarnedDateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const expenseMonthShort = expenseDateObj.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+  const expenseMonthFull = expenseDateObj.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+  const payoutDateStr =
+    cycleMode === 'previous_month_5th'
+      ? `${expenseYearMonth}-05`
+      : `${expenseYearMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+
+  const payoutReadableLabel =
+    cycleMode === 'previous_month_5th'
+      ? `${expenseDateObj.toLocaleString('en-US', { month: 'short' })} 5, ${y}`
+      : `${expenseMonthShort} (Running)`;
+
+  return {
+    earnedPayrollMonth: targetEarnedYm,
+    previousYearMonth: prevYearMonth,
+    previousMonthShort: prevDateObj.toLocaleString('en-US', { month: 'short', year: 'numeric' }),
+    earnedMonthShort,
+    earnedMonthFull,
+    expenseMonthShort,
+    expenseMonthFull,
+    payoutDateStr,
+    payoutReadableLabel
+  };
+}
+
+// ============================================================================
 // 🌟 SHARED HOOK: CALCULATE MONTHLY PAYROLL, REVENUE, EXPENSES & CUSTOM CATEGORIES 🌟
 // ============================================================================
 
 export function useMonthlyFinancialEngine(
   selectedMonth: string,
   bookings: Booking[],
-  therapists: TherapistProfile[]
+  therapists: TherapistProfile[],
+  payrollCycleMode: PayrollCycleMode = 'previous_month_5th'
 ) {
   const [settingsExpenses, setSettingsExpenses] = useState<ExpenseRecord[]>([]);
   const [legacyCollectionExpenses, setLegacyCollectionExpenses] = useState<ExpenseRecord[]>([]);
   const [penalties, setPenalties] = useState<any[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryMeta[]>(DEFAULT_EXPENSE_CATEGORIES);
+
+  // Resolve which month's payroll data should be loaded (e.g. "2026-10" for "2026-11" expense report)
+  const payrollPeriodInfo = useMemo(
+    () => getPayrollTargetMonthInfo(selectedMonth, payrollCycleMode),
+    [selectedMonth, payrollCycleMode]
+  );
+  const targetPayrollMonth = payrollPeriodInfo.earnedPayrollMonth;
 
   const [payrollDoc, setPayrollDoc] = useState<{
     defaultWifiFee: number;
@@ -356,6 +430,8 @@ export function useMonthlyFinancialEngine(
     managerSalary: number;
     ceoName: string;
     managerName: string;
+    isMonthlyPayrollSettledOn5th?: boolean;
+    settledOn5thAt?: number;
   }>({
     defaultWifiFee: 10000,
     adjustments: {},
@@ -363,7 +439,8 @@ export function useMonthlyFinancialEngine(
     ceoSalary: 0,
     managerSalary: 0,
     ceoName: 'CEO',
-    managerName: 'Spa Manager'
+    managerName: 'Spa Manager',
+    isMonthlyPayrollSettledOn5th: false
   });
 
   useEffect(() => {
@@ -395,6 +472,7 @@ export function useMonthlyFinancialEngine(
     );
   };
 
+  // 1. Operational Expenses always come from `selectedMonth` (e.g. November 2026)
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'settings', `expenses_${selectedMonth}`),
@@ -483,38 +561,69 @@ export function useMonthlyFinancialEngine(
     return () => unsub();
   }, []);
 
+  // 2. Payroll Doc listener: Listens to `targetPayrollMonth` (e.g., "2026-10" when viewing "2026-11" in 5th Payday Mode)
+  // Also checks `payroll_${selectedMonth}` as fallback for CEO/Manager salary if configured on the expense month
   useEffect(() => {
-    const unsub = onSnapshot(
-      doc(db, 'settings', `payroll_${selectedMonth}`),
+    let targetData: any = null;
+    let expenseMonthData: any = null;
+
+    const updateMergedPayrollState = () => {
+      const primary = targetData || {};
+      const fallbackExec = expenseMonthData || {};
+      const wifi =
+        primary.defaultWifiFee !== undefined
+          ? Number(primary.defaultWifiFee)
+          : fallbackExec.defaultWifiFee !== undefined
+          ? Number(fallbackExec.defaultWifiFee)
+          : 10000;
+
+      setPayrollDoc({
+        defaultWifiFee: isNaN(wifi) ? 10000 : wifi,
+        adjustments: primary.adjustments || {},
+        seniorityOverrides: primary.seniorityOverrides || fallbackExec.seniorityOverrides || {},
+        ceoSalary:
+          Number(primary.ceoSalary) > 0
+            ? Number(primary.ceoSalary)
+            : Number(fallbackExec.ceoSalary) || 0,
+        managerSalary:
+          Number(primary.managerSalary) > 0
+            ? Number(primary.managerSalary)
+            : Number(fallbackExec.managerSalary) || 0,
+        ceoName: String(primary.ceoName || fallbackExec.ceoName || 'CEO'),
+        managerName: String(primary.managerName || fallbackExec.managerName || 'Spa Manager'),
+        isMonthlyPayrollSettledOn5th: Boolean(
+          primary.isMonthlyPayrollSettledOn5th || fallbackExec.isMonthlyPayrollSettledOn5th
+        ),
+        settledOn5thAt: Number(primary.settledOn5thAt || fallbackExec.settledOn5thAt) || undefined
+      });
+    };
+
+    const unsubTarget = onSnapshot(
+      doc(db, 'settings', `payroll_${targetPayrollMonth}`),
       (snap) => {
-        if (snap.exists()) {
-          const data = snap.data() as any;
-          const wifi = data.defaultWifiFee !== undefined ? Number(data.defaultWifiFee) : 10000;
-          setPayrollDoc({
-            defaultWifiFee: isNaN(wifi) ? 10000 : wifi,
-            adjustments: data.adjustments || {},
-            seniorityOverrides: data.seniorityOverrides || {},
-            ceoSalary: Number(data.ceoSalary) || 0,
-            managerSalary: Number(data.managerSalary) || 0,
-            ceoName: String(data.ceoName || 'CEO'),
-            managerName: String(data.managerName || 'Spa Manager')
-          });
-        } else {
-          setPayrollDoc({
-            defaultWifiFee: 10000,
-            adjustments: {},
-            seniorityOverrides: {},
-            ceoSalary: 0,
-            managerSalary: 0,
-            ceoName: 'CEO',
-            managerName: 'Spa Manager'
-          });
-        }
+        targetData = snap.exists() ? snap.data() : null;
+        updateMergedPayrollState();
       },
       () => {}
     );
-    return () => unsub();
-  }, [selectedMonth]);
+
+    const unsubExpenseMonth =
+      targetPayrollMonth !== selectedMonth
+        ? onSnapshot(
+            doc(db, 'settings', `payroll_${selectedMonth}`),
+            (snap) => {
+              expenseMonthData = snap.exists() ? snap.data() : null;
+              updateMergedPayrollState();
+            },
+            () => {}
+          )
+        : () => {};
+
+    return () => {
+      unsubTarget();
+      unsubExpenseMonth();
+    };
+  }, [targetPayrollMonth, selectedMonth]);
 
   const parseSafeNum = (v: any): number => {
     if (v === undefined || v === null || v === '') return 0;
@@ -577,10 +686,16 @@ export function useMonthlyFinancialEngine(
       { online: number; pos: number; totalRevenue: number; count: number }
     >();
 
+    let totalPayrollSectionsCount = 0;
+
     bookings.forEach((b: any) => {
       if (!b || b.status === 'cancelled') return;
       const bDate = String(b.date || '').trim();
-      if (!bDate.startsWith(selectedMonth)) return;
+
+      const isRevenueMonthMatch = bDate.startsWith(selectedMonth);
+      const isPayrollMonthMatch = bDate.startsWith(targetPayrollMonth);
+
+      if (!isRevenueMonthMatch && !isPayrollMonthMatch) return;
 
       const rawTx = parseSafeStr(b.txId).trim().toUpperCase();
       const rawPay = String(b.paymentMethod || '').trim();
@@ -601,90 +716,108 @@ export function useMonthlyFinancialEngine(
         return;
       }
 
-      const isOnline =
-        Boolean(b.isOnlineBooking) ||
-        Boolean(b.onlineBookingId) ||
-        (!rawTx.startsWith('SL-') &&
-          !rawPayLower.includes('shop pos') &&
-          !rawDisc.includes('[shop walk-in') &&
-          !Boolean(b.posLocalId));
+      // ====================================================================
+      // A. REVENUE & INFLOW CALCULATION (Strictly for `selectedMonth`)
+      // ====================================================================
+      if (isRevenueMonthMatch) {
+        const isOnline =
+          Boolean(b.isOnlineBooking) ||
+          Boolean(b.onlineBookingId) ||
+          (!rawTx.startsWith('SL-') &&
+            !rawPayLower.includes('shop pos') &&
+            !rawDisc.includes('[shop walk-in') &&
+            !Boolean(b.posLocalId));
 
-      if (isOnline) {
-        onlineSalesTotal += totalAmt;
-        onlineBookingsCount += 1;
-      } else {
-        posSalesTotal += totalAmt;
-        posBillsCount += 1;
-      }
-
-      if (origAmt > totalAmt) {
-        totalDiscountGiven += origAmt - totalAmt;
-      }
-
-      const isDepDue = b.paymentStatus === 'deposit_only' && parseSafeNum(b.balanceDue) > 0;
-      const dueAmt = isDepDue ? parseSafeNum(b.balanceDue) : 0;
-      const collectedNow = isDepDue
-        ? parseSafeNum(b.depositPaid) || Math.max(0, totalAmt - dueAmt)
-        : totalAmt;
-
-      totalPendingBalanceDue += dueAmt;
-
-      const cleanMethodName = (rawPay || 'Cash').split('(')[0].trim() || 'Cash';
-      if (cleanMethodName.toLowerCase().includes('cash')) {
-        totalCollectedCash += collectedNow;
-      } else {
-        totalCollectedDigital += collectedNow;
-      }
-
-      const pmUpper = cleanMethodName.toUpperCase();
-      const existingPm = paymentMethodMap.get(pmUpper);
-      if (existingPm) {
-        existingPm.amount += totalAmt;
-        existingPm.count += 1;
-      } else {
-        paymentMethodMap.set(pmUpper, { method: cleanMethodName, amount: totalAmt, count: 1 });
-      }
-
-      if (!dailyRevenueMap.has(bDate)) {
-        dailyRevenueMap.set(bDate, { online: 0, pos: 0, totalRevenue: 0, count: 0 });
-      }
-      const dEntry = dailyRevenueMap.get(bDate)!;
-      if (isOnline) dEntry.online += totalAmt;
-      else dEntry.pos += totalAmt;
-      dEntry.totalRevenue += totalAmt;
-      dEntry.count += 1;
-
-      const rawTherapistStr = String(b.therapist || '').trim();
-      if (!rawTherapistStr || rawTherapistStr === '-' || rawTherapistStr.toLowerCase().includes('any available')) {
-        return;
-      }
-      const splitNames = rawTherapistStr
-        .split(/&|,|\+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (splitNames.length === 0) return;
-
-      splitNames.forEach((tNameRaw) => {
-        const matchedProfile = uniqueTherapists.find((tp) => isSameStaffMember(tNameRaw, tp.name, tp.id));
-        const canonicalName = matchedProfile ? matchedProfile.name.trim() : tNameRaw.trim();
-        if (!staffCommMap.has(canonicalName)) {
-          staffCommMap.set(canonicalName, {
-            staffId: canonicalName,
-            staffName: canonicalName,
-            sectionsCount: 0,
-            serviceCommission: 0
-          });
+        if (isOnline) {
+          onlineSalesTotal += totalAmt;
+          onlineBookingsCount += 1;
+        } else {
+          posSalesTotal += totalAmt;
+          posBillsCount += 1;
         }
-        const st = staffCommMap.get(canonicalName)!;
-        const seniority = getStaffSeniority(
-          canonicalName,
-          uniqueTherapists,
-          payrollDoc.seniorityOverrides
-        );
-        const commRes = calculateBookingCommissionForStaff(b, seniority, splitNames.length);
-        st.sectionsCount += 1;
-        st.serviceCommission += commRes.totalCommission;
-      });
+
+        if (origAmt > totalAmt) {
+          totalDiscountGiven += origAmt - totalAmt;
+        }
+
+        const isDepDue = b.paymentStatus === 'deposit_only' && parseSafeNum(b.balanceDue) > 0;
+        const dueAmt = isDepDue ? parseSafeNum(b.balanceDue) : 0;
+        const collectedNow = isDepDue
+          ? parseSafeNum(b.depositPaid) || Math.max(0, totalAmt - dueAmt)
+          : totalAmt;
+
+        totalPendingBalanceDue += dueAmt;
+
+        const cleanMethodName = (rawPay || 'Cash').split('(')[0].trim() || 'Cash';
+        if (cleanMethodName.toLowerCase().includes('cash')) {
+          totalCollectedCash += collectedNow;
+        } else {
+          totalCollectedDigital += collectedNow;
+        }
+
+        const pmUpper = cleanMethodName.toUpperCase();
+        const existingPm = paymentMethodMap.get(pmUpper);
+        if (existingPm) {
+          existingPm.amount += totalAmt;
+          existingPm.count += 1;
+        } else {
+          paymentMethodMap.set(pmUpper, { method: cleanMethodName, amount: totalAmt, count: 1 });
+        }
+
+        if (!dailyRevenueMap.has(bDate)) {
+          dailyRevenueMap.set(bDate, { online: 0, pos: 0, totalRevenue: 0, count: 0 });
+        }
+        const dEntry = dailyRevenueMap.get(bDate)!;
+        if (isOnline) dEntry.online += totalAmt;
+        else dEntry.pos += totalAmt;
+        dEntry.totalRevenue += totalAmt;
+        dEntry.count += 1;
+      }
+
+      // ====================================================================
+      // B. STAFF PAYROLL & COMMISSION CALCULATION (Strictly for `targetPayrollMonth`)
+      //    e.g. When viewing Nov 2026 Expense Report, calculates Oct 2026 Payroll!
+      // ====================================================================
+      if (isPayrollMonthMatch) {
+        const rawTherapistStr = String(b.therapist || '').trim();
+        if (
+          !rawTherapistStr ||
+          rawTherapistStr === '-' ||
+          rawTherapistStr.toLowerCase().includes('any available')
+        ) {
+          return;
+        }
+        const splitNames = rawTherapistStr
+          .split(/&|,|\+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (splitNames.length === 0) return;
+
+        splitNames.forEach((tNameRaw) => {
+          const matchedProfile = uniqueTherapists.find((tp) =>
+            isSameStaffMember(tNameRaw, tp.name, tp.id)
+          );
+          const canonicalName = matchedProfile ? matchedProfile.name.trim() : tNameRaw.trim();
+          if (!staffCommMap.has(canonicalName)) {
+            staffCommMap.set(canonicalName, {
+              staffId: canonicalName,
+              staffName: canonicalName,
+              sectionsCount: 0,
+              serviceCommission: 0
+            });
+          }
+          const st = staffCommMap.get(canonicalName)!;
+          const seniority = getStaffSeniority(
+            canonicalName,
+            uniqueTherapists,
+            payrollDoc.seniorityOverrides
+          );
+          const commRes = calculateBookingCommissionForStaff(b, seniority, splitNames.length);
+          st.sectionsCount += 1;
+          st.serviceCommission += commRes.totalCommission;
+          totalPayrollSectionsCount += 1;
+        });
+      }
     });
 
     let totalTherapistNetPayroll = 0;
@@ -692,6 +825,7 @@ export function useMonthlyFinancialEngine(
     let totalTherapistBaseAndBonus = 0;
     let totalTherapistDeductions = 0;
     let settledTherapistsCount = 0;
+    let activePayrollStaffCount = 0;
 
     const therapistPayrollList = Array.from(staffCommMap.values()).map((st) => {
       const adj = payrollDoc.adjustments[st.staffName] || {
@@ -717,11 +851,15 @@ export function useMonthlyFinancialEngine(
       }
       wifiFee = Math.max(0, wifiFee);
 
-      const otherCustomTotal = otherCustom.reduce((s: number, d: any) => s + (Number(d.amount) || 0), 0);
+      const otherCustomTotal = otherCustom.reduce(
+        (s: number, d: any) => s + (Number(d.amount) || 0),
+        0
+      );
 
+      // Filter penalties/loans belonging to `targetPayrollMonth` (e.g. October penalties deducted from October salary)
       const myPenalties = penalties.filter((p) => {
         if (!isSameStaffMember(p.therapistName || '', st.staffName, st.staffId)) return false;
-        return String(p.date || '').startsWith(selectedMonth) && !p.isPaid;
+        return String(p.date || '').startsWith(targetPayrollMonth) && !p.isPaid;
       });
 
       const finesAndLoansTotal = myPenalties.reduce((s, p) => s + (Number(p.amount) || 0), 0);
@@ -734,14 +872,23 @@ export function useMonthlyFinancialEngine(
       totalTherapistBaseAndBonus += baseAndBonus;
       totalTherapistDeductions += staffDeductions;
       totalTherapistNetPayroll += netPayable;
-      if (adj.isPaidSettled) settledTherapistsCount += 1;
+
+      if (st.sectionsCount > 0 || netPayable > 0) {
+        activePayrollStaffCount += 1;
+      }
+      if (adj.isPaidSettled || payrollDoc.isMonthlyPayrollSettledOn5th) {
+        settledTherapistsCount += 1;
+      }
 
       return {
         ...st,
+        wifiFee,
+        finesAndLoansTotal,
+        otherCustomTotal,
         baseAndBonus,
         staffDeductions,
         netPayable,
-        isPaidSettled: Boolean(adj.isPaidSettled)
+        isPaidSettled: Boolean(adj.isPaidSettled || payrollDoc.isMonthlyPayrollSettledOn5th)
       };
     });
 
@@ -757,11 +904,15 @@ export function useMonthlyFinancialEngine(
       posSalesTotal,
       posBillsCount,
       totalBookingsCount: onlineBookingsCount + posBillsCount,
+      totalPayrollSectionsCount,
+      activePayrollStaffCount,
       totalCollectedCash,
       totalCollectedDigital,
       totalPendingBalanceDue,
       totalDiscountGiven,
-      paymentMethodsBreakdown: Array.from(paymentMethodMap.values()).sort((a, b) => b.amount - a.amount),
+      paymentMethodsBreakdown: Array.from(paymentMethodMap.values()).sort(
+        (a, b) => b.amount - a.amount
+      ),
       dailyRevenueMap,
       therapistPayrollList,
       totalTherapistGrossCommission,
@@ -771,7 +922,7 @@ export function useMonthlyFinancialEngine(
       settledTherapistsCount,
       totalCombinedPayroll
     };
-  }, [bookings, uniqueTherapists, selectedMonth, payrollDoc, penalties]);
+  }, [bookings, uniqueTherapists, selectedMonth, targetPayrollMonth, payrollDoc, penalties]);
 
   const totalOperationalExpenses = useMemo(() => {
     return monthExpenses.reduce((sum, e) => sum + e.amount, 0);
@@ -792,6 +943,8 @@ export function useMonthlyFinancialEngine(
     monthExpenses,
     totalOperationalExpenses,
     payrollDoc,
+    payrollPeriodInfo,
+    targetPayrollMonth,
     monthlyCalculations,
     grandTotalAllOutflow,
     netProfit,
@@ -2286,7 +2439,7 @@ export function AdminExpenseManager({
 }
 
 // ============================================================================
-// 📊 4. TAB 2: ADMIN EXPENSE REPORT DASHBOARD (SEPARATED OVERALL ANALYTICS & PAYROLL REPORT)
+// 📊 4. TAB 2: ADMIN EXPENSE REPORT DASHBOARD (WITH 5TH PAYDAY PREVIOUS-MONTH AUTO-SYNC)
 // ============================================================================
 
 export function AdminExpenseReportDashboard({
@@ -2306,6 +2459,9 @@ export function AdminExpenseReportDashboard({
   const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
 
+  // 🌟 5th Payday Rule Cycle Mode ('previous_month_5th' = Default | 'current_month_accrued' = Live Running) 🌟
+  const [payrollCycleMode, setPayrollCycleMode] = useState<PayrollCycleMode>('previous_month_5th');
+
   // Executive Salaries (CEO & Manager) States
   const [showSalaryEditor, setShowSalaryEditor] = useState<boolean>(false);
   const [ceoSalaryInput, setCeoSalaryInput] = useState<string>('0');
@@ -2313,6 +2469,7 @@ export function AdminExpenseReportDashboard({
   const [ceoNameInput, setCeoNameInput] = useState<string>('CEO');
   const [managerNameInput, setManagerNameInput] = useState<string>('Spa Manager');
   const [isSavingExecSalary, setIsSavingExecSalary] = useState<boolean>(false);
+  const [isTogglingSettled, setIsTogglingSettled] = useState<boolean>(false);
   const [showPayrollBreakdownModal, setShowPayrollBreakdownModal] = useState<boolean>(false);
 
   const {
@@ -2320,9 +2477,11 @@ export function AdminExpenseReportDashboard({
     monthExpenses,
     totalOperationalExpenses,
     payrollDoc,
+    payrollPeriodInfo,
+    targetPayrollMonth,
     monthlyCalculations,
     grandTotalAllOutflow
-  } = useMonthlyFinancialEngine(selectedMonth, bookings, therapists);
+  } = useMonthlyFinancialEngine(selectedMonth, bookings, therapists, payrollCycleMode);
 
   useEffect(() => {
     setCeoSalaryInput(String(payrollDoc.ceoSalary || 0));
@@ -2335,25 +2494,66 @@ export function AdminExpenseReportDashboard({
     e.preventDefault();
     setIsSavingExecSalary(true);
     try {
-      await setDoc(
-        doc(db, 'settings', `payroll_${selectedMonth}`),
-        {
-          ceoSalary: Math.max(0, Number(ceoSalaryInput) || 0),
-          managerSalary: Math.max(0, Number(managerSalaryInput) || 0),
-          ceoName: ceoNameInput.trim() || 'CEO',
-          managerName: managerNameInput.trim() || 'Spa Manager',
-          updatedAt: Date.now()
-        },
-        { merge: true }
-      );
+      const payload = {
+        ceoSalary: Math.max(0, Number(ceoSalaryInput) || 0),
+        managerSalary: Math.max(0, Number(managerSalaryInput) || 0),
+        ceoName: ceoNameInput.trim() || 'CEO',
+        managerName: managerNameInput.trim() || 'Spa Manager',
+        updatedAt: Date.now()
+      };
+      // Save to both targetPayrollMonth and selectedMonth for seamless sync
+      await setDoc(doc(db, 'settings', `payroll_${targetPayrollMonth}`), payload, { merge: true });
+      if (targetPayrollMonth !== selectedMonth) {
+        await setDoc(doc(db, 'settings', `payroll_${selectedMonth}`), payload, { merge: true });
+      }
       setShowSalaryEditor(false);
-      alert(`✅ ${selectedMonth} အတွက် CEO လစာနှင့် Manager လစာ သတ်မှတ်သိမ်းဆည်းပြီးပါပြီ။`);
+      alert(
+        `✅ ${payrollPeriodInfo.earnedMonthFull} လစာစာရင်းအတွက် CEO လစာနှင့် Manager လစာ သတ်မှတ်သိမ်းဆည်းပြီးပါပြီ။`
+      );
     } catch (err) {
       alert('လစာ သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
     } finally {
       setIsSavingExecSalary(false);
     }
   };
+
+  // Toggle 5th Payday Settlement Verification
+  const handleToggle5thPayrollSettled = async () => {
+    const nextState = !payrollDoc.isMonthlyPayrollSettledOn5th;
+    const confirmMsg = nextState
+      ? `${payrollPeriodInfo.earnedMonthFull} တစ်လလုံးစာ ဝန်ထမ်းလစာ (${formatPrice(
+          monthlyCalculations.totalCombinedPayroll
+        )}) အား ${payrollPeriodInfo.payoutReadableLabel} တွင် အပြည့်အဝ ရှင်းလင်းထုတ်ပေးပြီးကြောင်း အတည်ပြုမည်မှာ သေချာပါသလား?`
+      : `လစာရှင်းပြီးကြောင်း အတည်ပြုချက် (Paid Status) ကို ပြန်ဖြုတ်မည်မှာ သေချာပါသလား?`;
+
+    if (!window.confirm(confirmMsg)) return;
+    setIsTogglingSettled(true);
+    try {
+      await setDoc(
+        doc(db, 'settings', `payroll_${targetPayrollMonth}`),
+        {
+          isMonthlyPayrollSettledOn5th: nextState,
+          settledOn5thAt: nextState ? Date.now() : null
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      alert('Status ပြောင်းလဲရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    } finally {
+      setIsTogglingSettled(false);
+    }
+  };
+
+  // Determine 5th Payday Due / Settled status
+  const isAllStaffIndividuallySettled =
+    monthlyCalculations.activePayrollStaffCount > 0 &&
+    monthlyCalculations.settledTherapistsCount >= monthlyCalculations.therapistPayrollList.length;
+
+  const isPayrollFullySettled = Boolean(
+    payrollDoc.isMonthlyPayrollSettledOn5th || isAllStaffIndividuallySettled
+  );
+
+  const isPastOrOn5th = todayStr >= payrollPeriodInfo.payoutDateStr;
 
   // Category Breakdown Summary
   const categoryBreakdownList = useMemo(() => {
@@ -2409,19 +2609,19 @@ export function AdminExpenseReportDashboard({
     });
 
     rows.push([
-      `"${selectedMonth}-30"`,
-      `"ဝန်ထမ်းလစာနှင့် ကော်မရှင် (Staff Payroll Auto-Synced)"`,
-      `"Therapists Net Payroll (${monthlyCalculations.therapistPayrollList.length} Staff)"`,
-      `"Payroll Settlement"`,
+      `"${payrollPeriodInfo.payoutDateStr}"`,
+      `"ဝန်ထမ်းလစာနှင့် ကော်မရှင် (${payrollPeriodInfo.earnedMonthShort} Payroll — Paid on ${payrollPeriodInfo.payoutReadableLabel})"`,
+      `"Therapists Net Payroll (${monthlyCalculations.therapistPayrollList.length} Staff • ${monthlyCalculations.totalPayrollSectionsCount} Sections in ${targetPayrollMonth})"`,
+      `"5th Payday Settlement"`,
       monthlyCalculations.totalTherapistNetPayroll,
-      `"Auto-synced from Staff Pay Roll Tab"`
+      `"Earned in ${payrollPeriodInfo.earnedMonthFull} (${targetPayrollMonth}) | Paid on ${payrollPeriodInfo.payoutDateStr}"`
     ]);
 
     if (payrollDoc.ceoSalary > 0) {
       rows.push([
-        `"${selectedMonth}-30"`,
+        `"${payrollPeriodInfo.payoutDateStr}"`,
         `"Executive Salary"`,
-        `"${payrollDoc.ceoName} Salary"`,
+        `"${payrollDoc.ceoName} Salary (${payrollPeriodInfo.earnedMonthShort})"`,
         `"Payroll"`,
         payrollDoc.ceoSalary,
         `"Monthly Executive Salary"`
@@ -2430,9 +2630,9 @@ export function AdminExpenseReportDashboard({
 
     if (payrollDoc.managerSalary > 0) {
       rows.push([
-        `"${selectedMonth}-30"`,
+        `"${payrollPeriodInfo.payoutDateStr}"`,
         `"Executive Salary"`,
-        `"${payrollDoc.managerName} Salary"`,
+        `"${payrollDoc.managerName} Salary (${payrollPeriodInfo.earnedMonthShort})"`,
         `"Payroll"`,
         payrollDoc.managerSalary,
         `"Monthly Manager Salary"`
@@ -2443,26 +2643,44 @@ export function AdminExpenseReportDashboard({
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `ShangriLa_Expense_Report_${selectedMonth}.csv`;
+    link.download = `ShangriLa_Expense_Report_${selectedMonth}_with_${targetPayrollMonth}_Payroll.csv`;
     link.click();
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* =========================================================================
-          MODAL: STAFF PAYROLL & EXECUTIVE SALARY BREAKDOWN
+          MODAL: STAFF PAYROLL & EXECUTIVE SALARY BREAKDOWN (WITH GROSS-TO-NET AUDIT)
          ========================================================================= */}
       {showPayrollBreakdownModal && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-[#D4AF37]/40 my-auto max-h-[90vh] flex flex-col space-y-4">
-            <div className="flex justify-between items-center border-b border-gray-200 pb-3.5">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-[#D4AF37]/40 my-auto max-h-[90vh] flex flex-col space-y-4">
+            <div className="flex flex-wrap justify-between items-start gap-3 border-b border-gray-200 pb-3.5">
               <div>
-                <h3 className="text-base sm:text-lg font-black text-[#123524] flex items-center">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-300">
+                    {payrollCycleMode === 'previous_month_5th'
+                      ? `5th Payday Rule • Earned in ${payrollPeriodInfo.earnedMonthShort}`
+                      : `Current Month Running • ${payrollPeriodInfo.earnedMonthShort}`}
+                  </span>
+                  {isPayrollFullySettled ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      ✓ ၅ ရက်နေ့ ရှင်းပေးပြီး (Paid)
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-yellow-100 text-yellow-800 border border-yellow-300">
+                      ⏳ ၅ ရက်နေ့ ရှင်းရန် ({payrollPeriodInfo.payoutReadableLabel})
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-[#123524] flex items-center mt-1.5">
                   <Banknote className="w-5 h-5 mr-2 text-[#D4AF37]" />
-                  လစာနှင့် ကော်မရှင် စာရင်းချုပ် ({selectedMonth})
+                  {payrollPeriodInfo.earnedMonthFull} ({targetPayrollMonth}) လစာနှင့် ကော်မရှင် စာရင်းချုပ်
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Staff Pay Roll မှ တိုက်ရိုက်ချိတ်ဆက်ထားသော ဝန်ထမ်းလစာ၊ CEO လစာ နှင့် Manager လစာ အသေးစိတ်
+                  {payrollCycleMode === 'previous_month_5th'
+                    ? `${payrollPeriodInfo.earnedMonthFull} တစ်လလုံးစာ ဝန်ထမ်းလစာများကို ${payrollPeriodInfo.expenseMonthFull} (၅) ရက်နေ့ (${payrollPeriodInfo.payoutDateStr}) တွင် ထုတ်ပေးသော စာရင်းဖြစ်ပါသည်`
+                    : `လက်ရှိ ${payrollPeriodInfo.earnedMonthFull} အတွင်း ဝင်ထားသမျှ Running လစာစာရင်း ဖြစ်ပါသည်`}
                 </p>
               </div>
               <button
@@ -2474,74 +2692,151 @@ export function AdminExpenseReportDashboard({
               </button>
             </div>
 
-            <div className="overflow-y-auto flex-1 space-y-3 pr-1 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="overflow-y-auto flex-1 space-y-3.5 pr-1 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
+                  <div className="text-[10px] font-bold text-gray-500 uppercase">
+                    Gross Comm + Bonus ({targetPayrollMonth})
+                  </div>
+                  <div className="text-sm font-black text-emerald-700 mt-0.5">
+                    {formatPrice(
+                      monthlyCalculations.totalTherapistGrossCommission +
+                        monthlyCalculations.totalTherapistBaseAndBonus
+                    )}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200">
+                  <div className="text-[10px] font-bold text-red-700 uppercase">
+                    WiFi + Fines/Loans နှုတ်ငွေ
+                  </div>
+                  <div className="text-sm font-black text-red-600 mt-0.5">
+                    -{formatPrice(monthlyCalculations.totalTherapistDeductions)}
+                  </div>
+                </div>
                 <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <div className="text-[10px] font-bold text-emerald-800 uppercase">Therapists Net Pay</div>
+                  <div className="text-[10px] font-bold text-emerald-800 uppercase">
+                    Therapists Net Pay
+                  </div>
                   <div className="text-sm font-black text-[#123524] mt-0.5">
                     {formatPrice(monthlyCalculations.totalTherapistNetPayroll)}
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
-                  <div className="text-[10px] font-bold text-amber-900 uppercase">{payrollDoc.ceoName} Salary</div>
-                  <div className="text-sm font-black text-[#123524] mt-0.5">
-                    {formatPrice(payrollDoc.ceoSalary)}
+                  <div className="text-[10px] font-bold text-amber-900 uppercase">
+                    CEO + Manager လစာ
                   </div>
-                </div>
-                <div className="p-3 rounded-xl bg-blue-50 border border-blue-200">
-                  <div className="text-[10px] font-bold text-blue-900 uppercase">{payrollDoc.managerName} Salary</div>
                   <div className="text-sm font-black text-[#123524] mt-0.5">
-                    {formatPrice(payrollDoc.managerSalary)}
+                    {formatPrice(payrollDoc.ceoSalary + payrollDoc.managerSalary)}
                   </div>
                 </div>
               </div>
 
               <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left border-collapse min-w-[640px]">
                   <thead>
                     <tr className="bg-[#123524] text-[#D4AF37] text-[10px] uppercase">
                       <th className="p-2.5">Staff / Executive</th>
-                      <th className="p-2.5 text-center">Sections</th>
-                      <th className="p-2.5 text-right">Gross / Comm</th>
-                      <th className="p-2.5 text-right">Deductions</th>
+                      <th className="p-2.5 text-center">Sections ({targetPayrollMonth})</th>
+                      <th className="p-2.5 text-right">Gross Comm + Base</th>
+                      <th className="p-2.5 text-right">Deductions (WiFi/Loan)</th>
                       <th className="p-2.5 text-right">Net Payable</th>
+                      <th className="p-2.5 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 font-semibold text-gray-700">
                     {payrollDoc.ceoSalary > 0 && (
                       <tr className="bg-amber-50/40">
-                        <td className="p-2.5 font-black text-[#123524]">👑 {payrollDoc.ceoName} (CEO Salary)</td>
+                        <td className="p-2.5 font-black text-[#123524]">
+                          👑 {payrollDoc.ceoName} (CEO Salary)
+                        </td>
                         <td className="p-2.5 text-center">-</td>
                         <td className="p-2.5 text-right">{formatPrice(payrollDoc.ceoSalary)}</td>
                         <td className="p-2.5 text-right">0 Ks</td>
-                        <td className="p-2.5 text-right font-black text-[#123524]">{formatPrice(payrollDoc.ceoSalary)}</td>
+                        <td className="p-2.5 text-right font-black text-[#123524]">
+                          {formatPrice(payrollDoc.ceoSalary)}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-900">
+                            Executive
+                          </span>
+                        </td>
                       </tr>
                     )}
                     {payrollDoc.managerSalary > 0 && (
                       <tr className="bg-blue-50/40">
-                        <td className="p-2.5 font-black text-[#123524]">👔 {payrollDoc.managerName} (Manager Salary)</td>
+                        <td className="p-2.5 font-black text-[#123524]">
+                          👔 {payrollDoc.managerName} (Manager Salary)
+                        </td>
                         <td className="p-2.5 text-center">-</td>
                         <td className="p-2.5 text-right">{formatPrice(payrollDoc.managerSalary)}</td>
                         <td className="p-2.5 text-right">0 Ks</td>
                         <td className="p-2.5 text-right font-black text-[#123524]">
                           {formatPrice(payrollDoc.managerSalary)}
                         </td>
+                        <td className="p-2.5 text-center">
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black bg-blue-100 text-blue-900">
+                            Manager
+                          </span>
+                        </td>
                       </tr>
                     )}
                     {monthlyCalculations.therapistPayrollList.map((st, i) => (
                       <tr key={i} className="hover:bg-gray-50">
                         <td className="p-2.5 font-bold text-gray-800">{st.staffName}</td>
-                        <td className="p-2.5 text-center">{st.sectionsCount} Sec</td>
+                        <td className="p-2.5 text-center font-mono">{st.sectionsCount} Sec</td>
                         <td className="p-2.5 text-right text-emerald-700">
                           {formatPrice(st.serviceCommission + st.baseAndBonus)}
                         </td>
-                        <td className="p-2.5 text-right text-red-600">-{formatPrice(st.staffDeductions)}</td>
-                        <td className="p-2.5 text-right font-black text-[#123524]">{formatPrice(st.netPayable)}</td>
+                        <td className="p-2.5 text-right text-red-600">
+                          -{formatPrice(st.staffDeductions)}
+                        </td>
+                        <td className="p-2.5 text-right font-black text-[#123524]">
+                          {formatPrice(st.netPayable)}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          {st.isPaidSettled ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              ✓ ရှင်းပြီး
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-gray-100 text-gray-600">
+                              မရှင်းရသေး
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            <div className="pt-3 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={isTogglingSettled}
+                onClick={handleToggle5thPayrollSettled}
+                className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition shadow-xs ${
+                  isPayrollFullySettled
+                    ? 'bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-600 border border-gray-300'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>
+                  {isPayrollFullySettled
+                    ? 'လစာရှင်းပြီးကြောင်း အမှတ်အသား ပြန်ဖြုတ်မည်'
+                    : `✓ ၅ ရက်နေ့ (${payrollPeriodInfo.payoutReadableLabel}) လစာရှင်းပြီးကြောင်း အတည်ပြုမည်`}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowPayrollBreakdownModal(false)}
+                className="px-5 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black"
+              >
+                Done (ပိတ်မည်)
+              </button>
             </div>
           </div>
         </div>
@@ -2553,21 +2848,56 @@ export function AdminExpenseReportDashboard({
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-gray-100 pb-4">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#123524]/10 text-[#123524]">
                 Category & Payroll Analytics
               </span>
-              <h2 className="text-lg sm:text-xl font-black text-[#123524] flex items-center">
-                <BarChart2 className="w-5 h-5 mr-2 text-[#D4AF37]" />
-                Overall Expense Report Dashboard ({selectedMonth})
-              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                Payday 5th Rule Active ({payrollPeriodInfo.earnedMonthShort} Salary ➔ Paid {payrollPeriodInfo.payoutReadableLabel})
+              </span>
             </div>
+            <h2 className="text-lg sm:text-xl font-black text-[#123524] flex items-center mt-1.5">
+              <BarChart2 className="w-5 h-5 mr-2 text-[#D4AF37]" />
+              Overall Expense Report Dashboard ({selectedMonth})
+            </h2>
             <p className="text-xs text-gray-500 mt-1">
-              Category အလိုက် ကုန်ကျစရိတ် ရာခိုင်နှုန်း၊ ဝန်ထမ်းလစာ (Staff Payroll)၊ CEO လစာ နှင့် Manager လစာ စာရင်းချုပ်
+              {selectedMonth} အသုံးစရိတ်များနှင့် လစဉ် (၅) ရက်နေ့တွင် ထုတ်ပေးရသော{' '}
+              <strong className="text-[#123524]">
+                ပြီးခဲ့သည့်လ ({payrollPeriodInfo.previousMonthShort}) ၏ Auto ဝန်ထမ်းလစာ
+              </strong>{' '}
+              စာရင်းချုပ်
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            {/* Payroll Cycle Switcher (5th Payday Rule vs Current Month Running) */}
+            <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setPayrollCycleMode('previous_month_5th')}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition flex items-center gap-1 ${
+                  payrollCycleMode === 'previous_month_5th'
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-2xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                title="ပြီးခဲ့သည့်လ၏ လစာကို ယခုလ ၅ ရက်နေ့ ထွက်ငွေအဖြစ် ပြသမည် (Default)"
+              >
+                <span>📅 ၅ ရက်နေ့ရှင်း ({payrollPeriodInfo.previousMonthShort} လစာ)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayrollCycleMode('current_month_accrued')}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition flex items-center gap-1 ${
+                  payrollCycleMode === 'current_month_accrued'
+                    ? 'bg-amber-500 text-[#0B2419] shadow-2xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                title="လက်ရှိလအတွင်း တက်နေသော Running လစာကို ပြောင်းကြည့်မည်"
+              >
+                <span>⚡ ယခုလ Running ({payrollPeriodInfo.expenseMonthShort})</span>
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-300">
               <Calendar className="w-4 h-4 text-[#D4AF37]" />
               <span className="text-[11px] font-bold text-gray-500">လ ရွေးရန်:</span>
@@ -2603,7 +2933,7 @@ export function AdminExpenseReportDashboard({
         </div>
 
         {/* 4 Top Summary KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
           <div className="p-4 rounded-2xl bg-red-50/60 border border-red-200">
             <div className="text-[10px] font-extrabold text-red-800 uppercase tracking-wider">
               ၁။ ဆိုင်အသုံးစရိတ် (Operational)
@@ -2612,28 +2942,37 @@ export function AdminExpenseReportDashboard({
               {formatPrice(totalOperationalExpenses)}
             </div>
             <div className="text-[10px] font-bold text-gray-500 mt-1">
-              မှတ်တမ်း: {monthExpenses.length} ကြိမ်
+              {selectedMonth} မှတ်တမ်း: {monthExpenses.length} ကြိမ်
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200">
-            <div className="text-[10px] font-extrabold text-amber-900 uppercase tracking-wider flex items-center justify-between">
-              <span>၂။ ဝန်ထမ်းလစာ (Staff Payroll)</span>
-              <span className="bg-amber-200/80 text-amber-900 px-1.5 py-0.2 rounded text-[8px] font-black">
-                Auto
+          <div
+            onClick={() => setShowPayrollBreakdownModal(true)}
+            className="p-4 rounded-2xl bg-amber-50/80 border-2 border-amber-300 cursor-pointer hover:shadow-md transition relative"
+          >
+            <div className="text-[10px] font-extrabold text-amber-900 uppercase tracking-wider flex items-center justify-between gap-1">
+              <span>၂။ ဝန်ထမ်းလစာ (STAFF PAYROLL)</span>
+              <span className="bg-[#123524] text-[#D4AF37] px-2 py-0.5 rounded text-[9px] font-black whitespace-nowrap">
+                {payrollCycleMode === 'previous_month_5th'
+                  ? `${payrollPeriodInfo.earnedMonthShort} လစာ • 5th Pay`
+                  : `${payrollPeriodInfo.earnedMonthShort} Running`}
               </span>
             </div>
             <div className="text-lg sm:text-xl font-black text-[#123524] mt-1">
               {formatPrice(monthlyCalculations.totalTherapistNetPayroll)}
             </div>
-            <div className="text-[10px] font-bold text-amber-800 mt-1">
-              ဝန်ထမ်း {monthlyCalculations.therapistPayrollList.length} ဦး ({monthlyCalculations.totalBookingsCount} Sec)
+            <div className="flex items-center justify-between text-[10px] font-bold text-amber-900 mt-1">
+              <span>
+                ဝန်ထမ်း {monthlyCalculations.therapistPayrollList.length} ဦး (
+                {monthlyCalculations.totalPayrollSectionsCount} Sec in {targetPayrollMonth})
+              </span>
+              <span className="underline text-[#123524] font-black">စစ်ဆေးရန် →</span>
             </div>
           </div>
 
           <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200">
             <div className="text-[10px] font-extrabold text-blue-900 uppercase tracking-wider">
-              ၃။ CEO + Manager လစာ
+              ၃။ CEO + MANAGER လစာ
             </div>
             <div className="text-lg sm:text-xl font-black text-blue-900 mt-1">
               {formatPrice(payrollDoc.ceoSalary + payrollDoc.managerSalary)}
@@ -2645,42 +2984,101 @@ export function AdminExpenseReportDashboard({
 
           <div className="p-4 rounded-2xl bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] text-white border border-[#D4AF37]/50 shadow-sm">
             <div className="text-[10px] font-extrabold text-[#D4AF37] uppercase tracking-wider">
-              ၄။ စုစုပေါင်း ထွက်ငွေချုပ် (Total Outflow)
+              ၄။ စုစုပေါင်း ထွက်ငွေချုပ် (TOTAL OUTFLOW)
             </div>
             <div className="text-lg sm:text-xl font-black text-white mt-1">
               {formatPrice(grandTotalAllOutflow)}
             </div>
             <div className="text-[10px] font-semibold text-emerald-200 mt-1 truncate">
-              အသုံးစရိတ် + လစာအားလုံးပေါင်း
+              {selectedMonth} အသုံးစရိတ် + {payrollPeriodInfo.earnedMonthShort} လစာပေါင်း
             </div>
           </div>
         </div>
 
-        {/* Sleek Collapsible Executive Payroll Bar */}
-        <div className="bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white p-4 rounded-2xl border border-[#D4AF37]/40">
+        {/* Sleek Collapsible Executive Payroll Bar with Clear 5th Payday Attribution */}
+        <div className="bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white p-4 sm:p-5 rounded-2xl border border-[#D4AF37]/40 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center text-lg">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center text-xl flex-shrink-0">
                 💼
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs sm:text-sm font-black text-white">
-                    ဝန်ထမ်းလစာ + CEO + Manager လစာ စာရင်းချုပ် ({selectedMonth})
+                    {payrollCycleMode === 'previous_month_5th'
+                      ? `${payrollPeriodInfo.earnedMonthFull} (${targetPayrollMonth}) ဝန်ထမ်းလစာ + CEO + Manager လစာ စာရင်းချုပ်`
+                      : `ယခုလ (${targetPayrollMonth}) Running ဝန်ထမ်းလစာ + CEO + Manager လစာ စာရင်းချုပ်`}
                   </span>
                   <span className="bg-[#D4AF37] text-[#0B2419] text-[9px] font-black px-2 py-0.5 rounded uppercase">
-                    Payroll Category
+                    {payrollCycleMode === 'previous_month_5th'
+                      ? `Paid on ${payrollPeriodInfo.payoutReadableLabel} (5th Rule)`
+                      : 'Running Accrued Mode'}
                   </span>
+                  {isPayrollFullySettled ? (
+                    <span className="bg-emerald-500/20 border border-emerald-400 text-emerald-200 text-[9px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> ၅ ရက်နေ့ လစာရှင်းပေးပြီး
+                    </span>
+                  ) : (
+                    <span className="bg-amber-500/20 border border-amber-400 text-amber-200 text-[9px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                      <Clock className="w-3 h-3" />{' '}
+                      {isPastOrOn5th
+                        ? `၅ ရက်နေ့ ရောက်ပါပြီ — စစ်ဆေးအတည်ပြုရန် (${monthlyCalculations.settledTherapistsCount}/${monthlyCalculations.therapistPayrollList.length} Paid)`
+                        : `ထုတ်ပေးရမည့်ရက်: ${payrollPeriodInfo.payoutReadableLabel}`}
+                    </span>
+                  )}
                 </div>
-                <div className="text-[11px] text-gray-300 mt-0.5">
-                  Therapists Net: <strong className="text-[#D4AF37]">{formatPrice(monthlyCalculations.totalTherapistNetPayroll)}</strong> •{' '}
-                  {payrollDoc.ceoName}: <strong className="text-white">{formatPrice(payrollDoc.ceoSalary)}</strong> •{' '}
-                  {payrollDoc.managerName}: <strong className="text-white">{formatPrice(payrollDoc.managerSalary)}</strong>
+
+                <div className="text-[11px] text-gray-300 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span>
+                    Gross Comm ({monthlyCalculations.totalPayrollSectionsCount} Sec):{' '}
+                    <strong className="text-emerald-300">
+                      {formatPrice(monthlyCalculations.totalTherapistGrossCommission)}
+                    </strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    Deductions (WiFi/Loans):{' '}
+                    <strong className="text-red-300">
+                      -{formatPrice(monthlyCalculations.totalTherapistDeductions)}
+                    </strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    Therapists Net:{' '}
+                    <strong className="text-[#D4AF37]">
+                      {formatPrice(monthlyCalculations.totalTherapistNetPayroll)}
+                    </strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    {payrollDoc.ceoName}:{' '}
+                    <strong className="text-white">{formatPrice(payrollDoc.ceoSalary)}</strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    {payrollDoc.managerName}:{' '}
+                    <strong className="text-white">{formatPrice(payrollDoc.managerSalary)}</strong>
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              <button
+                type="button"
+                disabled={isTogglingSettled}
+                onClick={handleToggle5thPayrollSettled}
+                className={`px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition ${
+                  isPayrollFullySettled
+                    ? 'bg-emerald-500/25 border border-emerald-400 text-emerald-200 hover:bg-emerald-500/35'
+                    : 'bg-white/15 hover:bg-emerald-600 text-white border border-white/25'
+                }`}
+                title="၅ ရက်နေ့ လစာရှင်းပေးပြီးကြောင်း အမှတ်အသားပြုလုပ်ရန်"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{isPayrollFullySettled ? 'Paid on 5th ✓' : 'Mark Paid on 5th'}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setShowSalaryEditor(!showSalaryEditor)}
@@ -2688,14 +3086,19 @@ export function AdminExpenseReportDashboard({
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span>CEO / Manager လစာ သတ်မှတ်ရန်</span>
-                {showSalaryEditor ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                {showSalaryEditor ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
               </button>
+
               <button
                 type="button"
                 onClick={() => setShowPayrollBreakdownModal(true)}
                 className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition"
               >
-                စာရင်းအသေးစိတ်
+                စာရင်းအသေးစိတ် ({payrollPeriodInfo.earnedMonthShort})
               </button>
             </div>
           </div>
@@ -2794,15 +3197,24 @@ export function AdminExpenseReportDashboard({
         </div>
 
         <div className="space-y-2.5">
-          {/* Auto-Synced Payroll Bar */}
+          {/* Auto-Synced Payroll Bar with Clear Previous-Month & 5th Payday Label */}
           <div
             onClick={() => setShowPayrollBreakdownModal(true)}
             className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-300 cursor-pointer hover:shadow-xs transition"
           >
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <div className="font-black text-[#123524] flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="font-black text-[#123524] flex flex-wrap items-center gap-2">
                 <span>💼</span>
-                <span>ဝန်ထမ်းလစာ + CEO + Manager လစာ (Payroll Auto-Synced)</span>
+                <span>
+                  ဝန်ထမ်းလစာ + CEO + Manager လစာ ({payrollPeriodInfo.earnedMonthShort} Payroll •{' '}
+                  {payrollCycleMode === 'previous_month_5th'
+                    ? `${payrollPeriodInfo.payoutReadableLabel} ထုတ်ပေးငွေ`
+                    : 'Running Accrued'}
+                  )
+                </span>
+                <span className="text-[10px] font-black bg-white px-2 py-0.5 rounded border border-amber-300 text-amber-900">
+                  {monthlyCalculations.therapistPayrollList.length} ဦး ({monthlyCalculations.totalPayrollSectionsCount} Sec)
+                </span>
               </div>
               <div className="text-right whitespace-nowrap">
                 <span className="font-black text-sm text-[#123524]">
@@ -2934,7 +3346,7 @@ export function AdminExpenseReportDashboard({
 }
 
 // ============================================================================
-// 📈 5. TAB 3: ADMIN REVENUE & NET PROFIT DASHBOARD COMPONENT
+// 📈 5. TAB 3: ADMIN REVENUE & NET PROFIT DASHBOARD COMPONENT (WITH 5TH PAYDAY SYNC)
 // ============================================================================
 
 export function AdminRevenueProfitDashboard({
@@ -2947,22 +3359,25 @@ export function AdminRevenueProfitDashboard({
   const todayStr = getLocalTodayStr();
   const currentYearMonth = todayStr.substring(0, 7);
   const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
+  const [payrollCycleMode, setPayrollCycleMode] = useState<PayrollCycleMode>('previous_month_5th');
 
   const {
     categories,
     monthExpenses,
     totalOperationalExpenses,
     payrollDoc,
+    payrollPeriodInfo,
+    targetPayrollMonth,
     monthlyCalculations,
     grandTotalAllOutflow,
     netProfit,
     profitMarginPercent
-  } = useMonthlyFinancialEngine(selectedMonth, bookings, therapists);
+  } = useMonthlyFinancialEngine(selectedMonth, bookings, therapists, payrollCycleMode);
 
   const outflowBreakdown = useMemo(() => {
     const items: { label: string; icon: string; amount: number; color: string }[] = [
       {
-        label: `ဝန်ထမ်းလစာနှင့် ကော်မရှင် (${monthlyCalculations.therapistPayrollList.length} ဦး)`,
+        label: `ဝန်ထမ်းလစာနှင့် ကော်မရှင် (${payrollPeriodInfo.earnedMonthShort} လစာ • ${monthlyCalculations.therapistPayrollList.length} ဦး / ${monthlyCalculations.totalPayrollSectionsCount} Sec)`,
         icon: '💼',
         amount: monthlyCalculations.totalTherapistNetPayroll,
         color: 'bg-amber-500'
@@ -2993,7 +3408,7 @@ export function AdminRevenueProfitDashboard({
     });
 
     return items.sort((a, b) => b.amount - a.amount);
-  }, [categories, monthExpenses, monthlyCalculations, payrollDoc]);
+  }, [categories, monthExpenses, monthlyCalculations, payrollDoc, payrollPeriodInfo]);
 
   const dailyCashflowRows = useMemo(() => {
     const [y, m] = selectedMonth.split('-').map(Number);
@@ -3004,6 +3419,7 @@ export function AdminRevenueProfitDashboard({
       posRev: number;
       totalRev: number;
       dayExpenses: number;
+      payrollOutflowOnDay: number;
       dayNet: number;
     }[] = [];
 
@@ -3021,29 +3437,49 @@ export function AdminRevenueProfitDashboard({
         .filter((e) => e.date === dStr)
         .reduce((s, e) => s + e.amount, 0);
 
-      if (rev.totalRevenue > 0 || expSum > 0) {
+      // Include 5th of the Month Payroll Outflow on the 5th day row
+      const is5thPayday =
+        payrollCycleMode === 'previous_month_5th' &&
+        d === 5 &&
+        monthlyCalculations.totalCombinedPayroll > 0;
+      const payrollOutflowOnDay = is5thPayday ? monthlyCalculations.totalCombinedPayroll : 0;
+
+      if (rev.totalRevenue > 0 || expSum > 0 || payrollOutflowOnDay > 0) {
         rows.push({
           date: dStr,
           onlineRev: rev.online,
           posRev: rev.pos,
           totalRev: rev.totalRevenue,
-          dayExpenses: expSum,
-          dayNet: rev.totalRevenue - expSum
+          dayExpenses: expSum + payrollOutflowOnDay,
+          payrollOutflowOnDay,
+          dayNet: rev.totalRevenue - (expSum + payrollOutflowOnDay)
         });
       }
     }
 
     return rows.sort((a, b) => b.date.localeCompare(a.date));
-  }, [selectedMonth, todayStr, monthlyCalculations.dailyRevenueMap, monthExpenses]);
+  }, [
+    selectedMonth,
+    todayStr,
+    monthlyCalculations.dailyRevenueMap,
+    monthlyCalculations.totalCombinedPayroll,
+    monthExpenses,
+    payrollCycleMode
+  ]);
 
   const handleExportProfitLossExcel = () => {
     const headers = ['Category Type', 'Section / Item Name', 'Amount (Ks)', 'Share (%)'];
     const rows: any[] = [
-      ['INFLOW (ဝင်ငွေ)', 'Online Bookings Revenue', monthlyCalculations.onlineSalesTotal, ''],
-      ['INFLOW (ဝင်ငွေ)', 'POS Walk-in Sales Revenue', monthlyCalculations.posSalesTotal, ''],
+      ['INFLOW (ဝင်ငွေ)', `Online Bookings Revenue (${selectedMonth})`, monthlyCalculations.onlineSalesTotal, ''],
+      ['INFLOW (ဝင်ငွေ)', `POS Walk-in Sales Revenue (${selectedMonth})`, monthlyCalculations.posSalesTotal, ''],
       ['INFLOW TOTAL', 'စုစုပေါင်း ဝင်ငွေ (Total Gross Revenue)', monthlyCalculations.totalRevenue, '100%'],
       ['---', '---', 0, ''],
-      ['OUTFLOW (ထွက်ငွေ)', 'Therapists Net Payroll', monthlyCalculations.totalTherapistNetPayroll, ''],
+      [
+        'OUTFLOW (ထွက်ငွေ)',
+        `Therapists Net Payroll (${payrollPeriodInfo.earnedMonthShort} Salary • Paid ${payrollPeriodInfo.payoutReadableLabel})`,
+        monthlyCalculations.totalTherapistNetPayroll,
+        ''
+      ],
       ['OUTFLOW (ထွက်ငွေ)', `${payrollDoc.ceoName} (CEO Salary)`, payrollDoc.ceoSalary, ''],
       ['OUTFLOW (ထွက်ငွေ)', `${payrollDoc.managerName} (Manager Salary)`, payrollDoc.managerSalary, '']
     ];
@@ -3078,21 +3514,53 @@ export function AdminRevenueProfitDashboard({
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-gray-100 pb-4">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
                 Executive P&L Statement
               </span>
-              <h2 className="text-lg sm:text-xl font-black text-[#123524] flex items-center">
-                <TrendingUp className="w-5 h-5 mr-2 text-[#D4AF37]" />
-                Revenue & Net Profit Dashboard (ဝင်ငွေ၊ ထွက်ငွေ နှင့် အသားတင်အမြတ် စာရင်းချုပ်)
-              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                5th Payday Rule ({payrollPeriodInfo.earnedMonthShort} Salary Outflow)
+              </span>
             </div>
+            <h2 className="text-lg sm:text-xl font-black text-[#123524] flex items-center mt-1.5">
+              <TrendingUp className="w-5 h-5 mr-2 text-[#D4AF37]" />
+              Revenue & Net Profit Dashboard (ဝင်ငွေ၊ ထွက်ငွေ နှင့် အသားတင်အမြတ် စာရင်းချုပ်)
+            </h2>
             <p className="text-xs text-gray-500 mt-1">
-              တစ်လစာ မည်သည့်အပိုင်းမှ ငွေမည်မျှဝင်ပြီး မည်သည့်အပိုင်းတွင် မည်မျှကုန်ကျကာ အသားတင်အမြတ် (Net Profit) မည်မျှကျန်ရှိသည်ကို အလွယ်တကူ ကြည့်ရှုနိုင်ပါသည်
+              {selectedMonth} ဝင်ငွေစုစုပေါင်းမှ {selectedMonth} ဆိုင်အသုံးစရိတ်နှင့်{' '}
+              <strong className="text-[#123524]">
+                ၅ ရက်နေ့ထုတ်ပေးသော {payrollPeriodInfo.earnedMonthShort} လစာ
+              </strong>{' '}
+              တို့ကို နှုတ်၍ အသားတင်အမြတ် (Net Profit) တွက်ချက်ထားပါသည်
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+            <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setPayrollCycleMode('previous_month_5th')}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition ${
+                  payrollCycleMode === 'previous_month_5th'
+                    ? 'bg-[#123524] text-[#D4AF37] shadow-2xs'
+                    : 'text-gray-600'
+                }`}
+              >
+                📅 ၅ ရက်နေ့ရှင်း ({payrollPeriodInfo.previousMonthShort} လစာ)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayrollCycleMode('current_month_accrued')}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition ${
+                  payrollCycleMode === 'current_month_accrued'
+                    ? 'bg-amber-500 text-[#0B2419] shadow-2xs'
+                    : 'text-gray-600'
+                }`}
+              >
+                ⚡ ယခုလ Running ({payrollPeriodInfo.expenseMonthShort})
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-300">
               <Calendar className="w-4 h-4 text-[#D4AF37]" />
               <span className="text-[11px] font-bold text-gray-500">လ ရွေးချယ်ရန်:</span>
@@ -3118,7 +3586,7 @@ export function AdminRevenueProfitDashboard({
           <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-50 to-green-50/40 border-2 border-emerald-200 flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-emerald-900 uppercase tracking-wider">
-                ၁။ စုစုပေါင်း ဝင်ငွေ (Total Revenue)
+                ၁။ စုစုပေါင်း ဝင်ငွေ ({selectedMonth} Revenue)
               </span>
               <span className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
                 <ArrowUpRight className="w-5 h-5" />
@@ -3146,7 +3614,7 @@ export function AdminRevenueProfitDashboard({
           <div className="p-5 rounded-2xl bg-gradient-to-br from-red-50 to-rose-50/40 border-2 border-red-200 flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-red-900 uppercase tracking-wider">
-                ၂။ စုစုပေါင်း ထွက်ငွေ (Expenses + Payroll)
+                ၂။ စုစုပေါင်း ထွက်ငွေ (Expenses + {payrollPeriodInfo.earnedMonthShort} Payroll)
               </span>
               <span className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-xs">
                 <ArrowDownRight className="w-5 h-5" />
@@ -3163,7 +3631,7 @@ export function AdminRevenueProfitDashboard({
                 </span>
               </div>
               <div className="text-right">
-                ဝန်ထမ်း + CEO/Mgr လစာ:
+                {payrollPeriodInfo.earnedMonthShort} လစာ ({monthlyCalculations.totalPayrollSectionsCount} Sec):
                 <span className="block font-black text-red-700">
                   {formatPrice(monthlyCalculations.totalCombinedPayroll)}
                 </span>
@@ -3301,7 +3769,7 @@ export function AdminRevenueProfitDashboard({
                 ထွက်ငွေ ကဏ္ဍအလိုက် စာရင်းချုပ် (Outflow Breakdown — {selectedMonth})
               </h3>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                ဝန်ထမ်းလစာ၊ CEO/Manager လစာ နှင့် ဆိုင်အသုံးစရိတ် အမျိုးအစားတစ်ခုချင်းစီ၏ ကုန်ကျငွေအချိုးအစား
+                {payrollPeriodInfo.earnedMonthShort} ဝန်ထမ်းလစာ (၅ ရက်နေ့ထုတ်ပေးငွေ)၊ CEO/Manager လစာ နှင့် {selectedMonth} ဆိုင်အသုံးစရိတ်များ
               </p>
             </div>
             <span className="text-xs font-black text-red-600 bg-red-50 px-3 py-1 rounded-xl border border-red-200">
@@ -3343,7 +3811,7 @@ export function AdminRevenueProfitDashboard({
             နေ့စဉ် ဝင်ငွေ နှင့် အသုံးစရိတ် နှိုင်းယှဉ်ချက်ဇယား (Daily Cashflow Ledger — {selectedMonth})
           </h3>
           <p className="text-xs text-gray-500">
-            ရက်စွဲတစ်ရက်ချင်းစီအလိုက် Online ဝင်ငွေ၊ POS ဝင်ငွေ၊ နေ့စဉ်အသုံးစရိတ် နှင့် နေ့စဉ်ကျန်ငွေ
+            ရက်စွဲတစ်ရက်ချင်းစီအလိုက် Online ဝင်ငွေ၊ POS ဝင်ငွေ၊ နေ့စဉ်အသုံးစရိတ် (၅ ရက်နေ့ လစာထုတ်ပေးငွေ အပါအဝင်) နှင့် နေ့စဉ်ကျန်ငွေ
           </p>
         </div>
 
@@ -3355,7 +3823,7 @@ export function AdminRevenueProfitDashboard({
                 <th className="p-3.5 text-right">Online Sales</th>
                 <th className="p-3.5 text-right">POS Walk-in Sales</th>
                 <th className="p-3.5 text-right">Total Daily Revenue (ဝင်ငွေ)</th>
-                <th className="p-3.5 text-right">Daily Expenses (ထွက်ငွေ)</th>
+                <th className="p-3.5 text-right">Daily Outflow (ထွက်ငွေ)</th>
                 <th className="p-3.5 text-right">Daily Net Cashflow</th>
               </tr>
             </thead>
@@ -3369,7 +3837,14 @@ export function AdminRevenueProfitDashboard({
               ) : (
                 dailyCashflowRows.map((row) => (
                   <tr key={row.date} className="hover:bg-gray-50 transition">
-                    <td className="p-3.5 font-mono font-black text-[#123524]">{row.date}</td>
+                    <td className="p-3.5 font-mono font-black text-[#123524]">
+                      <div>{row.date}</div>
+                      {row.payrollOutflowOnDay > 0 && (
+                        <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                          💼 Includes 5th Payday ({payrollPeriodInfo.earnedMonthShort} Salary)
+                        </span>
+                      )}
+                    </td>
                     <td className="p-3.5 text-right text-blue-700">{formatPrice(row.onlineRev)}</td>
                     <td className="p-3.5 text-right text-emerald-700">{formatPrice(row.posRev)}</td>
                     <td className="p-3.5 text-right font-black text-[#123524]">+{formatPrice(row.totalRev)}</td>
