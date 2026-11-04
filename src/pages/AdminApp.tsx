@@ -2774,9 +2774,17 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
     }
   };
 
-  // 🌟 Helper 4: Booking တစ်ခု၏ Start Time နှင့် Expected End Time အမှန်ကို တွက်ချက်ပေးခြင်း 🌟
+ // 🌟 Helper 4: Booking တစ်ခု၏ Start Time နှင့် Expected End Time အမှန်ကို တွက်ချက်ပေးခြင်း 🌟
   const getAccurateSessionTimes = useCallback((b: any) => {
-    const durationMins = parseServiceDurationMins(b);
+    const durationMins = Number(b?.durationMins) || parseServiceDurationMins(b);
+    const isOutcall = isHotelOrHomeService(b);
+    const phase = b?.outcallPhase || b?.outcallStatus;
+
+    // Outcall 'on_the_way' (သွားနေဆဲ) အဆင့်တွင် အချိန်လုံးဝ စမမှတ်သေးပါ (0 ထားမည်)
+    if (isOutcall && (phase === 'on_the_way' || (!b?.startTimeMillis && phase !== 'in_service' && phase !== 'returning' && b?.status === 'in_progress'))) {
+      return { startMs: 0, expectedEndMs: 0, durationMins };
+    }
+
     const startMs =
       Number(b?.startTimeMillis) ||
       parseDateAndTimeStrToMillis(b?.date, b?.time, Number(b?.createdAt)) ||
@@ -2793,9 +2801,12 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
     bookings.forEach((b: any) => {
       if (b.status !== 'in_progress' || !b.id) return;
 
+      const isOutcall = isHotelOrHomeService(b);
+      if (isOutcall) return; // Outcall များကို ဝန်ထမ်း/Admin မှသာ အဆင့်လိုက် ပိတ်မည်
+
       const { startMs, expectedEndMs } = getAccurateSessionTimes(b);
 
-      if (b.date !== currentToday) {
+      if (b.date !== currentToday && expectedEndMs > 0) {
         updateDoc(doc(db, 'bookings', b.id), {
           status: 'completed',
           startTimeMillis: startMs,
@@ -2806,7 +2817,7 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
         return;
       }
 
-      if (isStrictlyAdminClockIn(b) && currentNow >= expectedEndMs) {
+      if (isStrictlyAdminClockIn(b) && expectedEndMs > 0 && currentNow >= expectedEndMs) {
         updateDoc(doc(db, 'bookings', b.id), {
           status: 'completed',
           startTimeMillis: startMs,
@@ -2842,19 +2853,22 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
     if (!b.id) return;
     if (window.confirm(`${b.therapist} ၏ "${b.service}" ကို ပြီးဆုံးပြီ (Completed) အဖြစ် သတ်မှတ်မည် သေချာပါသလား?`)) {
       const currentNow = Date.now();
+      const isOutcall = isHotelOrHomeService(b);
       const { startMs, expectedEndMs } = getAccurateSessionTimes(b);
+      const effectiveStart = startMs > 0 ? startMs : currentNow;
+      const effectiveExpectedEnd = expectedEndMs > 0 ? expectedEndMs : currentNow;
       const isAutoAdmin = isStrictlyAdminClockIn(b);
-      const overtimeSecs = isAutoAdmin ? 0 : Math.max(0, Math.floor((currentNow - expectedEndMs) / 1000));
+      const overtimeSecs = isAutoAdmin || expectedEndMs <= 0 ? 0 : Math.max(0, Math.floor((currentNow - effectiveExpectedEnd) / 1000));
 
       await updateDoc(doc(db, 'bookings', b.id), {
         status: 'completed',
-        startTimeMillis: startMs,
-        expectedEndTimeMillis: expectedEndMs,
+        startTimeMillis: effectiveStart,
+        expectedEndTimeMillis: effectiveExpectedEnd,
         actualEndTimeMillis: currentNow,
-        overtimeSeconds: overtimeSecs
+        overtimeSeconds: overtimeSecs,
+        ...(isOutcall ? { outcallPhase: 'completed', outcallStatus: 'completed' } : {})
       });
 
-      // 🌟 Service ပြီးဆုံးကြောင်း Telegram ပို့ခြင်း 🌟
       notifyBookingEvent('STATUS_UPDATE', {
         id: b.id,
         customerName: b.name || 'Guest',
@@ -2862,7 +2876,7 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
         serviceName: b.service || '-',
         price: Number(b.totalPrice) || 0,
         date: b.date || todayStr,
-        time: `${formatTimeAMPM(startMs)} - ${formatTimeAMPM(currentNow)}`,
+        time: `${formatTimeAMPM(effectiveStart)} - ${formatTimeAMPM(currentNow)}`,
         therapistId: b.therapist || '',
         therapistName: b.therapist || '-',
         status: 'completed',
@@ -2887,7 +2901,7 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
     }
   };
 
-const getTodayServiceStats = (tName: string) => {
+  const getTodayServiceStats = (tName: string) => {
     const cleanTarget = tName.trim().toLowerCase();
     const tBookings = bookings.filter((b) => {
       if (!b.therapist || b.date !== todayStr || (b.status !== 'completed' && b.status !== 'in_progress')) return false;
@@ -2904,13 +2918,12 @@ const getTodayServiceStats = (tName: string) => {
     return outpasses.filter((o) => o.therapist === tName && o.date === todayStr).length;
   };
 
-  // 🌟 DBOARD ACTIVE FILTER: Outcall နှင့် အခြား Active Session များကို စစ်ဆေးပေးသော နေရာ 🌟
+  // 🌟 DASHBOARD ACTIVE FILTER: Outcall နှင့် အခြား Active Session များကို စစ်ဆေးပေးသော နေရာ 🌟
   const activeBookings = useMemo(() => {
-    return bookings.filter((b) => {
+    return bookings.filter((b: any) => {
       if (b.status !== 'in_progress') return false;
       if (b.date !== todayStr) return false;
 
-      // Outcall ဖြစ်ပါက outcallPhase သည် completed ဖြစ်မှသာ Active List မှ ဖယ်ထုတ်မည်
       const isOutcall = isHotelOrHomeService(b);
       if (isOutcall) {
         const ph = b.outcallPhase || b.outcallStatus;
@@ -2919,7 +2932,7 @@ const getTodayServiceStats = (tName: string) => {
       }
 
       const { expectedEndMs } = getAccurateSessionTimes(b);
-      if (isStrictlyAdminClockIn(b) && now >= expectedEndMs) return false;
+      if (isStrictlyAdminClockIn(b) && expectedEndMs > 0 && now >= expectedEndMs) return false;
 
       return true;
     });
@@ -2929,6 +2942,22 @@ const getTodayServiceStats = (tName: string) => {
   const activeOutpasses = useMemo(() => {
     return outpasses.filter((o) => o.status === 'out' && o.date === todayStr);
   }, [outpasses, todayStr]);
+
+  // 🌟 Crash မဖြစ်စေရန် activeOvertimeCount ကို တိကျစွာ တွက်ချက်ပေးခြင်း 🌟
+  const activeOvertimeCount = useMemo(() => {
+    const lateBookings = activeBookings.filter((b: any) => {
+      if (isStrictlyAdminClockIn(b)) return false;
+      const { expectedEndMs } = getAccurateSessionTimes(b);
+      return expectedEndMs > 0 && now > expectedEndMs;
+    }).length;
+
+    const lateOutpasses = activeOutpasses.filter((o) => {
+      const exp = o.expectedInTimeMillis || o.outTimeMillis + 30 * 60 * 1000;
+      return now > exp;
+    }).length;
+
+    return lateBookings + lateOutpasses;
+  }, [activeBookings, activeOutpasses, now, getAccurateSessionTimes, isStrictlyAdminClockIn]);
 
   // Services List Tab အတွက် Filter (Today, Yesterday, Custom Date, All + Search)
   const displayedServiceHistory = useMemo(() => {
@@ -3318,21 +3347,25 @@ const getTodayServiceStats = (tName: string) => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {activeBookings.map((b) => {
+                {activeBookings.map((b: any) => {
                   const { startMs, expectedEndMs, durationMins } = getAccurateSessionTimes(b);
                   const totalServiceSecs = Math.max(1, durationMins * 60);
                   const isAdminAuto = isStrictlyAdminClockIn(b);
-                  const isOutcall =
-                    b.service.toLowerCase().includes('outcall') ||
-                    b.service.toLowerCase().includes('hotel') ||
-                    b.service.toLowerCase().includes('home') ||
-                    b.service.toLowerCase().includes('whole');
+                  const isOutcall = isHotelOrHomeService(b);
+                  const outcallPhase = b.outcallPhase || b.outcallStatus || (isOutcall && !b.startTimeMillis ? 'on_the_way' : 'in_service');
 
-                  const isLate = !isAdminAuto && now > expectedEndMs;
-                  const elapsedSecs = Math.max(0, Math.floor((now - startMs) / 1000));
-                  const remainingSecs = Math.max(0, Math.ceil((expectedEndMs - now) / 1000));
+                  const isWaitingOutcallArrival = isOutcall && (outcallPhase === 'on_the_way' || startMs <= 0);
+                  const isOutcallReturning = isOutcall && outcallPhase === 'returning';
+
+                  const isLate = !isAdminAuto && !isWaitingOutcallArrival && !isOutcallReturning && expectedEndMs > 0 && now > expectedEndMs;
+                  const elapsedSecs = startMs > 0 ? Math.max(0, Math.floor((now - startMs) / 1000)) : 0;
+                  const remainingSecs = expectedEndMs > 0 ? Math.max(0, Math.ceil((expectedEndMs - now) / 1000)) : totalServiceSecs;
                   const overtimeSecs = isLate ? Math.floor((now - expectedEndMs) / 1000) : 0;
-                  const progressPct = Math.min(100, Math.max(0, Math.round((elapsedSecs / totalServiceSecs) * 100)));
+                  const progressPct = isWaitingOutcallArrival
+                    ? 0
+                    : isOutcallReturning
+                    ? 100
+                    : Math.min(100, Math.max(0, Math.round((elapsedSecs / totalServiceSecs) * 100)));
 
                   const tStats = getTodayServiceStats(b.therapist);
                   const cleanServiceTitle = (b.service || 'Spa Service').replace(/\(\d+\s*Mins\)/gi, '').trim();
@@ -3357,47 +3390,69 @@ const getTodayServiceStats = (tName: string) => {
                         } animate-pulse`}
                       />
 
-                      {/* Row 1: Therapist Name & Live Remaining / Overtime Badge (with Hours & Mins) */}
+                      {/* Row 1: Therapist Name & Live Remaining / Outcall Status Badge */}
                       <div className="flex justify-between items-start mb-2.5 gap-2">
-                    <div>
-                      <div className={`font-black text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>
-                        {b.therapist}
-                      </div>
-                      <div className="mt-1">
-                        <AdminOutcallStageBadge booking={b} />
-                      </div>
-                      {b.txId && b.txId !== 'ADMIN' && (
-                        <span className="font-mono text-[10px] font-black text-gray-500 block mt-1">
-                          Bill: {b.txId}
-                        </span>
-                      )}
-                    </div>
-                         
-                        <div className="text-right">
-                          <span
-                            className={`inline-block text-[10px] font-black px-2.5 py-1 rounded-lg tracking-wide shadow-2xs ${
-                              isLate
-                                ? 'bg-red-600 text-white animate-pulse'
-                                : isAdminAuto
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                : isOutcall
-                                ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                                : 'bg-orange-100 text-orange-800 border border-orange-300'
-                            }`}
-                          >
-                            {isLate
-                              ? formatBadgeTimerText(overtimeSecs, true)
-                              : formatBadgeTimerText(remainingSecs, false)}
-                          </span>
-                          <div className="text-[9px] font-mono font-bold text-gray-500 mt-0.5">
-                            {isLate
-                              ? `(+${formatSecondsClock(overtimeSecs)} ကျော်လွန်)`
-                              : `(${formatSecondsClock(remainingSecs)} ကျန်ရှိ)`}
+                        <div>
+                          <div className={`font-black text-base ${isLate ? 'text-red-900' : 'text-[#123524]'}`}>
+                            {b.therapist}
                           </div>
+                          <div className="mt-1">
+                            <AdminOutcallStageBadge booking={b} />
+                          </div>
+                          {b.txId && b.txId !== 'ADMIN' && (
+                            <span className="font-mono text-[10px] font-black text-gray-500 block mt-1">
+                              Bill: {b.txId}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-right">
+                          {isWaitingOutcallArrival ? (
+                            <>
+                              <span className="inline-block text-[10px] font-black px-2.5 py-1 rounded-lg tracking-wide shadow-2xs bg-sky-100 text-sky-800 border border-sky-300">
+                                🚗 လမ်းခရီးသွားနေဆဲ
+                              </span>
+                              <div className="text-[9px] font-bold text-gray-500 mt-0.5">
+                                (ဧည့်သည်ထံရောက်မှ အချိန်စမှတ်မည်)
+                              </div>
+                            </>
+                          ) : isOutcallReturning ? (
+                            <>
+                              <span className="inline-block text-[10px] font-black px-2.5 py-1 rounded-lg tracking-wide shadow-2xs bg-purple-100 text-purple-800 border border-purple-300">
+                                🛵 ဆိုင်သို့ပြန်လာနေဆဲ
+                              </span>
+                              <div className="text-[9px] font-bold text-gray-500 mt-0.5">
+                                (Complete နှိပ်ရန် စောင့်ဆိုင်းဆဲ)
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <span
+                                className={`inline-block text-[10px] font-black px-2.5 py-1 rounded-lg tracking-wide shadow-2xs ${
+                                  isLate
+                                    ? 'bg-red-600 text-white animate-pulse'
+                                    : isAdminAuto
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    : isOutcall
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                                    : 'bg-orange-100 text-orange-800 border border-orange-300'
+                                }`}
+                              >
+                                {isLate
+                                  ? formatBadgeTimerText(overtimeSecs, true)
+                                  : formatBadgeTimerText(remainingSecs, false)}
+                              </span>
+                              <div className="text-[9px] font-mono font-bold text-gray-500 mt-0.5">
+                                {isLate
+                                  ? `(+${formatSecondsClock(overtimeSecs)} ကျော်လွန်)`
+                                  : `(${formatSecondsClock(remainingSecs)} ကျန်ရှိ)`}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
 
-                      {/* Row 2: Service Name & Duration Pill (Hours & Mins) */}
+                      {/* Row 2: Service Name & Duration Pill */}
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="text-sm font-black text-gray-800 leading-snug" title={b.service}>
                           {cleanServiceTitle}
@@ -3423,7 +3478,7 @@ const getTodayServiceStats = (tName: string) => {
                         </span>
                       </div>
 
-                      {/* Row 4: Start Time (AM/PM), Progress Bar & Expected End Time (AM/PM) */}
+                      {/* Row 4: Start Time, Progress Bar & Expected End Time */}
                       <div
                         className={`p-3 rounded-xl border mb-3 space-y-2 ${
                           isLate ? 'bg-white/90 border-red-200' : 'bg-white/80 border-gray-200/80'
@@ -3433,14 +3488,14 @@ const getTodayServiceStats = (tName: string) => {
                           <div>
                             <span className="text-[10px] font-bold text-gray-400 block uppercase">စတင်ချိန် (Start)</span>
                             <span className="font-mono font-black text-gray-800 text-xs sm:text-sm">
-                              {formatTimeAMPM(startMs)}
+                              {isWaitingOutcallArrival ? 'စောင့်ဆိုင်းဆဲ' : formatTimeAMPM(startMs)}
                             </span>
                           </div>
 
                           <div className="text-center">
                             <span className="text-[10px] font-bold text-gray-400 block uppercase">ကြာမြင့်ချိန်</span>
                             <span className="font-bold text-[#123524] text-[11px]">
-                              {formatSecondsToBurmeseWords(elapsedSecs)}
+                              {isWaitingOutcallArrival ? '0 မိနစ်' : formatSecondsToBurmeseWords(elapsedSecs)}
                             </span>
                           </div>
 
@@ -3453,12 +3508,11 @@ const getTodayServiceStats = (tName: string) => {
                                 isLate ? 'bg-red-100 text-red-700' : 'text-[#123524]'
                               }`}
                             >
-                              {formatTimeAMPM(expectedEndMs)}
+                              {isWaitingOutcallArrival ? 'စောင့်ဆိုင်းဆဲ' : formatTimeAMPM(expectedEndMs)}
                             </span>
                           </div>
                         </div>
 
-                        {/* Visual Progress Bar */}
                         <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-700 ${
@@ -3475,7 +3529,7 @@ const getTodayServiceStats = (tName: string) => {
                       <div className="mt-auto pt-2.5 border-t border-dashed border-gray-300/70">
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-[10px] font-bold text-gray-600">
-                            ယနေ့ ဝင်ပြီးသော​ Sections (Today Sections):{' '}
+                            ယနေ့ ဝင်ပြီးသော Sections (Today Sections):{' '}
                             <strong className="text-orange-600 text-xs">{tStats.count} Sec</strong>
                           </span>
                           {Number(b.totalPrice) > 0 && (
