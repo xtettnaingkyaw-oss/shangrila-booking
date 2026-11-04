@@ -16,13 +16,15 @@ export interface MenuItem {
   vvipPrice?: number;
   duration?: string;
   vvipIncluded?: boolean;
-  description?: string;  // 🌟 အသစ်ထပ်ထည့်ရန်
-  imageUrl?: string;     // 🌟 အသစ်ထပ်ထည့်ရန်
+  description?: string;
+  imageUrl?: string;
+  images?: string[]; // 🌟 Service HD ပုံ ၅ ပုံအထိ သိမ်းဆည်းရန်
 }
 
 export interface MenuCategory {
   id: string;
   title: string;
+  order?: number;
   items: MenuItem[];
 }
 
@@ -125,7 +127,7 @@ export interface AppData {
   vipSettings: VipSettings;
 }
 
-export interface Booking {
+export interface Booking extends OutcallTrackingFields {
   id?: string;
   name: string;
   phone: string;
@@ -142,6 +144,7 @@ export interface Booking {
   vipTierName?: string;
   status: 'pending' | 'payment_checking' | 'approved' | 'cancelled' | 'in_progress' | 'completed';
   cancelReason?: string;
+  cancelledAt?: number;
   createdAt: number;
   specialRequest?: string;
   startTimeMillis?: number;
@@ -149,6 +152,18 @@ export interface Booking {
   actualEndTimeMillis?: number;
   overtimeSeconds?: number;
   pointsAdded?: boolean;
+  // 🌟 Outcall & POS Integration Fields 🌟
+  durationMins?: number;
+  paymentStatus?: 'paid_in_full' | 'deposit_only';
+  depositPaid?: number;
+  balanceDue?: number;
+  posLocalId?: string;
+  posItems?: any[];
+  cashierName?: string;
+  isOnlineBooking?: boolean;
+  onlineBookingId?: string;
+  isAdminClockIn?: boolean;
+  isStaffClockIn?: boolean;
 }
 
 export interface OutPass {
