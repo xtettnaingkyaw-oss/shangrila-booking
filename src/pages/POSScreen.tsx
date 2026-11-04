@@ -280,11 +280,26 @@ export const OutcallStageBadge: React.FC<{ booking: any; appData?: AppData }> = 
   const isOutcall = isHotelOrHomeServiceBooking(booking, appData);
   if (!isOutcall) return null;
 
-  const phase =
-    booking.outcallPhase ||
-    booking.outcallStatus ||
-    (booking.status === 'completed' || booking.serviceStatus === 'completed' ? 'completed' : 'on_the_way');
+  const isCompletedStatus =
+    booking.status === 'completed' ||
+    booking.serviceStatus === 'completed' ||
+    booking.outcallPhase === 'completed' ||
+    booking.outcallStatus === 'completed';
 
+  // ✅ လွန်ခဲ့သောရက်ဟောင်းများ (သို့မဟုတ် ပြီးဆုံးသွားသော ဘိုကင်များ) ဖြစ်ပါက Complete badge ကိုသာ အမြဲပြပေးမည်
+  const bookingDate = booking.date || '';
+  const todayStr = getLocalTodayStr();
+  const isOldBooking = bookingDate && bookingDate < todayStr;
+
+  if (isOldBooking || isCompletedStatus) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+        🟢 Completed (ပြီးဆုံးပြီး)
+      </span>
+    );
+  }
+
+  const phase = booking.outcallPhase || booking.outcallStatus || 'on_the_way';
   const now = Date.now();
   const fmtTime = (ms?: number) =>
     ms ? new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -331,7 +346,7 @@ export const OutcallStageBadge: React.FC<{ booking: any; appData?: AppData }> = 
     const elapsedMins = Math.max(1, Math.round((now - retStart) / 60000));
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-purple-700 to-amber-500 text-white shadow-xs animate-pulse">
-        🛵 ဆိုင်သို့ပြန်လာနေဆဲ (Returning • { fmtTime(retStart) } / {elapsedMins} မိနစ်ကြာပြီ)
+        🛵 ဆိုင်သို့ပြန်လာနေဆဲ (Returning • {fmtTime(retStart)} / {elapsedMins} မိနစ်ကြာပြီ)
       </span>
     );
   }
@@ -6151,18 +6166,6 @@ const handleForceRefreshApp = async () => {
                                title="ဝန်ဆောင်မှုပြီးဆုံးကြောင်း အတည်ပြုမည် (POS + Admin)"
                              >
                                <CheckCircle className="w-3.5 h-3.5 mr-1" /> Complete
-                             </button>
-                           )}
-
-                           {/* ✅ စမ်းသပ်ထားသော ဘောင်ချာကို POS & Admin နှစ်ဖက်လုံးမှ ပယ်ဖျက်လိုပါက နှိပ်ရန် ခလုတ် */}
-                           {(currentPosUser?.role === 'admin' || currentPosUser?.role === 'manager') && (
-                             <button
-                               type="button"
-                               onClick={() => handleCancelPosSaleFromHistory(sale)}
-                               className="p-2.5 bg-red-50 text-red-600 border border-red-200 rounded-xl hover:bg-red-100 transition"
-                               title="ဘောင်ချာ ပယ်ဖျက်မည် (Cancel in POS & Admin)"
-                             >
-                               <Trash2 className="w-4 h-4" />
                              </button>
                            )}
 
