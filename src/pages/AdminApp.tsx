@@ -208,7 +208,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           vipTierName: raw.vipTierName ? decryptText(raw.vipTierName) : undefined
         } as Booking;
         data.push(b);
-        if (b.status === 'pending') currentPendingCount++;
+        if (b.status === 'pending' || b.status === 'payment_checking') currentPendingCount++;
       });
       data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setBookings(data);
@@ -246,9 +246,42 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 
   const pendingBookings = useMemo(() => bookings.filter(b => b.status !== 'in_progress' && b.status !== 'completed'), [bookings]);
   const historyBookings = useMemo(() => bookings.filter(b => b.status === 'in_progress' || b.status === 'completed'), [bookings]);
+  // 🌟 POS သီးသန့် ဘောင်ချာ ဟုတ်/မဟုတ် စစ်ဆေးသည့် Helper 🌟
+  const isStrictPosBillHelper = useCallback((b: any) => {
+    if (Boolean(b.isOnlineBooking) || Boolean(b.onlineBookingId)) return false;
+    const rawTx = String(b.txId || '').trim().toUpperCase();
+    const rawPay = String(b.paymentMethod || '').trim();
+    const rawDisc = String(b.discountLabel || '').trim();
+    const rawNote = String(b.specialRequest || '').trim();
+    if (rawTx === 'ADMIN' || rawTx === 'CASH') return false;
+    if (rawNote.includes('Online Booking TxID:')) return false;
+    return (
+      rawTx.startsWith('SL-') ||
+      rawPay.includes('Shop POS') ||
+      rawDisc.includes('[Shop Walk-in') ||
+      Boolean(b.posLocalId)
+    );
+  }, []);
+
+  // 1. POS Walk-in Sales အတွက်သာ စရံကျန်ငွေ အရေအတွက်
   const posUnpaidBalanceCount = useMemo(() => {
-    return bookings.filter((b: any) => b.status !== 'cancelled' && b.paymentStatus === 'deposit_only' && Number(b.balanceDue) > 0).length;
-  }, [bookings]);
+    return bookings.filter((b: any) =>
+      b.status !== 'cancelled' &&
+      isStrictPosBillHelper(b) &&
+      b.paymentStatus === 'deposit_only' &&
+      Number(b.balanceDue) > 0
+    ).length;
+  }, [bookings, isStrictPosBillHelper]);
+
+  // 2. Online Bookings အတွက်သာ စရံကျန်ငွေ အရေအတွက်
+  const onlineUnpaidBalanceCount = useMemo(() => {
+    return bookings.filter((b: any) =>
+      b.status !== 'cancelled' &&
+      !isStrictPosBillHelper(b) &&
+      b.paymentStatus === 'deposit_only' &&
+      Number(b.balanceDue) > 0
+    ).length;
+  }, [bookings, isStrictPosBillHelper]);
 
   const handleForceRefreshApp = async () => {
     try {
@@ -307,7 +340,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           subLabel: 'Booking Requests',
           icon: CalendarPlus,
           visible: hasAccess('bookings'),
-          badge: 0
+          badge: pendingCount + onlineUnpaidBalanceCount
         },
         {
           id: 'pos_sales',
@@ -446,8 +479,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         }
       ]
     }
-  ], [hasAccess, pendingCount, posUnpaidBalanceCount, updateRequestCount, onboardingPendingCount, resetRequestCount]);
-
+  ], [hasAccess, pendingCount, onlineUnpaidBalanceCount, posUnpaidBalanceCount, updateRequestCount, onboardingPendingCount, resetRequestCount]);
   const activeNavItem = useMemo(() => {
     for (const grp of navGroups) {
       for (const it of grp.items) {
@@ -457,7 +489,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
     return { label: 'Dashboard', subLabel: 'Overview', icon: TrendingUp };
   }, [navGroups, tab]);
 
-  const totalAlertsCount = pendingCount + posUnpaidBalanceCount + resetRequestCount + updateRequestCount + onboardingPendingCount;
+ const totalAlertsCount = pendingCount + onlineUnpaidBalanceCount + posUnpaidBalanceCount + resetRequestCount + updateRequestCount + onboardingPendingCount;
 
   if (!roleLoaded) return <div className="p-10 text-center text-gray-500 font-bold mt-10">Loading Admin Privileges...</div>;
 
@@ -694,6 +726,17 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
               </button>
             )}
 
+            {onlineUnpaidBalanceCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setTab('bookings')}
+                className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-xs font-black flex items-center gap-1.5 hover:bg-amber-100 transition"
+              >
+                <CalendarPlus className="w-3.5 h-3.5 text-amber-600" />
+                <span className="hidden sm:inline">Online Balance Due:</span> {onlineUnpaidBalanceCount}
+              </button>
+            )}
+
             {posUnpaidBalanceCount > 0 && (
               <button
                 type="button"
@@ -704,7 +747,6 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
                 <span className="hidden sm:inline">POS Balance Due:</span> {posUnpaidBalanceCount}
               </button>
             )}
-
             <div className="hidden md:flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
               <span className="text-xs font-bold text-gray-700 capitalize">{loggedInAdmin}</span>
