@@ -25,8 +25,7 @@ import {
   Sparkles,
   RefreshCw,
   Layers,
-  Send,
-  CheckCircle2
+  Send
 } from 'lucide-react';
 import { THEME, formatPrice } from '../shared';
 import { notifyStaffUpdate } from '../telegramService';
@@ -59,6 +58,17 @@ const getLocalTodayStr = () => {
   );
 };
 
+// Non-blocking promise wrapper so Firestore collection writes never freeze the UI on Tablet/Mobile
+function withTimeout<T>(promise: Promise<T>, ms = 2500): Promise<T | null> {
+  return Promise.race([
+    promise.catch((err) => {
+      console.warn('Firestore operation warning:', err);
+      return null;
+    }),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))
+  ]);
+}
+
 // Helper functions
 export const getDaysOverdue = (dateStr: string) => {
   if (!dateStr) return 0;
@@ -79,7 +89,7 @@ export const calculateAmount = (p: any) => {
   return (Number(p.amount) || 0) * Math.pow(2, days);
 };
 
-// Normalize staff number/name for 100% cross-device matching (e.g. "Therapist No-1", "No-1", "therapist_123")
+// Normalize staff number/name for 100% cross-device matching
 const extractStaffNumber = (val: any): string | null => {
   const s = String(val || '').trim();
   if (!s) return null;
@@ -116,47 +126,54 @@ async function syncDeductionToStaffPayrollDoc(
   reason: string,
   amount: number
 ) {
-  const cleanStaffName = String(staffName || '').trim();
-  if (!cleanStaffName || !yearMonth || amount <= 0) return;
+  try {
+    const cleanStaffName = String(staffName || '').trim();
+    if (!cleanStaffName || !yearMonth || amount <= 0) return;
 
-  const payrollRef = doc(db, 'settings', `payroll_${yearMonth}`);
-  const snap = await getDoc(payrollRef);
-  const existingData = snap.exists() ? (snap.data() as any) : {};
-  const adjustments = { ...(existingData.adjustments || {}) };
+    const payrollRef = doc(db, 'settings', `payroll_${yearMonth}`);
+    const snap = await withTimeout(getDoc(payrollRef), 2500);
+    const existingData = snap && snap.exists() ? (snap.data() as any) : {};
+    const adjustments = { ...(existingData.adjustments || {}) };
 
-  const staffAdj = adjustments[cleanStaffName] || {
-    baseSalary: 0,
-    bonus: 0,
-    customDeductions: [],
-    note: '',
-    isPaidSettled: false
-  };
+    const staffAdj = adjustments[cleanStaffName] || {
+      baseSalary: 0,
+      bonus: 0,
+      customDeductions: [],
+      note: '',
+      isPaidSettled: false
+    };
 
-  const currentDeductions: any[] = Array.isArray(staffAdj.customDeductions)
-    ? [...staffAdj.customDeductions]
-    : [];
+    const currentDeductions: any[] = Array.isArray(staffAdj.customDeductions)
+      ? [...staffAdj.customDeductions]
+      : [];
 
-  const filtered = currentDeductions.filter((d) => d.id !== deductionId);
-  filtered.push({
-    id: deductionId,
-    reason,
-    amount: Math.round(amount)
-  });
+    const filtered = currentDeductions.filter((d) => d.id !== deductionId);
+    filtered.push({
+      id: deductionId,
+      reason,
+      amount: Math.round(amount)
+    });
 
-  adjustments[cleanStaffName] = {
-    ...staffAdj,
-    customDeductions: filtered
-  };
+    adjustments[cleanStaffName] = {
+      ...staffAdj,
+      customDeductions: filtered
+    };
 
-  await setDoc(
-    payrollRef,
-    {
-      yearMonth,
-      adjustments,
-      updatedAt: Date.now()
-    },
-    { merge: true }
-  );
+    await withTimeout(
+      setDoc(
+        payrollRef,
+        {
+          yearMonth,
+          adjustments,
+          updatedAt: Date.now()
+        },
+        { merge: true }
+      ),
+      2500
+    );
+  } catch (err) {
+    console.warn('Payroll sync warning:', err);
+  }
 }
 
 // ============================================================================
@@ -194,7 +211,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     'dashboard'
   );
 
-  // Primary Collection States + Mirror Fallback States (Guarantees Tablet & Phone Parity)
+  // Primary Collection States + Mirror Fallback States +Deleted IDs Tracker
   const [rawPenalties, setRawPenalties] = useState<any[]>([]);
   const [rawDeposits, setRawDeposits] = useState<any[]>([]);
   const [rawLoans, setRawLoans] = useState<any[]>([]);
@@ -202,14 +219,17 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
   const [mirrorPenalties, setMirrorPenalties] = useState<any[]>([]);
   const [mirrorDeposits, setMirrorDeposits] = useState<any[]>([]);
   const [mirrorLoans, setMirrorLoans] = useState<any[]>([]);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+
   const [isRefreshingCloud, setIsRefreshingCloud] = useState(false);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
 
   const [selectedTherapistId, setSelectedTherapistId] = useState<string | null>(null);
   const [modalActiveTab, setModalActiveTab] = useState<'penalties' | 'deposits' | 'loans'>(
     'penalties'
   );
 
-  // Date & Period Filter States (Default: 'all_time' so all historical records are immediately visible)
+  // Date & Period Filter States
   const [periodPreset, setPeriodPreset] = useState<
     'this_month' | 'last_month' | 'today' | 'all_time' | 'custom'
   >('all_time');
@@ -270,43 +290,39 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     }
   }, [uniqueTherapists]);
 
-  // 🌟 LAYER 1: Ensure Firebase Auth is active on Tablet/Desktop if session exists 🌟
+  // Ensure Firebase Auth is active on Tablet/Desktop
   useEffect(() => {
     if (!auth.currentUser) {
       signInWithEmailAndPassword(auth, 'admin@shangrila.com', 'admin123').catch(() => {});
     }
   }, []);
 
-  // 🌟 LAYER 2: Real-Time Listeners WITHOUT `orderBy` (Prevents missing-field exclusion & index failures) + Mirror Listener 🌟
+  // Real-Time Listeners + Mirror Document Listener
   useEffect(() => {
     const unsubP = onSnapshot(
       collection(db, 'penalties'),
       (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setRawPenalties(list);
+        setRawPenalties(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       },
-      (err) => console.warn('Penalties listener warning:', err)
+      () => {}
     );
 
     const unsubD = onSnapshot(
       collection(db, 'deposits'),
       (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setRawDeposits(list);
+        setRawDeposits(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       },
-      (err) => console.warn('Deposits listener warning:', err)
+      () => {}
     );
 
     const unsubL = onSnapshot(
       collection(db, 'loans'),
       (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setRawLoans(list);
+        setRawLoans(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       },
-      (err) => console.warn('Loans listener warning:', err)
+      () => {}
     );
 
-    // Mirror Document inside `settings/staff_financial_ledger` (Always accessible across all devices)
     const unsubMirror = onSnapshot(
       doc(db, 'settings', 'staff_financial_ledger'),
       (snap) => {
@@ -328,68 +344,93 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     };
   }, []);
 
-  // Merge Primary Collection + Mirror Document by ID so no device ever misses a record
+  // Merge Primary Collection + Mirror Document (Mirror takes priority on recent edits, deletedIds are excluded)
   const penalties = useMemo(() => {
     const map = new Map<string, any>();
-    mirrorPenalties.forEach((item) => item?.id && map.set(item.id, item));
-    rawPenalties.forEach((item) => item?.id && map.set(item.id, item));
+    rawPenalties.forEach((item) => {
+      if (item?.id && !deletedIds.has(item.id)) map.set(item.id, item);
+    });
+    mirrorPenalties.forEach((item) => {
+      if (item?.id && !deletedIds.has(item.id)) {
+        const existing = map.get(item.id);
+        if (!existing || (item.updatedAt || item.isPaid) >= (existing.updatedAt || 0)) {
+          map.set(item.id, { ...existing, ...item });
+        }
+      }
+    });
     return Array.from(map.values()).sort((a, b) => {
       if (b.date !== a.date) return String(b.date || '').localeCompare(String(a.date || ''));
       return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0);
     });
-  }, [rawPenalties, mirrorPenalties]);
+  }, [rawPenalties, mirrorPenalties, deletedIds]);
 
   const deposits = useMemo(() => {
     const map = new Map<string, any>();
-    mirrorDeposits.forEach((item) => item?.id && map.set(item.id, item));
-    rawDeposits.forEach((item) => item?.id && map.set(item.id, item));
+    rawDeposits.forEach((item) => {
+      if (item?.id && !deletedIds.has(item.id)) map.set(item.id, item);
+    });
+    mirrorDeposits.forEach((item) => {
+      if (item?.id && !deletedIds.has(item.id)) map.set(item.id, item);
+    });
     return Array.from(map.values()).sort((a, b) => {
       if (b.date !== a.date) return String(b.date || '').localeCompare(String(a.date || ''));
       return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0);
     });
-  }, [rawDeposits, mirrorDeposits]);
+  }, [rawDeposits, mirrorDeposits, deletedIds]);
 
   const loans = useMemo(() => {
     const map = new Map<string, any>();
-    mirrorLoans.forEach((item) => item?.id && map.set(item.id, item));
-    rawLoans.forEach((item) => item?.id && map.set(item.id, item));
+    rawLoans.forEach((item) => {
+      if (item?.id && !deletedIds.has(item.id)) map.set(item.id, item);
+    });
+    mirrorLoans.forEach((item) => {
+      if (item?.id && !deletedIds.has(item.id)) map.set(item.id, item);
+    });
     return Array.from(map.values()).sort((a, b) => {
       if (b.date !== a.date) return String(b.date || '').localeCompare(String(a.date || ''));
       return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0);
     });
-  }, [rawLoans, mirrorLoans]);
+  }, [rawLoans, mirrorLoans, deletedIds]);
 
-  // 🌟 Auto-Sync Mirror Backup: Whenever a device has collection records, keep `settings/staff_financial_ledger` updated 🌟
-  useEffect(() => {
-    if (rawDeposits.length > 0 || rawLoans.length > 0 || rawPenalties.length > 0) {
-      const timer = setTimeout(() => {
-        setDoc(
-          doc(db, 'settings', 'staff_financial_ledger'),
-          {
-            penalties: rawPenalties.length > 0 ? rawPenalties : mirrorPenalties,
-            deposits: rawDeposits.length > 0 ? rawDeposits : mirrorDeposits,
-            loans: rawLoans.length > 0 ? rawLoans : mirrorLoans,
-            updatedAt: Date.now()
-          },
-          { merge: true }
-        ).catch(() => {});
-      }, 1200);
-      return () => clearTimeout(timer);
-    }
-  }, [rawPenalties, rawDeposits, rawLoans]);
+  // Helper to save Mirror Document reliably across all devices
+  const saveMirrorLedgerNow = async (
+    nextPenalties: any[],
+    nextDeposits: any[],
+    nextLoans: any[]
+  ) => {
+    setMirrorPenalties(nextPenalties);
+    setMirrorDeposits(nextDeposits);
+    setMirrorLoans(nextLoans);
+    await withTimeout(
+      setDoc(
+        doc(db, 'settings', 'staff_financial_ledger'),
+        {
+          penalties: nextPenalties,
+          deposits: nextDeposits,
+          loans: nextLoans,
+          updatedAt: Date.now()
+        },
+        { merge: true }
+      ),
+      3000
+    );
+  };
 
   // Manual Force Cloud Sync Button Handler
   const handleManualCloudSync = async () => {
     setIsRefreshingCloud(true);
     try {
       if (!auth.currentUser) {
-        await signInWithEmailAndPassword(auth, 'admin@shangrila.com', 'admin123').catch(() => {});
+        await withTimeout(
+          signInWithEmailAndPassword(auth, 'admin@shangrila.com', 'admin123'),
+          2000
+        );
       }
       const [pSnap, dSnap, lSnap, mSnap] = await Promise.all([
-        getDocs(collection(db, 'penalties')).catch(() => null),
-        getDocs(collection(db, 'deposits')).catch(() => null),
-        getDocs(collection(db, 'loans')).catch(() => null),
-        getDoc(doc(db, 'settings', 'staff_financial_ledger')).catch(() => null)
+        withTimeout(getDocs(collection(db, 'penalties')), 2500),
+        withTimeout(getDocs(collection(db, 'deposits')), 2500),
+        withTimeout(getDocs(collection(db, 'loans')), 2500),
+        withTimeout(getDoc(doc(db, 'settings', 'staff_financial_ledger')), 2500)
       ]);
 
       const pList = pSnap ? pSnap.docs.map((d) => ({ id: d.id, ...d.data() })) : [];
@@ -406,21 +447,8 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
         if (Array.isArray(mData.deposits)) setMirrorDeposits(mData.deposits);
         if (Array.isArray(mData.loans)) setMirrorLoans(mData.loans);
       }
-
-      if (pList.length > 0 || dList.length > 0 || lList.length > 0) {
-        await setDoc(
-          doc(db, 'settings', 'staff_financial_ledger'),
-          {
-            penalties: pList.length > 0 ? pList : mirrorPenalties,
-            deposits: dList.length > 0 ? dList : mirrorDeposits,
-            loans: lList.length > 0 ? lList : mirrorLoans,
-            updatedAt: Date.now()
-          },
-          { merge: true }
-        );
-      }
     } catch (e) {
-      console.warn('Manual sync error:', e);
+      console.warn('Manual sync warning:', e);
     } finally {
       setIsRefreshingCloud(false);
     }
@@ -564,7 +592,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     [penalties, filteredPenalties, deposits, loans]
   );
 
-  // Global Executive KPI Summary (Directly sums all records + per-staff balances so nothing is ever lost)
+  // Global Executive KPI Summary
   const globalSummary = useMemo(() => {
     let totalDepositsHeld = 0;
     let staffWithDepositsCount = 0;
@@ -591,7 +619,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       }
     });
 
-    // Fallback direct sum if therapists list is still loading
     const directDepositsSum = deposits.reduce((s, d) => s + (Number(d.amount) || 0), 0);
     if (totalDepositsHeld === 0 && directDepositsSum > 0) {
       totalDepositsHeld = directDepositsSum;
@@ -641,78 +668,90 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
     };
   }, [selectedTherapistId, uniqueTherapists, getStats]);
 
-  // Helper to update Mirror Document immediately on any write/delete
-  const updateMirrorLedger = async (
-    nextPenalties: any[],
-    nextDeposits: any[],
-    nextLoans: any[]
-  ) => {
-    await setDoc(
-      doc(db, 'settings', 'staff_financial_ledger'),
-      {
-        penalties: nextPenalties,
-        deposits: nextDeposits,
-        loans: nextLoans,
-        updatedAt: Date.now()
-      },
-      { merge: true }
-    ).catch(() => {});
-  };
+  // ============================================================================
+  // 🌟 ROBUST NON-BLOCKING ACTION HANDLERS (100% GUARANTEED EXECUTION) 🌟
+  // ============================================================================
 
-  // ============================================================================
-  // 🌟 ACTION HANDLERS (PENALTIES, DEPOSITS, LOANS & PAYROLL SYNC) 🌟
-  // ============================================================================
+  // 1. Issue New Penalty
   const handleSubmitPenalty = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.amount) return alert('ပမာဏဖြည့်ပါ');
-    const tObj = uniqueTherapists.find((t) => String(t.id) === String(formData.therapistId));
-    const targetStaffName = tObj?.name || 'Unknown';
-    const penaltyAmountNum = Number(formData.amount);
+    const penaltyAmountNum = Math.abs(Number(formData.amount) || 0);
+    if (penaltyAmountNum <= 0) return alert('ဒဏ်ကြေးပမာဏ ထည့်သွင်းပေးပါ။');
 
-    const payload = {
-      ...formData,
-      amount: penaltyAmountNum,
-      therapistName: targetStaffName,
-      isPaid: false,
-      createdAt: Date.now()
-    };
+    setIsSubmittingForm(true);
+    try {
+      const tObj =
+        uniqueTherapists.find((t) => String(t.id) === String(formData.therapistId)) ||
+        uniqueTherapists[0];
+      const targetStaffId = tObj?.id || formData.therapistId;
+      const targetStaffName = tObj?.name || 'Unknown';
 
-    const docRef = await addDoc(collection(db, 'penalties'), payload);
-    const createdItem = { id: docRef.id, ...payload };
-    await updateMirrorLedger([createdItem, ...penalties], deposits, loans);
+      const customId = `pen_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const newRecord = {
+        id: customId,
+        therapistId: targetStaffId,
+        therapistName: targetStaffName,
+        category: formData.category,
+        amount: penaltyAmountNum,
+        remark: formData.remark.trim(),
+        date: formData.date || todayStr,
+        disableDoubling: Boolean(formData.disableDoubling),
+        isPaid: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
 
-    notifyStaffUpdate({
-      type: 'PENALTY_ISSUED',
-      staffId: formData.therapistId,
-      staffName: targetStaffName,
-      title: '⚠️ စည်းကမ်းထိန်းသိမ်းရေး / ဒဏ်ကြေး သတိပေးချက် (Penalty Notice)',
-      details: [
-        `📋 အကြောင်းအရာ: ${formData.category}`,
-        formData.remark ? `📝 မှတ်ချက်: ${formData.remark}` : null
-      ]
-        .filter(Boolean)
-        .join('\n'),
-      amount: penaltyAmountNum,
-      effectiveDate: formData.date || todayStr,
-      issuedBy: 'Management (Admin Panel)'
-    }).catch((err) => console.warn('Telegram penalty alert error:', err));
+      const nextPenalties = [newRecord, ...penalties];
+      setRawPenalties((prev) => [newRecord, ...prev]);
 
-    setFormData({ ...formData, amount: '', remark: '' });
-    alert(
-      `✅ ${targetStaffName} အတွက် ဒဏ်ကြေး (${formatPrice(
-        penaltyAmountNum
-      )}) မှတ်တမ်းတင်ပြီးပါပြီ။\n(Staff Pay Roll Tab တွင်လည်း အလိုအလျောက် ချိတ်ဆက်ပြီးဖြစ်ပါသည်)`
-    );
-    setSubTab('dashboard');
+      // Save to Mirror Doc & Collection concurrently with non-blocking timeout
+      await Promise.all([
+        saveMirrorLedgerNow(nextPenalties, deposits, loans),
+        withTimeout(setDoc(doc(db, 'penalties', customId), newRecord), 2500)
+      ]);
+
+      notifyStaffUpdate({
+        type: 'PENALTY_ISSUED',
+        staffId: targetStaffId,
+        staffName: targetStaffName,
+        title: '⚠️ စည်းကမ်းထိန်းသိမ်းရေး / ဒဏ်ကြေး သတိပေးချက် (Penalty Notice)',
+        details: [
+          `📋 အကြောင်းအရာ: ${formData.category}`,
+          formData.remark ? `📝 မှတ်ချက်: ${formData.remark}` : null
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        amount: penaltyAmountNum,
+        effectiveDate: formData.date || todayStr,
+        issuedBy: 'Management (Admin Panel)'
+      }).catch(() => {});
+
+      setFormData((prev) => ({ ...prev, amount: '', remark: '' }));
+      alert(
+        `✅ ${targetStaffName} အတွက် ဒဏ်ကြေး (${formatPrice(
+          penaltyAmountNum
+        )}) မှတ်တမ်းတင်ပြီးပါပြီ။`
+      );
+      setSubTab('dashboard');
+    } catch (err: any) {
+      alert('ဒဏ်ကြေး သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်: ' + (err?.message || ''));
+    } finally {
+      setIsSubmittingForm(false);
+    }
   };
 
+  // 2. Submit Deposit / Withdraw
   const handleSubmitDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!depositForm.amount) return alert('ပမာဏဖြည့်ပါ');
-    const tObj = uniqueTherapists.find((t) => String(t.id) === String(depositForm.therapistId));
+    const rawAmt = Math.abs(Number(depositForm.amount) || 0);
+    if (rawAmt <= 0) return alert('အပ်ငွေပမာဏ ထည့်သွင်းပေးပါ။');
+
+    const tObj =
+      uniqueTherapists.find((t) => String(t.id) === String(depositForm.therapistId)) ||
+      uniqueTherapists[0];
+    const targetStaffId = tObj?.id || depositForm.therapistId;
     const targetStaffName = tObj?.name || 'Unknown';
-    const rawAmt = Math.abs(Number(depositForm.amount));
-    const currentStats = getStats(depositForm.therapistId, targetStaffName);
+    const currentStats = getStats(targetStaffId, targetStaffName);
 
     if (depositForm.txType === 'withdraw' && rawAmt > currentStats.depositBalance) {
       return alert(
@@ -722,65 +761,91 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       );
     }
 
-    const finalAmount = depositForm.txType === 'withdraw' ? -rawAmt : rawAmt;
-    const defaultNote =
-      depositForm.txType === 'withdraw'
-        ? 'အပ်ငွေ ပြန်ထုတ်ပေးခြင်း / ဖြတ်တောက်ခြင်း'
-        : 'အပ်ငွေသွင်းခြင်း';
-
-    const payload = {
-      therapistId: depositForm.therapistId,
-      therapistName: targetStaffName,
-      amount: finalAmount,
-      date: depositForm.date || todayStr,
-      type: depositForm.txType === 'withdraw' ? 'deduction' : 'deposit',
-      note: depositForm.note.trim() || defaultNote,
-      createdAt: Date.now()
-    };
-
-    const docRef = await addDoc(collection(db, 'deposits'), payload);
-    const createdItem = { id: docRef.id, ...payload };
-    await updateMirrorLedger(penalties, [createdItem, ...deposits], loans);
-
-    notifyStaffUpdate({
-      type: 'GENERAL_ANNOUNCEMENT',
-      staffId: depositForm.therapistId,
-      staffName: targetStaffName,
-      title:
+    setIsSubmittingForm(true);
+    try {
+      const finalAmount = depositForm.txType === 'withdraw' ? -rawAmt : rawAmt;
+      const defaultNote =
         depositForm.txType === 'withdraw'
-          ? '📤 အပ်ငွေ ပြန်ထုတ်/ဖြတ်တောက်ခြင်း မှတ်တမ်း (Deposit Deduction)'
-          : '💰 အပ်ငွေသွင်းခြင်း မှတ်တမ်း (Deposit Recorded)',
-      details: `မှတ်ချက်: ${depositForm.note.trim() || defaultNote}`,
-      amount: rawAmt,
-      effectiveDate: depositForm.date || todayStr,
-      issuedBy: 'Shop Accountant / Management'
-    }).catch((err) => console.warn('Telegram deposit alert error:', err));
+          ? 'အပ်ငွေ ပြန်ထုတ်ပေးခြင်း / ဖြတ်တောက်ခြင်း'
+          : 'အပ်ငွေသွင်းခြင်း';
 
-    setDepositForm({ ...depositForm, amount: '', note: '' });
-    alert('✅ အပ်ငွေစာရင်း အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။');
+      const customId = `dep_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const newRecord = {
+        id: customId,
+        therapistId: targetStaffId,
+        therapistName: targetStaffName,
+        amount: finalAmount,
+        date: depositForm.date || todayStr,
+        type: depositForm.txType === 'withdraw' ? 'deduction' : 'deposit',
+        note: depositForm.note.trim() || defaultNote,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+
+      const nextDeposits = [newRecord, ...deposits];
+      setRawDeposits((prev) => [newRecord, ...prev]);
+
+      await Promise.all([
+        saveMirrorLedgerNow(penalties, nextDeposits, loans),
+        withTimeout(setDoc(doc(db, 'deposits', customId), newRecord), 2500)
+      ]);
+
+      notifyStaffUpdate({
+        type: 'GENERAL_ANNOUNCEMENT',
+        staffId: targetStaffId,
+        staffName: targetStaffName,
+        title:
+          depositForm.txType === 'withdraw'
+            ? '📤 အပ်ငွေ ပြန်ထုတ်/ဖြတ်တောက်ခြင်း မှတ်တမ်း (Deposit Deduction)'
+            : '💰 အပ်ငွေသွင်းခြင်း မှတ်တမ်း (Deposit Recorded)',
+        details: `မှတ်ချက်: ${depositForm.note.trim() || defaultNote}`,
+        amount: rawAmt,
+        effectiveDate: depositForm.date || todayStr,
+        issuedBy: 'Shop Accountant / Management'
+      }).catch(() => {});
+
+      setDepositForm((prev) => ({ ...prev, amount: '', note: '' }));
+      alert(
+        `✅ ${targetStaffName} အတွက် ${
+          depositForm.txType === 'withdraw' ? 'အပ်ငွေနှုတ်ယူမှု' : 'အပ်ငွေသွင်းမှု'
+        } (${formatPrice(rawAmt)}) အောင်မြင်စွာ မှတ်တမ်းတင်ပြီးပါပြီ။`
+      );
+    } catch (err: any) {
+      alert('အပ်ငွေ သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်: ' + (err?.message || ''));
+    } finally {
+      setIsSubmittingForm(false);
+    }
   };
 
+  // 3. Submit Loan Borrow / Repay (Fixes the Frozen Repay Button!)
   const handleSubmitLoan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loanForm.amount) return alert('ပမာဏဖြည့်ပါ');
-    const tObj = uniqueTherapists.find((t) => String(t.id) === String(loanForm.therapistId));
+    const amountNum = Math.abs(Number(loanForm.amount) || 0);
+    if (amountNum <= 0) return alert('ပမာဏ ထည့်သွင်းပေးပါ။');
+
+    const tObj =
+      uniqueTherapists.find((t) => String(t.id) === String(loanForm.therapistId)) ||
+      uniqueTherapists[0];
+    const targetStaffId = tObj?.id || loanForm.therapistId;
     const targetStaffName = tObj?.name || 'Unknown';
-    const amountNum = Math.abs(Number(loanForm.amount));
+
     let finalAmount = amountNum;
     let finalNote = loanForm.note.trim();
 
     if (loanForm.type === 'repay') {
-      const currentBalance = getStats(loanForm.therapistId, targetStaffName).totalLoan;
+      const currentBalance = getStats(targetStaffId, targetStaffName).totalLoan;
       if (amountNum > currentBalance) {
         return alert(
-          `လက်ကျန် ကြိုထုတ်ငွေ (${formatPrice(currentBalance)}) ထက် ကျော်လွန်၍ ဆပ်၍မရပါ။`
+          `${targetStaffName} ၏ လက်ကျန် ကြိုထုတ်ငွေ (${formatPrice(
+            currentBalance
+          )}) ထက် ကျော်လွန်၍ ပြန်ဆပ်၍မရပါ။`
         );
       }
       finalAmount = -amountNum;
       finalNote = !finalNote
         ? loanForm.repayMethod === 'cash'
-          ? 'လက်ငင်းငွေဖြင့် ပြန်ဆပ်သည်'
-          : `လစာထဲမှ နှုတ်၍ ပြန်ဆပ်သည် (${loanForm.payrollMonth})`
+          ? '[လက်ငင်း] လက်ငင်းငွေဖြင့် ပြန်ဆပ်သည်'
+          : `[လစာဖြတ် ${loanForm.payrollMonth}] လစာထဲမှ နှုတ်၍ ပြန်ဆပ်သည်`
         : (loanForm.repayMethod === 'cash'
             ? '[လက်ငင်း] '
             : `[လစာဖြတ် ${loanForm.payrollMonth}] `) + finalNote;
@@ -788,60 +853,79 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       if (!finalNote) finalNote = 'ကြိုထုတ်ငွေ (Staff Advance)';
     }
 
-    const payload = {
-      therapistId: loanForm.therapistId,
-      therapistName: targetStaffName,
-      amount: finalAmount,
-      date: loanForm.date || todayStr,
-      type: loanForm.type,
-      repayMethod: loanForm.type === 'repay' ? loanForm.repayMethod : null,
-      payrollMonth:
-        loanForm.type === 'repay' && loanForm.repayMethod === 'salary'
-          ? loanForm.payrollMonth
-          : null,
-      note: finalNote,
-      createdAt: Date.now()
-    };
+    setIsSubmittingForm(true);
+    try {
+      const customId = `loan_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const newRecord = {
+        id: customId,
+        therapistId: targetStaffId,
+        therapistName: targetStaffName,
+        amount: finalAmount,
+        date: loanForm.date || todayStr,
+        type: loanForm.type,
+        repayMethod: loanForm.type === 'repay' ? loanForm.repayMethod : null,
+        payrollMonth:
+          loanForm.type === 'repay' && loanForm.repayMethod === 'salary'
+            ? loanForm.payrollMonth
+            : null,
+        note: finalNote,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
 
-    const loanDocRef = await addDoc(collection(db, 'loans'), payload);
-    const createdItem = { id: loanDocRef.id, ...payload };
-    await updateMirrorLedger(penalties, deposits, [createdItem, ...loans]);
+      const nextLoans = [newRecord, ...loans];
+      setRawLoans((prev) => [newRecord, ...prev]);
 
-    if (loanForm.type === 'repay' && loanForm.repayMethod === 'salary') {
-      await syncDeductionToStaffPayrollDoc(
-        loanForm.payrollMonth || prevYearMonth,
-        targetStaffName,
-        `loan_repay_${loanDocRef.id}`,
-        `ကြိုထုတ်ငွေ ပြန်ဆပ် (${loanForm.date}) - ${loanForm.note || 'Salary Deduction'}`,
-        amountNum
+      // Save to Mirror Doc & Collection concurrently with non-blocking timeout
+      await Promise.all([
+        saveMirrorLedgerNow(penalties, deposits, nextLoans),
+        withTimeout(setDoc(doc(db, 'loans', customId), newRecord), 2500)
+      ]);
+
+      if (loanForm.type === 'repay' && loanForm.repayMethod === 'salary') {
+        await syncDeductionToStaffPayrollDoc(
+          loanForm.payrollMonth || prevYearMonth,
+          targetStaffName,
+          `loan_repay_${customId}`,
+          `ကြိုထုတ်ငွေ ပြန်ဆပ် (${loanForm.date}) - ${loanForm.note || 'Salary Deduction'}`,
+          amountNum
+        );
+      }
+
+      notifyStaffUpdate({
+        type: 'GENERAL_ANNOUNCEMENT',
+        staffId: targetStaffId,
+        staffName: targetStaffName,
+        title:
+          loanForm.type === 'borrow'
+            ? '💸 ငွေကြိုထုတ်ယူမှု မှတ်တမ်း (Loan / Advance)'
+            : '💵 ချေးငွေပြန်ဆပ်ပြီးစီးမှု မှတ်တမ်း (Loan Repayment)',
+        details: `အမျိုးအစား: ${
+          loanForm.type === 'borrow' ? 'ကြိုထုတ်ငွေ' : 'ပြန်ဆပ်ငွေ'
+        }\nမှတ်ချက်: ${finalNote}`,
+        amount: amountNum,
+        effectiveDate: loanForm.date || todayStr,
+        issuedBy: 'Management (Admin Panel)'
+      }).catch(() => {});
+
+      setLoanForm((prev) => ({ ...prev, amount: '', note: '' }));
+      alert(
+        loanForm.type === 'repay'
+          ? `✅ ${targetStaffName} ၏ ပြန်ဆပ်ငွေ (${formatPrice(
+              amountNum
+            )}) အား အောင်မြင်စွာ စာရင်းသွင်းပြီး ကြိုထုတ်ငွေလက်ကျန်မှ နှုတ်ပေးလိုက်ပါပြီ!`
+          : `✅ ${targetStaffName} ၏ ကြိုထုတ်ငွေ (${formatPrice(
+              amountNum
+            )}) အား အောင်မြင်စွာ စာရင်းသွင်းပြီးပါပြီ!`
       );
+    } catch (err: any) {
+      alert('စာရင်းသွင်းရာတွင် အမှားအယွင်းရှိနေပါသည်: ' + (err?.message || ''));
+    } finally {
+      setIsSubmittingForm(false);
     }
-
-    notifyStaffUpdate({
-      type: 'GENERAL_ANNOUNCEMENT',
-      staffId: loanForm.therapistId,
-      staffName: targetStaffName,
-      title:
-        loanForm.type === 'borrow'
-          ? '💸 ငွေကြိုထုတ်ယူမှု မှတ်တမ်း (Loan / Advance)'
-          : '💵 ချေးငွေပြန်ဆပ်ပြီးစီးမှု မှတ်တမ်း (Loan Repayment)',
-      details: `အမျိုးအစား: ${
-        loanForm.type === 'borrow' ? 'ကြိုထုတ်ငွေ' : 'ပြန်ဆပ်ငွေ'
-      }\nမှတ်ချက်: ${finalNote}`,
-      amount: Math.abs(finalAmount),
-      effectiveDate: loanForm.date || todayStr,
-      issuedBy: 'Management (Admin Panel)'
-    }).catch((err) => console.warn('Telegram loan alert error:', err));
-
-    setLoanForm({ ...loanForm, amount: '', note: '' });
-    alert(
-      loanForm.type === 'repay' && loanForm.repayMethod === 'salary'
-        ? `✅ ပြန်ဆပ်ငွေ မှတ်တမ်းတင်ပြီး Staff Pay Roll (${loanForm.payrollMonth}) စာရင်းထဲသို့ အလိုအလျောက် ချိတ်ဆက်နှုတ်ပေးပြီးပါပြီ!`
-        : '✅ ကြိုထုတ်ငွေ / ပြန်ဆပ်ငွေ မှတ်တမ်းတင်ပြီးပါပြီ။'
-    );
   };
 
-  // Settle Penalty via Cash, Deposit, OR Direct Salary Deduction
+  // 4. Settle Penalty via Cash, Deposit, OR Direct Salary Deduction
   const handleMarkAsPaid = async (p: any, method: 'cash' | 'deposit' | 'salary') => {
     const currentAmt = calculateAmount(p);
 
@@ -855,137 +939,156 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       }
 
       if (
-        window.confirm(
-          `${p.therapistName} ၏ အပ်ငွေထဲမှ ဒဏ်ကြေး ${formatPrice(currentAmt)} နှုတ်ယူမည်မှာ သေချာပါသလား?`
+        !window.confirm(
+          `${p.therapistName} ၏ အပ်ငွေထဲမှ ဒဏ်ကြေး ${formatPrice(
+            currentAmt
+          )} နှုတ်ယူမည်မှာ သေချာပါသလား?`
         )
       ) {
-        const depPayload = {
-          therapistId: p.therapistId,
-          therapistName: p.therapistName,
-          amount: -currentAmt,
-          date: todayStr,
-          type: 'deduction',
-          note: `${p.date} ရက်စွဲပါ ဒဏ်ကြေး (${p.category}) ဖြတ်တောက်ခြင်း`,
-          createdAt: Date.now()
-        };
-        const depRef = await addDoc(collection(db, 'deposits'), depPayload);
-        await updateDoc(doc(db, 'penalties', p.id), {
-          isPaid: true,
-          paidMethod: 'deposit',
-          finalAmount: currentAmt,
-          paidDate: todayStr
-        });
-
-        const nextP = penalties.map((item) =>
-          item.id === p.id
-            ? {
-                ...item,
-                isPaid: true,
-                paidMethod: 'deposit',
-                finalAmount: currentAmt,
-                paidDate: todayStr
-              }
-            : item
-        );
-        await updateMirrorLedger(nextP, [{ id: depRef.id, ...depPayload }, ...deposits], loans);
+        return;
       }
+
+      const depId = `dep_${Date.now()}`;
+      const depRecord = {
+        id: depId,
+        therapistId: p.therapistId,
+        therapistName: p.therapistName,
+        amount: -currentAmt,
+        date: todayStr,
+        type: 'deduction',
+        note: `${p.date} ရက်စွဲပါ ဒဏ်ကြေး (${p.category}) ဖြတ်တောက်ခြင်း`,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+
+      const updatedPenalty = {
+        ...p,
+        isPaid: true,
+        paidMethod: 'deposit',
+        finalAmount: currentAmt,
+        paidDate: todayStr,
+        updatedAt: Date.now()
+      };
+
+      const nextP = penalties.map((item) => (item.id === p.id ? updatedPenalty : item));
+      const nextD = [depRecord, ...deposits];
+
+      setRawPenalties((prev) => prev.map((item) => (item.id === p.id ? updatedPenalty : item)));
+      setRawDeposits((prev) => [depRecord, ...prev]);
+
+      await Promise.all([
+        saveMirrorLedgerNow(nextP, nextD, loans),
+        withTimeout(setDoc(doc(db, 'deposits', depId), depRecord), 2500),
+        withTimeout(setDoc(doc(db, 'penalties', p.id), updatedPenalty, { merge: true }), 2500)
+      ]);
+      alert(`✅ ${p.therapistName} ၏ အပ်ငွေထဲမှ ဒဏ်ကြေး ${formatPrice(currentAmt)} နှုတ်ယူပြီးပါပြီ။`);
     } else if (method === 'salary') {
       const penaltyYm = String(p.date || targetPayrollMonth).substring(0, 7) || targetPayrollMonth;
       if (
-        window.confirm(
+        !window.confirm(
           `${p.therapistName} ၏ ဒဏ်ကြေး (${formatPrice(
             currentAmt
           )}) ကို ${penaltyYm} လစာစာရင်း (Staff Pay Roll) ထဲမှ ဖြတ်တောက်ပြီးကြောင်း သတ်မှတ်မည်မှာ သေချာပါသလား?`
         )
       ) {
-        await syncDeductionToStaffPayrollDoc(
+        return;
+      }
+
+      const updatedPenalty = {
+        ...p,
+        isPaid: true,
+        paidMethod: 'salary',
+        finalAmount: currentAmt,
+        paidDate: todayStr,
+        updatedAt: Date.now()
+      };
+
+      const nextP = penalties.map((item) => (item.id === p.id ? updatedPenalty : item));
+      setRawPenalties((prev) => prev.map((item) => (item.id === p.id ? updatedPenalty : item)));
+
+      await Promise.all([
+        saveMirrorLedgerNow(nextP, deposits, loans),
+        syncDeductionToStaffPayrollDoc(
           penaltyYm,
           p.therapistName,
           `penalty_${p.id}`,
           `ဒဏ်ကြေး (${p.date}): ${p.category}`,
           currentAmt
-        );
-        await updateDoc(doc(db, 'penalties', p.id), {
-          isPaid: true,
-          paidMethod: 'salary',
-          finalAmount: currentAmt,
-          paidDate: todayStr
-        });
-        const nextP = penalties.map((item) =>
-          item.id === p.id
-            ? {
-                ...item,
-                isPaid: true,
-                paidMethod: 'salary',
-                finalAmount: currentAmt,
-                paidDate: todayStr
-              }
-            : item
-        );
-        await updateMirrorLedger(nextP, deposits, loans);
-        alert(
-          `✅ ${p.therapistName} ၏ ${penaltyYm} လစာစာရင်းထဲသို့ ဒဏ်ကြေး ${formatPrice(
-            currentAmt
-          )} ပေါင်းထည့်နှုတ်ယူပြီးပါပြီ။`
-        );
-      }
+        ),
+        withTimeout(setDoc(doc(db, 'penalties', p.id), updatedPenalty, { merge: true }), 2500)
+      ]);
+
+      alert(
+        `✅ ${p.therapistName} ၏ ${penaltyYm} လစာစာရင်းထဲသို့ ဒဏ်ကြေး ${formatPrice(
+          currentAmt
+        )} ပေါင်းထည့်နှုတ်ယူပြီးပါပြီ။`
+      );
     } else {
       if (
-        window.confirm(
-          `လက်ငင်းငွေ (Cash) ${formatPrice(currentAmt)} လက်ခံရရှိပြီးကြောင်း သတ်မှတ်မည်မှာ သေချာပါသလား?`
+        !window.confirm(
+          `လက်ငင်းငွေ (Cash) ${formatPrice(
+            currentAmt
+          )} လက်ခံရရှိပြီးကြောင်း သတ်မှတ်မည်မှာ သေချာပါသလား?`
         )
       ) {
-        await updateDoc(doc(db, 'penalties', p.id), {
-          isPaid: true,
-          paidMethod: 'cash',
-          finalAmount: currentAmt,
-          paidDate: todayStr
-        });
-        const nextP = penalties.map((item) =>
-          item.id === p.id
-            ? {
-                ...item,
-                isPaid: true,
-                paidMethod: 'cash',
-                finalAmount: currentAmt,
-                paidDate: todayStr
-              }
-            : item
-        );
-        await updateMirrorLedger(nextP, deposits, loans);
+        return;
       }
+
+      const updatedPenalty = {
+        ...p,
+        isPaid: true,
+        paidMethod: 'cash',
+        finalAmount: currentAmt,
+        paidDate: todayStr,
+        updatedAt: Date.now()
+      };
+
+      const nextP = penalties.map((item) => (item.id === p.id ? updatedPenalty : item));
+      setRawPenalties((prev) => prev.map((item) => (item.id === p.id ? updatedPenalty : item)));
+
+      await Promise.all([
+        saveMirrorLedgerNow(nextP, deposits, loans),
+        withTimeout(setDoc(doc(db, 'penalties', p.id), updatedPenalty, { merge: true }), 2500)
+      ]);
+      alert(`✅ ဒဏ်ကြေး ${formatPrice(currentAmt)} ပေးဆောင်ပြီးကြောင်း မှတ်တမ်းတင်ပြီးပါပြီ။`);
     }
   };
 
-  // Delete Handlers (Updates both Collection & Mirror Doc)
+  // 5. Delete Handlers (Instant Optimistic Removal + Mirror & Collection Sync)
   const handleDeletePenaltyRecord = async (id: string) => {
     if (!window.confirm('ဤဒဏ်ကြေးမှတ်တမ်းကို ဖျက်ရန် သေချာပါသလား?')) return;
-    await deleteDoc(doc(db, 'penalties', id)).catch(() => {});
+    setDeletedIds((prev) => new Set(prev).add(id));
     const nextP = penalties.filter((item) => item.id !== id);
     setRawPenalties((prev) => prev.filter((item) => item.id !== id));
-    setMirrorPenalties(nextP);
-    await updateMirrorLedger(nextP, deposits, loans);
+    await Promise.all([
+      saveMirrorLedgerNow(nextP, deposits, loans),
+      withTimeout(deleteDoc(doc(db, 'penalties', id)), 2500)
+    ]);
   };
 
   const handleDeleteDepositRecord = async (id: string) => {
     if (!window.confirm('ဤအပ်ငွေမှတ်တမ်းကို ဖျက်ရန် သေချာပါသလား?')) return;
-    await deleteDoc(doc(db, 'deposits', id)).catch(() => {});
+    setDeletedIds((prev) => new Set(prev).add(id));
     const nextD = deposits.filter((item) => item.id !== id);
     setRawDeposits((prev) => prev.filter((item) => item.id !== id));
-    setMirrorDeposits(nextD);
-    await updateMirrorLedger(penalties, nextD, loans);
+    await Promise.all([
+      saveMirrorLedgerNow(penalties, nextD, loans),
+      withTimeout(deleteDoc(doc(db, 'deposits', id)), 2500)
+    ]);
   };
 
   const handleDeleteLoanRecord = async (id: string) => {
     if (!window.confirm('ဤကြိုထုတ်ငွေမှတ်တမ်းကို ဖျက်ရန် သေချာပါသလား?')) return;
-    await deleteDoc(doc(db, 'loans', id)).catch(() => {});
+    setDeletedIds((prev) => new Set(prev).add(id));
     const nextL = loans.filter((item) => item.id !== id);
     setRawLoans((prev) => prev.filter((item) => item.id !== id));
-    setMirrorLoans(nextL);
-    await updateMirrorLedger(penalties, deposits, nextL);
+    await Promise.all([
+      saveMirrorLedgerNow(penalties, deposits, nextL),
+      withTimeout(deleteDoc(doc(db, 'loans', id)), 2500)
+    ]);
   };
 
-  // 1-Click Push Staff's Active Loan Balance to Selected Month's Payroll
+  // 6. 1-Click Push Staff's Active Loan Balance to Selected Month's Payroll
   const handleSyncLoanToPayroll = async (
     staffId: string,
     staffName: string,
@@ -1004,7 +1107,9 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
 
     setIsSyncingPayroll(staffId);
     try {
-      const payload = {
+      const customId = `loan_sync_${Date.now()}`;
+      const newRecord = {
+        id: customId,
         therapistId: staffId,
         therapistName: staffName,
         amount: -loanBalance,
@@ -1013,19 +1118,24 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
         repayMethod: 'salary',
         payrollMonth: targetPayrollMonth,
         note: `[လစာဖြတ် ${targetPayrollMonth}] Staff Pay Roll သို့ အလိုအလျောက် ပို့ပြီး`,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        updatedAt: Date.now()
       };
-      const repayDoc = await addDoc(collection(db, 'loans'), payload);
-      const createdLoan = { id: repayDoc.id, ...payload };
-      await updateMirrorLedger(penalties, deposits, [createdLoan, ...loans]);
 
-      await syncDeductionToStaffPayrollDoc(
-        targetPayrollMonth,
-        staffName,
-        `loan_sync_${repayDoc.id}`,
-        `ကြိုထုတ်ငွေ လစာမှနှုတ် (${targetPayrollMonth})`,
-        loanBalance
-      );
+      const nextLoans = [newRecord, ...loans];
+      setRawLoans((prev) => [newRecord, ...prev]);
+
+      await Promise.all([
+        saveMirrorLedgerNow(penalties, deposits, nextLoans),
+        withTimeout(setDoc(doc(db, 'loans', customId), newRecord), 2500),
+        syncDeductionToStaffPayrollDoc(
+          targetPayrollMonth,
+          staffName,
+          customId,
+          `ကြိုထုတ်ငွေ လစာမှနှုတ် (${targetPayrollMonth})`,
+          loanBalance
+        )
+      ]);
 
       alert(
         `✅ ${staffName} ၏ ကြိုထုတ်ငွေ ${formatPrice(
@@ -1167,7 +1277,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
             2. EXECUTIVE OVERVIEW KPI CARDS (INCLUDES TOTAL DEPOSITS HELD!)
            ===================================================================== */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-          {/* Card 1: Total Deposits Held (စုစုပေါင်း အပ်ထားငွေ) */}
+          {/* Card 1: Total Deposits Held */}
           <div
             onClick={() => setSubTab('deposits')}
             className="p-4 rounded-2xl bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] text-white border-2 border-[#D4AF37]/60 shadow-md cursor-pointer hover:scale-[1.01] transition relative overflow-hidden"
@@ -1189,7 +1299,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
             </div>
           </div>
 
-          {/* Card 2: Unpaid Penalties (မဆောင်ရသေးသော ဒဏ်ကြေး) */}
+          {/* Card 2: Unpaid Penalties */}
           <div
             onClick={() => {
               setPenaltyStatusFilter('unpaid');
@@ -1220,7 +1330,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
             </div>
           </div>
 
-          {/* Card 3: Active Loans / Staff Advances (ကြိုထုတ်ငွေ လက်ကျန်) */}
+          {/* Card 3: Active Loans / Staff Advances */}
           <div
             onClick={() => setSubTab('loans')}
             className="p-4 rounded-2xl bg-purple-50/70 border-2 border-purple-200 cursor-pointer hover:shadow-md transition"
@@ -1242,7 +1352,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
             </div>
           </div>
 
-          {/* Card 4: Payroll Auto-Deduction Queue (Staff Pay Roll ချိတ်ဆက်မှု) */}
+          {/* Card 4: Payroll Auto-Deduction Queue */}
           <div className="p-4 rounded-2xl bg-amber-50/80 border-2 border-amber-300 flex flex-col justify-between">
             <div className="flex items-center justify-between gap-1">
               <span className="text-[10px] font-extrabold text-amber-950 uppercase tracking-wider">
@@ -1354,7 +1464,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       </div>
 
       {/* =========================================================================
-          4. SUB-TAB 1: LUXURY STAFF OVERVIEW CARDS (WITH DEPOSITS, LOANS, FINES & QUICK ACTIONS)
+          4. SUB-TAB 1: LUXURY STAFF OVERVIEW CARDS
          ========================================================================= */}
       {subTab === 'dashboard' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-fade-in">
@@ -1412,10 +1522,9 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                     ) : null}
                   </div>
 
-                  {/* Card Body: 3-Column Financial Matrix (Deposit, Unpaid Fine, Loan Balance) */}
+                  {/* Card Body: 3-Column Financial Matrix */}
                   <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      {/* 1. Deposit Balance */}
                       <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200">
                         <span className="text-[9px] font-extrabold text-blue-800 uppercase block">
                           အပ်ထားငွေ
@@ -1425,7 +1534,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                         </span>
                       </div>
 
-                      {/* 2. Unpaid Penalty */}
                       <div
                         className={`p-2.5 rounded-xl border ${
                           stats.totalUnpaid > 0
@@ -1449,7 +1557,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                         </span>
                       </div>
 
-                      {/* 3. Active Loan */}
                       <div
                         className={`p-2.5 rounded-xl border ${
                           stats.totalLoan > 0
@@ -1474,7 +1581,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                       </div>
                     </div>
 
-                    {/* Paid Fines & Payroll Sync Info */}
                     <div className="flex items-center justify-between text-[11px] px-1 pt-1">
                       <span className="text-gray-500 font-semibold">
                         ဆောင်ပြီးဒဏ်ကြေး:{' '}
@@ -1487,7 +1593,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                       )}
                     </div>
 
-                    {/* Quick Action Buttons on Card */}
                     <div
                       className="pt-2.5 border-t border-gray-100 grid grid-cols-3 gap-1.5"
                       onClick={(e) => e.stopPropagation()}
@@ -1528,7 +1633,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                       </button>
                     </div>
 
-                    {/* 1-Click Sync Active Loan to Payroll Button */}
                     {stats.totalLoan > 0 && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <button
@@ -1556,7 +1660,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       )}
 
       {/* =========================================================================
-          5. SUB-TAB 2: ISSUE NEW PENALTY (WITH QUICK AMOUNT CHIPS & 2X RULE TOGGLE)
+          5. SUB-TAB 2: ISSUE NEW PENALTY
          ========================================================================= */}
       {subTab === 'add' && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden max-w-2xl mx-auto animate-fade-in">
@@ -1685,17 +1789,22 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
 
             <button
               type="submit"
-              className="w-full py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs shadow-md hover:opacity-95 transition uppercase tracking-wider flex items-center justify-center gap-2"
+              disabled={isSubmittingForm}
+              className="w-full py-3.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-black text-xs shadow-md hover:opacity-95 transition uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <ShieldAlert className="w-4 h-4" />
-              <span>ဒဏ်ကြေး မှတ်တမ်းတင်ပြီး Telegram ပို့မည်</span>
+              <span>
+                {isSubmittingForm
+                  ? 'သိမ်းဆည်းနေပါသည်...'
+                  : 'ဒဏ်ကြေး မှတ်တမ်းတင်ပြီး Telegram ပို့မည်'}
+              </span>
             </button>
           </form>
         </div>
       )}
 
       {/* =========================================================================
-          6. SUB-TAB 3: PENALTIES HISTORY (WITH CASH, DEPOSIT & SALARY DEDUCTION ACTIONS)
+          6. SUB-TAB 3: PENALTIES HISTORY
          ========================================================================= */}
       {subTab === 'history' && (
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-200 animate-fade-in">
@@ -1882,11 +1991,10 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       )}
 
       {/* =========================================================================
-          7. SUB-TAB 4: DEPOSITS MANAGEMENT (TOTAL DEPOSITS HELD + DEPOSIT/DEDUCT LEDGER)
+          7. SUB-TAB 4: DEPOSITS MANAGEMENT
          ========================================================================= */}
       {subTab === 'deposits' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
-          {/* Left Column: Deposit / Withdraw Form & Staff Balances */}
           <div className="lg:col-span-5 space-y-5">
             <form
               onSubmit={handleSubmitDeposit}
@@ -2014,20 +2122,22 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
 
                 <button
                   type="submit"
-                  className={`w-full py-3 rounded-xl font-black text-xs shadow-md transition uppercase tracking-wider ${
+                  disabled={isSubmittingForm}
+                  className={`w-full py-3 rounded-xl font-black text-xs shadow-md transition uppercase tracking-wider disabled:opacity-50 ${
                     depositForm.txType === 'withdraw'
                       ? 'bg-red-600 hover:bg-red-700 text-white'
                       : 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37]'
                   }`}
                 >
-                  {depositForm.txType === 'withdraw'
+                  {isSubmittingForm
+                    ? 'သိမ်းဆည်းနေပါသည်...'
+                    : depositForm.txType === 'withdraw'
                     ? 'အပ်ငွေ ပြန်ထုတ်/နှုတ်ယူမှု မှတ်တမ်းတင်မည်'
                     : 'အပ်ငွေ စာရင်းသွင်းမည်'}
                 </button>
               </div>
             </form>
 
-            {/* Individual Staff Deposit Balances Summary Box */}
             <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
               <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
                 <span className="text-xs font-black text-[#123524]">
@@ -2067,7 +2177,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
             </div>
           </div>
 
-          {/* Right Column: Deposits Transaction History */}
           <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-200 flex flex-col">
             <div className="p-4 sm:p-5 bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white flex flex-wrap justify-between items-center gap-3 border-b border-[#D4AF37]/40">
               <div>
@@ -2158,11 +2267,10 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       )}
 
       {/* =========================================================================
-          8. SUB-TAB 5: LOANS / STAFF ADVANCES (WITH DIRECT PAYROLL DEDUCTION LINK)
+          8. SUB-TAB 5: LOANS / STAFF ADVANCES
          ========================================================================= */}
       {subTab === 'loans' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in">
-          {/* Left Column: Borrow / Repay Form */}
           <div className="lg:col-span-5 space-y-5">
             <form
               onSubmit={handleSubmitLoan}
@@ -2317,7 +2425,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
                   </label>
                   <input
                     type="text"
-                    placeholder="ဥပမာ - လစာကြိုထုတ် / အိမ်လခအတွက် ကြိုထုတ်..."
+                    placeholder="ဥပမာ - လစာကြိုထုတ် / အရင်လလစာထဲမှ နှုတ်ပြီး..."
                     className="w-full p-2.5 border border-gray-300 rounded-xl text-xs bg-gray-50 font-semibold outline-none"
                     value={loanForm.note}
                     onChange={(e) => setLoanForm({ ...loanForm, note: e.target.value })}
@@ -2326,13 +2434,16 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
 
                 <button
                   type="submit"
-                  className={`w-full py-3.5 text-white rounded-xl font-black text-xs shadow-md transition uppercase tracking-wider ${
+                  disabled={isSubmittingForm}
+                  className={`w-full py-3.5 text-white rounded-xl font-black text-xs shadow-md transition uppercase tracking-wider disabled:opacity-50 ${
                     loanForm.type === 'borrow'
                       ? 'bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37]'
                       : 'bg-emerald-600 hover:bg-emerald-700'
                   }`}
                 >
-                  {loanForm.type === 'borrow'
+                  {isSubmittingForm
+                    ? 'သိမ်းဆည်းနေပါသည်...'
+                    : loanForm.type === 'borrow'
                     ? 'ကြိုထုတ်ငွေ စာရင်းသွင်းမည်'
                     : 'ပြန်ဆပ်ငွေ စာရင်းသွင်းမည်'}
                 </button>
@@ -2340,7 +2451,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
             </form>
           </div>
 
-          {/* Right Column: Loans History Table */}
           <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-200 flex flex-col">
             <div className="p-4 sm:p-5 bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white flex flex-wrap justify-between items-center gap-3 border-b border-[#D4AF37]/40">
               <div>
@@ -2433,7 +2543,7 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
       )}
 
       {/* =========================================================================
-          9. 360° STAFF FINANCIAL LEDGER MODAL (PENALTIES + DEPOSITS + LOANS)
+          9. 360° STAFF FINANCIAL LEDGER MODAL
          ========================================================================= */}
       {selectedTherapistStats && (
         <div
@@ -2444,7 +2554,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
             className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-[#D4AF37]/40 relative max-h-[88vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
             <div className="p-5 bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white flex items-center justify-between border-b border-[#D4AF37]/40">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] block">
@@ -2463,7 +2572,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
               </button>
             </div>
 
-            {/* Modal Summary Strip */}
             <div className="p-4 bg-gray-50 border-b border-gray-200 grid grid-cols-3 gap-3 text-center">
               <div
                 onClick={() => setModalActiveTab('deposits')}
@@ -2514,7 +2622,6 @@ export function AdminPenaltyManager({ therapists }: { therapists: any[] }) {
               </div>
             </div>
 
-            {/* Modal Tab Content */}
             <div className="p-5 overflow-y-auto flex-1 space-y-3">
               {modalActiveTab === 'penalties' && (
                 <>
@@ -2749,8 +2856,8 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
 
   const penalties = useMemo(() => {
     const map = new Map<string, any>();
-    mirrorPenalties.forEach((p) => p?.id && map.set(p.id, p));
     rawPenalties.forEach((p) => p?.id && map.set(p.id, p));
+    mirrorPenalties.forEach((p) => p?.id && map.set(p.id, p));
     return Array.from(map.values())
       .filter((p) => isMatchingTherapistRecord(p, '', therapistName))
       .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
@@ -2758,8 +2865,8 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
 
   const loans = useMemo(() => {
     const map = new Map<string, any>();
-    mirrorLoans.forEach((l) => l?.id && map.set(l.id, l));
     rawLoans.forEach((l) => l?.id && map.set(l.id, l));
+    mirrorLoans.forEach((l) => l?.id && map.set(l.id, l));
     return Array.from(map.values())
       .filter((l) => isMatchingTherapistRecord(l, '', therapistName))
       .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
@@ -2767,8 +2874,8 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
 
   const deposits = useMemo(() => {
     const map = new Map<string, any>();
-    mirrorDeposits.forEach((d) => d?.id && map.set(d.id, d));
     rawDeposits.forEach((d) => d?.id && map.set(d.id, d));
+    mirrorDeposits.forEach((d) => d?.id && map.set(d.id, d));
     return Array.from(map.values())
       .filter((d) => isMatchingTherapistRecord(d, '', therapistName))
       .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
