@@ -91,8 +91,75 @@
       }
     </script>
     
-    <!-- 🌟 မူလရှိပြီးသား PWA Manifest (Admin Logo ဖြင့် Dynamic ပြောင်းလဲနိုင်ရန် id ထည့်ထားသည်) 🌟 -->
+   <!-- 🌟 Dynamic PWA Manifest (Admin မှ Branding တွင်ပြောင်းသော Logo ကို PWA Icon အဖြစ် အလိုအလျောက် သုံးရန်) 🌟 -->
     <link id="app-manifest" rel="manifest" href="/manifest.json" />
+    <script>
+      (function () {
+        try {
+          // Admin Branding သို့မဟုတ် LocalStorage ထဲတွင် သိမ်းထားသော Custom Logo ကို စစ်ဆေးခြင်း
+          // (AppDataContext သို့မဟုတ် AdminApp မှ 'shangrila_branding' သို့မဟုတ် 'app_logo' ဖြင့် သိမ်းလေ့ရှိသည်)
+          var brandingData = localStorage.getItem('shangrila_branding');
+          var logoUrl = "https://i.ibb.co/37jM3yY/323382766-3392476561021481-1279930960017122176-n.jpg"; // Default Logo
+          
+          if (brandingData) {
+            try {
+              var parsed = JSON.parse(brandingData);
+              if (parsed.logoUrl || parsed.headerLogo || parsed.logo) {
+                logoUrl = parsed.logoUrl || parsed.headerLogo || parsed.logo;
+              }
+            } catch (err) {
+              console.warn('Branding parse warning:', err);
+            }
+          }
+
+          // Staff Portal လား သို့မဟုတ် Main App လား ခွဲခြားပြီး Manifest URL သို့မဟုတ် Data URL ချိတ်ဆက်ခြင်း
+          var params = new URLSearchParams(window.location.search);
+          var path = window.location.pathname.toLowerCase();
+          var isStaff = params.get('portal') === 'staff' || path.indexOf('staff') !== -1;
+
+          if (isStaff) {
+            document.title = 'Shangri-La Staff Portal';
+          }
+
+          // Xiaomi/Redmi Launcher များ Safe Mode ဝင်ခြင်းမှ ကာကွယ်ရန် Safe JSON Manifest Data URI ဖန်တီးခြင်း
+          var manifestObj = {
+            "id": isStaff ? "/?portal=staff" : "/",
+            "name": isStaff ? "Shangri-La Staff Portal" : "The Shangri-La Men's Retreat",
+            "short_name": isStaff ? "SL Staff" : "Shangri-La",
+            "description": "The Shangri-La Men's Retreat - Beyond Relaxation",
+            "start_url": isStaff ? "/?portal=staff" : "/",
+            "scope": "/",
+            "display": "standalone",
+            "orientation": "portrait",
+            "background_color": "#0B2419",
+            "theme_color": "#0B2419",
+            "icons": [
+              {
+                "src": logoUrl,
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any"
+              },
+              {
+                "src": logoUrl,
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any"
+              }
+            ]
+          };
+
+          var stringManifest = JSON.stringify(manifestObj);
+          var blob = new Blob([stringManifest], { type: 'application/json' });
+          var manifestLink = document.getElementById('app-manifest');
+          if (manifestLink) {
+            manifestLink.setAttribute('href', URL.createObjectURL(blob));
+          }
+        } catch (e) {
+          console.warn('Dynamic manifest generation error:', e);
+        }
+      })();
+    </script>
   </head>
 
   <body class="bg-gray-50 text-gray-900 antialiased selection:bg-[#D4AF37] selection:text-[#123524]">
