@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { decryptText } from '../security';
 import { Booking, TherapistProfile, formatPrice } from '../shared';
 import {
   Banknote, Download, User, Award, Trash2, Search, FileSpreadsheet,
-  Sliders, Wifi, RotateCcw, Edit3, Check, Calendar, Clock, ChevronDown
+  Sliders, Wifi, RotateCcw, Edit3, Check, Calendar, Clock, ChevronDown,
+  Wallet, Send, ShieldAlert, CheckCircle2
 } from 'lucide-react';
+import { notifyStaffUpdate } from '../telegramService';
 
 // ============================================================================
 // 🌟 1. EXACT COMMISSION RATE TABLE (FROM Staff Commession Rate.xlsx) 🌟
@@ -312,7 +314,7 @@ interface CustomDeductionItem {
 interface StaffMonthlyPayrollAdjustment {
   baseSalary: number;
   bonus: number;
-  wifiFeeOverride?: number | null; // null/undefined = use global default WiFi fee
+  wifiFeeOverride?: number | null;
   customDeductions: CustomDeductionItem[];
   isPaidSettled: boolean;
   settledAt?: number | null;
@@ -357,7 +359,18 @@ export function AdminStaffPayrollManager({
   // Global Default Monthly WiFi Fee Input State
   const [customGlobalWifiInput, setCustomGlobalWifiInput] = useState<string>('10000');
 
-  // Firestore synced states: Penalties/Loans & Payroll Adjustments & Seniority Overrides & Global WiFi Fee
+  // 🌟 HOLD MONEY DEPOSIT FROM SALARY MODAL STATES 🌟
+  const [holdMoneyModalStaff, setHoldMoneyModalStaff] = useState<{
+    staffId: string;
+    staffName: string;
+    availableNetPay: number;
+  } | null>(null);
+  const [holdMoneyMode, setHoldMoneyMode] = useState<'full' | 'custom'>('full');
+  const [holdMoneyAmountInput, setHoldMoneyAmountInput] = useState<string>('');
+  const [holdMoneyNoteInput, setHoldMoneyNoteInput] = useState<string>('');
+  const [isSavingHoldMoney, setIsSavingHoldMoney] = useState<boolean>(false);
+
+  // Firestore synced states
   const [penalties, setPenalties] = useState<any[]>([]);
   const [payrollDocData, setPayrollDocData] = useState<{
     defaultWifiFee: number;
@@ -416,7 +429,7 @@ export function AdminStaffPayrollManager({
     return decryptText(v) || v;
   };
 
-  // 🌟 Helper to get effective WiFi Fee for a staff member 🌟
+  // Helper to get effective WiFi Fee for a staff member
   const getStaffEffectiveWifiAndCleanDeductions = (
     staffName: string,
     adj?: StaffMonthlyPayrollAdjustment
@@ -439,7 +452,7 @@ export function AdminStaffPayrollManager({
     return { wifiFee: Math.max(0, wifiFee), otherCustomDeductions };
   };
 
-  // 🌟 1-Click Global Default WiFi Fee Changer 🌟
+  // 1-Click Global Default WiFi Fee Changer
   const handleUpdateGlobalWifiFee = async (newFeeAmount: number, resetIndividualOverrides: boolean = false) => {
     const cleanFee = Math.max(0, Math.round(newFeeAmount));
     setCustomGlobalWifiInput(String(cleanFee));
@@ -469,7 +482,7 @@ export function AdminStaffPayrollManager({
     );
   };
 
-  // 🌟 1-Click Individual Staff WiFi Fee Changer 🌟
+  // 1-Click Individual Staff WiFi Fee Changer
   const handleSetIndividualWifiFee = async (staffName: string, newWifiAmt: number) => {
     const cleanAmt = Math.max(0, Math.round(newWifiAmt));
     const prev = payrollDocData.adjustments[staffName] || {
@@ -690,6 +703,137 @@ export function AdminStaffPayrollManager({
     } catch (err) {
       console.error('Error toggling paid status:', err);
       alert('Status ပြောင်းလဲရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+    }
+  };
+
+  // 🌟 HOLD MONEY SAVE HANDLER (Deducts from Current Payroll + Adds to Staff Deposits Ledger) 🌟
+  const handleConfirmHoldMoneyFromSalary = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!holdMoneyModalStaff) return;
+
+    const amt = Math.round(Number(holdMoneyAmountInput) || 0);
+    if (amt <= 0) {
+      alert('ကျေးဇူးပြု၍ Hold Money အပ်မည့် ပမာဏ ထည့်သွင်းပေးပါ။');
+      return;
+    }
+    if (amt > holdMoneyModalStaff.availableNetPay) {
+      alert(
+        `လက်ရှိ ကျန်ရှိသော လစာ (${formatPrice(
+          holdMoneyModalStaff.availableNetPay
+        )}) ထက် ကျော်လွန်၍ အပ်နှံ၍ မရပါ။`
+      );
+      return;
+    }
+
+    setIsSavingHoldMoney(true);
+    try {
+      const staffName = holdMoneyModalStaff.staffName.trim();
+      const staffId = holdMoneyModalStaff.staffId;
+      const todayDate = new Date().toISOString().split('T')[0];
+      const deductionId = `hold_money_${selectedMonth}_${Date.now()}`;
+      const reasonLabel = `Hold Money အပ်ငွေ${
+        holdMoneyNoteInput.trim() ? ` (${holdMoneyNoteInput.trim()})` : ''
+      }`;
+      const depositNote = `Hold Money အပ်ငွေ (${selectedMonth} လစာထဲမှ အပ်နှံသည်)${
+        holdMoneyNoteInput.trim() ? ` - ${holdMoneyNoteInput.trim()}` : ''
+      }`;
+
+      // 1. လက်ရှိလစာ (settings/payroll_YYYY-MM) ထဲရှိ customDeductions တွင် "Hold Money အပ်ငွေ" အဖြစ် နှုတ်ယူခြင်း
+      const payrollRef = doc(db, 'settings', `payroll_${selectedMonth}`);
+      const pSnap = await getDoc(payrollRef);
+      const pData = pSnap.exists() ? (pSnap.data() as any) : {};
+      const adjustments = { ...(pData.adjustments || {}) };
+
+      const currentStaffAdj = adjustments[staffName] || {
+        baseSalary: 0,
+        bonus: 0,
+        customDeductions: [],
+        note: '',
+        isPaidSettled: false
+      };
+
+      const existingDeductions = Array.isArray(currentStaffAdj.customDeductions)
+        ? [...currentStaffAdj.customDeductions]
+        : [];
+
+      existingDeductions.push({
+        id: deductionId,
+        reason: reasonLabel,
+        amount: amt
+      });
+
+      adjustments[staffName] = {
+        ...currentStaffAdj,
+        customDeductions: existingDeductions
+      };
+
+      await setDoc(
+        payrollRef,
+        {
+          yearMonth: selectedMonth,
+          adjustments,
+          updatedAt: Date.now()
+        },
+        { merge: true }
+      );
+
+      // 2. ဝန်ထမ်းအပ်ငွေစာရင်း (deposits collection + settings/staff_financial_ledger) ထဲသို့ အပ်ငွေအသစ် ပေါင်းထည့်ခြင်း
+      const depositId = `dep_hold_${Date.now()}`;
+      const newDepositRecord = {
+        id: depositId,
+        therapistId: staffId,
+        therapistName: staffName,
+        amount: amt,
+        date: todayDate,
+        type: 'deposit',
+        note: depositNote,
+        payrollMonth: selectedMonth,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+
+      await setDoc(doc(db, 'deposits', depositId), newDepositRecord).catch(() => {});
+
+      const ledgerRef = doc(db, 'settings', 'staff_financial_ledger');
+      const ledgerSnap = await getDoc(ledgerRef).catch(() => null);
+      const existingDeposits =
+        ledgerSnap && ledgerSnap.exists() && Array.isArray(ledgerSnap.data()?.deposits)
+          ? ledgerSnap.data()!.deposits
+          : [];
+
+      await setDoc(
+        ledgerRef,
+        {
+          deposits: [newDepositRecord, ...existingDeposits],
+          updatedAt: Date.now()
+        },
+        { merge: true }
+      );
+
+      // 3. Telegram Notification ပေးပို့ခြင်း
+      notifyStaffUpdate({
+        type: 'GENERAL_ANNOUNCEMENT',
+        staffId,
+        staffName,
+        title: '💰 Hold Money အပ်ငွေ မှတ်တမ်း (Salary to Deposit)',
+        details: `${selectedMonth} လစာထဲမှ Hold Money အပ်ငွေအဖြစ် စာရင်းသွင်းပြီးပါပြီ။\nမှတ်ချက်: ${depositNote}`,
+        amount: amt,
+        effectiveDate: todayDate,
+        issuedBy: 'Payroll Management'
+      }).catch(() => {});
+
+      setHoldMoneyModalStaff(null);
+      setHoldMoneyAmountInput('');
+      setHoldMoneyNoteInput('');
+      alert(
+        `✅ ${staffName} ၏ ${selectedMonth} လစာထဲမှ ${formatPrice(
+          amt
+        )} ကို "Hold Money အပ်ငွေ" အဖြစ် နှုတ်ယူပြီး ဝန်ထမ်းအပ်ငွေစာရင်း (Deposits) ထဲသို့ အောင်မြင်စွာ ပေါင်းထည့်ပေးပြီးပါပြီ!`
+      );
+    } catch (err: any) {
+      alert('Hold Money သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်: ' + (err?.message || ''));
+    } finally {
+      setIsSavingHoldMoney(false);
     }
   };
 
@@ -1151,6 +1295,192 @@ export function AdminStaffPayrollManager({
         </div>
       )}
 
+      {/* =========================================================================
+          🌟 MODAL: HOLD MONEY DEPOSIT FROM SALARY 🌟
+         ========================================================================= */}
+      {holdMoneyModalStaff && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setHoldMoneyModalStaff(null)}
+        >
+          <form
+            onSubmit={handleConfirmHoldMoneyFromSalary}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-[#D4AF37]/50 space-y-4"
+          >
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white flex items-center justify-between border-b border-[#D4AF37]/40">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] block">
+                  Salary to Hold Money Deposit
+                </span>
+                <h3 className="text-base font-black text-white mt-0.5">
+                  💰 {holdMoneyModalStaff.staffName} — Hold Money အပ်ရန်
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHoldMoneyModalStaff(null)}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-red-500 text-white transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Current Net Salary Display */}
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-extrabold text-amber-900 uppercase block">
+                    လက်ရှိ ကျန်ရှိသော အသားတင်လစာ ({selectedMonth})
+                  </span>
+                  <span className="text-lg font-black text-[#123524]">
+                    {formatPrice(holdMoneyModalStaff.availableNetPay)}
+                  </span>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-[#123524] text-[#D4AF37] text-[10px] font-black">
+                  Net Payable
+                </span>
+              </div>
+
+              {/* Option 1: Deposit Full Salary vs Option 2: Custom Amount */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-extrabold text-gray-600 uppercase">
+                  ၁။ အပ်နှံမည့် ပုံစံ ရွေးချယ်ပါ:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHoldMoneyMode('full');
+                      setHoldMoneyAmountInput(String(holdMoneyModalStaff.availableNetPay));
+                    }}
+                    className={`p-3 rounded-xl border text-xs font-black transition text-center ${
+                      holdMoneyMode === 'full'
+                        ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-[#D4AF37]'
+                    }`}
+                  >
+                    ✓ လစာအားလုံး အပ်မည်
+                    <span className="block text-[10px] font-bold opacity-85 mt-0.5">
+                      ({formatPrice(holdMoneyModalStaff.availableNetPay)})
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHoldMoneyMode('custom');
+                      setHoldMoneyAmountInput('');
+                    }}
+                    className={`p-3 rounded-xl border text-xs font-black transition text-center ${
+                      holdMoneyMode === 'custom'
+                        ? 'bg-[#123524] text-[#D4AF37] border-[#123524] shadow-sm'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-[#D4AF37]'
+                    }`}
+                  >
+                    ✍️ ပမာဏ ရိုက်ထည့်မည်
+                    <span className="block text-[10px] font-bold opacity-85 mt-0.5">
+                      (Custom Amount)
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Amount Input & Quick Presets */}
+              <div>
+                <label className="block text-[11px] font-extrabold text-gray-600 uppercase mb-1.5">
+                  ၂။ Hold Money အပ်မည့် ပမာဏ (Ks) *
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {[30000, 50000, 100000, 150000, 200000].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setHoldMoneyMode('custom');
+                        setHoldMoneyAmountInput(String(preset));
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition ${
+                        Number(holdMoneyAmountInput) === preset
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-blue-400'
+                      }`}
+                    >
+                      {preset.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  max={Math.max(1, holdMoneyModalStaff.availableNetPay)}
+                  value={holdMoneyAmountInput}
+                  onChange={(e) => {
+                    setHoldMoneyMode('custom');
+                    setHoldMoneyAmountInput(e.target.value);
+                  }}
+                  placeholder="အပ်နှံမည့် ပမာဏ ရိုက်ထည့်ပါ..."
+                  className="w-full p-3 bg-gray-50 border-2 border-gray-200 focus:border-[#123524] rounded-xl text-sm font-black text-blue-700 outline-none"
+                />
+
+                {Number(holdMoneyAmountInput) > 0 && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs">
+                    <span className="font-bold text-emerald-900">
+                      Hold Money နှုတ်ပြီး ကျန်ရှိမည့်လစာ:
+                    </span>
+                    <span className="font-black text-emerald-700">
+                      {formatPrice(
+                        Math.max(
+                          0,
+                          holdMoneyModalStaff.availableNetPay -
+                            (Number(holdMoneyAmountInput) || 0)
+                        )
+                      )}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold text-gray-600 uppercase mb-1">
+                  ၃။ မှတ်ချက် (Note - Optional)
+                </label>
+                <input
+                  type="text"
+                  value={holdMoneyNoteInput}
+                  onChange={(e) => setHoldMoneyNoteInput(e.target.value)}
+                  placeholder="ဥပမာ - စပေါ်အပ်ငွေ / Hold Money အပ်နှံခြင်း..."
+                  className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-semibold outline-none focus:border-[#123524]"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setHoldMoneyModalStaff(null)}
+                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold"
+                >
+                  မလုပ်တော့ပါ
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    isSavingHoldMoney ||
+                    !holdMoneyAmountInput ||
+                    Number(holdMoneyAmountInput) <= 0
+                  }
+                  className="flex-1 py-2.5 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black shadow-md disabled:opacity-50"
+                >
+                  {isSavingHoldMoney ? 'သိမ်းဆည်းနေပါသည်...' : '💰 Hold Money အပ်ငွေ သိမ်းမည်'}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* MODAL 2: CUSTOM DEDUCTIONS, 1-CLICK WIFI FEE, BONUS & BASE SALARY MANAGER */}
       {editingStaffRow && (
         <div className="fixed inset-0 z-[260] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -1551,6 +1881,8 @@ export function AdminStaffPayrollManager({
             <tbody className="divide-y divide-gray-100 text-xs">
               {filteredRows.map((row) => {
                 const isExpanded = selectedStaffForDetail === row.staffName;
+                const netPay = Math.max(0, row.netPayable);
+
                 return (
                   <React.Fragment key={row.staffName}>
                     <tr className={`hover:bg-gray-50/90 transition ${isExpanded ? 'bg-yellow-50/40' : ''}`}>
@@ -1678,8 +2010,27 @@ export function AdminStaffPayrollManager({
                         </button>
                       </td>
 
+                      {/* 🌟 ACTION BUTTONS (INCLUDES 💰 HOLD MONEY DEPOSIT BUTTON) 🌟 */}
                       <td className="p-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHoldMoneyModalStaff({
+                                staffId: row.staffId || row.staffName,
+                                staffName: row.staffName,
+                                availableNetPay: netPay
+                              });
+                              setHoldMoneyMode('full');
+                              setHoldMoneyAmountInput(String(netPay));
+                              setHoldMoneyNoteInput('');
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-[#123524] text-blue-800 hover:text-[#D4AF37] border border-blue-200 hover:border-[#D4AF37] text-[10px] font-black transition whitespace-nowrap flex items-center gap-1 shadow-2xs"
+                            title="လစာထဲမှ Hold Money အပ်ငွေအဖြစ် အပ်နှံရန်"
+                          >
+                            <span>💰 Hold Money အပ်ရန်</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() =>
@@ -1687,8 +2038,9 @@ export function AdminStaffPayrollManager({
                             }
                             className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[10px] font-black transition whitespace-nowrap"
                           >
-                            + ဖြတ်တောက်ငွေ / Bonus
+                            + ဖြတ်တောက် / Bonus
                           </button>
+
                           <button
                             type="button"
                             onClick={() => setSelectedStaffForDetail(isExpanded ? null : row.staffName)}
@@ -1861,7 +2213,7 @@ export function AdminStaffPayrollManager({
 }
 
 // ============================================================================
-// 🌟 3. STAFF APP PAY SLIP & PAYROLL HISTORY VIEW (CLEAN DROPDOWN & REFINED UI) 🌟
+// 🌟 3. STAFF APP PAY SLIP & PAYROLL HISTORY VIEW 🌟
 // ============================================================================
 
 export function StaffPaySlipView({
@@ -1873,7 +2225,7 @@ export function StaffPaySlipView({
 }) {
   const now = new Date();
   const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1; // 1-12
+  const currentMonth = now.getMonth() + 1;
   const currentDay = now.getDate();
 
   const formatYM = (y: number, m: number) => {
@@ -1887,12 +2239,9 @@ export function StaffPaySlipView({
     return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
   };
 
-  // Previous month (e.g. If today is Oct 2026 -> "2026-09")
   const prevMonthYM = useMemo(() => formatYM(currentYear, currentMonth - 1), [currentYear, currentMonth]);
-  // Two months ago (e.g. If today is Oct 1-4, 2026 -> "2026-08" is the latest released by date)
   const twoMonthsAgoYM = useMemo(() => formatYM(currentYear, currentMonth - 2), [currentYear, currentMonth]);
 
-  // Rule: Previous month's salary is settled between the 5th and 15th of the current month
   const isAfterOrOn5th = currentDay >= 5;
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -1900,7 +2249,6 @@ export function StaffPaySlipView({
   const [loading, setLoading] = useState<boolean>(true);
   const [prevMonthAdminDoc, setPrevMonthAdminDoc] = useState<any>(null);
 
-  // Auto-selected target month for viewing Pay Slip
   const [selectedPayMonth, setSelectedPayMonth] = useState<string>(() =>
     isAfterOrOn5th ? prevMonthYM : twoMonthsAgoYM
   );
@@ -1911,7 +2259,6 @@ export function StaffPaySlipView({
     seniorityOverrides: Record<string, StaffSeniority>;
   }>({ defaultWifiFee: 10000, adjustments: {}, seniorityOverrides: {} });
 
-  // Listen to prevMonth's payroll doc so if Admin marks it as "PAID" early (before the 5th), it unlocks immediately
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', `payroll_${prevMonthYM}`), (snap) => {
       if (snap.exists()) {
@@ -1923,7 +2270,6 @@ export function StaffPaySlipView({
     return () => unsub();
   }, [prevMonthYM]);
 
-  // Check if Admin already marked previous month as Paid for this staff
   const isPrevMonthEarlySettledByAdmin = useMemo(() => {
     if (!prevMonthAdminDoc?.adjustments) return false;
     const adjMap = prevMonthAdminDoc.adjustments;
@@ -1935,10 +2281,8 @@ export function StaffPaySlipView({
     return false;
   }, [prevMonthAdminDoc, loggedInStaff.name, loggedInStaff.id]);
 
-  // Effective unlock status for previous month (Unlocked if today >= 5th OR Admin marked as Paid)
   const isPrevMonthUnlocked = isAfterOrOn5th || isPrevMonthEarlySettledByAdmin;
 
-  // Build list of available historical months (Up to 12 past released months)
   const availableHistoryMonths = useMemo(() => {
     const list: string[] = [];
     const startOffset = isPrevMonthUnlocked ? 1 : 2;
@@ -1948,14 +2292,12 @@ export function StaffPaySlipView({
     return list;
   }, [currentYear, currentMonth, isPrevMonthUnlocked]);
 
-  // Automatically select the latest unlocked month whenever unlock state updates
   useEffect(() => {
     if (availableHistoryMonths.length > 0 && !availableHistoryMonths.includes(selectedPayMonth)) {
       setSelectedPayMonth(availableHistoryMonths[0]);
     }
   }, [availableHistoryMonths, selectedPayMonth]);
 
-  // 1. Fetch Bookings & Penalties
   useEffect(() => {
     const unsubBookings = onSnapshot(collection(db, 'bookings'), (snap) => {
       const arr: Booking[] = [];
@@ -1986,7 +2328,6 @@ export function StaffPaySlipView({
     };
   }, []);
 
-  // 2. Fetch Payroll Adjustments for Selected Pay Month
   useEffect(() => {
     if (!selectedPayMonth) return;
     const unsub = onSnapshot(doc(db, 'settings', `payroll_${selectedPayMonth}`), (snap) => {
@@ -2020,7 +2361,6 @@ export function StaffPaySlipView({
     return decryptText(v) || v;
   };
 
-  // Compute Pay Slip Details for Logged-in Staff for `selectedPayMonth`
   const myPaySlipData = useMemo(() => {
     const staffNum = extractExactStaffNumber(loggedInStaff.name);
     const shortId = staffNum !== null ? `SGL-${String(staffNum).padStart(3, '0')}` : loggedInStaff.id;
@@ -2091,7 +2431,6 @@ export function StaffPaySlipView({
       });
     });
 
-    // Find Adjustment entry for this staff
     let myAdj: StaffMonthlyPayrollAdjustment | undefined = payrollDocData.adjustments[loggedInStaff.name.trim()];
     if (!myAdj) {
       const foundKey = Object.keys(payrollDocData.adjustments).find((k) =>
@@ -2100,7 +2439,6 @@ export function StaffPaySlipView({
       if (foundKey) myAdj = payrollDocData.adjustments[foundKey];
     }
 
-    // Extract WiFi fee & custom deductions
     const rawCustomList = myAdj?.customDeductions || [];
     const wifiItemInList = rawCustomList.find(
       (d) => d.reason.toLowerCase().includes('wifi') || d.id === 'default_wifi'
@@ -2117,7 +2455,6 @@ export function StaffPaySlipView({
     }
     wifiFee = Math.max(0, wifiFee);
 
-    // System Fines & Loans for this staff in selectedPayMonth
     const myPenalties = penalties.filter((p) => {
       if (!isSameStaffMember(p.therapistName || '', loggedInStaff.name, loggedInStaff.id)) return false;
       const pDate = String(p.date || '');
@@ -2127,7 +2464,6 @@ export function StaffPaySlipView({
     const systemFinesList = myPenalties.filter((p) => p.type !== 'loan');
     const systemLoansList = myPenalties.filter((p) => p.type === 'loan');
 
-    // Build unified deduction items list for display
     const allDeductionLines: { id: string; label: string; amount: number }[] = [];
     if (wifiFee > 0) {
       allDeductionLines.push({
@@ -2192,13 +2528,9 @@ export function StaffPaySlipView({
 
   return (
     <div className="space-y-4 animate-fade-in mt-3">
-      {/* =========================================================================
-          🌟 1. EXECUTIVE PAY SLIP HEADER CARD (CLEAN SINGLE DROPDOWN, NO CLUTTER) 🌟
-         ========================================================================= */}
       <div className="bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] p-5 sm:p-6 rounded-3xl text-white shadow-xl border border-[#D4AF37]/40 space-y-4 relative overflow-hidden">
         <div className="absolute -top-12 -right-12 w-36 h-36 bg-[#D4AF37] opacity-10 rounded-full blur-2xl pointer-events-none" />
 
-        {/* Title & Payday Policy Banner */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 border-b border-white/10 pb-4">
           <div className="space-y-1.5">
             <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-[#D4AF37] text-[#0B2419] shadow-2xs">
@@ -2209,7 +2541,6 @@ export function StaffPaySlipView({
             </h3>
           </div>
 
-          {/* 🌟 ပုံ (၂) - Payday Policy: လစဉ် (၅) ရက်နေ့မှ (၁၅) ရက်နေ့အတွင်း 🌟 */}
           <div className="bg-black/30 border border-[#D4AF37]/40 rounded-2xl px-3.5 py-2.5 sm:text-right flex-shrink-0">
             <div className="text-[10px] text-emerald-200/85 font-bold uppercase tracking-wider flex items-center sm:justify-end gap-1">
               <Calendar className="w-3 h-3 text-[#D4AF37] flex-shrink-0" />
@@ -2221,7 +2552,6 @@ export function StaffPaySlipView({
           </div>
         </div>
 
-        {/* Notice if today is between 1st and 4th of the month and previous month is not yet unlocked */}
         {!isPrevMonthUnlocked && (
           <div className="bg-amber-500/20 border border-amber-400/40 p-3 rounded-xl text-xs text-amber-200 font-bold leading-relaxed">
             ⏳ <strong>{formatReadableMonth(prevMonthYM)}</strong> အတွက် လစာစာရင်းချုပ် (Pay Slip) ကို လစာထုတ်ရက်ဖြစ်သော{' '}
@@ -2229,7 +2559,6 @@ export function StaffPaySlipView({
           </div>
         )}
 
-        {/* 🌟 ပုံ (၂) - ခလုတ်တန်းအပိုများကို ဖယ်ရှားပြီး Dropdown တစ်ခုတည်းဖြင့် Auto ရွေးချယ်ထားပေးခြင်း 🌟 */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-0.5">
           <label className="text-xs font-bold text-gray-200 flex items-center">
             <Clock className="w-3.5 h-3.5 mr-1.5 text-[#D4AF37] flex-shrink-0" />
@@ -2253,9 +2582,6 @@ export function StaffPaySlipView({
         </div>
       </div>
 
-      {/* =========================================================================
-          🌟 2. STAFF SUMMARY HEADER ROW (CLEAN, NO AWKWARD LINE BREAKS) 🌟
-         ========================================================================= */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-gray-200 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <span className="font-mono text-xs font-black bg-gray-100 text-[#123524] px-3 py-2 rounded-xl border border-gray-200 flex-shrink-0">
@@ -2301,11 +2627,7 @@ export function StaffPaySlipView({
         </div>
       </div>
 
-      {/* =========================================================================
-          🌟 3. MAIN PAY SLIP CARD (BALANCED TYPOGRAPHY & ALIGNMENT) 🌟
-         ========================================================================= */}
       <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-xs border border-gray-200 space-y-4">
-        {/* Card Header */}
         <div className="flex flex-wrap items-center justify-between border-b border-gray-100 pb-3.5 gap-2.5">
           <div className="min-w-0 flex-1">
             <h4 className="font-black text-xs sm:text-sm text-[#123524] leading-snug">
@@ -2320,7 +2642,6 @@ export function StaffPaySlipView({
           </span>
         </div>
 
-        {/* Service Breakdown Table (3 Columns: SERVICE NAME | အကြိမ်ရေ | စုစုပေါင်း) */}
         {myPaySlipData.serviceBreakdownList.length === 0 ? (
           <div className="py-10 text-center text-gray-400 font-bold text-xs border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
             {formatReadableMonth(selectedPayMonth)} အတွက် ကော်မရှင်မှတ်တမ်း မရှိပါ။
@@ -2354,7 +2675,6 @@ export function StaffPaySlipView({
           </div>
         )}
 
-        {/* Financial Additions & Deductions Breakdown */}
         <div className="pt-4 border-t-2 border-dashed border-gray-200 space-y-2.5 text-xs sm:text-sm">
           <div className="flex justify-between items-center text-gray-700 font-bold p-2.5 rounded-xl bg-emerald-50/50 border border-emerald-100">
             <span>စုစုပေါင်း ကော်မရှင် (Service Commissions):</span>
@@ -2379,7 +2699,6 @@ export function StaffPaySlipView({
             </div>
           )}
 
-          {/* All Deductions (WiFi Fee, Fines, Loans, Custom Deductions) */}
           {myPaySlipData.allDeductionLines.length > 0 && (
             <div className="p-3 rounded-xl bg-red-50/50 border border-red-100 space-y-2">
               {myPaySlipData.allDeductionLines.map((ded) => (
@@ -2391,7 +2710,6 @@ export function StaffPaySlipView({
             </div>
           )}
 
-          {/* Final Net Payable Highlight Banner */}
           <div className="mt-3 p-4 rounded-2xl bg-gradient-to-r from-[#123524] to-[#1a4a32] text-white flex flex-wrap items-center justify-between gap-2 shadow-md border border-[#D4AF37]/40">
             <div>
               <div className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-wider">
