@@ -102,7 +102,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 }
 
   const AdminDashboard = memo(({ appData, onSettingsUpdated, loggedInAdmin, onLogout }: { appData: AppData, onSettingsUpdated: (data: AppData) => void, loggedInAdmin: string, onLogout: () => void }) => {
-  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'revenue_dashboard' | 'expenses' | 'expense_report' | 'reports' | 'payroll' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook' | 'telegram_bot'>('sales_summary');
+  const [tab, setTab] = useState<'bookings' | 'sales_summary' | 'revenue_dashboard' | 'expenses' | 'expense_report' | 'reports' |'staff_performance' | 'payroll' | 'users' | 'points' | 'admins' | 'pos_users' | 'settings' | 'penalties' | 'roster' | 'hr' | 'campaigns' | 'pos_sales' | 'handbook' | 'telegram_bot'>('sales_summary');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [resetRequestCount, setResetRequestCount] = useState(0);
@@ -135,6 +135,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           setAdminPermissions(p);
           const isAllowedExtraTab =
             (p.includes('bookings') && (tab === 'sales_summary' || tab === 'pos_sales' || tab === 'revenue_dashboard' || tab === 'expenses' || tab === 'expense_report')) ||
+            (p.includes('reports') && (tab === 'staff_performance' || tab === 'payroll')) ||
             (p.includes('admins') && (tab === 'pos_users' || tab === 'telegram_bot')) ||
             (p.includes('settings') && (tab === 'roster' || tab === 'hr' || tab === 'campaigns' || tab === 'handbook' || tab === 'pos_users' || tab === 'telegram_bot'));
           if (r !== 'super_admin' && !p.includes(tab) && !isAllowedExtraTab && p.length > 0) {
@@ -318,14 +319,22 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         }
       ]
     },
-    {
+   {
       groupTitle: 'Staff & Operations',
       items: [
         {
           id: 'reports',
           label: 'Staff History & Live',
-          subLabel: 'In-Room & Performance',
+          subLabel: 'In-Room & Out Pass',
           icon: BarChart2,
+          visible: hasAccess('reports'),
+          badge: 0
+        },
+        {
+          id: 'staff_performance',
+          label: 'Staff Performance Status',
+          subLabel: 'Leaderboard & Targets',
+          icon: Trophy,
           visible: hasAccess('reports'),
           badge: 0
         },
@@ -711,6 +720,19 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           <div className="w-full max-w-[1600px] mx-auto pb-12">
             {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={bookings} adminRole={adminRole} />}
             {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} allBookings={bookings} adminRole={adminRole} therapists={appData.therapists} />}
+            {tab === 'staff_performance' && hasAccess('reports') && (
+              <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
+                <div className="border-b border-gray-100 pb-4 mb-2">
+                  <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}>
+                    <Trophy className="mr-2 text-[#D4AF37]" /> Staff Performance Status
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    ဝန်ထမ်းတစ်ဦးချင်းစီ၏ ရောင်းအား၊ Target ပြည့်မီမှု ရာခိုင်နှုန်း၊ ကော်မရှင်နှင့် ကာလအလိုက် နှိုင်းယှဉ်ချက်များ
+                  </p>
+                </div>
+                <AdminStaffPerformanceView therapists={appData.therapists} bookings={bookings} />
+              </div>
+            )}
             {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
             {tab === 'points' && hasAccess('points') && <AdminPointManagement adminRole={adminRole} appData={appData} />}
             {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
@@ -3099,15 +3121,6 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
               </span>
             )}
           </button>
-          <button
-            onClick={() => setView('performance')}
-            className={`whitespace-nowrap flex-1 lg:flex-none px-4 py-2 text-xs font-black rounded-lg transition flex items-center justify-center gap-1.5 ${
-              view === 'performance' ? 'bg-[#123524] text-[#D4AF37] shadow-sm' : 'text-gray-600 hover:bg-white/60'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Performance Stats</span>
-          </button>
         </div>
       </div>
 
@@ -4058,8 +4071,6 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
           </div>
         </div>
       )}
-
-      {view === 'performance' && <AdminStaffPerformanceView therapists={therapists} bookings={allBookings || bookings} />}
     </div>
   );
 }
