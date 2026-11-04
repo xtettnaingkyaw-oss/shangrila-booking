@@ -834,62 +834,101 @@ export default function POSScreen({ appData }: { appData: AppData }) {
         setLiveOnlineBookings(list);
         setWalkInPhoneBookings(walkInsList);
 
-        // 🌟 Real-Time Sync: Remove Cancelled bills AND Restore any missing valid Cloud POS bills! 🌟
-        setSalesHistory((prevHistory) => {
-          let changed = false;
-          const existingInvSet = new Set<string>();
+        // 🌟 Real-Time Sync: Remove Cancelled bills, Update Outcall Statuses AND Restore missing Cloud POS bills! 🌟
+     setSalesHistory((prevHistory) => {
+       let changed = false;
+       const existingInvSet = new Set<string>();
 
-          const filteredHistory = prevHistory
-            .filter((item) => {
-              if (!item.synced) {
-                existingInvSet.add(item.invoiceNo);
-                return true;
-              }
-              if (cancelledPosInvoiceSet.has(item.invoiceNo)) {
-                changed = true;
-                return false;
-              }
-              existingInvSet.add(item.invoiceNo);
-              return true;
-            })
-            .map((item) => {
-              if (
-                item.paymentStatus === 'deposit_only' &&
-                paidInFullPosInvoiceSet.has(item.invoiceNo)
-              ) {
-                changed = true;
-                return {
-                  ...item,
-                  paymentStatus: 'paid_in_full' as const,
-                  depositPaid: item.totalPrice,
-                  balanceDue: 0
-                };
-              }
-              return item;
-            });
+       const filteredHistory = prevHistory
+         .filter((item) => {
+           if (!item.synced) {
+             existingInvSet.add(item.invoiceNo);
+             return true;
+           }
+           if (cancelledPosInvoiceSet.has(item.invoiceNo)) {
+             changed = true;
+             return false;
+           }
+           existingInvSet.add(item.invoiceNo);
+           return true;
+         })
+         .map((item) => {
+           const cloudRec = cloudPosRecordsMap.get(item.invoiceNo);
+           let updatedItem = item;
 
-          // Restore any valid POS bills from Firestore that were missing locally
-          const restoredBills: OfflineSaleRecord[] = [];
-          cloudPosRecordsMap.forEach((cloudRec, invNo) => {
-            if (!existingInvSet.has(invNo)) {
-              restoredBills.push(cloudRec);
-              changed = true;
-            }
-          });
+           if (
+             updatedItem.paymentStatus === 'deposit_only' &&
+             paidInFullPosInvoiceSet.has(updatedItem.invoiceNo)
+           ) {
+             changed = true;
+             updatedItem = {
+               ...updatedItem,
+               paymentStatus: 'paid_in_full' as const,
+               depositPaid: updatedItem.totalPrice,
+               balanceDue: 0
+             };
+           }
 
-          if (changed) {
-            const merged = [...filteredHistory, ...restoredBills].sort((a, b) => {
-              const dateCmp = (b.date || '').localeCompare(a.date || '');
-              if (dateCmp !== 0) return dateCmp;
-              return (b.createdAt || 0) - (a.createdAt || 0);
-            });
-            try {
-              localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(merged));
-            } catch {}
-            return merged;
-          }
-          return prevHistory;
-        });
+           // ✅ Cloud ပေါ်ရှိ Outcall Status, Timer နှင့် Service Status အပြောင်းအလဲများကို Tablet သို့ Real-time Sync လုပ်ပေးခြင်း
+           if (cloudRec) {
+             const nextPhase = cloudRec.outcallPhase || cloudRec.outcallStatus;
+             const nextStatus = cloudRec.serviceStatus;
+             const nextStart = cloudRec.startTimeMillis;
+             const nextEnd = cloudRec.expectedEndTimeMillis;
+             const nextRet = cloudRec.returningStartedAt;
+
+             if (
+               updatedItem.outcallPhase !== nextPhase ||
+               updatedItem.outcallStatus !== nextPhase ||
+               updatedItem.serviceStatus !== nextStatus ||
+               updatedItem.startTimeMillis !== nextStart ||
+               updatedItem.expectedEndTimeMillis !== nextEnd ||
+               updatedItem.returningStartedAt !== nextRet ||
+               (!updatedItem.synced && cloudRec.synced)
+             ) {
+               changed = true;
+               updatedItem = {
+                 ...updatedItem,
+                 synced: true,
+                 firestoreDocId: cloudRec.firestoreDocId || updatedItem.firestoreDocId,
+                 serviceStatus: nextStatus,
+                 isOutcall: cloudRec.isOutcall ?? updatedItem.isOutcall,
+                 outcallPhase: nextPhase,
+                 outcallStatus: nextPhase,
+                 dispatchedAtMillis: cloudRec.dispatchedAtMillis ?? updatedItem.dispatchedAtMillis,
+                 startTimeMillis: nextStart ?? updatedItem.startTimeMillis,
+                 expectedEndTimeMillis: nextEnd ?? updatedItem.expectedEndTimeMillis,
+                 returningStartedAt: nextRet ?? updatedItem.returningStartedAt,
+                 durationMins: cloudRec.durationMins ?? updatedItem.durationMins
+               };
+             }
+           }
+
+           return updatedItem;
+         });
+
+       // Restore any valid POS bills from Firestore that were missing locally
+       const restoredBills: OfflineSaleRecord[] = [];
+       cloudPosRecordsMap.forEach((cloudRec, invNo) => {
+         if (!existingInvSet.has(invNo)) {
+           restoredBills.push(cloudRec);
+           changed = true;
+         }
+       });
+
+       if (changed) {
+         const merged = [...filteredHistory, ...restoredBills].sort((a, b) => {
+           const dateCmp = (b.date || '').localeCompare(a.date || '');
+           if (dateCmp !== 0) return dateCmp;
+           return (b.createdAt || 0) - (a.createdAt || 0);
+         });
+         try {
+           localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(merged));
+         } catch {}
+         return merged;
+       }
+       return prevHistory;
+     });
       },
       (err) => console.warn('POS real-time sync warning:', err)
     );
@@ -2340,42 +2379,65 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       .join(' | ');
 
     const bookingPayload: any = {
-      name: encryptText(`${record.customerName} (Walk-in)`),
-      phone: encryptText(record.customerPhone || 'Walk-in'),
-      service: serviceSummary,
-      therapist: record.therapistName || 'Any Available Therapist',
-      date: record.date,
-      time: record.time,
-      paymentMethod: paymentMethodSummary,
-      paymentStatus: record.paymentStatus,
-      depositPaid: Number(record.depositPaid) || 0,
-      balanceDue: Number(record.balanceDue) || 0,
-      txId: encryptText(record.invoiceNo),
-      totalPrice: Number(record.totalPrice) || 0,
-      originalPrice: encryptText(record.subTotal.toString()),
-      discountPercent: encryptText(
-        record.discountType === 'percent'
-          ? record.discountValue.toString()
-          : Math.round((record.discountAmount / (record.subTotal || 1)) * 100).toString()
-      ),
-      discountLabel: encryptText(discountLabelText),
-      specialRequest: encryptText(noteWithBalanceInfo),
-      status: record.serviceStatus,
-      createdAt: record.createdAt,
-      posLocalId: record.localId,
-      posItems: record.items,
-      cashierId: currentPosUser?.id || '',
-      cashierName: encryptText(currentPosUser?.displayName || 'POS Staff'),
-      isOutcall: Boolean(record.isOutcall),
-      outcallPhase: record.outcallPhase || (record.isOutcall ? 'on_the_way' : undefined),
-      outcallStatus: record.outcallStatus || (record.isOutcall ? 'on_the_way' : undefined),
-      dispatchedAtMillis: record.dispatchedAtMillis || record.createdAt,
-      durationMins: Number(record.durationMins) || 60,
-      startTimeMillis: Number(record.startTimeMillis) || 0,
-      expectedEndTimeMillis: Number(record.expectedEndTimeMillis) || 0
-    };
+   name: encryptText(`${record.customerName} (Walk-in)`),
+   phone: encryptText(record.customerPhone || 'Walk-in'),
+   service: serviceSummary,
+   therapist: record.therapistName || 'Any Available Therapist',
+   date: record.date,
+   time: record.time,
+   paymentMethod: paymentMethodSummary,
+   paymentStatus: record.paymentStatus,
+   depositPaid: Number(record.depositPaid) || 0,
+   balanceDue: Number(record.balanceDue) || 0,
+   txId: encryptText(record.invoiceNo),
+   totalPrice: Number(record.totalPrice) || 0,
+   originalPrice: encryptText(record.subTotal.toString()),
+   discountPercent: encryptText(
+     record.discountType === 'percent'
+       ? record.discountValue.toString()
+       : Math.round((record.discountAmount / (record.subTotal || 1)) * 100).toString()
+   ),
+   discountLabel: encryptText(discountLabelText),
+   specialRequest: encryptText(noteWithBalanceInfo),
+   status: record.serviceStatus,
+   createdAt: record.createdAt,
+   posLocalId: record.localId,
+   posItems: (record.items || []).map((it) => ({
+     cartId: it.cartId || '',
+     id: it.id || '',
+     name: it.name || '',
+     duration: it.duration || '',
+     price: Number(it.price) || 0,
+     isVvipUpgrade: Boolean(it.isVvipUpgrade),
+     vvipExtraPrice: Number(it.vvipExtraPrice) || 0,
+     vvipIncluded: Boolean(it.vvipIncluded),
+     isCustomItem: Boolean(it.isCustomItem),
+     discountEligible: it.discountEligible !== undefined ? Boolean(it.discountEligible) : !it.isCustomItem,
+     qty: Number(it.qty) || 1
+   })),
+   cashierId: currentPosUser?.id || '',
+   cashierName: encryptText(currentPosUser?.displayName || 'POS Staff'),
+   isOutcall: Boolean(record.isOutcall),
+   ...(record.isOutcall
+     ? {
+         outcallPhase: record.outcallPhase || 'on_the_way',
+         outcallStatus: record.outcallStatus || 'on_the_way',
+         dispatchedAtMillis: record.dispatchedAtMillis || record.createdAt
+       }
+     : {}),
+   durationMins: Number(record.durationMins) || 60,
+   startTimeMillis: Number(record.startTimeMillis) || 0,
+   expectedEndTimeMillis: Number(record.expectedEndTimeMillis) || 0
+ };
 
-    const docRef = await addDoc(collection(db, 'bookings'), bookingPayload);
+ // ✅ Firestore လက်မခံသော undefined field များ လုံးဝမပါစေရန် ဖယ်ရှားပေးခြင်း
+ Object.keys(bookingPayload).forEach((key) => {
+   if (bookingPayload[key] === undefined) {
+     delete bookingPayload[key];
+   }
+ });
+
+ const docRef = await addDoc(collection(db, 'bookings'), bookingPayload);
 
     if (record.customerPhone && record.customerPhone.trim().length >= 7 && record.pointsEarned > 0) {
       const cleanPhone = record.customerPhone.trim();
@@ -2487,37 +2549,53 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
   };
 
   const syncOfflineRecords = async () => {
-    if (!navigator.onLine || offlineQueue.length === 0 || isSyncing) return;
-    setIsSyncing(true);
-    const remaining: OfflineSaleRecord[] = [];
-    const syncedMap = new Map<string, string>();
+ if (isSyncing) return;
+ setIsSyncing(true);
 
-    for (const record of offlineQueue) {
-      try {
-        const docId = await uploadSaleToFirebase(record);
-        syncedMap.set(record.localId, docId);
-      } catch (err) {
-        console.warn('Sync failed for record:', record.invoiceNo, err);
-        remaining.push(record);
-      }
-    }
+ try {
+   const unsyncedFromHistory = salesHistory.filter((h) => !h.synced);
+   const combinedMap = new Map<string, OfflineSaleRecord>();
+   offlineQueue.forEach((r) => combinedMap.set(r.localId, r));
+   unsyncedFromHistory.forEach((r) => combinedMap.set(r.localId, r));
 
-    updateOfflineQueue(remaining);
+   const recordsToSync = Array.from(combinedMap.values());
+   if (recordsToSync.length === 0) {
+     setIsSyncing(false);
+     return;
+   }
 
-    if (syncedMap.size > 0) {
-      const updatedHistory = salesHistory.map((h) =>
-        syncedMap.has(h.localId)
-          ? { ...h, synced: true, firestoreDocId: syncedMap.get(h.localId) }
-          : h
-      );
-      setSalesHistory(updatedHistory);
-      try {
-        localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updatedHistory));
-      } catch {}
-    }
+   const remaining: OfflineSaleRecord[] = [];
+   const syncedMap = new Map<string, string>();
 
-    setIsSyncing(false);
-  };
+   for (const record of recordsToSync) {
+     try {
+       const docId = await uploadSaleToFirebase(record);
+       syncedMap.set(record.localId, docId);
+     } catch (err) {
+       console.warn('Sync failed for record:', record.invoiceNo, err);
+       remaining.push(record);
+     }
+   }
+
+   updateOfflineQueue(remaining);
+
+   if (syncedMap.size > 0) {
+     setSalesHistory((prev) => {
+       const updatedHistory = prev.map((h) =>
+         syncedMap.has(h.localId)
+           ? { ...h, synced: true, firestoreDocId: syncedMap.get(h.localId) }
+           : h
+       );
+       try {
+         localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(updatedHistory));
+       } catch {}
+       return updatedHistory;
+     });
+   }
+ } finally {
+   setIsSyncing(false);
+ }
+};
 
   // 🌟 Apply Either VIP Member Benefit OR Active Promotion Benefit 🌟
   const applyVipOrPromoChoice = (
@@ -3376,24 +3454,30 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
     }
   };
 
-  // 🌟 Force Update App Cache Function 🌟
-  const handleForceRefreshApp = async () => {
-    try {
-      if ('serviceWorker' in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        for (const r of regs) {
-          await r.unregister();
-        }
-      }
-      if ('caches' in window) {
-        const keys = await caches.keys();
-        for (const k of keys) {
-          await caches.delete(k);
-        }
-      }
-    } catch {}
-    window.location.reload();
-  };
+  // 🌟 Force Update App Cache & Re-Sync Cloud Data Function 🌟
+const handleForceRefreshApp = async () => {
+ try {
+   await syncOfflineRecords();
+
+   const unsyncedOnly = salesHistory.filter((s) => !s.synced);
+   localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(unsyncedOnly));
+   localStorage.removeItem(CACHED_APPDATA_KEY);
+
+   if ('serviceWorker' in navigator) {
+     const regs = await navigator.serviceWorker.getRegistrations();
+     for (const r of regs) {
+       await r.unregister();
+     }
+   }
+   if ('caches' in window) {
+     const keys = await caches.keys();
+     for (const k of keys) {
+       await caches.delete(k);
+     }
+   }
+ } catch {}
+ window.location.reload();
+};
 
   const samplePreviewReceipt: OfflineSaleRecord = {
     localId: 'sample_preview',
@@ -3983,104 +4067,108 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       )}
 
       {/* ==========================================
-          COMPACT SINGLE-ROW TOP POS HEADER BAR
-         ========================================== */}
-      <header className="no-print sticky top-0 z-50 bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-3 py-2 shadow-md border-b border-[#D4AF37]/40 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <button
-            type="button"
-            onClick={() => setIsSideMenuOpen(true)}
-            title="Open POS Menu & Settings"
-            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-[#D4AF37] border border-[#D4AF37]/40 shadow-sm flex items-center justify-center transition active:scale-95"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+       COMPACT RESPONSIVE TOP POS HEADER BAR (NO OVERLAP ON TABLET)
+      ========================================== */}
+   <header className="no-print sticky top-0 z-50 bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-2.5 sm:px-4 py-2 shadow-md border-b border-[#D4AF37]/40 flex flex-wrap items-center justify-between gap-2">
+     <div className="flex items-center gap-2 min-w-0">
+       <button
+         type="button"
+         onClick={() => setIsSideMenuOpen(true)}
+         title="Open POS Menu & Settings"
+         className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-[#D4AF37] border border-[#D4AF37]/40 shadow-sm flex items-center justify-center transition active:scale-95 flex-shrink-0"
+       >
+         <Menu className="w-5 h-5" />
+       </button>
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <img
-                  src={digitalLogoUrl || defaultLogoImg}
-                  alt="Shangri-La Logo"
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-[#D4AF37] mr-2 flex-shrink-0 shadow-sm bg-[#123524]"
-                />
-                SHANGRI-LA POS
-              <span className="bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40 px-2 py-0.5 rounded-md text-[9px] font-extrabold whitespace-nowrap">
-                {activeViewLabel}
-              </span>
-            </div>
-          </div>
-        </div>
+       <img
+         src={digitalLogoUrl || defaultLogoImg}
+         alt="Shangri-La Logo"
+         className="w-7 h-7 rounded-full object-cover border border-[#D4AF37] flex-shrink-0 shadow-sm bg-[#123524]"
+       />
 
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-          {activePosView !== 'register' && (
-            <button
-              type="button"
-              onClick={() => setActivePosView('register')}
-              className="px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-[#D4AF37] text-[#123524] shadow-sm hover:bg-yellow-400 transition"
-            >
-              ← POS Register
-            </button>
-          )}
+       <div className="flex items-center gap-1.5 min-w-0">
+         <span className="font-serif font-black text-xs sm:text-sm text-white tracking-wider whitespace-nowrap hidden sm:inline">
+           SHANGRI-LA POS
+         </span>
+         <span className="bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40 px-2 py-0.5 rounded-md text-[10px] font-extrabold truncate max-w-[140px] sm:max-w-none">
+           {activeViewLabel}
+         </span>
+       </div>
+     </div>
 
-          <button
-            type="button"
-            onClick={() => handleConnectBluetoothPrinter(true)}
-            className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center border transition ${
-              bluetoothDevice && btCharacteristic
-                ? 'bg-green-500/20 text-green-300 border-green-400/40'
-                : 'bg-white/10 text-[#D4AF37] border-[#D4AF37]/30 hover:bg-white/20'
-            }`}
-          >
-            <Bluetooth className="w-3 h-3 mr-1 flex-shrink-0" />
-            <span className="truncate max-w-[110px] sm:max-w-[160px]">
-              {bluetoothDevice && btCharacteristic
-                ? `${bluetoothDevice.name || printSettings.savedPrinterName || 'Printer'}`
-                : printSettings.savedPrinterName
-                ? `Reconnect`
-                : 'BT Printer'}
-            </span>
-          </button>
+     <div className="flex items-center gap-1.5 flex-wrap justify-end ml-auto">
+       {activePosView !== 'register' && (
+         <button
+           type="button"
+           onClick={() => setActivePosView('register')}
+           className="px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-[#D4AF37] text-[#123524] shadow-sm hover:bg-yellow-400 transition whitespace-nowrap"
+         >
+           ← POS Register
+         </button>
+       )}
 
-          <button
-            type="button"
-            onClick={() => setActivePosView(activePosView === 'online_bookings' ? 'register' : 'online_bookings')}
-            className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black flex items-center border transition relative ${
-              activePosView === 'online_bookings'
-                ? 'bg-[#D4AF37] text-[#123524] border-[#D4AF37]'
-                : 'bg-white/10 text-white border-[#D4AF37]/40 hover:bg-white/20'
-            }`}
-          >
-            <Calendar className="w-3 h-3 mr-1 text-[#D4AF37]" />
-            <span>Online Bookings</span>
-            {pendingOnlineCount > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[9px] font-black animate-pulse">
-                {pendingOnlineCount}
-              </span>
-            )}
-          </button>
+       <button
+         type="button"
+         onClick={() => handleConnectBluetoothPrinter(true)}
+         className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold flex items-center border transition whitespace-nowrap ${
+           bluetoothDevice && btCharacteristic
+             ? 'bg-green-500/20 text-green-300 border-green-400/40'
+             : 'bg-white/10 text-[#D4AF37] border-[#D4AF37]/30 hover:bg-white/20'
+         }`}
+       >
+         <Bluetooth className="w-3 h-3 mr-1 flex-shrink-0" />
+         <span className="truncate max-w-[90px] sm:max-w-[140px]">
+           {bluetoothDevice && btCharacteristic
+             ? `${bluetoothDevice.name || printSettings.savedPrinterName || 'Printer'}`
+             : printSettings.savedPrinterName
+             ? 'Reconnect'
+             : 'BT Printer'}
+         </span>
+       </button>
 
-          {isOnline ? (
-            <span className="bg-green-500/20 text-green-300 border border-green-400/40 px-2 py-1 rounded-full text-[10px] font-bold flex items-center">
-              <Wifi className="w-3 h-3 mr-1 text-green-400" /> Online
-            </span>
-          ) : (
-            <span className="bg-amber-500/20 text-amber-300 border border-amber-400/40 px-2 py-1 rounded-full text-[10px] font-bold flex items-center animate-pulse">
-              <WifiOff className="w-3 h-3 mr-1 text-amber-400" /> Offline
-            </span>
-          )}
+       <button
+         type="button"
+         onClick={() => setActivePosView(activePosView === 'online_bookings' ? 'register' : 'online_bookings')}
+         className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black flex items-center border transition relative whitespace-nowrap ${
+           activePosView === 'online_bookings'
+             ? 'bg-[#D4AF37] text-[#123524] border-[#D4AF37]'
+             : 'bg-white/10 text-white border-[#D4AF37]/40 hover:bg-white/20'
+         }`}
+       >
+         <Calendar className="w-3 h-3 mr-1 text-[#D4AF37]" />
+         <span>Online Bookings</span>
+         {pendingOnlineCount > 0 && (
+           <span className="ml-1.5 px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[9px] font-black animate-pulse">
+             {pendingOnlineCount}
+           </span>
+         )}
+       </button>
 
-          {offlineQueue.length > 0 && (
-            <button
-              onClick={syncOfflineRecords}
-              disabled={!isOnline || isSyncing}
-              className="bg-[#D4AF37] text-[#123524] px-2.5 py-1 rounded-full text-[10px] font-black flex items-center shadow-sm hover:bg-yellow-400 disabled:opacity-60 transition"
-            >
-              <RefreshCw className={`w-3 h-3 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? '...' : `Sync (${offlineQueue.length})`}
-            </button>
-          )}
-        </div>
-      </header>
+       {isOnline ? (
+         <span className="bg-green-500/20 text-green-300 border border-green-400/40 px-2 py-1 rounded-full text-[10px] font-bold flex items-center whitespace-nowrap">
+           <Wifi className="w-3 h-3 mr-1 text-green-400" /> Online
+         </span>
+       ) : (
+         <span className="bg-amber-500/20 text-amber-300 border border-amber-400/40 px-2 py-1 rounded-full text-[10px] font-bold flex items-center animate-pulse whitespace-nowrap">
+           <WifiOff className="w-3 h-3 mr-1 text-amber-400" /> Offline
+         </span>
+       )}
+
+       {(offlineQueue.length > 0 || salesHistory.some((s) => !s.synced)) && (
+         <button
+           type="button"
+           onClick={syncOfflineRecords}
+           disabled={isSyncing}
+           className="bg-[#D4AF37] text-[#123524] px-3 py-1.5 rounded-full text-[10px] font-black flex items-center shadow-md hover:bg-yellow-400 active:scale-95 disabled:opacity-60 transition whitespace-nowrap"
+         >
+           <RefreshCw className={`w-3.5 h-3.5 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+           {isSyncing
+             ? 'Syncing...'
+             : `Sync (${Math.max(offlineQueue.length, salesHistory.filter((s) => !s.synced).length)})`}
+         </button>
+       )}
+     </div>
+   </header>
 
       {/* ==========================================
           RECEIPT MODAL (Thermal Voucher & Direct BT Print)
