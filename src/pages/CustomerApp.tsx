@@ -1115,7 +1115,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                    <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-2">
                        {generateTimeline(viewingDetails.name).map((block, idx) => (
                             <div key={idx} className={`p-3 rounded-xl border flex items-center justify-between shadow-sm transition-colors ${block.state === 'Available' ? 'bg-green-50 border-green-200' : block.state === 'Booked' ? 'bg-blue-50 border-blue-200' : block.state === 'Buffer' ? 'bg-orange-50 border-orange-200' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
-                                <div className="text-xs font-mono font-bold text-gray-700 w-[45%]{block.startSlot} - {block.endTime}</div>
+                                <div className="text-xs font-mono font-bold text-gray-700 w-[45%]">{block.startSlot} - {block.endTime}</div>
                                 <div className="w-[55%] flex justify-end">
                                     {block.state === 'Available' && <span className="text-green-700 font-bold text-[10px] uppercase flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> အားပါသည်</span>}
                                     {block.state === 'Booked' && <span className="text-blue-700 font-bold text-[10px] uppercase leading-tight flex items-center text-right"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse"></span> {block.service}</span>}
@@ -1175,7 +1175,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
                              ? 'bg-amber-100 text-amber-800 border-amber-300 cursor-not-allowed'
                              : isFullyBooked
                              ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed'
-                             : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'
+                             : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#123524]'
                          }`}
                        >
                          {isComingSoon ? 'Coming Soon' : 'Book Now'}
