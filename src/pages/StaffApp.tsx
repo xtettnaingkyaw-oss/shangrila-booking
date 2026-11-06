@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, addDoc, where } from 'firebase/firestore';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { decryptText } from '../security';
 import {
@@ -408,7 +408,7 @@ export default function StaffApp() {
   const { appData: globalAppData } = useAppStore();
   const [isRegistering, setIsRegistering] = useState(window.location.hash === '#register');
 
-  const [loggedInStaff, setLoggedInStaff] = useState<TherapistProfile | null>(() => {
+  const [loggedInStaff, setLoggedInStaff] = useState<(TherapistProfile & { loginTimestamp?: number }) | null>(() => {
     const saved = localStorage.getItem('shangrila_staff_profile');
     return saved ? JSON.parse(saved) : null;
   });
@@ -419,10 +419,62 @@ export default function StaffApp() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setLoggedInStaff(null);
     localStorage.removeItem('shangrila_staff_profile');
-  };
+    signOut(auth).catch(() => {});
+  }, []);
+
+  // 🌟 REAL-TIME AUTO-LOGOUT LISTENER: Admin မှ Access ပိတ်လိုက်သည်နှင့် သုံးနေသော Device မှ ချက်ချင်း ကန်ထုတ်မည် 🌟
+  useEffect(() => {
+    if (!loggedInStaff) return;
+
+    // 1. Check against globalAppData therapists list immediately
+    const matchedFromGlobal = (globalAppData?.therapists || []).find(
+      (t: any) => (loggedInStaff.id && t.id === loggedInStaff.id) || t.name === loggedInStaff.name
+    ) as any;
+
+    if (matchedFromGlobal && matchedFromGlobal.staffAppAccess === false) {
+      handleLogout();
+      alert('🚫 သင်၏ Staff App ဝင်ရောက်အသုံးပြုခွင့်ကို Admin မှ ပိတ်လိုက်သဖြင့် စနစ်မှ အလိုအလျောက် ထွက်ခွာသွားပါပြီ။ (Auto Logged Out)');
+      return;
+    }
+
+    // 2. Direct Real-Time Firestore Listener on `therapists` collection
+    const q = loggedInStaff.id
+      ? doc(db, 'therapists', loggedInStaff.id)
+      : query(collection(db, 'therapists'), where('name', '==', loggedInStaff.name));
+
+    const unsub = onSnapshot(q as any, (snap: any) => {
+      let staffData: any = null;
+      let docExists = false;
+
+      if (typeof snap.exists === 'function') {
+        docExists = snap.exists();
+        if (docExists) staffData = snap.data();
+      } else if (snap.docs) {
+        docExists = !snap.empty;
+        if (docExists) staffData = snap.docs[0].data();
+      }
+
+      // အကယ်၍ ဝန်ထမ်းစာရင်းမှ ဖျက်ခံရပါက သို့မဟုတ် staffAppAccess === false ဖြစ်သွားပါက ချက်ချင်း Auto Logout လုပ်မည်
+      if (!docExists || staffData?.staffAppAccess === false) {
+        handleLogout();
+        alert('🚫 သင်၏ Staff App ဝင်ရောက်အသုံးပြုခွင့်ကို Admin မှ ပိတ်လိုက်သဖြင့် စနစ်မှ အလိုအလျောက် ထွက်ခွာသွားပါပြီ။ (Auto Logged Out)');
+        return;
+      }
+
+      // အကယ်၍ Admin မှ forceLogoutAt အချိန်အသစ် ပို့လိုက်ပါကလည်း ချက်ချင်း Auto Logout လုပ်မည်
+      const loginTime = Number(loggedInStaff.loginTimestamp) || 0;
+      const forceLogoutAt = Number(staffData?.forceLogoutAt) || 0;
+      if (loginTime > 0 && forceLogoutAt > loginTime) {
+        handleLogout();
+        alert('🚫 Admin မှ သင်၏ Staff App အသုံးပြုခွင့်ကို ပြန်လည်စစ်ဆေးရန် Log Out ပြုလုပ်လိုက်ပါသည်။');
+      }
+    });
+
+    return () => unsub();
+  }, [loggedInStaff, globalAppData?.therapists, handleLogout]);
 
   if (!globalAppData) return <div className="text-center py-20 font-bold text-gray-500">Loading Staff Portal...</div>;
 
@@ -445,8 +497,9 @@ export default function StaffApp() {
         <StaffLogin
           therapists={globalAppData.therapists}
           onLoginSuccess={(profile) => {
-            setLoggedInStaff(profile);
-            localStorage.setItem('shangrila_staff_profile', JSON.stringify(profile));
+            const profileWithTimestamp = { ...profile, loginTimestamp: Date.now() };
+            setLoggedInStaff(profileWithTimestamp);
+            localStorage.setItem('shangrila_staff_profile', JSON.stringify(profileWithTimestamp));
           }}
         />
       )}
@@ -465,10 +518,17 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
     setError('');
     setLoading(true);
 
-    const staff = therapists.find((t) => (t.id || t.name) === therapistId);
+    const staff = therapists.find((t) => (t.id || t.name) === therapistId) as any;
 
     if (!staff) {
       setError('Invalid Therapist Selection.');
+      setLoading(false);
+      return;
+    }
+
+    // 🌟 GUARD: Admin မှ Staff App Access ပိတ်ထားပါက Login လုံးဝ ပေးမဝင်ပါ 🌟
+    if (staff.staffAppAccess === false) {
+      setError('🚫 သင်၏ Staff App ဝင်ရောက်အသုံးပြုခွင့်ကို Admin မှ ယာယီပိတ်ထားပါသည်။');
       setLoading(false);
       return;
     }
@@ -481,8 +541,6 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
 
       let loggedIn = false;
 
-      // 1. Admin Settings (Firestore) တွင် သတ်မှတ်ထားသော Password နှင့် တိုက်ရိုက်ကိုက်ညီမှု ရှိ/မရှိ အရင်စစ်ဆေးမည်
-      // (SECURED_ACCOUNT မဟုတ်ဘဲ Admin မှ Password အသစ် ရိုက်ထည့်ပေးထားပါက ချက်ချင်း ဝင်ခွင့်ပြုမည်)
       if (
         decStoredPassword &&
         decStoredPassword !== 'SECURED_ACCOUNT' &&
@@ -491,7 +549,6 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
         loggedIn = true;
       }
 
-      // 2. Firebase Auth ဖြင့်လည်း စစ်ဆေး/ချိတ်ဆက်ပေးမည်
       const possibleEmails = [
         `${(staff.id || '').replace(/\s+/g, '').toLowerCase()}@shangrila.com`,
         `${(staff.name || '').replace(/\s+/g, '').toLowerCase()}@shangrila.com`
@@ -504,7 +561,7 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
           loggedIn = true;
           break;
         } catch {
-          // Firebase Auth တွင် Password အဟောင်းဖြစ်နေပါက အပေါ်က Admin Password စစ်ဆေးချက် မှန်ကန်လျှင် ဆက်သွားမည်
+          // Fallback to Firestore password check above
         }
       }
 
@@ -543,9 +600,10 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
               </option>
               {Array.from(new Map(therapists.map((t: any) => [t.name, t])).values()).map((t: any) => {
                 const uniqueVal = t.id || t.name;
+                const isAccessDisabled = t.staffAppAccess === false;
                 return (
                   <option key={uniqueVal} value={uniqueVal}>
-                    {t.name}
+                    {t.name} {isAccessDisabled ? '(🚫 Access Locked)' : ''}
                   </option>
                 );
               })}
@@ -566,7 +624,7 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
             className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-[#D4AF37] font-bold text-center tracking-wider"
           />
         </div>
-        {error && <div className="text-xs font-bold text-red-500">{error}</div>}
+        {error && <div className="text-xs font-bold text-red-500 bg-red-50 p-3 rounded-xl border border-red-200">{error}</div>}
         <button
           type="submit"
           disabled={loading}
@@ -588,6 +646,51 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
       </div>
     </div>
   );
+}
+၃။ src/shared.ts တွင် TypeScript Type Error မတက်စေရန် Optional Fields ထပ်ဖြည့်ပေးရန် (Optional Check)
+npm run build သို့မဟုတ် Vercel Deployment တွင် TypeScript စစ်ဆေးချက် ချောမွေ့စေရန် src/shared.ts ထဲရှိ MenuItem၊ MenuCategory နှင့် TherapistProfile interfaces များတွင် အောက်ပါ Optional Fields လေးများ ပါဝင်ကြောင်း စစ်ဆေး/ထည့်သွင်းပေးပါ -
+
+TypeScript
+// src/shared.ts ထဲရှိ MenuItem တွင် ထပ်တိုးရန်:
+export interface MenuItem {
+  id: string;
+  name: string;
+  duration: string;
+  price: number;
+  vvipPrice?: number;
+  vvipIncluded?: boolean;
+  description?: string;
+  imageUrl?: string;
+  images?: string[];
+  isHidden?: boolean;
+  isComingSoon?: boolean;
+  comingSoonText?: string;
+}
+
+// src/shared.ts ထဲရှိ MenuCategory တွင် ထပ်တိုးရန်:
+export interface MenuCategory {
+  id: string;
+  title: string;
+  order?: number;
+  isHidden?: boolean;
+  items: MenuItem[];
+}
+
+// src/shared.ts ထဲရှိ TherapistProfile တွင် ထပ်တိုးရန်:
+export interface TherapistProfile {
+  id: string;
+  name: string;
+  images: string[];
+  imageUrl?: string;
+  order: number;
+  password?: string;
+  onboardingData?: any;
+  visibilityStatus?: 'active' | 'coming_soon' | 'hidden';
+  isHidden?: boolean;
+  isComingSoon?: boolean;
+  comingSoonText?: string;
+  staffAppAccess?: boolean;
+  forceLogoutAt?: number;
 }
 
 function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: AppData; loggedInStaff: TherapistProfile; onLogout: () => void }) {
