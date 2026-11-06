@@ -19,12 +19,16 @@ export interface MenuItem {
   description?: string;
   imageUrl?: string;
   images?: string[]; // 🌟 Service HD ပုံ ၅ ပုံအထိ သိမ်းဆည်းရန်
+  isHidden?: boolean; // 🌟 Customer App တွင် ဖျောက်ထားရန်
+  isComingSoon?: boolean; // 🌟 Coming Soon ပြသထားရန်
+  comingSoonText?: string;
 }
 
 export interface MenuCategory {
   id: string;
   title: string;
   order?: number;
+  isHidden?: boolean; // 🌟 Category တစ်ခုလုံး ဖျောက်ထားရန်
   items: MenuItem[];
 }
 
@@ -32,8 +36,18 @@ export interface TherapistProfile {
   id: string;
   name: string;
   images: string[];
+  imageUrl?: string;
   order: number;
   password?: string;
+  onboardingData?: any;
+  updateRequested?: boolean;
+  // 🌟 Customer App Visibility & Staff App Access Control Fields 🌟
+  visibilityStatus?: 'active' | 'coming_soon' | 'hidden';
+  isHidden?: boolean;
+  isComingSoon?: boolean;
+  comingSoonText?: string;
+  staffAppAccess?: boolean;
+  forceLogoutAt?: number;
 }
 
 export interface PaymentMethod {
@@ -50,22 +64,30 @@ export interface AppBranding {
   address: string;
   phone1: string;
   phone2: string;
+  telegram?: string;
+  viber?: string;
   copyright: string;
   shopLat?: number;
   shopLng?: number;
 }
 
 export interface PromotionSettings {
+  // Legacy & Master Flags
+  isActive?: boolean;
+  title?: string;
+
   // Box အတွက် Settings
-  isBoxActive: boolean;           // 🌟 Customer App ထဲက Box အဟောင်းအတွက်
+  isBoxActive: boolean;           // 🌟 Customer App ထဲက Box အတွက်
   boxTitle?: string;              // Box ခေါင်းစဉ် (ဥပမာ: "Special Discount")
   
   // Popup/Campaign အတွက် Settings
   isPopupActive: boolean;         // 🌟 App အဖွင့်မှာတက်လာမယ့် Popup အတွက်
   campaignTitle?: string;         // Popup/Game ခေါင်းစဉ် (ဥပမာ: "သီတင်းကျွတ် အထူးပရိုမိုးရှင်း")
   
-  // 🌟 အသစ်ထပ်တိုးရန် (Admin Backoffice All OFF & Card Controls များအတွက်) 🌟
+  // 🌟 Admin Backoffice All OFF & Card Controls များအတွက် 🌟
   allOff?: boolean;               // Admin မှ All OFF ပိတ်ထားခြင်း ရှိ/မရှိ
+  activeCampaignId?: string;
+  updatedAt?: number;
   campaigns?: any[];              // Saved Promotion & Campaign Cards စာရင်း
   cards?: any[];                  // Fallback cards array
   
@@ -118,6 +140,17 @@ export const DEFAULT_VIP_SETTINGS: VipSettings = {
   ]
 };
 
+export interface SpaOperationsSettings {
+  isOnlineBookingOpen?: boolean;
+  maintenanceTitle?: string;
+  maintenanceMessage?: string;
+  openingTime?: string;
+  closingTime?: string;
+  leadTimeMins?: number;
+  announcementBanner?: string;
+  isAnnouncementActive?: boolean;
+}
+
 export interface AppData {
   categories: MenuCategory[];
   therapists: TherapistProfile[];
@@ -125,6 +158,15 @@ export interface AppData {
   branding: AppBranding;
   promotion: PromotionSettings;
   vipSettings: VipSettings;
+  signUpBonus?: {
+    isActive: boolean;
+    points: number;
+    startDate: string;
+    endDate: string;
+  };
+  installSteps?: Array<{ id: string; text: string; imageUrl: string }>;
+  spaOperations?: SpaOperationsSettings;
+  savedCampaignCards?: any[];
 }
 
 export interface Booking extends OutcallTrackingFields {
@@ -164,6 +206,10 @@ export interface Booking extends OutcallTrackingFields {
   onlineBookingId?: string;
   isAdminClockIn?: boolean;
   isStaffClockIn?: boolean;
+  bookingSource?: string;
+  voucherIssued?: boolean;
+  customerChatId?: string;
+  telegramChatId?: string;
 }
 
 export interface OutPass {
@@ -245,11 +291,17 @@ export interface OutcallTrackingFields {
   outcallPhase?: OutcallPhase;
   outcallStatus?: OutcallPhase; // POS, Admin, Staff တစ်ပြေးညီ သုံးနိုင်ရန်
   dispatchedAtMillis?: number;
+  arrivedAtMillis?: number;
+  serviceFinishedAtMillis?: number;
+  completedAtMillis?: number;
   startTimeMillis?: number; // 0 when 'on_the_way', Date.now() when 'in_service'
   durationMinutes?: number;
   returningStartedAt?: number;
+  returningStartedAtMillis?: number;
   lastReturnReminderAt?: number;
+  lastReturnReminderSentAt?: number;
   returnReminderCount?: number;
+  timeUpNotiSent?: boolean;
   overtimeNotified?: boolean;
   clientLocationGps?: {
     lat: number;
@@ -373,7 +425,7 @@ export function isHotelOrHomeServiceBooking(
   return outcallKeywords.some((kw) => combinedText.includes(kw));
 }
 
-// 🚀 Firebase Storage Upload Function (အသစ်ထည့်သွင်းထားသည်)
+// 🚀 Firebase Storage Upload Function
 export const uploadBase64ToStorage = async (base64String: string, folderName: string, fileName: string): Promise<string> => {
   try {
     const storageRef = ref(storage, `${folderName}/${fileName}`); 
@@ -385,5 +437,3 @@ export const uploadBase64ToStorage = async (base64String: string, folderName: st
     throw new Error("Image upload failed");
   }
 };
-
-
