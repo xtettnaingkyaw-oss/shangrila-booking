@@ -920,6 +920,7 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
                 );
               })}
           </div>
+          </div>
     );
 }
 
