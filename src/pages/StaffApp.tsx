@@ -647,51 +647,6 @@ function StaffLogin({ therapists, onLoginSuccess }: { therapists: TherapistProfi
     </div>
   );
 }
-၃။ src/shared.ts တွင် TypeScript Type Error မတက်စေရန် Optional Fields ထပ်ဖြည့်ပေးရန် (Optional Check)
-npm run build သို့မဟုတ် Vercel Deployment တွင် TypeScript စစ်ဆေးချက် ချောမွေ့စေရန် src/shared.ts ထဲရှိ MenuItem၊ MenuCategory နှင့် TherapistProfile interfaces များတွင် အောက်ပါ Optional Fields လေးများ ပါဝင်ကြောင်း စစ်ဆေး/ထည့်သွင်းပေးပါ -
-
-TypeScript
-// src/shared.ts ထဲရှိ MenuItem တွင် ထပ်တိုးရန်:
-export interface MenuItem {
-  id: string;
-  name: string;
-  duration: string;
-  price: number;
-  vvipPrice?: number;
-  vvipIncluded?: boolean;
-  description?: string;
-  imageUrl?: string;
-  images?: string[];
-  isHidden?: boolean;
-  isComingSoon?: boolean;
-  comingSoonText?: string;
-}
-
-// src/shared.ts ထဲရှိ MenuCategory တွင် ထပ်တိုးရန်:
-export interface MenuCategory {
-  id: string;
-  title: string;
-  order?: number;
-  isHidden?: boolean;
-  items: MenuItem[];
-}
-
-// src/shared.ts ထဲရှိ TherapistProfile တွင် ထပ်တိုးရန်:
-export interface TherapistProfile {
-  id: string;
-  name: string;
-  images: string[];
-  imageUrl?: string;
-  order: number;
-  password?: string;
-  onboardingData?: any;
-  visibilityStatus?: 'active' | 'coming_soon' | 'hidden';
-  isHidden?: boolean;
-  isComingSoon?: boolean;
-  comingSoonText?: string;
-  staffAppAccess?: boolean;
-  forceLogoutAt?: number;
-}
 
 function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: AppData; loggedInStaff: TherapistProfile; onLogout: () => void }) {
   const liveStaff =
