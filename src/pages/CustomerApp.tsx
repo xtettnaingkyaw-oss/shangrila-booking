@@ -868,42 +868,58 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
             <div className="w-16 h-1 bg-[#D4AF37] mx-auto rounded-full mb-4"></div>
             <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">Experience ultimate relaxation with our certified and highly skilled therapists.</p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-            {appData.therapists.map((t) => (
-              <div key={t.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 group">
-                <div className="aspect-[3/4] relative overflow-hidden bg-gray-50">
-                  {(t.images?.[0] || t.imageUrl) ? (
-                    <>
-                      <img src={t.images?.[0] || t.imageUrl} alt={t.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-transparent to-transparent opacity-80"></div>
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
-                  )}
-                  <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{t.order + 1}</div>
-                  
-                  <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
-                     <h3 className="font-bold text-white text-lg drop-shadow-md">{t.name}</h3>
-                     {/* 🌟 On-Demand HD Gallery Button 🌟 */}
-                     {t.images && t.images.length > 0 && (
-                         <button 
-                             onClick={(e) => { e.stopPropagation(); openGallery(t); }}
-                             disabled={loadingGalleryId === t.id}
-                             className="mx-auto mt-3 bg-black/60 backdrop-blur-md hover:bg-black/90 text-[#D4AF37] px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wider flex items-center justify-center border border-[#D4AF37]/40 hover:border-[#D4AF37] transition-all duration-300 shadow-lg z-10 relative cursor-pointer disabled:opacity-50 hover:-translate-y-0.5"
-                         >
-                             {loadingGalleryId === t.id ? (
-                                 <span className="animate-pulse flex items-center"><ImageIcon className="w-3 h-3 mr-1 animate-spin"/> Loading...</span>
-                             ) : (
-                                 <><ImageIcon className="w-3.5 h-3.5 mr-1.5"/> နောက်ထပ်ပုံများကြည့်ရန်</>
-                             )}
-                         </button>
-                     )}
+         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            {appData.therapists
+              .filter((t: any) => t.visibilityStatus !== 'hidden' && !t.isHidden)
+              .map((t: any, idx: number) => {
+                const isComingSoon = t.visibilityStatus === 'coming_soon' || Boolean(t.isComingSoon);
+                const comingSoonLabel = t.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ';
+
+                return (
+                  <div key={t.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 group">
+                    <div className="aspect-[3/4] relative overflow-hidden bg-gray-50">
+                      {(t.images?.[0] || t.imageUrl) ? (
+                        <>
+                          <img src={t.images?.[0] || t.imageUrl} alt={t.name} loading="lazy" className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 ${isComingSoon ? 'grayscale-[30%]' : ''}`} />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#123524]/90 via-transparent to-transparent opacity-80"></div>
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-300"><ImageIcon className="w-10 h-10 opacity-20"/></div>
+                      )}
+                      <div className="absolute top-2 left-2 w-7 h-7 rounded-full bg-[#D4AF37] text-white flex items-center justify-center font-bold text-xs shadow-md border border-[#D4AF37]/50">{idx + 1}</div>
+
+                      {isComingSoon && (
+                        <div className="absolute top-2 right-2 bg-amber-500/95 text-white px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider shadow-md border border-amber-300 animate-pulse">
+                          ⏳ Coming Soon
+                        </div>
+                      )}
+                      
+                      <div className="absolute bottom-0 left-0 right-0 p-4 text-center">
+                        <h3 className="font-bold text-white text-lg drop-shadow-md">{t.name}</h3>
+                        {isComingSoon && (
+                          <div className="mt-1.5 bg-amber-500/90 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-lg shadow">
+                            {comingSoonLabel}
+                          </div>
+                        )}
+                        {t.images && t.images.length > 0 && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); openGallery(t); }}
+                            disabled={loadingGalleryId === t.id}
+                            className="mx-auto mt-2.5 bg-black/60 backdrop-blur-md hover:bg-black/90 text-[#D4AF37] px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wider flex items-center justify-center border border-[#D4AF37]/40 hover:border-[#D4AF37] transition-all duration-300 shadow-lg z-10 relative cursor-pointer disabled:opacity-50 hover:-translate-y-0.5"
+                          >
+                            {loadingGalleryId === t.id ? (
+                              <span className="animate-pulse flex items-center"><ImageIcon className="w-3 h-3 mr-1 animate-spin"/> Loading...</span>
+                            ) : (
+                              <><ImageIcon className="w-3.5 h-3.5 mr-1.5"/> နောက်ထပ်ပုံများကြည့်ရန်</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
           </div>
-        </div>
     );
 }
 
@@ -2539,90 +2555,117 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
         <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(သင်ဘိုကင်ရယူလိုသော Therapist ကို ရွေးချယ်ပါ)</p>
       </div>
       
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-        {appData.therapists.map((therapist, idx) => {
-          const isSelected = formData.therapist?.id === therapist.id || formData.therapist2?.id === therapist.id;
+     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        {appData.therapists
+          .filter((t: any) => t.visibilityStatus !== 'hidden' && !t.isHidden)
+          .map((therapist: any, idx: number) => {
+            const isComingSoon = therapist.visibilityStatus === 'coming_soon' || Boolean(therapist.isComingSoon);
+            const comingSoonLabel = therapist.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ';
+            const isSelected = !isComingSoon && (formData.therapist?.id === therapist.id || formData.therapist2?.id === therapist.id);
+
+            const handleSelectThisTherapist = () => {
+              if (isComingSoon) {
+                setAlertMessage(`${therapist.name} — ${comingSoonLabel}`);
+                return;
+              }
+              if (is4Hands) {
+                if (formData.therapist?.id === therapist.id) setFormData({...formData, therapist: null});
+                else if (formData.therapist2?.id === therapist.id) setFormData({...formData, therapist2: null});
+                else if (!formData.therapist) setFormData({...formData, therapist: therapist});
+                else if (!formData.therapist2) setFormData({...formData, therapist2: therapist});
+              } else {
+                setFormData({...formData, therapist: formData.therapist?.id === therapist.id ? null : therapist, therapist2: null});
+              }
+            };
           
-          return (
-            <div 
-              key={idx} 
-              onClick={() => {
-                if (is4Hands) {
-                  if (formData.therapist?.id === therapist.id) setFormData({...formData, therapist: null});
-                  else if (formData.therapist2?.id === therapist.id) setFormData({...formData, therapist2: null});
-                  else if (!formData.therapist) setFormData({...formData, therapist: therapist});
-                  else if (!formData.therapist2) setFormData({...formData, therapist2: therapist});
-                } else {
-                  setFormData({...formData, therapist: formData.therapist?.id === therapist.id ? null : therapist, therapist2: null});
-                }
-              }}
-              className={`w-full bg-white border ${isSelected ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.01]' : 'border-gray-100 shadow-sm hover:border-[#D4AF37]/60 hover:shadow-md'} rounded-[1rem] transition-all duration-300 flex flex-col relative overflow-hidden group cursor-pointer`}
-            >
-              {isSelected && (
-                  <div className="absolute top-0 right-0 bg-[#123524] text-[#D4AF37] p-1.5 rounded-bl-xl z-20 shadow-sm">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                  </div>
-              )}
-              
-              <div className="w-full aspect-[3/4] bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2.5">
-                {(therapist.images?.[0] || therapist.imageUrl) ? (
-                  <img src={therapist.images?.[0] || therapist.imageUrl} alt={therapist.name} className="w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105" />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 rounded-[0.8rem]">
-                      <User className="w-8 h-8 mb-1 opacity-40 text-[#D4AF37]" />
-                      <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Therapist</span>
-                  </div>
+            return (
+              <div 
+                key={therapist.id || idx} 
+                onClick={handleSelectThisTherapist}
+                className={`w-full bg-white border ${
+                  isComingSoon
+                    ? 'border-amber-300 bg-amber-50/20 opacity-95 cursor-not-allowed'
+                    : isSelected
+                    ? 'border-[#123524] shadow-md ring-1 ring-[#123524]/20 scale-[1.01] cursor-pointer'
+                    : 'border-gray-100 shadow-sm hover:border-[#D4AF37]/60 hover:shadow-md cursor-pointer'
+                } rounded-[1rem] transition-all duration-300 flex flex-col relative overflow-hidden group`}
+              >
+                {isSelected && (
+                    <div className="absolute top-0 right-0 bg-[#123524] text-[#D4AF37] p-1.5 rounded-bl-xl z-20 shadow-sm">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                    </div>
+                )}
+
+                {isComingSoon && (
+                    <div className="absolute top-2 right-2 bg-amber-500 text-white px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider z-20 shadow animate-pulse">
+                        ⏳ Coming Soon
+                    </div>
                 )}
                 
-                {therapist.images && therapist.images.length > 0 && (
-                  <button 
-                    type="button"
-                    disabled={loadingGalleryId === therapist.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openGallery(therapist);
-                    }}
-                    className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md text-[#D4AF37] px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wider flex items-center shadow-lg border border-[#D4AF37]/40 hover:bg-black/90 hover:-translate-y-0.5 hover:border-[#D4AF37] transition-all duration-300 z-20 whitespace-nowrap disabled:opacity-50"
-                  >
-                    {loadingGalleryId === therapist.id ? (
-                        <span className="animate-pulse flex items-center"><ImageIcon className="w-3 h-3 mr-1 animate-spin"/> Loading...</span>
-                    ) : (
-                        <><ImageIcon className="w-3.5 h-3.5 mr-1.5"/> နောက်ထပ်ပုံများကြည့်ရန်</>
-                    )}
-                  </button>
-                )}
-              </div>
+                <div className="w-full aspect-[3/4] bg-white relative border-b border-gray-100/80 flex items-center justify-center p-1.5 sm:p-2.5">
+                  {(therapist.images?.[0] || therapist.imageUrl) ? (
+                    <img src={therapist.images?.[0] || therapist.imageUrl} alt={therapist.name} className={`w-full h-full object-cover rounded-[0.8rem] shadow-sm transition-transform duration-700 group-hover:scale-105 ${isComingSoon ? 'grayscale-[25%]' : ''}`} />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 bg-gray-50 rounded-[0.8rem]">
+                        <User className="w-8 h-8 mb-1 opacity-40 text-[#D4AF37]" />
+                        <span className="text-[9px] font-bold uppercase tracking-widest opacity-40">Therapist</span>
+                    </div>
+                  )}
+                  
+                  {therapist.images && therapist.images.length > 0 && (
+                    <button 
+                      type="button"
+                      disabled={loadingGalleryId === therapist.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openGallery(therapist);
+                      }}
+                      className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md text-[#D4AF37] px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wider flex items-center shadow-lg border border-[#D4AF37]/40 hover:bg-black/90 hover:-translate-y-0.5 hover:border-[#D4AF37] transition-all duration-300 z-20 whitespace-nowrap disabled:opacity-50"
+                    >
+                      {loadingGalleryId === therapist.id ? (
+                          <span className="animate-pulse flex items-center"><ImageIcon className="w-3 h-3 mr-1 animate-spin"/> Loading...</span>
+                      ) : (
+                          <><ImageIcon className="w-3.5 h-3.5 mr-1.5"/> နောက်ထပ်ပုံများကြည့်ရန်</>
+                      )}
+                    </button>
+                  )}
+                </div>
 
-              {/* 🌟 Book Now နှိပ်လိုက်သည်နှင့် Dashboard မှာကဲ့သို့ အရောင်ပြောင်းပြီး တန်းကျော်မည့် အပိုင်း 🌟 */}
-              <div className="p-2.5 sm:p-3 text-center flex-1 flex flex-col justify-between bg-gray-50/30">
-                <h4 className={`font-bold text-[11px] sm:text-xs mb-2.5 truncate ${isSelected ? 'text-[#123524]' : 'text-gray-800'}`}>{therapist.name}</h4>
-                <button 
-                   type="button"
-                   onClick={(e) => {
-                      e.stopPropagation();
-                      if (is4Hands) {
-                          if (!formData.therapist) { 
-                              setFormData({...formData, therapist: therapist}); 
-                          } else if (!formData.therapist2 && formData.therapist.id !== therapist.id) {
-                              setFormData({...formData, therapist2: therapist});
-                              setTimeout(() => handleNextStep(currentStep + 1), 50);
+                <div className="p-2.5 sm:p-3 text-center flex-1 flex flex-col justify-between bg-gray-50/30">
+                  <h4 className={`font-bold text-[11px] sm:text-xs mb-1.5 truncate ${isSelected ? 'text-[#123524]' : 'text-gray-800'}`}>{therapist.name}</h4>
+                  {isComingSoon ? (
+                    <div className="w-full py-2 px-1.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-[9.5px] font-black leading-tight">
+                      {comingSoonLabel}
+                    </div>
+                  ) : (
+                    <button 
+                       type="button"
+                       onClick={(e) => {
+                          e.stopPropagation();
+                          if (is4Hands) {
+                              if (!formData.therapist) { 
+                                  setFormData({...formData, therapist: therapist}); 
+                              } else if (!formData.therapist2 && formData.therapist.id !== therapist.id) {
+                                  setFormData({...formData, therapist2: therapist});
+                                  setTimeout(() => handleNextStep(currentStep + 1), 50);
+                              } else {
+                                  if (formData.therapist?.id === therapist.id) setFormData({...formData, therapist: null});
+                                  if (formData.therapist2?.id === therapist.id) setFormData({...formData, therapist2: null});
+                              }
                           } else {
-                              if (formData.therapist?.id === therapist.id) setFormData({...formData, therapist: null});
-                              if (formData.therapist2?.id === therapist.id) setFormData({...formData, therapist2: null});
+                              setFormData({...formData, therapist: therapist, therapist2: null});
+                              setTimeout(() => handleNextStep(currentStep + 1), 50);
                           }
-                      } else {
-                          setFormData({...formData, therapist: therapist, therapist2: null});
-                          setTimeout(() => handleNextStep(currentStep + 1), 50); // ချက်ချင်း Service Page သို့သွားမည်
-                      }
-                   }}
-                   className="w-full py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center border shadow-sm bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]"
-                >
-                   Book Now
-                </button>
+                       }}
+                       className="w-full py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center border shadow-sm bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]"
+                    >
+                       Book Now
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
       </div>
 
      <div className="mt-8 flex justify-between gap-4">
@@ -3240,6 +3283,16 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        
        {/* 🌟 Main Content Area */}
        <div className="max-w-2xl mx-auto px-4 sm:px-0">
+            {/* 📢 Special Announcement Banner (If enabled in Admin Operations) */}
+            {(mergedAppData as any)?.spaOperations?.isAnnouncementActive && (mergedAppData as any)?.spaOperations?.announcementBanner && (
+                <div className="mb-5 p-3.5 rounded-2xl bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-[#D4AF37] border border-[#D4AF37]/40 shadow-md flex items-center gap-3 animate-fade-in">
+                    <Sparkles className="w-5 h-5 flex-shrink-0 animate-pulse" />
+                    <div className="text-xs font-bold leading-relaxed text-white">
+                        {(mergedAppData as any).spaOperations.announcementBanner}
+                    </div>
+                </div>
+            )}
+
             {showCampaign ? (
                 <div className="fixed inset-0 z-[100] bg-black">
                     <ThadingyutCampaign appData={mergedAppData} />
@@ -3255,8 +3308,39 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
                 </div>
             ) : (
                 <>
-                    {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
-                    {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
+                    {/* 🌐 Check if Online Booking is Paused by Admin */}
+                    {(activeTab === 'book' || activeTab === 'therapists') && (mergedAppData as any)?.spaOperations?.isOnlineBookingOpen === false ? (
+                        <div className="bg-white p-8 rounded-3xl shadow-md border-2 border-[#D4AF37]/40 text-center space-y-4 my-6 animate-fade-in">
+                            <div className="w-16 h-16 rounded-full bg-amber-50 border border-[#D4AF37] mx-auto flex items-center justify-center text-[#123524]">
+                                <Clock className="w-8 h-8 text-[#D4AF37]" />
+                            </div>
+                            <h3 className="text-xl font-black text-[#123524]">
+                                {(mergedAppData as any)?.spaOperations?.maintenanceTitle || 'Online Booking ခေတ္တပိတ်ထားပါသည်'}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-gray-600 font-semibold leading-relaxed max-w-md mx-auto">
+                                {(mergedAppData as any)?.spaOperations?.maintenanceMessage || 'လက်ရှိတွင် ဆိုင်ဝန်ဆောင်မှု အချိန်ဇယားများ ပြည့်နေပါသဖြင့် Online Booking ခေတ္တပိတ်ထားပါသည်ခင်ဗျာ။'}
+                            </p>
+                            <div className="pt-2 flex flex-wrap justify-center gap-3">
+                                {mergedAppData?.branding?.phone1 && (
+                                    <a href={`tel:${mergedAppData.branding.phone1}`} className="px-5 py-2.5 rounded-xl bg-[#123524] text-[#D4AF37] text-xs font-black flex items-center gap-1.5 shadow">
+                                        <Phone className="w-4 h-4" /> ဖုန်းဖြင့် ဆက်သွယ်ရန် ({mergedAppData.branding.phone1})
+                                    </a>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('dashboard')}
+                                    className="px-5 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-black"
+                                >
+                                    ဝန်ထမ်းအချိန်ဇယား ကြည့်ရန်
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {activeTab === 'book' && <CustomerBookingWizard appData={mergedAppData} userPhone={userPhone} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); }} />}
+                            {activeTab === 'therapists' && <CustomerBookingWizard key={prefillTherapist ? prefillTherapist.id : 'default'} appData={mergedAppData} userPhone={userPhone} forceTherapistFirst={true} initialTherapist={prefillTherapist} onBooked={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); setActiveTab('history'); setPrefillTherapist(null); }} />}
+                        </>
+                    )}
                     {activeTab === 'dashboard' && <CustomerDashboard appData={mergedAppData} onBookTherapist={handleDashboardBook} />}
                     {activeTab === 'history' && <CustomerHistory userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} />}
                     {activeTab === 'profile' && <CustomerProfile appData={mergedAppData} userPhone={userPhone} onLoginSuccess={(phone) => { setUserPhone(phone); localStorage.setItem('shangrila_user_phone', phone); }} onLogout={() => { setUserPhone(''); localStorage.removeItem('shangrila_user_phone'); setActiveTab('book'); }} />}
