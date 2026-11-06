@@ -4,7 +4,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock, Banknote, Timer, ClipboardList, PartyPopper, ShoppingBag, Users, Ban} from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock, Banknote, Timer, ClipboardList, PartyPopper, ShoppingBag, Users, BanEye, EyeOff, Power, Globe} from 'lucide-react';
 import { DutyRosterSystem } from './DutyRosterSystem';
 import { AdminHRManagement } from './OnboardingSystem';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
@@ -4391,159 +4391,179 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
     tiers: appData.vipSettings?.tiers || DEFAULT_VIP_SETTINGS.tiers
   };
 
-  const [localTherapists, setLocalTherapists] = useState<TherapistProfile[]>(() => { return (appData.therapists || []).map(t => ({...t, password: decryptText(t.password) || t.password})); });
-  useEffect(() => {
-        const fetchTherapists = async () => {
-            const snap = await getDocs(collection(db, 'therapists'));
-            const arr: any[] = [];
-            snap.forEach(d => {
-                const data = d.data();
-                // 🌟 FIX: အကွက်လွတ် (Ghost) များကို Database ထဲမှ အလိုအလျောက် ဖျက်ထုတ်ပစ်မည် 🌟
-                if (!data.name || data.name.trim() === '') {
-                    deleteDoc(doc(db, 'therapists', d.id)).catch(() => {});
-                } else {
-                    arr.push({ id: d.id, ...data });
-                }
-            });
-            arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-            setLocalTherapists(arr);
-        };
-        fetchTherapists();
-    }, []);
-  
-   const DEFAULT_MENU_CATEGORIES = [
-      {
-          id: 'massage',
-          title: 'Massage',
-          order: 0,
-          items: [
-              { id: 'm1', name: 'Myanmar Traditional Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm2', name: 'Myanmar Traditional Massage', duration: '90 Mins', price: 37000, vvipPrice: 52000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm3', name: 'Oil Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm4', name: 'Oil Massage', duration: '90 Mins', price: 37000, vvipPrice: 52000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm5', name: 'Aromatherapy Massage', duration: '60 Mins', price: 30000, vvipPrice: 40000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm6', name: 'Aromatherapy Massage', duration: '90 Mins', price: 45000, vvipPrice: 60000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm7', name: 'Body Butter Lotion Massage', duration: '60 Mins', price: 35000, vvipPrice: 45000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm8', name: 'Body Butter Lotion Massage', duration: '90 Mins', price: 50000, vvipPrice: 67000, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'm9', name: 'Body to Body Massage', duration: '60 Mins', price: 55000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-              { id: 'm10', name: 'Body to Body Massage', duration: '90 Mins', price: 82000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-              { id: 'm11', name: 'Four Hands Massage', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-              { id: 'm12', name: 'Four Hands Massage', duration: '90 Mins', price: 104000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-              { id: 'm13', name: 'Lotion Candle Massage', duration: '60 Mins', price: 55000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' },
-              { id: 'm14', name: 'Lotion Candle Massage', duration: '90 Mins', price: 82000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '' }
-          ]
-      },
-      {
-          id: 'body_scrub',
-          title: 'Body Scrub',
-          order: 1,
-          items: [
-              { id: 's1', name: 'Body Scrub & Bath Only', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'Scrub Options: Coffee | Aloe Vera | Tamarind | Milk | Vitamin C | Daily Shower Spa Salt', imageUrl: '' },
-              { id: 's2', name: 'Body Scrub & Lotion Massage', duration: '120 Mins', price: 80000, vvipPrice: 0, vvipIncluded: true, description: 'Scrub Options: Coffee | Aloe Vera | Tamarind | Milk | Vitamin C | Daily Shower Spa Salt', imageUrl: '' }
-          ]
-      },
-      {
-          id: 'waxing',
-          title: 'Waxing',
-          order: 2,
-          items: [
-              { id: 'w1', name: 'Arm Wax', duration: 'Session', price: 20000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'w2', name: 'Underarm Wax', duration: 'Session', price: 25000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'w3', name: 'Half Leg Wax', duration: 'Session', price: 30000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'w4', name: 'Full Leg Wax', duration: 'Session', price: 45000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'w5', name: 'Bikini Wax', duration: 'Session', price: 35000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'w6', name: 'Brazilian Wax', duration: 'Session', price: 50000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' }
-          ]
-      },
-      {
-          id: 'hotel_service',
-          title: 'Hotel & Home Services',
-          order: 3,
-          items: [
-              { id: 'h1', name: 'Part Time Outcall Service', duration: '100 Mins', price: 70000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '' },
-              { id: 'h2', name: 'Half Day Service', duration: '6 Hrs', price: 100000, vvipPrice: 0, vvipIncluded: false, description: '6:00 AM to 12:00 PM OR 12:00 PM to 6:00 PM', imageUrl: '' },
-              { id: 'h3', name: 'The Whole Night Service', duration: '12 Hrs', price: 120000, vvipPrice: 0, vvipIncluded: false, description: '8:00 PM to 8:00 AM', imageUrl: '' },
-              { id: 'h4', name: 'The Whole Day Service', duration: '12 Hrs', price: 180000, vvipPrice: 0, vvipIncluded: false, description: '7:00 AM to 7:00 PM', imageUrl: '' }
-          ]
-      }
-  ];
+  // 🌟 International Spa Settings Sub-Navigation Tabs 🌟
+  const [activeSubTab, setActiveSubTab] = useState<'services' | 'therapists' | 'operations' | 'branding' | 'payments' | 'vip_security'>('services');
 
-  const [localCategories, setLocalCategories] = useState<MenuCategory[]>(() => {
-      if (appData.categories && appData.categories.length > 0) {
-          return appData.categories;
-      }
-      return DEFAULT_MENU_CATEGORIES;
+  // 🌟 Search & Filter States inside Settings 🌟
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [serviceFilterMode, setServiceFilterMode] = useState<'all' | 'active' | 'coming_soon' | 'hidden'>('all');
+  const [selectedCategoryTabId, setSelectedCategoryTabId] = useState<string>('all');
+
+  const [therapistSearch, setTherapistSearch] = useState('');
+  const [therapistFilterMode, setTherapistFilterMode] = useState<'all' | 'active' | 'coming_soon' | 'hidden' | 'app_locked'>('all');
+
+  // 🌟 Global Spa Operations & Online Booking Control State 🌟
+  const [spaOperations, setSpaOperations] = useState<any>(() => ({
+    isOnlineBookingOpen: (appData as any)?.spaOperations?.isOnlineBookingOpen ?? true,
+    maintenanceTitle: (appData as any)?.spaOperations?.maintenanceTitle || 'Online Booking ခေတ္တပိတ်ထားပါသည်',
+    maintenanceMessage: (appData as any)?.spaOperations?.maintenanceMessage || 'လက်ရှိတွင် ဆိုင်ဝန်ဆောင်မှု အချိန်ဇယားများ ပြည့်နေပါသဖြင့် Online Booking ခေတ္တပိတ်ထားပါသည်ခင်ဗျာ။ အရေးပေါ် ရက်ချိန်းရယူလိုပါက ဖုန်း သို့မဟုတ် Telegram သို့ တိုက်ရိုက်ဆက်သွယ်နိုင်ပါသည်။',
+    openingTime: (appData as any)?.spaOperations?.openingTime || '10:00 AM',
+    closingTime: (appData as any)?.spaOperations?.closingTime || '11:00 PM',
+    leadTimeMins: Number((appData as any)?.spaOperations?.leadTimeMins) || 30,
+    announcementBanner: (appData as any)?.spaOperations?.announcementBanner || '',
+    isAnnouncementActive: Boolean((appData as any)?.spaOperations?.isAnnouncementActive)
+  }));
+
+  const [localTherapists, setLocalTherapists] = useState<any[]>(() => {
+    return (appData.therapists || []).map((t: any) => ({
+      ...t,
+      password: decryptText(t.password) || t.password,
+      visibilityStatus: t.visibilityStatus || (t.isHidden ? 'hidden' : t.isComingSoon ? 'coming_soon' : 'active'),
+      comingSoonText: t.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ',
+      staffAppAccess: t.staffAppAccess !== false
+    }));
   });
 
   useEffect(() => {
-      const fetchAndSyncCategories = async () => {
-          if (appData.categories && appData.categories.length === 4) return;
-          
-          const snap = await getDocs(collection(db, 'categories'));
-          const arr: any[] = [];
-          snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
-          
-          if (arr.length !== 4) {
-              const batch = writeBatch(db);
-              arr.forEach(cat => {
-                  if (cat.docId) batch.delete(doc(db, 'categories', cat.docId));
-              });
-              DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
-                  const cDocRef = doc(db, 'categories', cat.id);
-                  batch.set(cDocRef, { ...cat, order: idx });
-              });
-              
-              // 🌟 FIX DELAY: Save directly into appData to prevent the 3 second delay for Customer App
-              batch.update(doc(db, 'settings', 'appData'), { categories: DEFAULT_MENU_CATEGORIES });
-              
-              await batch.commit();
-              setLocalCategories(DEFAULT_MENU_CATEGORIES);
-          } else {
-              arr.sort((a, b) => (a.order || 0) - (b.order || 0));
-              setLocalCategories(arr);
-          }
-      };
-      fetchAndSyncCategories();
+    const fetchTherapists = async () => {
+      const snap = await getDocs(collection(db, 'therapists'));
+      const arr: any[] = [];
+      snap.forEach(d => {
+        const data = d.data();
+        if (!data.name || data.name.trim() === '') {
+          deleteDoc(doc(db, 'therapists', d.id)).catch(() => {});
+        } else {
+          arr.push({
+            id: d.id,
+            ...data,
+            password: decryptText(data.password) || data.password,
+            visibilityStatus: data.visibilityStatus || (data.isHidden ? 'hidden' : data.isComingSoon ? 'coming_soon' : 'active'),
+            comingSoonText: data.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ',
+            staffAppAccess: data.staffAppAccess !== false
+          });
+        }
+      });
+      arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+      setLocalTherapists(arr);
+    };
+    fetchTherapists();
+  }, []);
+
+  const DEFAULT_MENU_CATEGORIES = [
+    {
+      id: 'massage',
+      title: 'Massage',
+      order: 0,
+      isHidden: false,
+      items: [
+        { id: 'm1', name: 'Myanmar Traditional Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm2', name: 'Myanmar Traditional Massage', duration: '90 Mins', price: 37000, vvipPrice: 52000, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm3', name: 'Oil Massage', duration: '60 Mins', price: 25000, vvipPrice: 35000, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm4', name: 'Oil Massage', duration: '90 Mins', price: 37000, vvipPrice: 52000, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm5', name: 'Aromatherapy Massage', duration: '60 Mins', price: 30000, vvipPrice: 40000, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm6', name: 'Aromatherapy Massage', duration: '90 Mins', price: 45000, vvipPrice: 60000, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm7', name: 'Body Butter Lotion Massage', duration: '60 Mins', price: 35000, vvipPrice: 45000, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm8', name: 'Body Butter Lotion Massage', duration: '90 Mins', price: 50000, vvipPrice: 67000, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm9', name: 'Body to Body Massage', duration: '60 Mins', price: 55000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm10', name: 'Body to Body Massage', duration: '90 Mins', price: 82000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm11', name: 'Four Hands Massage', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm12', name: 'Four Hands Massage', duration: '90 Mins', price: 104000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm13', name: 'Lotion Candle Massage', duration: '60 Mins', price: 55000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'm14', name: 'Lotion Candle Massage', duration: '90 Mins', price: 82000, vvipPrice: 0, vvipIncluded: true, description: 'VVIP Room Included', imageUrl: '', isHidden: false, isComingSoon: false }
+      ]
+    },
+    {
+      id: 'body_scrub',
+      title: 'Body Scrub',
+      order: 1,
+      isHidden: false,
+      items: [
+        { id: 's1', name: 'Body Scrub & Bath Only', duration: '60 Mins', price: 70000, vvipPrice: 0, vvipIncluded: true, description: 'Scrub Options: Coffee | Aloe Vera | Tamarind | Milk | Vitamin C | Daily Shower Spa Salt', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 's2', name: 'Body Scrub & Lotion Massage', duration: '120 Mins', price: 80000, vvipPrice: 0, vvipIncluded: true, description: 'Scrub Options: Coffee | Aloe Vera | Tamarind | Milk | Vitamin C | Daily Shower Spa Salt', imageUrl: '', isHidden: false, isComingSoon: false }
+      ]
+    },
+    {
+      id: 'waxing',
+      title: 'Waxing',
+      order: 2,
+      isHidden: false,
+      items: [
+        { id: 'w1', name: 'Arm Wax', duration: 'Session', price: 20000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'w2', name: 'Underarm Wax', duration: 'Session', price: 25000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'w3', name: 'Half Leg Wax', duration: 'Session', price: 30000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'w4', name: 'Full Leg Wax', duration: 'Session', price: 45000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'w5', name: 'Bikini Wax', duration: 'Session', price: 35000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'w6', name: 'Brazilian Wax', duration: 'Session', price: 50000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false }
+      ]
+    },
+    {
+      id: 'hotel_service',
+      title: 'Hotel & Home Services',
+      order: 3,
+      isHidden: false,
+      items: [
+        { id: 'h1', name: 'Part Time Outcall Service', duration: '100 Mins', price: 70000, vvipPrice: 0, vvipIncluded: false, description: '', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'h2', name: 'Half Day Service', duration: '6 Hrs', price: 100000, vvipPrice: 0, vvipIncluded: false, description: '6:00 AM to 12:00 PM OR 12:00 PM to 6:00 PM', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'h3', name: 'The Whole Night Service', duration: '12 Hrs', price: 120000, vvipPrice: 0, vvipIncluded: false, description: '8:00 PM to 8:00 AM', imageUrl: '', isHidden: false, isComingSoon: false },
+        { id: 'h4', name: 'The Whole Day Service', duration: '12 Hrs', price: 180000, vvipPrice: 0, vvipIncluded: false, description: '7:00 AM to 7:00 PM', imageUrl: '', isHidden: false, isComingSoon: false }
+      ]
+    }
+  ];
+
+  const [localCategories, setLocalCategories] = useState<any[]>(() => {
+    if (appData.categories && appData.categories.length > 0) {
+      return appData.categories;
+    }
+    return DEFAULT_MENU_CATEGORIES;
+  });
+
+  useEffect(() => {
+    const fetchAndSyncCategories = async () => {
+      const snap = await getDocs(collection(db, 'categories'));
+      const arr: any[] = [];
+      snap.forEach(d => arr.push({ docId: d.id, ...d.data() }));
+
+      if (arr.length > 0) {
+        arr.sort((a, b) => (a.order || 0) - (b.order || 0));
+        setLocalCategories(arr);
+      } else if (!appData.categories || appData.categories.length === 0) {
+        const batch = writeBatch(db);
+        DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
+          const cDocRef = doc(db, 'categories', cat.id);
+          batch.set(cDocRef, { ...cat, order: idx });
+        });
+        batch.update(doc(db, 'settings', 'appData'), { categories: DEFAULT_MENU_CATEGORIES });
+        await batch.commit();
+        setLocalCategories(DEFAULT_MENU_CATEGORIES);
+      }
+    };
+    fetchAndSyncCategories();
   }, [appData.categories]);
 
   const handleForceFixCategories = async () => {
-      if (!window.confirm("Menu အဟောင်းများကိုဖျက်၍ ပုံထဲကအတိုင်း အသစ်ပြန်လည်ထည့်သွင်းမည် သေချာပါသလား?")) return;
-      setSavingCategory('force_fix');
-      try {
-          const batch = writeBatch(db);
-          const snap = await getDocs(collection(db, 'categories'));
-          snap.forEach(d => batch.delete(doc(db, 'categories', d.id)));
-          
-          DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
-              batch.set(doc(db, 'categories', cat.id), { ...cat, order: idx });
-          });
-      
-          
-          await batch.commit();
-          setLocalCategories(DEFAULT_MENU_CATEGORIES);
-          alert("✅ Menu အားလုံးကို အောင်မြင်စွာ ပြန်လည်ပြင်ဆင်ပြီးပါပြီ။ Customer App ကို ပိတ်ပြီး ပြန်ဖွင့်ကြည့်ပါ။");
-      } catch (e) {
-          console.error(e);
-          alert("Error fixing categories");
-      }
-      setSavingCategory(null);
+    if (!window.confirm("Menu အဟောင်းများကိုဖျက်၍ ပုံထဲကအတိုင်း အသစ်ပြန်လည်ထည့်သွင်းမည် သေချာပါသလား?")) return;
+    setSavingCategory('force_fix');
+    try {
+      const batch = writeBatch(db);
+      const snap = await getDocs(collection(db, 'categories'));
+      snap.forEach(d => batch.delete(doc(db, 'categories', d.id)));
+
+      DEFAULT_MENU_CATEGORIES.forEach((cat, idx) => {
+        batch.set(doc(db, 'categories', cat.id), { ...cat, order: idx });
+      });
+
+      await batch.commit();
+      setLocalCategories(DEFAULT_MENU_CATEGORIES);
+      alert("✅ Menu အားလုံးကို အောင်မြင်စွာ ပြန်လည်ပြင်ဆင်ပြီးပါပြီ။ Customer App ကို ပိတ်ပြီး ပြန်ဖွင့်ကြည့်ပါ။");
+    } catch (e) {
+      console.error(e);
+      alert("Error fixing categories");
+    }
+    setSavingCategory(null);
   };
-   
+
   const [localBranding, setLocalBranding] = useState<AppBranding>(JSON.parse(JSON.stringify(appData.branding || { logoUrl: '', address: '', phone1: '', phone2: '', telegram: '', viber: '', copyright: '', name: '', shopLat: 0, shopLng: 0 })));
   const [localPaymentMethods, setLocalPaymentMethods] = useState<PaymentMethod[]>(JSON.parse(JSON.stringify(appData.paymentMethods || [])));
-  const [localPromotion, setLocalPromotion] = useState<any>(() => {
-  const defaultPromo = { 
-        isBoxActive: false, 
-        boxTitle: 'SPECIAL DISCOUNT', 
-        isPopupActive: false, 
-        campaignTitle: 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း', 
-        hotelDiscountPercent: 10, 
-        otherDiscountPercent: 20, 
-        startDate: '', 
-        endDate: '' 
-    };
-    return JSON.parse(JSON.stringify(appData.promotion || defaultPromo));
-});
   const [localSignUpBonus, setLocalSignUpBonus] = useState<any>(JSON.parse(JSON.stringify(appData.signUpBonus || { isActive: false, points: 5, startDate: '', endDate: '' })));
   const [localInstallSteps, setLocalInstallSteps] = useState<InstallStep[]>(DEFAULT_INSTALL_STEPS);
   const [localVipSettings, setLocalVipSettings] = useState<any>(defaultVipConfig);
@@ -4552,1158 +4572,2483 @@ function AdminSettings({ appData, onSettingsUpdated }: { appData: AppData, onSet
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
 
- const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSavingCategory('excel_upload');
-    
-    try {
-        const reader = new FileReader();
-        
-        reader.onload = async (event) => {
-            try {
-                // 🌟 အပြောင်းအလဲလုပ်ထားသော နေရာ - ဖိုင်တင်မှသာ XLSX ကို Download ဆွဲပါမည် 🌟
-                const XLSX = await import('xlsx');
-
-                const binaryData = event.target?.result;
-                const workbook = XLSX.read(binaryData, { type: 'binary' });
-
-                let topData: any[] = [];
-                let monthlyData: any[] = [];
-                let entryData: any[] = [];
-
-                const allSheets = workbook.SheetNames.map(name => ({
-                    name,
-                    data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
-                }));
-
-                for (const sheet of allSheets) {
-                    if (sheet.data.length === 0) continue;
-                    const keys = Object.keys(sheet.data[0]).join(' ').toLowerCase();
-
-                    if (keys.includes('staff id') && (keys.includes('actual') || keys.includes('1 to'))) {
-                        topData = sheet.data;
-                    } else if (keys.includes('final pay') || keys.includes('commession') || keys.includes('commission')) {
-                        monthlyData = sheet.data;
-                    } else if (keys.includes('date') && keys.includes('sales amount')) {
-                        entryData = sheet.data;
-                    }
-                }
-
-                const findSheet = (keywords: string[]) => {
-                    const sheetName = workbook.SheetNames.find(s => keywords.some(k => s.toLowerCase().includes(k.toLowerCase())));
-                    return sheetName ? XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) : [];
-                };
-
-                if (topData.length === 0) topData = findSheet(['Top Performers', 'Top Performer', 'Top']);
-                if (monthlyData.length === 0) monthlyData = findSheet(['Monthly Summary', 'Monthly', 'Summary']);
-                if (entryData.length === 0) entryData = findSheet(['Daily Entry', 'Daily', 'Entry']);
-
-                if (topData.length === 0 && monthlyData.length === 0 && allSheets.length >= 3) {
-                    entryData = allSheets[0].data;
-                    topData = allSheets[1].data;
-                    monthlyData = allSheets[2].data;
-                }
-
-                if (topData.length === 0 && monthlyData.length === 0) {
-            throw new Error("Excel ဖိုင်ထဲတွင် လိုအပ်သော Data များကို ရှာမတွေ့ပါ။ Sheet အမည် သို့မဟုတ် Column ခေါင်းစဉ်များ မှန်ကန်မှုရှိမရှိ စစ်ဆေးပါ။");
-        }
-
-        // 🌟 ၁။ Top Performers Data ကို ရှင်းလင်းခြင်း (ဤနေရာတွင် တစ်ကြိမ်သာ ရှိရပါမည်) 🌟
-        const normalizedTopData = topData.map((row: any) => {
-            const newRow = { ...row };
-            const actualKey = Object.keys(row).find(k => k.toLowerCase().includes('actual') && k.toLowerCase().includes('1 to'));
-            
-            if (actualKey && actualKey !== '1 to 31 Actual') {
-                newRow['1 to 31 Actual'] = row[actualKey];
-            }
-            return newRow;
-        });
-
-        // 🌟 ၂။ Excel ထဲက Date များနှင့် Staff ID များကို တိကျစေရန် ရှင်းလင်းခြင်း (Normalization) 🌟
-        const normalizedEntryData = entryData.map((row: any) => {
-            const newRow = { ...row };
-            
-            // 🌟 Staff ID များကို ပုံစံညီအောင် အလိုအလျောက် ပြောင်းလဲပေးခြင်း (SGL-001 မှ No-1 သို့) 🌟
-            if (newRow['Staff ID']) {
-                let sId = String(newRow['Staff ID']).trim();
-                // SGL- ပါလာပါက No- သို့ အလိုအလျောက်ပြောင်းပေးမည်
-                if (sId.toUpperCase().startsWith('SGL-')) {
-                    const numPart = parseInt(sId.split('-')[1], 10);
-                    if (!isNaN(numPart)) {
-                        sId = "No-" + numPart;
-                    }
-                }
-                newRow['Staff ID'] = sId;
-            }
-
-            // Date ပုံစံကို App ကဖတ်တတ်တဲ့ 'YYYY-MM-DD' အဖြစ် ပြောင်းလဲပေးခြင်း
-            const rawDate = row['Date'] || row['date'] || row['DATE'];
-            if (rawDate) {
-                let parsedStr = '';
-                if (typeof rawDate === 'number') {
-                    const utcDays = Math.floor(rawDate - 25569);
-                    const dateObj = new Date(utcDays * 86400 * 1000);
-                    parsedStr = dateObj.toISOString().split('T')[0];
-                } else if (typeof rawDate === 'string') {
-                    const dateObj = new Date(rawDate.trim());
-                    if (!isNaN(dateObj.getTime())) {
-                        const y = dateObj.getFullYear();
-                        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-                        const d = String(dateObj.getDate()).padStart(2, '0');
-                        parsedStr = y + "-" + m + "-" + d; // Quote အမှားမဖြစ်စေရန် String ပေါင်းနည်းသုံးထားပါသည်
-                    } else {
-                        parsedStr = rawDate.trim();
-                    }
-                }
-                newRow.ParsedDate = parsedStr; 
-                newRow.Date = parsedStr; // 🌟 ဤစာကြောင်း မဖြစ်မနေ ပါရပါမည် 🌟
-            }
-            return newRow;
-        });
-
-        // 🌟 ၃။ Excel ရဲ့ Top Performers Sheet ထဲက Comparison Data 4 ခုကို တိတိကျကျ သိမ်းဆည်းခြင်း 🌟
-        const topPerformersSheet = workbook.Sheets['Top Performers'];
-
-        const readCellNumber = (address: string, fallback = 0) => {
-            const cell = topPerformersSheet?.[address];
-            const value = cell?.v;
-            if (typeof value === 'number' && Number.isFinite(value)) return value;
-            const parsed = Number(String(value ?? '').replace(/,/g, '').trim());
-            return Number.isFinite(parsed) ? parsed : fallback;
-        };
-
-        const excelI24 = readCellNumber('I24');
-        const excelI25 = readCellNumber('I25');
-        const excelI26 = readCellNumber('I26');
-        const excelI27 = readCellNumber('I27');
-        const excelI28 = readCellNumber('I28');
-        const excelJ28 = readCellNumber('J28');
-        const excelI30 = readCellNumber('I30');
-        const excelI31 = readCellNumber('I31', excelI25);
-
-        const comparisonData = {
-            upToToday: { lastMonth: excelI24, thisMonth: excelI25, difference: readCellNumber('J24', excelI25 - excelI24) },
-            yesterday: { lastMonth: excelI27, thisMonth: excelI26, difference: readCellNumber('J26', excelI26 - excelI27) },
-            target: { actual: excelI28, target: readCellNumber('I29', excelI28 * (1 + excelJ28)), growthPercent: excelJ28 * 100 },
-            fullMonth: { lastMonth: excelI30, thisMonth: excelI31, difference: readCellNumber('J30', excelI31 - excelI30) }
-        };
-
-        const validUploadDates = normalizedEntryData
-            .map((row: any) => String(row.ParsedDate || row.Date || '').trim())
-            .filter((date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date))
-            .sort();
-        const reportDateStr = validUploadDates[validUploadDates.length - 1] || getLocalTodayStr();
-        const [reportYear, reportMonth] = reportDateStr.split('-').map(Number);
-        const reportDate = new Date(reportYear, reportMonth - 1, 1);
-        const previousMonthDate = new Date(reportYear, reportMonth - 2, 1);
-        const thisMonthName = reportDate.toLocaleString('en-US', { month: 'long' }).toUpperCase();
-        const previousMonthName = previousMonthDate.toLocaleString('en-US', { month: 'long' }).toUpperCase();
-
-        await setDoc(doc(db, 'settings', 'matrixData'), {
-            topPerformers: normalizedTopData,
-            monthlySummary: monthlyData,
-            dailyEntries: normalizedEntryData,
-            comparisonData,
-            comparisonMeta: { thisMonthName, previousMonthName, reportDate: reportDateStr },
-            lastUpdated: Date.now()
-        }, { merge: true });
-
-                alert("✅ Excel Data များကို အောင်မြင်စွာ Upload တင်ပြီးပါပြီ။");
-                setSavingCategory(null);
-            } catch (innerErr: any) {
-                console.error("Processing Error:", innerErr);
-                alert(`ဖိုင်အချက်အလက် စီမံရာတွင် အမှားရှိနေပါသည်: ${innerErr.message}`);
-                setSavingCategory(null);
-            }
-        };
-
-        reader.onerror = (err) => {
-            console.error("FileReader Error:", err);
-            alert("Excel ဖိုင်ကို ဖတ်ရှု၍ မရပါ။ ဖိုင်ပျက်နေခြင်း သို့မဟုတ် ပုံစံမမှန်ခြင်း ဖြစ်နိုင်ပါသည်။");
-            setSavingCategory(null);
-        };
-
-        reader.readAsBinaryString(file);
-        
-    } catch (error: any) {
-        console.error("Excel Upload Error:", error);
-        alert(`Excel ဖိုင် ဖတ်ရာတွင် အခက်အခဲရှိနေပါသည်။\nအကြောင်းရင်း: ${error.message}`);
-        setSavingCategory(null);
-    } finally {
-        e.target.value = '';
-    }
-};
-  
   const [newSecretKey, setNewSecretKey] = useState('');
   const [migratingKey, setMigratingKey] = useState(false);
 
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
-  const toggleSection = (sec: string) => setExpandedSection(prev => prev === sec ? null : sec);
+  useEffect(() => {
+    const fetchExtraSettings = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'appData'));
+        if (snap.exists()) {
+          const d = snap.data();
+          if (d.installSteps) setLocalInstallSteps(d.installSteps);
+          if (d.spaOperations) setSpaOperations((prev: any) => ({ ...prev, ...d.spaOperations }));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchExtraSettings();
+  }, []);
 
-  useEffect(() => { const fetchInstallSteps = async () => { try { const snap = await getDoc(doc(db, 'settings', 'appData')); if (snap.exists() && snap.data().installSteps) { setLocalInstallSteps(snap.data().installSteps); } } catch (e) { console.error(e); } }; fetchInstallSteps(); }, []);
+  // 🌟 KPI Overview Metrics 🌟
+  const kpiMetrics = useMemo(() => {
+    let totalServices = 0;
+    let activeServices = 0;
+    let comingSoonServices = 0;
+    let hiddenServices = 0;
+
+    localCategories.forEach((cat: any) => {
+      const catHidden = Boolean(cat.isHidden);
+      (cat.items || []).forEach((it: any) => {
+        totalServices++;
+        if (catHidden || it.isHidden) hiddenServices++;
+        else if (it.isComingSoon) comingSoonServices++;
+        else activeServices++;
+      });
+    });
+
+    const totalStaff = localTherapists.length;
+    const activeStaff = localTherapists.filter((t: any) => (t.visibilityStatus || 'active') === 'active').length;
+    const comingSoonStaff = localTherapists.filter((t: any) => t.visibilityStatus === 'coming_soon').length;
+    const hiddenStaff = localTherapists.filter((t: any) => t.visibilityStatus === 'hidden').length;
+    const appAllowedStaff = localTherapists.filter((t: any) => t.staffAppAccess !== false).length;
+
+    return {
+      totalServices,
+      activeServices,
+      comingSoonServices,
+      hiddenServices,
+      totalStaff,
+      activeStaff,
+      comingSoonStaff,
+      hiddenStaff,
+      appAllowedStaff
+    };
+  }, [localCategories, localTherapists]);
 
   const handleChangeSecretKey = async () => {
-      if(!newSecretKey) return alert("Key အသစ် ရိုက်ထည့်ပါ");
-      if(newSecretKey.length < 10) return alert("Key အသစ်သည် အနည်းဆုံး စာလုံး ၁၀ လုံးရှိရပါမည်");
-      if(!window.confirm("သတိပြုရန်: ဤလုပ်ဆောင်ချက်သည် Database တစ်ခုလုံးရှိ Data များကို Key အသစ်ဖြင့် ပြောင်းလဲမည်ဖြစ်ပါသည်။ သေချာပါသလား?")) return;
-      setMigratingKey(true);
-      try {
-          const reEncrypt = (oldCipher: string) => { if(!oldCipher || !oldCipher.startsWith('U2FsdGVk')) return oldCipher; try { const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY); const originalText = bytes.toString(CryptoJS.enc.Utf8); if(!originalText) return oldCipher; return CryptoJS.AES.encrypt(originalText, newSecretKey).toString(); } catch(e) { return oldCipher; } };
-          const uSnap = await getDocs(collection(db, 'users')); const uPromises: any[] = []; uSnap.forEach(d => { const raw = d.data(); uPromises.push(updateDoc(doc(db, 'users', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), password: reEncrypt(raw.password), points: reEncrypt(raw.points), dob: reEncrypt(raw.dob) })); }); await Promise.all(uPromises);
-          const bSnap = await getDocs(collection(db, 'bookings')); const bPromises: any[] = []; bSnap.forEach(d => { const raw = d.data(); bPromises.push(updateDoc(doc(db, 'bookings', d.id), { name: reEncrypt(raw.name), phone: reEncrypt(raw.phone), txId: reEncrypt(raw.txId), specialRequest: reEncrypt(raw.specialRequest) })); }); await Promise.all(bPromises);
-          const aSnap = await getDocs(collection(db, 'admins')); const aPromises: any[] = []; aSnap.forEach(d => { const raw = d.data(); aPromises.push(updateDoc(doc(db, 'admins', d.id), { username: reEncrypt(raw.username), password: reEncrypt(raw.password) })); }); await Promise.all(aPromises);
-          const tPromises: any[] = []; localTherapists.forEach(t => { tPromises.push(updateDoc(doc(db, 'therapists', t.id), { password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString() })); }); await Promise.all(tPromises);
-          alert("Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် Key အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
-      } catch(e) { console.error(e); alert("Error updating keys"); }
-      setMigratingKey(false);
+    if (!newSecretKey) return alert("Key အသစ် ရိုက်ထည့်ပါ");
+    if (newSecretKey.length < 10) return alert("Key အသစ်သည် အနည်းဆုံး စာလုံး ၁၀ လုံးရှိရပါမည်");
+    if (!window.confirm("သတိပြုရန်: ဤလုပ်ဆောင်ချက်သည် Database တစ်ခုလုံးရှိ Data များကို Key အသစ်ဖြင့် ပြောင်းလဲမည်ဖြစ်ပါသည်။ သေချာပါသလား?")) return;
+    setMigratingKey(true);
+    try {
+      const reEncrypt = (oldCipher: string) => {
+        if (!oldCipher || !oldCipher.startsWith('U2FsdGVk')) return oldCipher;
+        try {
+          const bytes = CryptoJS.AES.decrypt(oldCipher, import.meta.env.VITE_SECRET_KEY);
+          const originalText = bytes.toString(CryptoJS.enc.Utf8);
+          if (!originalText) return oldCipher;
+          return CryptoJS.AES.encrypt(originalText, newSecretKey).toString();
+        } catch (e) {
+          return oldCipher;
+        }
+      };
+      const uSnap = await getDocs(collection(db, 'users'));
+      const uPromises: any[] = [];
+      uSnap.forEach(d => {
+        const raw = d.data();
+        uPromises.push(updateDoc(doc(db, 'users', d.id), {
+          name: reEncrypt(raw.name),
+          phone: reEncrypt(raw.phone),
+          password: reEncrypt(raw.password),
+          points: reEncrypt(raw.points),
+          dob: reEncrypt(raw.dob)
+        }));
+      });
+      await Promise.all(uPromises);
+
+      const bSnap = await getDocs(collection(db, 'bookings'));
+      const bPromises: any[] = [];
+      bSnap.forEach(d => {
+        const raw = d.data();
+        bPromises.push(updateDoc(doc(db, 'bookings', d.id), {
+          name: reEncrypt(raw.name),
+          phone: reEncrypt(raw.phone),
+          txId: reEncrypt(raw.txId),
+          specialRequest: reEncrypt(raw.specialRequest)
+        }));
+      });
+      await Promise.all(bPromises);
+
+      const aSnap = await getDocs(collection(db, 'admins'));
+      const aPromises: any[] = [];
+      aSnap.forEach(d => {
+        const raw = d.data();
+        aPromises.push(updateDoc(doc(db, 'admins', d.id), {
+          username: reEncrypt(raw.username),
+          password: reEncrypt(raw.password)
+        }));
+      });
+      await Promise.all(aPromises);
+
+      const tPromises: any[] = [];
+      localTherapists.forEach(t => {
+        tPromises.push(updateDoc(doc(db, 'therapists', t.id), {
+          password: CryptoJS.AES.encrypt(t.password || '', newSecretKey).toString()
+        }));
+      });
+      await Promise.all(tPromises);
+
+      alert("Data အားလုံးကို Key အသစ်ဖြင့် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။ Vercel တွင် Key အသစ်သွားထည့်ပြီး Redeploy ပြုလုပ်ပါ။");
+    } catch (e) {
+      console.error(e);
+      alert("Error updating keys");
+    }
+    setMigratingKey(false);
   };
 
   const handleSaveVipSettings = async () => {
     if (!window.confirm(`Are you sure you want to save VIP Program settings?`)) return;
     setSavingCategory('vip_settings');
-    try { await setDoc(doc(db, 'settings', 'appData'), { vipSettings: localVipSettings }, { merge: true }); onSettingsUpdated({ ...appData, vipSettings: localVipSettings }); alert('VIP Membership Program saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null);
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { vipSettings: localVipSettings }, { merge: true });
+      onSettingsUpdated({ ...appData, vipSettings: localVipSettings });
+      alert('✅ VIP Membership Program saved successfully.');
+    } catch (e) {
+      alert('Update error.');
+    }
+    setSavingCategory(null);
   };
 
-  const updateVipTier = (tIdx: number, field: string, val: any) => { const updated = [...localVipSettings.tiers]; (updated[tIdx] as any)[field] = val; setLocalVipSettings({...localVipSettings, tiers: updated}); };
-  const updateVipRule = (rIdx: number, val: string) => { const updated = [...localVipSettings.rules]; updated[rIdx] = val; setLocalVipSettings({...localVipSettings, rules: updated}); };
-
-  // 🌟 FIX 2: invalid-argument Error မတက်စေရန် Data များကို အတိအကျ သန့်စင်ခြင်း (Strict Casting) 🌟
-  const handleSaveCategory = async (cIdx: number) => {
-      const cat = localCategories[cIdx];
-      if (!window.confirm(`Are you sure you want to save ${cat.title}?`)) return;
-      setSavingCategory(cat.id);
-
-      try {
-          const cleanItems = cat.items.map((item: any) => {
-              // ပုံဟောင်းနှင့် ပုံသစ်များကို Array ထဲသို့ သေချာစုစည်းမည်
-              let imgs = Array.isArray(item.images) ? item.images : (item.imageUrl ? [item.imageUrl] : []);
-              imgs = imgs.filter(Boolean); // Error မဖြစ်စေရန် အလွတ်များကို ဖယ်ထုတ်မည်
-
-              // Database က လက်ခံမည့် Format အတိုင်း undefined များကို ဖယ်ရှားပြီး အတိအကျ ပြောင်းလဲမည်
-              return {
-                  id: String(item.id || Date.now()),
-                  name: String(item.name || ''),
-                  duration: String(item.duration || ''),
-                  price: Number(item.price) || 0,
-                  vvipPrice: Number(item.vvipPrice) || 0,
-                  vvipIncluded: Boolean(item.vvipIncluded),
-                  description: String(item.description || ''),
-                  images: imgs
-              };
-          });
-
-          const categoryToSave = { 
-              id: String(cat.id), 
-              title: String(cat.title), 
-              order: Number(cIdx), 
-              items: cleanItems 
-          };
-
-          // 1MB Limit ကျော်လွန်ခြင်း ရှိမရှိ စစ်ဆေးမည်
-          const payloadSizeKB = Math.round(JSON.stringify(categoryToSave).length / 1024);
-          if (payloadSizeKB > 900) {
-              alert(`⚠️ Error: ပုံများ များလွန်းသဖြင့် Document Size ကြီးနေပါသည်။ (${payloadSizeKB} KB). \n\nကျေးဇူးပြု၍ မလိုအပ်သောပုံအချို့ကို ဖျက်ပြီးမှ ပြန် Save ပါ။`);
-              setSavingCategory(null);
-              return;
-          }
-
-          // Database သို့ သိမ်းဆည်းခြင်း
-          await setDoc(doc(db, 'categories', cat.id), categoryToSave, { merge: true });
-
-          const nextCategories = [...localCategories];
-          nextCategories[cIdx] = categoryToSave;
-          setLocalCategories(nextCategories);
-          
-          // အခြားနေရာများတွင် ပေါ့ပါးစေရန် images အလွတ်ဖြင့်သာ Global State ကို Update လုပ်မည်
-          const leanCategoriesForGlobal = nextCategories.map(c => ({
-              ...c,
-              items: c.items.map(i => ({ ...i, images: [], imageUrl: '' }))
-          }));
-          onSettingsUpdated({ ...appData, categories: leanCategoriesForGlobal });
-
-          alert('✅ Saved Successfully. Category and Service Images are saved!');
-      } catch (e: any) {
-          console.error('Service Category Save Error:', e);
-          alert(`Update error.\n\n${e?.code || e?.message || 'Unknown Firebase error'}`);
-      } finally {
-          setSavingCategory(null);
-      }
+  const handleSaveSpaOperations = async () => {
+    setSavingCategory('spa_operations');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { spaOperations }, { merge: true });
+      onSettingsUpdated({ ...appData, spaOperations } as any);
+      alert('✅ Spa Operations & Online Booking settings saved successfully!');
+    } catch (e) {
+      alert('Error saving operations settings.');
+    }
+    setSavingCategory(null);
   };
 
-  const handleSavePromotion = async () => { if (!window.confirm(`Are you sure you want to save promotion settings?`)) return; setSavingCategory('promotion'); try { await setDoc(doc(db, 'settings', 'appData'), { promotion: localPromotion }, { merge: true }); onSettingsUpdated({ ...appData, promotion: localPromotion }); alert('Promotion settings saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
-                                                                                                                                                                                                            
-  const handleSaveBranding = async () => { if (!window.confirm(`Are you sure you want to save branding settings?`)) return; setSavingCategory('branding'); try { await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true }); onSettingsUpdated({ ...appData, branding: localBranding }); alert('Branding saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
-  const handleSavePayments = async () => { if (!window.confirm(`Are you sure you want to save payment methods?`)) return; setSavingCategory('payments'); try { await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true }); onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods }); alert('Payment methods saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
-  const handleSaveInstallSteps = async () => { if (!window.confirm(`Are you sure you want to save Install Instructions?`)) return; setSavingCategory('install_steps'); try { await setDoc(doc(db, 'settings', 'appData'), { installSteps: localInstallSteps }, { merge: true }); onSettingsUpdated({ ...appData, installSteps: localInstallSteps }); alert('Install Instructions saved successfully.'); } catch (e) { alert('Update error.'); } setSavingCategory(null); };
-  const handleSaveSignUpBonus = async () => { 
-      if (!window.confirm(`Are you sure you want to save Welcome Bonus settings?`)) return; 
-      setSavingCategory('signup_bonus'); 
-      try { 
-          await setDoc(doc(db, 'settings', 'appData'), { signUpBonus: localSignUpBonus }, { merge: true }); 
-          onSettingsUpdated({ ...appData, signUpBonus: localSignUpBonus }); 
-          alert('Welcome Bonus settings saved successfully.'); 
-      } catch (e) { alert('Update error.'); } 
-      setSavingCategory(null); 
+  const updateVipTier = (tIdx: number, field: string, val: any) => {
+    const updated = [...localVipSettings.tiers];
+    (updated[tIdx] as any)[field] = val;
+    setLocalVipSettings({ ...localVipSettings, tiers: updated });
   };
-const handleSaveTherapists = async () => {
-        setSavingCategory('therapists');
-        try {
-            const batch = writeBatch(db);
-            
-            deletedTherapistIds.forEach(id => {
-                if(id) batch.delete(doc(db, 'therapists', id));
-            });
 
-            // "တစ္ဆေ Data (Ghosts)" များကို Auto ရှင်းထုတ်မည်
-            const uniqueTherapistsMap = new Map();
-            for (const t of localTherapists) {
-                if (uniqueTherapistsMap.has(t.name)) {
-                    if (!t.id.startsWith('t_') && !t.id.startsWith('new_')) {
-                        uniqueTherapistsMap.set(t.name, t);
-                    }
-                } else {
-                    uniqueTherapistsMap.set(t.name, t);
-                }
-            }
-            const cleanTherapists = Array.from(uniqueTherapistsMap.values());
+  const updateVipRule = (rIdx: number, val: string) => {
+    const updated = [...localVipSettings.rules];
+    updated[rIdx] = val;
+    setLocalVipSettings({ ...localVipSettings, rules: updated });
+  };
 
-            const finalTherapistsToSync: any[] = [];
-            
-            for (let i = 0; i < cleanTherapists.length; i++) {
-                const t = cleanTherapists[i];
-                const isNew = t.id.startsWith('new_') || t.id.startsWith('t_'); 
-                const finalId = isNew ? `therapist_${Date.now()}_${i}` : t.id;
-                const tRef = doc(db, 'therapists', finalId);
-                
-                if (t.password && t.password.length >= 6 && isNew) {
-                    try { await createUserWithEmailAndPassword(secondaryAuth, `${finalId.toLowerCase()}@shangrila.com`, t.password); } catch (authErr: any) {}
-                }
+  // 🌟 Save Category with Visibility (isHidden & isComingSoon) Preserved 🌟
+  const handleSaveCategory = async (cIdx: number, silent = false, overrideCategories?: any[]) => {
+    const targetCats = overrideCategories || localCategories;
+    const cat = targetCats[cIdx];
+    if (!silent && !window.confirm(`"${cat.title}" Category အပြောင်းအလဲများကို သိမ်းဆည်းမည် သေချာပါသလား?`)) return;
+    setSavingCategory(cat.id);
 
-                // HD ပုံ ၅ ပုံလုံးကို ဝန်ထမ်းတစ်ဦးချင်းစီ၏ ကိုယ်ပိုင်ဖိုင် (tRef) ထဲတွင်သာ လုံခြုံစွာသိမ်းမည်
-                const updatedT = JSON.parse(JSON.stringify({ 
-                    ...t, id: finalId, order: i, password: isNew ? "SECURED_ACCOUNT" : (t.password || "SECURED_ACCOUNT")
-                }));
-                
-                batch.set(tRef, updatedT, { merge: true });
-                finalTherapistsToSync.push(updatedT);
-            }
-            
-            // 🌟 MASTER FIX: 1MB ပြည့်နေသော appData ဖိုင်ကြီးထဲမှ Therapist ပုံများကို ရှင်းထုတ်လိုက်မည် 🌟
-            // ဤသို့လုပ်ခြင်းဖြင့် 1MB Limit ပြဿနာ အပြီးတိုင် ပျောက်ကင်းသွားပါမည်
-            batch.set(doc(db, 'settings', 'appData'), { therapists: [] }, { merge: true });
-            
-            await batch.commit();
-            
-            setLocalTherapists(finalTherapistsToSync);
-            setDeletedTherapistIds([]);
-            alert('✅ Therapists saved successfully! Database architecture upgraded for HD Gallery.');
-        } catch (error: any) { 
-            console.error(error); alert('Error saving therapists: ' + error.message); 
-        }
+    try {
+      const cleanItems = (cat.items || []).map((item: any) => {
+        let imgs = Array.isArray(item.images) ? item.images : (item.imageUrl ? [item.imageUrl] : []);
+        imgs = imgs.filter(Boolean);
+
+        return {
+          id: String(item.id || Date.now()),
+          name: String(item.name || ''),
+          duration: String(item.duration || ''),
+          price: Number(item.price) || 0,
+          vvipPrice: Number(item.vvipPrice) || 0,
+          vvipIncluded: Boolean(item.vvipIncluded),
+          description: String(item.description || ''),
+          images: imgs,
+          isHidden: Boolean(item.isHidden),
+          isComingSoon: Boolean(item.isComingSoon),
+          comingSoonText: String(item.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ')
+        };
+      });
+
+      const categoryToSave = {
+        id: String(cat.id),
+        title: String(cat.title),
+        order: Number(cIdx),
+        isHidden: Boolean(cat.isHidden),
+        items: cleanItems
+      };
+
+      const payloadSizeKB = Math.round(JSON.stringify(categoryToSave).length / 1024);
+      if (payloadSizeKB > 900) {
+        alert(`⚠️ Error: ပုံများ များလွန်းသဖြင့် Document Size ကြီးနေပါသည်။ (${payloadSizeKB} KB). \n\nကျေးဇူးပြု၍ မလိုအပ်သောပုံအချို့ကို ဖျက်ပြီးမှ ပြန် Save ပါ။`);
         setSavingCategory(null);
-  };
-   
-  // 🌟 FIX: Storage ကို လုံးဝဖြုတ်ပြီး Base64 ကိုသာ ပြန်သုံးမည် 🌟
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage('logo'); try { const base64 = await compressImage(file, 300, 300); setLocalBranding({ ...localBranding, logoUrl: base64 }); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
-  const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`pay_${idx}`); try { const base64 = await compressImage(file, 200, 200); const updated = [...localPaymentMethods]; updated[idx].logoUrl = base64; setLocalPaymentMethods(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
-  const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploadingImage(`install_${idx}`); try { const base64 = await compressImage(file, 300, 600); const updated = [...localInstallSteps]; updated[idx].imageUrl = base64; setLocalInstallSteps(updated); } catch (err) { alert("Error uploading image"); } setUploadingImage(null); };
+        return;
+      }
 
-  const handleImageUpload = async (tIdx: number, files: FileList | null) => { 
-      if (!files || files.length === 0) return; const therapist = localTherapists[tIdx]; if (therapist.images.length + files.length > 5) { alert('Max 5 photos allowed.'); return; } setUploadingImage(therapist.id); const newUrls: string[] = []; 
-      try { 
-          for (let i = 0; i < files.length; i++) { 
-              // Upload လုပ်ကတည်းက HD Quality (800px) ဖြင့် သိမ်းမည်
-              const base64 = await compressImage(files[i], 800, 1000); 
-              newUrls.push(base64); 
-          } 
-          const updated = [...localTherapists]; updated[tIdx].images = [...updated[tIdx].images, ...newUrls]; setLocalTherapists(updated); 
-      } catch (err) { alert("Upload error."); } setUploadingImage(null); 
-  };
+      await setDoc(doc(db, 'categories', cat.id), categoryToSave, { merge: true });
 
-  // FREE VERSION: Service images use the same local Base64 approach as the working
-  // Therapist upload. Firebase Storage is intentionally NOT used here.
-  // The compressed image is placed directly into item.imageUrl, and handleSaveCategory()
-  // persists it to Firestore. Existing imageUrl values are preserved when editing.
-   
-  // 🌟 FIX 1: 1MB Limit မကျော်စေရန် HD Quality ဖြင့် Service ပုံများကို Array အဖြစ် တင်မည့်စနစ် 🌟
-  const handleServiceImageUpload = async (cIdx: number, iIdx: number, files: FileList | null) => { 
-      if (!files || files.length === 0) return; 
-      
-      const category = localCategories[cIdx];
-      const item = category.items[iIdx];
-      const currentImages = Array.isArray(item.images) ? item.images : (item.imageUrl ? [item.imageUrl] : []);
-      
-      if (currentImages.length + files.length > 5) { 
-          alert('Max 5 photos allowed per service.'); 
-          return; 
-      } 
-      
-      setUploadingImage(`service_${cIdx}_${iIdx}`); 
-      const newUrls: string[] = []; 
-      
-      try { 
-          for (let i = 0; i < files.length; i++) { 
-              const file = files[i];
-              // 1MB Limit အတွက် ပုံအရွယ်အစားနှင့် Quality ကို အတိအကျ ထိန်းညှိခြင်း
-              const base64 = await new Promise<string>((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onload = (e) => {
-                      const img = new Image();
-                      img.onload = () => {
-                          const canvas = document.createElement('canvas');
-                          const MAX_DIM = 600; // 600px ဖြင့် HD Quality ရရှိစေရန်
-                          let w = img.width; let h = img.height;
-                          if (w > h) { if (w > MAX_DIM) { h *= MAX_DIM / w; w = MAX_DIM; } }
-                          else { if (h > MAX_DIM) { w *= MAX_DIM / h; h = MAX_DIM; } }
-                          
-                          canvas.width = Math.round(w); 
-                          canvas.height = Math.round(h);
-                          const ctx = canvas.getContext('2d');
-                          if (ctx) {
-                              ctx.fillStyle = '#FFF'; 
-                              ctx.fillRect(0, 0, canvas.width, canvas.height);
-                              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                              // 0.65 Quality သည် ကြည်လင်မှုကို မထိခိုက်စေဘဲ Size ကို သေးငယ်စေပါသည်
-                              resolve(canvas.toDataURL('image/jpeg', 0.65)); 
-                          } else {
-                              resolve(e.target?.result as string);
-                          }
-                      };
-                      img.onerror = reject;
-                      img.src = e.target?.result as string;
-                  };
-                  reader.onerror = reject;
-                  reader.readAsDataURL(file);
-              });
-              newUrls.push(base64); 
-          } 
-          
-          const updated = [...localCategories];
-          updated[cIdx].items[iIdx] = { ...item, images: [...currentImages, ...newUrls] };
-          delete updated[cIdx].items[iIdx].imageUrl; 
-          setLocalCategories(updated); 
-          
-      } catch (err) { 
-          console.error(err); alert("Upload error."); 
-      } 
-      setUploadingImage(null); 
+      const nextCategories = [...targetCats];
+      nextCategories[cIdx] = categoryToSave;
+      setLocalCategories(nextCategories);
+
+      const leanCategoriesForGlobal = nextCategories.map(c => ({
+        ...c,
+        isHidden: Boolean(c.isHidden),
+        items: (c.items || []).map((i: any) => ({
+          ...i,
+          images: [],
+          imageUrl: '',
+          isHidden: Boolean(i.isHidden),
+          isComingSoon: Boolean(i.isComingSoon),
+          comingSoonText: String(i.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ')
+        }))
+      }));
+
+      await setDoc(doc(db, 'settings', 'appData'), { categories: leanCategoriesForGlobal }, { merge: true });
+      onSettingsUpdated({ ...appData, categories: leanCategoriesForGlobal });
+
+      if (!silent) {
+        alert(`✅ "${cat.title}" Category နှင့် Visibility သတ်မှတ်ချက်များကို သိမ်းဆည်းပြီးပါပြီ!`);
+      }
+    } catch (e: any) {
+      console.error('Service Category Save Error:', e);
+      alert(`Update error.\n\n${e?.code || e?.message || 'Unknown Firebase error'}`);
+    } finally {
+      setSavingCategory(null);
+    }
   };
 
-  const addTherapist = () => setLocalTherapists([...localTherapists, { id: `new_t_${Date.now()}`, name: 'New Therapist', images: [], order: localTherapists.length, password: '' }]);
-  const updateTherapist = (tIdx: number, field: keyof TherapistProfile, val: any) => { const updated = [...localTherapists]; updated[tIdx] = { ...updated[tIdx], [field]: val }; setLocalTherapists(updated); };
-  const removeTherapist = (tIdx: number) => { if (!window.confirm("Are you sure you want to delete this therapist?")) return; const t = localTherapists[tIdx]; if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]); const updated = [...localTherapists]; updated.splice(tIdx, 1); setLocalTherapists(updated); };
-  const moveTherapistUp = (tIdx: number) => { if (tIdx === 0) return; const updated = [...localTherapists]; const temp = updated[tIdx - 1]; updated[tIdx - 1] = updated[tIdx]; updated[tIdx] = temp; setLocalTherapists(updated); };
-  const moveTherapistDown = (tIdx: number) => { if (tIdx === localTherapists.length - 1) return; const updated = [...localTherapists]; const temp = updated[tIdx + 1]; updated[tIdx + 1] = updated[tIdx]; updated[tIdx] = temp; setLocalTherapists(updated); };
-  const removeImage = (tIdx: number, imgIdx: number) => { const updated = [...localTherapists]; updated[tIdx].images.splice(imgIdx, 1); setLocalTherapists(updated); };
-  const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const updated = [...localCategories]; (updated[cIdx].items[iIdx] as any)[field] = val; setLocalCategories(updated); };
-  
-  // 🌟 FIX: Add Item နှိပ်လျှင် images: [] အလိုလိုပါသွားရန် 🌟
-  const addItem = (cIdx: number) => { 
-      const updated = [...localCategories]; 
-      updated[cIdx].items.push({ id: Date.now().toString(), name: 'New Service', price: 0, duration: '60 Mins', vvipIncluded: false, images: [] }); 
-      setLocalCategories(updated); 
+  // 🌟 1-Click Instant Toggle for Service Item Visibility (Active / Coming Soon / Hidden) 🌟
+  const handleQuickServiceStatusChange = async (cIdx: number, iIdx: number, mode: 'active' | 'coming_soon' | 'hidden') => {
+    const updated = [...localCategories];
+    const targetItem = { ...updated[cIdx].items[iIdx] };
+    if (mode === 'active') {
+      targetItem.isHidden = false;
+      targetItem.isComingSoon = false;
+    } else if (mode === 'coming_soon') {
+      targetItem.isHidden = false;
+      targetItem.isComingSoon = true;
+      targetItem.comingSoonText = targetItem.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ';
+    } else {
+      targetItem.isHidden = true;
+      targetItem.isComingSoon = false;
+    }
+    updated[cIdx].items[iIdx] = targetItem;
+    setLocalCategories(updated);
+    await handleSaveCategory(cIdx, true, updated);
   };
-  
-  const deleteItem = (cIdx: number, iIdx: number) => { if (!window.confirm("Are you sure?")) return; const updated = [...localCategories]; updated[cIdx].items.splice(iIdx, 1); setLocalCategories(updated); };
-  const updatePaymentMethod = (pIdx: number, field: string, val: string) => { const updated = [...localPaymentMethods]; (updated[pIdx] as any)[field] = val; setLocalPaymentMethods(updated); };
-  const addPaymentMethod = () => { setLocalPaymentMethods([...localPaymentMethods, { id: `p_${Date.now()}`, name: 'New Payment', accountNumber: '', accountName: '', logoUrl: '' }]); };
-  const removePaymentMethod = (pIdx: number) => { if (!window.confirm("Are you sure?")) return; const updated = [...localPaymentMethods]; updated.splice(pIdx, 1); setLocalPaymentMethods(updated); };
+
+  // 🌟 1-Click Instant Toggle for Entire Category Visibility 🌟
+  const handleToggleCategoryHidden = async (cIdx: number) => {
+    const updated = [...localCategories];
+    updated[cIdx] = { ...updated[cIdx], isHidden: !updated[cIdx].isHidden };
+    setLocalCategories(updated);
+    await handleSaveCategory(cIdx, true, updated);
+  };
+
+  const handleSaveBranding = async () => {
+    if (!window.confirm(`Are you sure you want to save branding settings?`)) return;
+    setSavingCategory('branding');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { branding: localBranding }, { merge: true });
+      onSettingsUpdated({ ...appData, branding: localBranding });
+      alert('✅ Branding saved successfully.');
+    } catch (e) {
+      alert('Update error.');
+    }
+    setSavingCategory(null);
+  };
+
+  const handleSavePayments = async () => {
+    if (!window.confirm(`Are you sure you want to save payment methods?`)) return;
+    setSavingCategory('payments');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { paymentMethods: localPaymentMethods }, { merge: true });
+      onSettingsUpdated({ ...appData, paymentMethods: localPaymentMethods });
+      alert('✅ Payment methods saved successfully.');
+    } catch (e) {
+      alert('Update error.');
+    }
+    setSavingCategory(null);
+  };
+
+  const handleSaveInstallSteps = async () => {
+    if (!window.confirm(`Are you sure you want to save Install Instructions?`)) return;
+    setSavingCategory('install_steps');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { installSteps: localInstallSteps }, { merge: true });
+      onSettingsUpdated({ ...appData, installSteps: localInstallSteps });
+      alert('✅ Install Instructions saved successfully.');
+    } catch (e) {
+      alert('Update error.');
+    }
+    setSavingCategory(null);
+  };
+
+  const handleSaveSignUpBonus = async () => {
+    if (!window.confirm(`Are you sure you want to save Welcome Bonus settings?`)) return;
+    setSavingCategory('signup_bonus');
+    try {
+      await setDoc(doc(db, 'settings', 'appData'), { signUpBonus: localSignUpBonus }, { merge: true });
+      onSettingsUpdated({ ...appData, signUpBonus: localSignUpBonus });
+      alert('✅ Welcome Bonus settings saved successfully.');
+    } catch (e) {
+      alert('Update error.');
+    }
+    setSavingCategory(null);
+  };
+
+  // 🌟 Instant 1-Click Therapist Visibility Update (Active / Coming Soon / Hidden) 🌟
+  const handleQuickTherapistVisibility = async (tIdx: number, nextStatus: 'active' | 'coming_soon' | 'hidden') => {
+    const updated = [...localTherapists];
+    const target = {
+      ...updated[tIdx],
+      visibilityStatus: nextStatus,
+      isHidden: nextStatus === 'hidden',
+      isComingSoon: nextStatus === 'coming_soon',
+      comingSoonText: updated[tIdx].comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ'
+    };
+    updated[tIdx] = target;
+    setLocalTherapists(updated);
+
+    if (target.id && !target.id.startsWith('new_') && !target.id.startsWith('t_')) {
+      try {
+        await updateDoc(doc(db, 'therapists', target.id), {
+          visibilityStatus: nextStatus,
+          isHidden: nextStatus === 'hidden',
+          isComingSoon: nextStatus === 'coming_soon',
+          comingSoonText: target.comingSoonText
+        });
+      } catch (e) {
+        console.warn('Instant visibility update error:', e);
+      }
+    }
+  };
+
+  // 🌟 Instant 1-Click Staff App Access Toggle + Real-Time Auto-Logout Trigger 🌟
+  const handleToggleStaffAppAccess = async (tIdx: number) => {
+    const target = localTherapists[tIdx];
+    const currentAccess = target.staffAppAccess !== false;
+    const nextAccess = !currentAccess;
+
+    const confirmMsg = nextAccess
+      ? `${target.name} အား Staff App ဝင်ရောက်အသုံးပြုခွင့် ပြန်ဖွင့်ပေးမည် သေချာပါသလား?`
+      : `⚠️ ${target.name} ၏ Staff App အသုံးပြုခွင့်ကို ပိတ်မည် သေချာပါသလား?\n\n(ပိတ်လိုက်ပါက လက်ရှိ ဝင်သုံးနေသော ဖုန်း/Device မှ ချက်ချင်း Auto Log Out ဖြစ်သွားပါမည်!)`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    const forceLogoutTimestamp = !nextAccess ? Date.now() : (target.forceLogoutAt || 0);
+    const updated = [...localTherapists];
+    updated[tIdx] = {
+      ...target,
+      staffAppAccess: nextAccess,
+      forceLogoutAt: forceLogoutTimestamp
+    };
+    setLocalTherapists(updated);
+
+    if (target.id && !target.id.startsWith('new_') && !target.id.startsWith('t_')) {
+      try {
+        await updateDoc(doc(db, 'therapists', target.id), {
+          staffAppAccess: nextAccess,
+          forceLogoutAt: forceLogoutTimestamp
+        });
+        alert(
+          nextAccess
+            ? `✅ ${target.name} အား Staff App အသုံးပြုခွင့် ပြန်ဖွင့်ပေးပြီးပါပြီ။`
+            : `🚫 ${target.name} ၏ Staff App အသုံးပြုခွင့်ကို ပိတ်လိုက်ပါပြီ။ လက်ရှိသုံးနေသော Device မှ Auto Log Out ပြုလုပ်ပြီးပါပြီ။`
+        );
+      } catch (e) {
+        alert('Error updating Staff App access.');
+      }
+    }
+  };
+
+  const handleSaveTherapists = async () => {
+    setSavingCategory('therapists');
+    try {
+      const batch = writeBatch(db);
+
+      deletedTherapistIds.forEach(id => {
+        if (id) batch.delete(doc(db, 'therapists', id));
+      });
+
+      const uniqueTherapistsMap = new Map();
+      for (const t of localTherapists) {
+        if (uniqueTherapistsMap.has(t.name)) {
+          if (!t.id.startsWith('t_') && !t.id.startsWith('new_')) {
+            uniqueTherapistsMap.set(t.name, t);
+          }
+        } else {
+          uniqueTherapistsMap.set(t.name, t);
+        }
+      }
+      const cleanTherapists = Array.from(uniqueTherapistsMap.values());
+      const finalTherapistsToSync: any[] = [];
+
+      for (let i = 0; i < cleanTherapists.length; i++) {
+        const t = cleanTherapists[i];
+        const isNew = t.id.startsWith('new_') || t.id.startsWith('t_');
+        const finalId = isNew ? `therapist_${Date.now()}_${i}` : t.id;
+        const tRef = doc(db, 'therapists', finalId);
+
+        if (t.password && t.password.length >= 6 && isNew) {
+          try {
+            await createUserWithEmailAndPassword(secondaryAuth, `${finalId.toLowerCase()}@shangrila.com`, t.password);
+          } catch (authErr: any) {}
+        }
+
+        const visStatus = t.visibilityStatus || 'active';
+        const updatedT = JSON.parse(JSON.stringify({
+          ...t,
+          id: finalId,
+          order: i,
+          password: isNew ? "SECURED_ACCOUNT" : (t.password ? encryptText(t.password) : "SECURED_ACCOUNT"),
+          visibilityStatus: visStatus,
+          isHidden: visStatus === 'hidden',
+          isComingSoon: visStatus === 'coming_soon',
+          comingSoonText: t.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ',
+          staffAppAccess: t.staffAppAccess !== false,
+          forceLogoutAt: t.forceLogoutAt || 0
+        }));
+
+        batch.set(tRef, updatedT, { merge: true });
+        finalTherapistsToSync.push({
+          ...updatedT,
+          password: t.password || ''
+        });
+      }
+
+      batch.set(doc(db, 'settings', 'appData'), { therapists: [] }, { merge: true });
+      await batch.commit();
+
+      setLocalTherapists(finalTherapistsToSync);
+      setDeletedTherapistIds([]);
+      alert('✅ ဝန်ထမ်းစာရင်း၊ Customer App Visibility နှင့် Staff App Access သတ်မှတ်ချက်များအားလုံး သိမ်းဆည်းပြီးပါပြီ!');
+    } catch (error: any) {
+      console.error(error);
+      alert('Error saving therapists: ' + error.message);
+    }
+    setSavingCategory(null);
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage('logo');
+    try {
+      const base64 = await compressImage(file, 300, 300);
+      setLocalBranding({ ...localBranding, logoUrl: base64 });
+    } catch (err) {
+      alert("Error uploading image");
+    }
+    setUploadingImage(null);
+  };
+
+  const handlePaymentLogoUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(`pay_${idx}`);
+    try {
+      const base64 = await compressImage(file, 200, 200);
+      const updated = [...localPaymentMethods];
+      updated[idx].logoUrl = base64;
+      setLocalPaymentMethods(updated);
+    } catch (err) {
+      alert("Error uploading image");
+    }
+    setUploadingImage(null);
+  };
+
+  const handleInstallImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(`install_${idx}`);
+    try {
+      const base64 = await compressImage(file, 300, 600);
+      const updated = [...localInstallSteps];
+      updated[idx].imageUrl = base64;
+      setLocalInstallSteps(updated);
+    } catch (err) {
+      alert("Error uploading image");
+    }
+    setUploadingImage(null);
+  };
+
+  const handleServiceImageUpload = async (cIdx: number, iIdx: number, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    const category = localCategories[cIdx];
+    const item = category.items[iIdx];
+    const currentImages = Array.isArray(item.images) ? item.images : (item.imageUrl ? [item.imageUrl] : []);
+
+    if (currentImages.length + files.length > 5) {
+      alert('Max 5 photos allowed per service.');
+      return;
+    }
+
+    setUploadingImage(`service_${cIdx}_${iIdx}`);
+    const newUrls: string[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX_DIM = 600;
+              let w = img.width;
+              let h = img.height;
+              if (w > h) {
+                if (w > MAX_DIM) { h *= MAX_DIM / w; w = MAX_DIM; }
+              } else {
+                if (h > MAX_DIM) { w *= MAX_DIM / h; h = MAX_DIM; }
+              }
+
+              canvas.width = Math.round(w);
+              canvas.height = Math.round(h);
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.fillStyle = '#FFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg', 0.65));
+              } else {
+                resolve(e.target?.result as string);
+              }
+            };
+            img.onerror = reject;
+            img.src = e.target?.result as string;
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        newUrls.push(base64);
+      }
+
+      const updated = [...localCategories];
+      updated[cIdx].items[iIdx] = { ...item, images: [...currentImages, ...newUrls] };
+      delete updated[cIdx].items[iIdx].imageUrl;
+      setLocalCategories(updated);
+    } catch (err) {
+      console.error(err);
+      alert("Upload error.");
+    }
+    setUploadingImage(null);
+  };
+
+  const addTherapist = () => setLocalTherapists([
+    ...localTherapists,
+    {
+      id: `new_t_${Date.now()}`,
+      name: 'New Therapist',
+      images: [],
+      order: localTherapists.length,
+      password: '',
+      visibilityStatus: 'active',
+      comingSoonText: 'Coming Soon .. Booking လက်မခံသေးပါ',
+      staffAppAccess: true
+    }
+  ]);
+
+  const updateTherapist = (tIdx: number, field: string, val: any) => {
+    const updated = [...localTherapists];
+    updated[tIdx] = { ...updated[tIdx], [field]: val };
+    setLocalTherapists(updated);
+  };
+
+  const removeTherapist = (tIdx: number) => {
+    if (!window.confirm("Are you sure you want to delete this therapist?")) return;
+    const t = localTherapists[tIdx];
+    if (t.id && !t.id.startsWith('new_')) setDeletedTherapistIds([...deletedTherapistIds, t.id]);
+    const updated = [...localTherapists];
+    updated.splice(tIdx, 1);
+    setLocalTherapists(updated);
+  };
+
+  const moveTherapistUp = (tIdx: number) => {
+    if (tIdx === 0) return;
+    const updated = [...localTherapists];
+    const temp = updated[tIdx - 1];
+    updated[tIdx - 1] = updated[tIdx];
+    updated[tIdx] = temp;
+    setLocalTherapists(updated);
+  };
+
+  const moveTherapistDown = (tIdx: number) => {
+    if (tIdx === localTherapists.length - 1) return;
+    const updated = [...localTherapists];
+    const temp = updated[tIdx + 1];
+    updated[tIdx + 1] = updated[tIdx];
+    updated[tIdx] = temp;
+    setLocalTherapists(updated);
+  };
+
+  const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => {
+    const updated = [...localCategories];
+    (updated[cIdx].items[iIdx] as any)[field] = val;
+    setLocalCategories(updated);
+  };
+
+  const addItem = (cIdx: number) => {
+    const updated = [...localCategories];
+    updated[cIdx].items.push({
+      id: Date.now().toString(),
+      name: 'New Service',
+      price: 0,
+      duration: '60 Mins',
+      vvipIncluded: false,
+      images: [],
+      isHidden: false,
+      isComingSoon: false,
+      comingSoonText: 'Coming Soon .. Booking လက်မခံသေးပါ'
+    });
+    setLocalCategories(updated);
+  };
+
+  const deleteItem = (cIdx: number, iIdx: number) => {
+    if (!window.confirm("Are you sure you want to delete this service?")) return;
+    const updated = [...localCategories];
+    updated[cIdx].items.splice(iIdx, 1);
+    setLocalCategories(updated);
+  };
+
+  const updatePaymentMethod = (pIdx: number, field: string, val: string) => {
+    const updated = [...localPaymentMethods];
+    (updated[pIdx] as any)[field] = val;
+    setLocalPaymentMethods(updated);
+  };
+
+  const addPaymentMethod = () => {
+    setLocalPaymentMethods([...localPaymentMethods, { id: `p_${Date.now()}`, name: 'New Payment', accountNumber: '', accountName: '', logoUrl: '' }]);
+  };
+
+  const removePaymentMethod = (pIdx: number) => {
+    if (!window.confirm("Are you sure?")) return;
+    const updated = [...localPaymentMethods];
+    updated.splice(pIdx, 1);
+    setLocalPaymentMethods(updated);
+  };
 
   return (
-     
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#D4AF37]">
-         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-               <h3 className="text-xl font-bold text-gray-800 flex items-center"><Award className="w-5 h-5 mr-2 text-[#D4AF37]" /> VIP Program Customization</h3>
-               <p className="text-xs text-gray-500 mt-1">Customer App တွင်ပြသမည့် VIP အချက်အလက်များအားလုံးကို ဤနေရာတွင် ပြင်ဆင်နိုင်ပါသည်။</p>
+    <div className="space-y-6 animate-fade-in">
+      {/* =========================================================================
+          1. EXECUTIVE SYSTEM SETTINGS HEADER & LIVE KPI OVERVIEW STRIP
+         ========================================================================= */}
+      <div className="bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#0B2419] rounded-3xl p-6 text-white shadow-xl border border-[#C8A951]/30 relative overflow-hidden">
+        <div className="absolute -right-12 -top-12 w-48 h-48 rounded-full bg-[#C8A951]/10 blur-2xl pointer-events-none" />
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-white/10 pb-5">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-[#C8A951]/20 text-[#D4AF37] border border-[#C8A951]/40">
+                International Spa Control Center
+              </span>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase flex items-center gap-1 ${spaOperations.isOnlineBookingOpen ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40' : 'bg-red-500/30 text-red-200 border border-red-400/40'}`}>
+                {spaOperations.isOnlineBookingOpen ? '● Online Booking Open' : '🚫 Online Booking Paused'}
+              </span>
             </div>
-            <button onClick={() => toggleSection('vip')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-               {expandedSection === 'vip' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
+            <h2 className="text-xl sm:text-2xl font-serif font-black text-[#D4AF37] tracking-wide mt-1.5 flex items-center gap-2">
+              <Settings className="w-6 h-6 text-[#D4AF37]" />
+              <span>System Configuration & Visibility Studio</span>
+            </h2>
+            <p className="text-xs text-gray-300 mt-1">
+              Customer App တွင် ပြသမည့် ဝန်ဆောင်မှုများ၊ ဝန်ထမ်းများ (Active / Coming Soon / Hide) နှင့် Staff App အသုံးပြုခွင့်များကို တစ်နေရာတည်းမှ စီမံခန့်ခွဲပါ
+            </p>
+          </div>
+
+          {/* Quick Share Links */}
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                const url = window.location.origin + window.location.pathname + '?view=therapists';
+                navigator.clipboard.writeText(url);
+                alert('Therapist Gallery Link Copied:\n' + url);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-[#D4AF37] border border-[#C8A951]/30 flex items-center gap-1.5 transition"
+            >
+              <Copy className="w-3.5 h-3.5" /> Therapist Link
             </button>
-         </div>
-         
-         {expandedSection === 'vip' && (
-             <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                 <div className="flex justify-end mb-6">
-                     <button disabled={savingCategory === 'vip_settings'} onClick={handleSaveVipSettings} className="flex items-center bg-[#123524] text-[#D4AF37] px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
-                        <Save className="w-4 h-4 mr-2" /> {savingCategory === 'vip_settings' ? 'Saving...' : 'Save VIP Program'}
-                     </button>
-                 </div>
-
-                 <div className="flex items-center space-x-3 mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200 w-fit">
-                     <label className="text-sm font-bold text-gray-700 cursor-pointer flex items-center">
-                         <input type="checkbox" checked={localVipSettings.isActive} onChange={(e) => setLocalVipSettings({...localVipSettings, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524] mr-3" />
-                         Enable VIP Program (Home Page တွင် VIP Tab ကို ဖွင့်ထားမည်)
-                     </label>
-                 </div>
-
-                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                     <div>
-                         <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Star className="w-4 h-4 mr-2"/> 1. Membership Tiers & Base Rule</h4>
-                         <div className="mb-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                             <label className="block text-[10px] font-bold text-gray-500 mb-1">Base Rule Text (အခြေခံ ပွိုင့်သတ်မှတ်ချက်)</label>
-                             <input type="text" value={localVipSettings.baseRuleText} onChange={(e) => setLocalVipSettings({...localVipSettings, baseRuleText: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                         </div>
-                         <div className="space-y-3">
-                             {localVipSettings.tiers.map((tier: any, tIdx: number) => (
-                                 <div key={tier.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm">
-                                     <div className="grid grid-cols-2 gap-3 mb-2">
-                                         <div><label className="text-[10px] font-bold text-gray-400">Tier Name</label><input type="text" value={tier.name} onChange={(e) => updateVipTier(tIdx, 'name', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none font-bold" /></div>
-                                         <div><label className="text-[10px] font-bold text-gray-400">Card Color Code</label><input type="text" value={tier.colorTheme} onChange={(e) => updateVipTier(tIdx, 'colorTheme', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none" placeholder="#HEXCODE" /></div>
-                                     </div>
-                                     <div className="grid grid-cols-3 gap-3">
-                                         <div><label className="text-[10px] font-bold text-gray-400">Required Points</label><input type="number" value={tier.requiredPoints} onChange={(e) => updateVipTier(tIdx, 'requiredPoints', Number(e.target.value))} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none" /></div>
-                                         <div><label className="text-[10px] font-bold text-gray-400">Discount (%)</label><input type="number" value={tier.discountPercent} onChange={(e) => updateVipTier(tIdx, 'discountPercent', Number(e.target.value))} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none text-red-600 font-bold" /></div>
-                                         <div><label className="text-[10px] font-bold text-gray-400">Instant Upgrade Amt</label><input type="text" value={tier.instantUpgrade || ''} onChange={(e) => updateVipTier(tIdx, 'instantUpgrade', e.target.value)} className="w-full p-2 text-sm border rounded focus:border-[#D4AF37] outline-none text-blue-600 font-bold" placeholder="ဥပမာ - ၈ သိန်းကျပ်" /></div>
-                                     </div>
-                                 </div>
-                             ))}
-                         </div>
-                     </div>
-
-                     <div>
-                         <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Target className="w-4 h-4 mr-2"/> 2. Target Rewards (Pre-Jade)</h4>
-                         <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                             <label className="block text-[10px] font-bold text-gray-500 mb-1">Section Description (ရှင်းလင်းချက်)</label>
-                             <textarea value={localVipSettings.preJadeText} onChange={(e) => setLocalVipSettings({...localVipSettings, preJadeText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                             
-                             <label className="block text-[10px] font-bold text-gray-500 mt-4 mb-2">Reward Steps (ဥပမာ - 10 Pts = 10% Off)</label>
-                             <div className="space-y-2">
-                                 {(localVipSettings.preJadeRewards || []).map((reward: string, rIdx: number) => (
-                                     <div key={rIdx} className="flex space-x-2">
-                                         <input type="text" value={reward} onChange={(e) => { const newR = [...localVipSettings.preJadeRewards]; newR[rIdx] = e.target.value; setLocalVipSettings({...localVipSettings, preJadeRewards: newR}); }} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                                         <button onClick={() => setLocalVipSettings({...localVipSettings, preJadeRewards: localVipSettings.preJadeRewards.filter((_: any, i: number) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
-                                     </div>
-                                 ))}
-                                 <button onClick={() => setLocalVipSettings({...localVipSettings, preJadeRewards: [...localVipSettings.preJadeRewards, 'New Reward']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center mt-2"><PlusCircle className="w-3 h-3 mr-1"/> Add Reward Step</button>
-                             </div>
-                         </div>
-                     </div>
-                 </div>
-
-                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 border-t border-gray-100 pt-8">
-                     <div>
-                         <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Info className="w-4 h-4 mr-2"/> 3. Upgrade Rules (အဆင့်မြှင့်တင်ခြင်း)</h4>
-                         <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                             <div>
-                                 <label className="block text-[10px] font-bold text-gray-500 mb-1">Cumulative Upgrade System Text</label>
-                                 <textarea value={localVipSettings.cumulativeText} onChange={(e) => setLocalVipSettings({...localVipSettings, cumulativeText: e.target.value})} rows={4} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                             </div>
-                             <div>
-                                 <label className="block text-[10px] font-bold text-gray-500 mb-1">Instant Upgrade Alert Text (တစ်ကြိမ်တည်းဝယ်ယူမှု...)</label>
-                                 <textarea value={localVipSettings.instantUpgradeText} onChange={(e) => setLocalVipSettings({...localVipSettings, instantUpgradeText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                             </div>
-                         </div>
-                     </div>
-
-                     <div>
-                         <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><Gift className="w-4 h-4 mr-2"/> 4. Birthday Bonuses (မွေးနေ့ခံစားခွင့်)</h4>
-                         <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                             <div>
-                                 <label className="block text-[10px] font-bold text-gray-500 mb-1">Standard Birthday Bonus Text</label>
-                                 <textarea value={localVipSettings.birthdayStandardText} onChange={(e) => setLocalVipSettings({...localVipSettings, birthdayStandardText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                             </div>
-                             <div>
-                                 <label className="block text-[10px] font-bold text-gray-500 mb-1">Imperial V-VIP Birthday Bonus Text</label>
-                                 <textarea value={localVipSettings.birthdayImperialText} onChange={(e) => setLocalVipSettings({...localVipSettings, birthdayImperialText: e.target.value})} rows={3} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-semibold text-gray-700" />
-                             </div>
-                         </div>
-                     </div>
-                 </div>
-
-                 <div className="border-t border-gray-100 pt-8">
-                     <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center"><ShieldCheck className="w-4 h-4 mr-2"/> 5. Terms & Conditions (စည်းကမ်းချက်များ)</h4>
-                     <div className="space-y-3 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                         {localVipSettings.rules.map((rule: string, rIdx: number) => (
-                             <div key={rIdx} className="flex items-start space-x-2">
-                                 <div className="mt-2 text-xs font-bold text-gray-400">{rIdx + 1}.</div>
-                                 <textarea value={rule} onChange={(e) => updateVipRule(rIdx, e.target.value)} rows={2} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none leading-relaxed font-semibold text-gray-700" />
-                                 <button onClick={() => setLocalVipSettings({...localVipSettings, rules: localVipSettings.rules.filter((_: any, i: number) => i !== rIdx)})} className="p-2 bg-red-50 text-red-500 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
-                             </div>
-                         ))}
-                         <button onClick={() => setLocalVipSettings({...localVipSettings, rules: [...localVipSettings.rules, 'စည်းကမ်းချက်အသစ်...']})} className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100 flex items-center mt-2"><PlusCircle className="w-3 h-3 mr-1"/> Add Rule</button>
-                     </div>
-                 </div>
-             </div>
-         )}
-      </div>
-
-       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-600">
-          <h3 className="text-xl font-bold text-gray-800 flex items-center mb-2"><BarChart2 className="w-5 h-5 mr-2 text-blue-600" /> Upload Matrix Database (Excel)</h3>
-          <p className="text-xs text-gray-500 mb-4">Staff များ၏ Performance (Top Performers & Visual Charts) ကို ပြသရန် August_Shangri_La_Matrix_Database.xlsx ဖိုင်အား ဤနေရာတွင် တင်ပါ။</p>
-          
-          <label className="flex items-center justify-center w-full sm:w-auto px-6 py-4 bg-blue-50 text-blue-700 border-2 border-dashed border-blue-300 rounded-xl cursor-pointer hover:bg-blue-100 transition font-bold shadow-sm">
-              {savingCategory === 'excel_upload' ? 'Uploading & Parsing Data...' : '📊 Click to Upload Excel File'}
-              <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleExcelUpload} disabled={savingCategory === 'excel_upload'} />
-          </label>
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-[#123524]">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Settings className="w-5 h-5 mr-2 text-[#123524]" /> App Branding & Footer</h3>
-                  <p className="text-xs text-gray-500 mt-1">ဆိုင်၏ လိုဂို၊ အမည်၊ လိပ်စာ၊ ဖုန်းနံပါတ် နှင့် GPS Location များ ပြင်ဆင်ရန်</p>
-              </div>
-              <button onClick={() => toggleSection('branding')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                  {expandedSection === 'branding' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-              </button>
+            <button
+              type="button"
+              onClick={() => {
+                const url = window.location.origin + window.location.pathname + '?mode=staff';
+                navigator.clipboard.writeText(url);
+                alert('Staff App Portal Link Copied:\n' + url);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-emerald-300 border border-emerald-400/30 flex items-center gap-1.5 transition"
+            >
+              <Copy className="w-3.5 h-3.5" /> Staff Portal Link
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const url = window.location.origin + window.location.pathname + '?view=vip';
+                navigator.clipboard.writeText(url);
+                alert('VIP Member Link Copied:\n' + url);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-amber-200 border border-amber-300/30 flex items-center gap-1.5 transition"
+            >
+              <Copy className="w-3.5 h-3.5" /> VIP Link
+            </button>
           </div>
-
-          {expandedSection === 'branding' && (
-              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                      <div className="flex flex-wrap gap-2">
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=therapists'; navigator.clipboard.writeText(url); alert('Gallery Link Copied:\n' + url); }} className="text-xs flex items-center text-blue-600 bg-blue-50 px-3 py-1.5 rounded border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Gallery Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=dashboard'; navigator.clipboard.writeText(url); alert('Dashboard Link Copied:\n' + url); }} className="text-xs flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded border border-green-200 hover:bg-green-100 transition whitespace-nowrap"><Copy className="w-3 h-3 mr-1"/> Dashboard Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?mode=staff'; navigator.clipboard.writeText(url); alert('Staff Portal Link Copied:\n' + url); }} className="text-xs flex items-center text-purple-600 bg-purple-50 px-3 py-1.5 rounded border border-purple-200 hover:bg-purple-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Staff Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=vip'; navigator.clipboard.writeText(url); alert('VIP Member Link Copied:\n' + url); }} className="text-xs flex items-center text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded border border-yellow-200 hover:bg-yellow-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> VIP Member Link</button>
-                          <button type="button" onClick={() => { const url = window.location.origin + window.location.pathname + '?view=profile'; navigator.clipboard.writeText(url); alert('Profile Link Copied:\n' + url); }} className="text-xs flex items-center text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded border border-indigo-200 hover:bg-indigo-100 transition whitespace-nowrap mt-2 sm:mt-0 sm:ml-2"><Copy className="w-3 h-3 mr-1"/> Profile Link</button>
-                      </div>
-                      <button disabled={savingCategory === 'branding'} onClick={handleSaveBranding} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
-                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save'}
-                      </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 flex flex-col items-center justify-center">
-                          <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
-                          <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
-                              {localBranding.logoUrl ? (
-                                  <><img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" /><div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => setLocalBranding({ ...localBranding, logoUrl: '' })} className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"><Trash2 className="w-4 h-4" /></button></div></>
-                              ) : (
-                                  <div className="flex flex-col items-center text-gray-400">{uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : "No Logo"}</div>
-                              )}
-                          </div>
-                          <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer hover:bg-gray-100 transition shadow-sm">{localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}<input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} /></label>
-                      </div>
-                      <div className="space-y-4">
-                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Business Name</label><input type="text" value={localBranding.name || ''} onChange={e => setLocalBranding({ ...localBranding, name: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                          <div><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><textarea value={localBranding.address} onChange={e => setLocalBranding({ ...localBranding, address: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" rows={2} /></div>
-                          <div className="grid grid-cols-2 gap-2">
-                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label><input type="text" value={localBranding.phone1} onChange={e => setLocalBranding({ ...localBranding, phone1: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label><input type="text" value={localBranding.phone2} onChange={e => setLocalBranding({ ...localBranding, phone2: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-2 mt-2">
-                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Telegram Link</label><input type="text" value={(localBranding as any).telegram || ''} onChange={e => setLocalBranding({ ...localBranding, telegram: e.target.value } as any)} placeholder="https://t.me/username" className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                              <div><label className="block text-xs font-bold text-gray-500 mb-1">Viber Link</label><input type="text" value={(localBranding as any).viber || ''} onChange={e => setLocalBranding({ ...localBranding, viber: e.target.value } as any)} placeholder="viber://add?number=..." className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                          </div>
-
-                          <div className="mt-2"><label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label><input type="text" value={localBranding.copyright} onChange={e => setLocalBranding({ ...localBranding, copyright: e.target.value })} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                      </div>
-                  </div>
-                  
-                  <div className="border-t border-gray-100 pt-6 mt-6">
-                      <h4 className="text-sm font-bold text-gray-800 mb-2">Shop Location (For Staff Out Pass GPS Restriction)</h4>
-                      <div className="flex items-center space-x-2">
-                          <div className="flex-1 bg-gray-50 p-3 rounded border border-gray-200 text-xs text-gray-600 font-mono">Lat: {localBranding.shopLat ? localBranding.shopLat.toFixed(5) : 'Not set'}, Lng: {localBranding.shopLng ? localBranding.shopLng.toFixed(5) : 'Not set'}</div>
-                          <button type="button" onClick={() => { navigator.geolocation.getCurrentPosition((pos) => { setLocalBranding({...localBranding, shopLat: pos.coords.latitude, shopLng: pos.coords.longitude}); alert("Location updated! Please click 'Save' above to confirm."); }, () => alert("Please enable Location Services in your browser to get coordinates."), {enableHighAccuracy: true}); }} className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-xs font-bold border border-green-200 hover:bg-green-100 transition whitespace-nowrap">Get Current GPS</button>
-                      </div>
-                      <p className="text-[10px] text-gray-400 mt-2">Staff will only be able to Clock Out/In within 50 meters of this exact location. Make sure you are physically at the shop when setting this.</p>
-                  </div>
-              </div>
-          )}
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-orange-500">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-             <div>
-                <h3 className="text-xl font-bold text-gray-800 flex items-center"><KeyRound className="w-5 h-5 mr-2 text-orange-500" /> Change Encryption Key</h3>
-                <p className="text-xs text-gray-500 mt-1">Database ထဲရှိ Data အားလုံးကို အောက်ပါ Key အသစ်ဖြင့် အလိုအလျောက် ပြောင်းလဲပေးပါမည်။</p>
-             </div>
-             <button onClick={() => toggleSection('encryption')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                {expandedSection === 'encryption' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-             </button>
-          </div>
-
-          {expandedSection === 'encryption' && (
-              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                  <div className="flex flex-col sm:flex-row gap-3 items-center">
-                      <input type="text" placeholder="Enter New Secret Key" value={newSecretKey} onChange={(e) => setNewSecretKey(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:border-orange-500 font-mono text-sm" />
-                      <button disabled={migratingKey} onClick={handleChangeSecretKey} className="w-full sm:w-auto px-6 py-3 bg-orange-500 text-white rounded-lg font-bold shadow-sm hover:bg-orange-600 transition whitespace-nowrap flex items-center justify-center">
-                          {migratingKey ? 'Processing...' : 'Change Key Now'}
-                      </button>
-                  </div>
-              </div>
-          )}
-      </div>
-
-       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-purple-500">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Gift className="w-5 h-5 mr-2 text-purple-500" /> New User Welcome Bonus</h3>
-                  <p className="text-xs text-gray-500 mt-1">အကောင့်သစ်ဖွင့်သူများကို Point လက်ဆောင်ပေးမည့် အစီအစဉ်</p>
-              </div>
-              <button onClick={() => toggleSection('signupBonus')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                  {expandedSection === 'signupBonus' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-              </button>
-          </div>
-
-          {expandedSection === 'signupBonus' && (
-              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                  <div className="flex justify-end mb-6">
-                      <button disabled={savingCategory === 'signup_bonus'} onClick={handleSaveSignUpBonus} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0">
-                          <Save className="w-4 h-4 mr-2" /> {savingCategory === 'signup_bonus' ? 'Saving...' : 'Save'}
-                      </button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="flex items-center space-x-3 mb-2 md:col-span-2 bg-gray-50 p-3 rounded-lg border border-gray-200 w-full sm:w-auto">
-                          <label className="text-sm font-bold text-gray-700 cursor-pointer flex-1 flex items-center justify-between">
-                              <span>Enable Welcome Bonus (ပွိုင့်လက်ဆောင်ပေးမည်)</span>
-                              <input type="checkbox" checked={localSignUpBonus.isActive} onChange={(e) => setLocalSignUpBonus({...localSignUpBonus, isActive: e.target.checked})} className="w-5 h-5 accent-[#123524]" />
-                          </label>
-                      </div>
-                      <div className="md:col-span-2">
-                          <label className="block text-xs font-bold text-gray-500 mb-1">Bonus Points Amount (ပေးမည့် ပွိုင့်အရေအတွက်)</label>
-                          <input type="number" value={localSignUpBonus.points || ''} onChange={(e) => setLocalSignUpBonus({...localSignUpBonus, points: Number(e.target.value)})} placeholder="e.g. 5" className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none font-bold" />
-                      </div>
-                      <div><label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label><input type="date" value={localSignUpBonus.startDate} onChange={(e) => setLocalSignUpBonus({...localSignUpBonus, startDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                      <div><label className="block text-xs font-bold text-gray-500 mb-1">End Date</label><input type="date" value={localSignUpBonus.endDate} onChange={(e) => setLocalSignUpBonus({...localSignUpBonus, endDate: e.target.value})} className="w-full p-2 text-sm border border-gray-300 rounded focus:border-[#D4AF37] outline-none" /></div>
-                  </div>
-              </div>
-          )}
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-500">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><Download className="w-5 h-5 mr-2 text-blue-500" /> Download App Instructions</h3>
-                  <p className="text-xs text-gray-500 mt-1">Download App နှိပ်လျှင် ပေါ်လာမည့် လမ်းညွှန်ချက်များနှင့် ပုံများ (အများဆုံး ၁၀ ဆင့်)</p>
-              </div>
-              <button onClick={() => toggleSection('instructions')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                  {expandedSection === 'instructions' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-              </button>
-          </div>
-
-          {expandedSection === 'instructions' && (
-              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                  <div className="flex justify-end space-x-2 mb-6">
-                      <button onClick={() => { if(localInstallSteps.length < 10) setLocalInstallSteps([...localInstallSteps, { id: Date.now().toString(), text: '', imageUrl: '' }]) }} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Step</button>
-                      <button disabled={savingCategory === 'install_steps'} onClick={handleSaveInstallSteps} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'install_steps' ? 'Saving...' : 'Save'}</button>
-                  </div>
-                  <div className="space-y-4">
-                      {localInstallSteps.map((step, idx) => (
-                          <div key={step.id} className="p-4 bg-gray-50 border border-gray-200 rounded-xl relative">
-                              <button onClick={() => setLocalInstallSteps(localInstallSteps.filter((_, i) => i !== idx))} className="absolute top-4 right-4 text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded-full"><Trash2 className="w-4 h-4" /></button>
-                              <div className="font-bold text-gray-700 mb-2">Step {idx + 1}</div>
-                              <textarea value={step.text} onChange={(e) => { const updated = [...localInstallSteps]; updated[idx].text = e.target.value; setLocalInstallSteps(updated); }} className="w-full p-3 bg-white border border-gray-300 rounded-lg outline-none focus:border-[#D4AF37] text-sm mb-3" placeholder="လမ်းညွှန်ချက် ရေးရန်..." rows={2} />
-                              <div className="flex items-center space-x-4">
-                                  <div className="w-20 h-32 bg-gray-200 rounded border border-gray-300 flex items-center justify-center overflow-hidden relative">
-                                      {step.imageUrl ? (
-                                          <><img src={step.imageUrl} alt={`Step ${idx+1}`} className="w-full h-full object-cover" /><button onClick={() => { const updated = [...localInstallSteps]; updated[idx].imageUrl = ''; setLocalInstallSteps(updated); }} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"><X className="w-3 h-3"/></button></>
-                                      ) : (<ImageIcon className="w-6 h-6 text-gray-400" />)}
-                                  </div>
-                                  <div className="flex-1">
-                                      <label className="text-xs font-bold text-[#D4AF37] bg-yellow-50 px-4 py-2 rounded-lg border border-yellow-200 cursor-pointer hover:bg-yellow-100 transition inline-block">
-                                          {uploadingImage === `install_${idx}` ? 'Uploading...' : 'Upload Screenshot'}
-                                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleInstallImageUpload(idx, e)} disabled={uploadingImage === `install_${idx}`} />
-                                      </label>
-                                      <p className="text-[10px] text-gray-500 mt-2">ဖုန်း Screen အရှည် (Portrait) ပုံစံ ထည့်သွင်းပေးပါ</p>
-                                  </div>
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-              </div>
-          )}
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-blue-400">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><CreditCard className="w-5 h-5 mr-2 text-blue-500" /> Manage Payment</h3>
-                  <p className="text-xs text-gray-500 mt-1">ငွေလွှဲလက်ခံမည့် ဘဏ်အကောင့်များ ထည့်သွင်းရန်</p>
-              </div>
-              <button onClick={() => toggleSection('payments')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                  {expandedSection === 'payments' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-              </button>
-          </div>
-
-          {expandedSection === 'payments' && (
-              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                  <div className="flex justify-end space-x-2 mb-6">
-                      <button onClick={addPaymentMethod} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Payment</button>
-                      <button disabled={savingCategory === 'payments'} onClick={handleSavePayments} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'payments' ? 'Saving...' : 'Save'}</button>
-                  </div>
-                  <div className="space-y-3">
-                      {localPaymentMethods.map((pm, pIdx) => (
-                          <div key={pm.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition">
-                              <div className="lg:col-span-2 flex flex-col items-center justify-center border-r border-gray-200 pr-2">
-                                  <div className="w-12 h-12 bg-white border border-gray-200 rounded mb-1 flex items-center justify-center overflow-hidden relative group">
-                                      {pm.logoUrl ? (
-                                          <><img src={pm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" /><button onClick={() => updatePaymentMethod(pIdx, 'logoUrl', '')} className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100"><X className="w-4 h-4" /></button></>
-                                      ) : (<div className="text-[8px] text-gray-400 text-center">{uploadingImage === `pay_${pIdx}` ? '...' : 'No Logo'}</div>)}
-                                  </div>
-                                  <label className="text-[10px] text-[#D4AF37] font-bold cursor-pointer hover:underline">Upload Logo<input type="file" accept="image/*" className="hidden" onChange={(e) => handlePaymentLogoUpload(pIdx, e)} disabled={uploadingImage === `pay_${pIdx}`} /></label>
-                              </div>
-                              <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Bank Name</label><input type="text" value={pm.name} onChange={(e) => updatePaymentMethod(pIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" /></div>
-                              <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account No</label><input type="text" value={pm.accountNumber} onChange={(e) => updatePaymentMethod(pIdx, 'accountNumber', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524] tracking-wider" /></div>
-                              <div className="lg:col-span-3"><label className="text-[10px] font-bold text-gray-400 uppercase">Account Name</label><input type="text" value={pm.accountName} onChange={(e) => updatePaymentMethod(pIdx, 'accountName', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" /></div>
-                              <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0"><button onClick={() => removePaymentMethod(pIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition"><Trash2 className="w-5 h-5" /></button></div>
-                          </div>
-                      ))}
-                  </div>
-              </div>
-          )}
-      </div>
-
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mt-6 border-l-4 border-l-red-500">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center"><User className="w-5 h-5 mr-2 text-red-500" /> Manage Therapists (Staff)</h3>
-                  <p className="text-xs text-gray-500 mt-1">Staff များအတွက် Password သည် အနည်းဆုံး ၆ လုံး ရှိရပါမည်။</p>
-              </div>
-              <button onClick={() => toggleSection('therapists')} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                  {expandedSection === 'therapists' ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-              </button>
-          </div>
-
-          {expandedSection === 'therapists' && (
-              <div className="mt-6 pt-6 border-t border-gray-100 animate-fade-in">
-                  <div className="flex justify-end space-x-2 mb-6">
-                      <button onClick={addTherapist} className="flex items-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Therapist</button>
-                      <button disabled={savingCategory === 'therapists'} onClick={handleSaveTherapists} className="flex items-center bg-[#123524] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === 'therapists' ? 'Saving...' : 'Save'}</button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {localTherapists.map((therapist, tIdx) => (
-                          <div key={therapist.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50 relative">
-                              <div className="absolute top-2 left-2 flex space-x-1 z-10">
-                                  <button type="button" onClick={() => moveTherapistUp(tIdx)} disabled={tIdx === 0} className="p-1 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 shadow-sm">
-                                      <ChevronUp className="w-4 h-4 text-gray-600" />
-                                  </button>
-                                  <button type="button" onClick={() => moveTherapistDown(tIdx)} disabled={tIdx === localTherapists.length - 1} className="p-1 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 shadow-sm">
-                                      <ChevronDown className="w-4 h-4 text-gray-600" />
-                                  </button>
-                              </div>
-                              <button type="button" onClick={() => removeTherapist(tIdx)} className="absolute top-2 right-2 p-1 bg-red-100 text-red-500 rounded hover:bg-red-200 transition-colors z-10">
-                                  <Trash2 className="w-4 h-4" />
-                              </button>
-
-                              <div className="mb-3 mt-8">
-                                  <span className="bg-[#123524] text-white text-[10px] font-bold px-2 py-1 rounded">Login ID: {therapist.id}</span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3 mb-4">
-                                  <div>
-                                      <label className="block text-xs font-bold text-gray-500 mb-1">Therapist Name</label>
-                                      <input type="text" value={therapist.name} onChange={(e) => updateTherapist(tIdx, 'name', e.target.value)} placeholder="Name" className="w-full p-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#123524] outline-none" />
-                                  </div>
-                                  <div>
-                                      <label className="block text-xs font-bold text-gray-500 mb-1">Login Password</label>
-                                      <input type="text" minLength={6} value={therapist.password} onChange={(e) => updateTherapist(tIdx, 'password', e.target.value)} placeholder="Password (Min 6 chars)" className="w-full p-2 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#123524] outline-none" />
-                                  </div>
-                              </div>
-
-                              <label className="block text-xs font-bold text-gray-500 mb-2">Photos (Max 5)</label>
-                              <div className="flex flex-wrap gap-2 mb-2">
-                                  {therapist.images && therapist.images.map((imgUrl: string, imgIdx: number) => (
-                                      <div key={imgIdx} className="w-16 aspect-[3/4] relative rounded overflow-hidden shadow-sm border border-gray-200 group">
-                                          <img src={imgUrl} alt="Therapist" className="w-full h-full object-cover" />
-                                          
-                                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
-                                              <button 
-                                                  type="button"
-                                                  onClick={(e) => {
-                                                      e.preventDefault();
-                                                      const newTherapists = [...localTherapists];
-                                                      newTherapists[tIdx].images.splice(imgIdx, 1);
-                                                      setLocalTherapists(newTherapists);
-                                                  }}
-                                                  className="bg-red-500 text-white text-[8px] px-1.5 py-1 rounded hover:bg-red-600 shadow-sm"
-                                              >
-                                                  Delete
-                                              </button>
-                                              
-                                              <div className="flex gap-1.5">
-                                                  {imgIdx > 0 && (
-                                                      <button 
-                                                          type="button"
-                                                          onClick={(e) => {
-                                                              e.preventDefault();
-                                                              const newTherapists = [...localTherapists];
-                                                              const imgs = newTherapists[tIdx].images;
-                                                              [imgs[imgIdx - 1], imgs[imgIdx]] = [imgs[imgIdx], imgs[imgIdx - 1]];
-                                                              setLocalTherapists(newTherapists);
-                                                          }}
-                                                          className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
-                                                      >
-                                                          &lt;
-                                                      </button>
-                                                  )}
-                                                  {imgIdx < therapist.images.length - 1 && (
-                                                      <button 
-                                                          type="button"
-                                                          onClick={(e) => {
-                                                              e.preventDefault();
-                                                              const newTherapists = [...localTherapists];
-                                                              const imgs = newTherapists[tIdx].images;
-                                                              [imgs[imgIdx + 1], imgs[imgIdx]] = [imgs[imgIdx], imgs[imgIdx + 1]];
-                                                              setLocalTherapists(newTherapists);
-                                                          }}
-                                                          className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
-                                                      >
-                                                          &gt;
-                                                      </button>
-                                                  )}
-                                              </div>
-                                          </div>
-                                      </div>
-                                  ))}
-
-                                  {(!therapist.images || therapist.images.length < 5) && (
-                                      <label className="w-16 aspect-[3/4] rounded border border-dashed border-gray-400 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-sm">
-                                          <input 
-                                              type="file" 
-                                              accept="image/*" 
-                                              className="hidden" 
-                                              onChange={(e) => {
-                                                  const file = e.target.files?.[0];
-                                                  if (file) {
-                                                      setUploadingImage(`therapist_${tIdx}`);
-                                                      const reader = new FileReader();
-                                                      reader.onload = (event) => {
-                                                          const img = new Image();
-                                                          img.onload = () => {
-                                                              const canvas = document.createElement('canvas');
-                                                              const MAX_SIZE = 800; 
-                                                              let width = img.width;
-                                                              let height = img.height;
-
-                                                              if (width > height) {
-                                                                  if (width > MAX_SIZE) {
-                                                                      height *= MAX_SIZE / width;
-                                                                      width = MAX_SIZE;
-                                                                  }
-                                                              } else {
-                                                                  if (height > MAX_SIZE) {
-                                                                      width *= MAX_SIZE / height;
-                                                                      height = MAX_SIZE;
-                                                                  }
-                                                              }
-                                                              canvas.width = width;
-                                                              canvas.height = height;
-                                                              const ctx = canvas.getContext('2d');
-                                                              
-                                                              if (ctx) {
-                                                                  ctx.fillStyle = '#FFFFFF';
-                                                                  ctx.fillRect(0, 0, width, height);
-                                                                  ctx.drawImage(img, 0, 0, width, height);
-                                                              }
-                                                              
-                                                              const finalBase64 = canvas.toDataURL('image/jpeg', 0.8); 
-                                                              
-                                                              const newTherapists = [...localTherapists];
-                                                              if (!newTherapists[tIdx].images) {
-                                                                  newTherapists[tIdx].images = [];
-                                                              }
-                                                              newTherapists[tIdx].images.push(finalBase64);
-                                                              setLocalTherapists(newTherapists);
-                                                              
-                                                              setUploadingImage(null);
-                                                          };
-                                                          img.src = event.target?.result as string;
-                                                      };
-                                                      reader.readAsDataURL(file);
-                                                  }
-                                              }} 
-                                              disabled={uploadingImage === `therapist_${tIdx}`}
-                                          />
-                                          <div className="text-center">
-                                              {uploadingImage === `therapist_${tIdx}` ? (
-                                                  <span className="text-[9px] font-bold text-[#D4AF37]">Wait..</span>
-                                              ) : (
-                                                  <span className="text-[10px] font-bold text-gray-500">Upload</span>
-                                              )}
-                                          </div>
-                                      </label>
-                                  )}
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-              </div>
-          )}
-      </div>
-
-       <div className="bg-red-50 border border-red-200 p-6 rounded-2xl shadow-sm mt-6 mb-2">
-           <h3 className="font-bold text-red-700 mb-2 flex items-center text-lg"><AlertCircle className="w-5 h-5 mr-2" /> Category များ ပိုနေ/လိုနေပါသလား?</h3>
-           <p className="text-sm text-red-600 mb-4 font-semibold">အောက်ပါခလုတ်ကို နှိပ်လိုက်ပါက Database ထဲရှိ အမှားများကို အကုန်ရှင်းလင်းပြီး ပုံထဲကအတိုင်း Service Category (၁၄) မျိုးလုံးကို အလိုအလျောက် ပြန်လည်ပြင်ဆင်ပေးပါမည်။</p>
-           <button onClick={handleForceFixCategories} className="bg-red-600 text-white px-5 py-3 rounded-lg font-bold hover:bg-red-700 shadow-md text-sm flex items-center">
-               {savingCategory === 'force_fix' ? 'Fixing Database...' : '🛠️ Fix & Reset Menu Categories'}
-           </button>
-       </div>
-       
-       {localCategories.map((cat, cIdx) => (
-        <div key={cat.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6 border-l-4 border-l-[#123524]">
-          <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-             <div>
-                <h3 className="font-bold text-gray-800 flex items-center text-xl"><Activity className="w-5 h-5 mr-2 text-[#D4AF37]" /> {cat.title} Category</h3>
-                <p className="text-xs text-gray-500 mt-1">Service များနှင့် စျေးနှုန်းများ ပြင်ဆင်ရန်</p>
-             </div>
-             <button onClick={() => toggleSection(`cat_${cat.id}`)} className="flex items-center text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold transition whitespace-nowrap">
-                {expandedSection === `cat_${cat.id}` ? <><ChevronUp className="w-4 h-4 mr-2" /> Close</> : <><Edit className="w-4 h-4 mr-2" /> Edit this Section</>}
-             </button>
-          </div>
-
-          {expandedSection === `cat_${cat.id}` && (
-             <div className="p-6 pt-0 animate-fade-in border-t border-gray-100 mt-2">
-               <div className="flex justify-end space-x-2 my-4">
-                  <button onClick={() => addItem(cIdx)} className="flex items-center text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold whitespace-nowrap"><PlusCircle className="w-4 h-4 mr-1" /> Add Item</button>
-                  <button disabled={savingCategory === cat.id} onClick={() => handleSaveCategory(cIdx)} className="flex items-center bg-[#D4AF37] text-white px-4 py-2 rounded-lg font-bold shadow-md hover:opacity-90 flex-shrink-0"><Save className="w-4 h-4 mr-2" /> {savingCategory === cat.id ? 'Saving...' : 'Save'}</button>
-               </div>
-               <div className="space-y-3">
-                 {cat.items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No items in this category.</p>}
-                 {cat.items.map((item, iIdx) => (
-                    <div key={item.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-4 border border-gray-200 rounded-xl hover:border-[#D4AF37] transition">
-                        
-                        <div className="lg:col-span-3">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label>
-                            <input type="text" value={item.name} onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-gray-700" />
-                        </div>
-                        
-                        <div className="lg:col-span-2">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Duration/Info</label>
-                            <input type="text" value={item.duration} onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)} placeholder="60 Mins" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none" />
-                        </div>
-                        
-                        <div className="lg:col-span-2">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">Price (Ks)</label>
-                            <input type="number" value={item.price || ''} onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))} className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-[#123524]" />
-                        </div>
-                        
-                        <div className="lg:col-span-2">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label>
-                            <input type="number" value={item.vvipPrice || ''} onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="Optional" className="w-full p-2 text-sm border border-gray-200 rounded focus:border-[#D4AF37] outline-none font-bold text-yellow-600" />
-                        </div>
-                        
-                        <div className="lg:col-span-2 flex items-center px-2 pt-4">
-                            <label className="text-xs font-bold text-gray-600 flex items-center cursor-pointer bg-white px-2 py-1.5 rounded border border-gray-200 w-full shadow-sm">
-                                <input type="checkbox" checked={item.vvipIncluded || false} onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)} className="mr-2" /> VVIP Free
-                            </label>
-                        </div>
-                        
-                        <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0">
-                            <button onClick={() => deleteItem(cIdx, iIdx)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition">
-                                <Trash2 className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        {/* Description & Image Upload (Array Format) */}
-                        <div className="lg:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-gray-200">
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Description (အသေးစိတ်ဖော်ပြချက်)</label>
-                                <textarea 
-                                    value={item.description || ''} 
-                                    onChange={(e) => updateItem(cIdx, iIdx, 'description', e.target.value)} 
-                                    className="w-full p-2.5 border border-gray-300 rounded-lg text-xs h-24 resize-none outline-none focus:border-[#D4AF37] bg-white" 
-                                    placeholder="Service အကြောင်း အသေးစိတ်ရေးရန်..." 
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Service Photos (Max 5)</label>
-                                <div className="flex flex-wrap gap-2 mb-2">
-                                    {(item.images || (item.imageUrl ? [item.imageUrl] : [])).map((imgUrl: string, imgIdx: number) => {
-                                        const currentImages = item.images || (item.imageUrl ? [item.imageUrl] : []);
-                                        return (
-                                        <div key={imgIdx} className="w-24 aspect-[4/3] relative rounded-xl overflow-hidden shadow-sm border border-gray-200 group">
-                                            <img src={imgUrl} alt="Service" className="w-full h-full object-cover" />
-                                            
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
-                                                <button 
-                                                    type="button" 
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        const newCategories = [...localCategories];
-                                                        const cItem = newCategories[cIdx].items[iIdx];
-                                                        const cImgs = cItem.images || (cItem.imageUrl ? [cItem.imageUrl] : []);
-                                                        cImgs.splice(imgIdx, 1);
-                                                        cItem.images = cImgs;
-                                                        delete cItem.imageUrl;
-                                                        setLocalCategories(newCategories);
-                                                    }}
-                                                    className="bg-red-500 text-white text-[9px] px-2 py-1 rounded hover:bg-red-600 shadow-sm font-bold"
-                                                >
-                                                    Delete
-                                                </button>
-                                                
-                                                <div className="flex gap-1.5">
-                                                    {imgIdx > 0 && (
-                                                        <button 
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                const newCategories = [...localCategories];
-                                                                const cItem = newCategories[cIdx].items[iIdx];
-                                                                const cImgs = cItem.images || (cItem.imageUrl ? [cItem.imageUrl] : []);
-                                                                [cImgs[imgIdx - 1], cImgs[imgIdx]] = [cImgs[imgIdx], cImgs[imgIdx - 1]];
-                                                                cItem.images = cImgs;
-                                                                delete cItem.imageUrl;
-                                                                setLocalCategories(newCategories);
-                                                            }}
-                                                            className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
-                                                        >
-                                                            &lt;
-                                                        </button>
-                                                    )}
-                                                    {imgIdx < currentImages.length - 1 && (
-                                                        <button 
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                const newCategories = [...localCategories];
-                                                                const cItem = newCategories[cIdx].items[iIdx];
-                                                                const cImgs = cItem.images || (cItem.imageUrl ? [cItem.imageUrl] : []);
-                                                                [cImgs[imgIdx + 1], cImgs[imgIdx]] = [cImgs[imgIdx], cImgs[imgIdx + 1]];
-                                                                cItem.images = cImgs;
-                                                                delete cItem.imageUrl;
-                                                                setLocalCategories(newCategories);
-                                                            }}
-                                                            className="bg-white text-gray-900 text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200"
-                                                        >
-                                                            &gt;
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )})}
-
-                                    {(!(item.images || (item.imageUrl ? [item.imageUrl] : [])) || (item.images || (item.imageUrl ? [item.imageUrl] : [])).length < 5) && (
-                                        <label className="w-24 aspect-[4/3] rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50 shadow-inner relative overflow-hidden text-gray-400">
-                                            <input 
-                                                type="file" 
-                                                accept="image/*" 
-                                                multiple
-                                                className="hidden" 
-                                                onChange={(e) => {
-                                                    handleServiceImageUpload(cIdx, iIdx, e.target.files);
-                                                    e.target.value = '';
-                                                }} 
-                                                disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
-                                            />
-                                            {uploadingImage === `service_${cIdx}_${iIdx}` ? (
-                                                <span className="text-[10px] font-bold text-[#D4AF37] animate-pulse">Wait..</span>
-                                            ) : (
-                                                <div className="flex flex-col items-center">
-                                                    <ImageIcon className="w-6 h-6 opacity-40 mb-1" />
-                                                    <span className="text-[9px] font-bold text-gray-500">Upload</span>
-                                                </div>
-                                            )}
-                                        </label>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        
-                    </div>
-                 ))}
-               </div>
-             </div>
-          )}
         </div>
-      ))}
+
+        {/* 4 KPI Summary Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 pt-5">
+          <div
+            onClick={() => setActiveSubTab('services')}
+            className="bg-black/25 hover:bg-black/35 border border-white/10 rounded-2xl p-3.5 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Service Menu Items</div>
+            <div className="text-xl font-black text-[#D4AF37] mt-1">{kpiMetrics.totalServices} မျိုး</div>
+            <div className="flex flex-wrap gap-1.5 mt-1.5 text-[10px] font-bold">
+              <span className="text-emerald-300">Active: {kpiMetrics.activeServices}</span>
+              <span>•</span>
+              <span className="text-amber-300">Soon: {kpiMetrics.comingSoonServices}</span>
+              <span>•</span>
+              <span className="text-gray-400">Hidden: {kpiMetrics.hiddenServices}</span>
+            </div>
+          </div>
+
+          <div
+            onClick={() => setActiveSubTab('therapists')}
+            className="bg-black/25 hover:bg-black/35 border border-white/10 rounded-2xl p-3.5 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Therapists Visibility</div>
+            <div className="text-xl font-black text-white mt-1">{kpiMetrics.totalStaff} ဦး</div>
+            <div className="flex flex-wrap gap-1.5 mt-1.5 text-[10px] font-bold">
+              <span className="text-emerald-300">Active: {kpiMetrics.activeStaff}</span>
+              <span>•</span>
+              <span className="text-amber-300">Coming Soon: {kpiMetrics.comingSoonStaff}</span>
+              <span>•</span>
+              <span className="text-red-300">Hidden: {kpiMetrics.hiddenStaff}</span>
+            </div>
+          </div>
+
+          <div
+            onClick={() => setActiveSubTab('therapists')}
+            className="bg-black/25 hover:bg-black/35 border border-white/10 rounded-2xl p-3.5 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Staff App Access</div>
+            <div className="text-xl font-black text-emerald-400 mt-1">
+              {kpiMetrics.appAllowedStaff} / {kpiMetrics.totalStaff} ဦး
+            </div>
+            <div className="text-[10px] text-gray-300 font-semibold mt-1.5">
+              ပိတ်ထားသူ: <strong className="text-red-300">{kpiMetrics.totalStaff - kpiMetrics.appAllowedStaff} ဦး</strong> (Auto-Logout)
+            </div>
+          </div>
+
+          <div
+            onClick={() => setActiveSubTab('payments')}
+            className="bg-black/25 hover:bg-black/35 border border-white/10 rounded-2xl p-3.5 cursor-pointer transition"
+          >
+            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Payment & VIP Status</div>
+            <div className="text-xl font-black text-[#D4AF37] mt-1">{localPaymentMethods.length} Gateways</div>
+            <div className="text-[10px] text-gray-300 font-semibold mt-1.5">
+              VIP Program: <strong className="text-emerald-300">{localVipSettings.isActive ? 'Active' : 'Disabled'}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          2. MODERN HORIZONTAL SUB-NAVIGATION WORKSPACE TABS
+         ========================================================================= */}
+      <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap gap-1.5">
+        {[
+          { id: 'services', label: '💆‍♂️ Services & Menu Studio', badge: `${kpiMetrics.activeServices}/${kpiMetrics.totalServices}` },
+          { id: 'therapists', label: '👥 Therapists & Staff App Access', badge: `${kpiMetrics.totalStaff} Staff` },
+          { id: 'operations', label: '🌐 Online Booking & Operations', badge: spaOperations.isOnlineBookingOpen ? 'OPEN' : 'PAUSED' },
+          { id: 'branding', label: '🏛️ Brand Identity & GPS', badge: '' },
+          { id: 'payments', label: '💳 Payment Gateways', badge: `${localPaymentMethods.length}` },
+          { id: 'vip_security', label: '👑 VIP, Bonus & Security', badge: '' }
+        ].map((tabItem) => {
+          const isAct = activeSubTab === tabItem.id;
+          return (
+            <button
+              key={tabItem.id}
+              type="button"
+              onClick={() => setActiveSubTab(tabItem.id as any)}
+              className={`flex-1 min-w-[165px] py-3 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                isAct
+                  ? 'bg-[#0B2419] text-[#D4AF37] shadow-md border border-[#C8A951]/40'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+            >
+              <span>{tabItem.label}</span>
+              {tabItem.badge && (
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${isAct ? 'bg-[#C8A951] text-[#0B2419]' : 'bg-gray-200 text-gray-700'}`}>
+                  {tabItem.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* =========================================================================
+          TAB 1: SERVICES & MENU STUDIO (SHOW / HIDE / COMING SOON PER SERVICE & CATEGORY)
+         ========================================================================= */}
+      {activeSubTab === 'services' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Top Search, Filter & Category Selector Bar */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 space-y-4">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-gray-100 pb-4">
+              <div>
+                <h3 className="text-lg font-black text-[#123524] flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-[#D4AF37]" />
+                  <span>Spa Menu & Service Visibility Manager</span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Service တစ်ခုချင်းစီကို Customer App တွင် <strong>Active (ပြမည်)</strong>၊ <strong>Coming Soon (မကြာမီလာမည်)</strong> သို့မဟုတ် <strong>Hidden (ဖျောက်ထားမည်)</strong> ဟု 1-Click သတ်မှတ်နိုင်ပါသည်
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleForceFixCategories}
+                className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-black flex items-center gap-1.5 transition"
+              >
+                <AlertCircle className="w-4 h-4" />
+                <span>{savingCategory === 'force_fix' ? 'Resetting...' : 'Reset Default Menu'}</span>
+              </button>
+            </div>
+
+            {/* Category Filter Pills & Search */}
+            <div className="flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-3">
+              <div className="flex flex-wrap gap-1.5 bg-gray-100 p-1.5 rounded-xl border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryTabId('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition ${
+                    selectedCategoryTabId === 'all' ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  All Categories ({localCategories.length})
+                </button>
+                {localCategories.map((c: any) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedCategoryTabId(c.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition flex items-center gap-1.5 ${
+                      selectedCategoryTabId === c.id ? 'bg-[#123524] text-[#D4AF37] shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <span>{c.title}</span>
+                    {c.isHidden && <EyeOff className="w-3 h-3 text-red-400" />}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+                  {[
+                    { id: 'all', label: 'အားလုံး' },
+                    { id: 'active', label: '🟢 Active' },
+                    { id: 'coming_soon', label: '⏳ Coming Soon' },
+                    { id: 'hidden', label: '👁️‍🗨️ Hidden' }
+                  ].map((fm) => (
+                    <button
+                      key={fm.id}
+                      type="button"
+                      onClick={() => setServiceFilterMode(fm.id as any)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition ${
+                        serviceFilterMode === fm.id ? 'bg-white text-[#123524] shadow-2xs' : 'text-gray-500'
+                      }`}
+                    >
+                      {fm.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative flex-1 sm:w-64">
+                  <input
+                    type="text"
+                    value={serviceSearch}
+                    onChange={(e) => setServiceSearch(e.target.value)}
+                    placeholder="Service အမည် ရှာရန်..."
+                    className="w-full pl-9 pr-7 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#D4AF37]"
+                  />
+                  <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+                  {serviceSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setServiceSearch('')}
+                      className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Categories Loop */}
+          {localCategories.map((cat: any, cIdx: number) => {
+            if (selectedCategoryTabId !== 'all' && cat.id !== selectedCategoryTabId) return null;
+
+            const q = serviceSearch.trim().toLowerCase();
+            const filteredItemsWithIdx = (cat.items || [])
+              .map((item: any, iIdx: number) => ({ item, iIdx }))
+              .filter(({ item }: any) => {
+                const isItemHidden = Boolean(cat.isHidden || item.isHidden);
+                const isItemSoon = !isItemHidden && Boolean(item.isComingSoon);
+                const isItemActive = !isItemHidden && !isItemSoon;
+
+                if (serviceFilterMode === 'active' && !isItemActive) return false;
+                if (serviceFilterMode === 'coming_soon' && !isItemSoon) return false;
+                if (serviceFilterMode === 'hidden' && !isItemHidden) return false;
+
+                if (q) {
+                  return (
+                    String(item.name || '').toLowerCase().includes(q) ||
+                    String(item.description || '').toLowerCase().includes(q)
+                  );
+                }
+                return true;
+              });
+
+            return (
+              <div
+                key={cat.id}
+                className={`bg-white rounded-3xl shadow-sm border-2 overflow-hidden transition ${
+                  cat.isHidden ? 'border-red-200 bg-red-50/10' : 'border-gray-200'
+                }`}
+              >
+                {/* Category Header Bar */}
+                <div className="p-5 bg-gradient-to-r from-gray-50 via-white to-gray-50 border-b border-gray-200 flex flex-wrap justify-between items-center gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm ${cat.isHidden ? 'bg-red-100 text-red-600' : 'bg-[#123524] text-[#D4AF37]'}`}>
+                      {cIdx + 1}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-black text-lg text-[#123524]">{cat.title} Category</h4>
+                        {cat.isHidden ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-red-600 text-white uppercase">
+                            👁️‍🗨️ Category Hidden in App
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase">
+                            ● Visible in App
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        စုစုပေါင်း Service ({cat.items?.length || 0}) မျိုး • အပြောင်းအလဲလုပ်ပြီးတိုင်း Save Category နှိပ်ပါ
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Toggle Entire Category Visibility */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCategoryHidden(cIdx)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-black border flex items-center gap-1.5 transition ${
+                        cat.isHidden
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                          : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
+                      }`}
+                    >
+                      {cat.isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      <span>{cat.isHidden ? 'Category ပြန်ပြမည် (Show)' : 'Category တစ်ခုလုံးဖျောက်မည် (Hide)'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => addItem(cIdx)}
+                      className="px-3.5 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-[#123524] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs transition"
+                    >
+                      <PlusCircle className="w-4 h-4 text-[#D4AF37]" />
+                      <span>+ Add Service</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={savingCategory === cat.id}
+                      onClick={() => handleSaveCategory(cIdx)}
+                      className="px-4 py-2 bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>{savingCategory === cat.id ? 'Saving...' : `Save ${cat.title}`}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Category Items List */}
+                <div className="p-5 space-y-4">
+                  {filteredItemsWithIdx.length === 0 ? (
+                    <div className="p-8 text-center text-gray-400 font-bold text-xs border border-dashed border-gray-200 rounded-2xl">
+                      ဤ Category တွင် ရွေးချယ်ထားသော Service မရှိပါ။
+                    </div>
+                  ) : (
+                    filteredItemsWithIdx.map(({ item, iIdx }: any) => {
+                      const itemStatus: 'active' | 'coming_soon' | 'hidden' = item.isHidden
+                        ? 'hidden'
+                        : item.isComingSoon
+                        ? 'coming_soon'
+                        : 'active';
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`p-4 rounded-2xl border-2 transition-all space-y-3 ${
+                            itemStatus === 'hidden'
+                              ? 'bg-gray-100/70 border-gray-300 opacity-75'
+                              : itemStatus === 'coming_soon'
+                              ? 'bg-amber-50/30 border-amber-300'
+                              : 'bg-gray-50/70 border-gray-200 hover:border-[#D4AF37]'
+                          }`}
+                        >
+                          {/* Top Bar of Service Row: Status Badge & 3-Way Visibility Switch */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200/80 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black text-[#123524]">{item.name || 'Unnamed Service'}</span>
+                              <span className="text-[11px] font-bold text-gray-500">({item.duration})</span>
+                              {itemStatus === 'active' && (
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  🟢 Active in App
+                                </span>
+                              )}
+                              {itemStatus === 'coming_soon' && (
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                                  ⏳ Coming Soon (Booking ပိတ်ထားသည်)
+                                </span>
+                              )}
+                              {itemStatus === 'hidden' && (
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-red-100 text-red-700 border border-red-300">
+                                  👁️‍🗨️ Hidden from Customer App
+                                </span>
+                              )}
+                            </div>
+
+                            {/* 1-Click 3-State Segmented Control */}
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={() => handleQuickServiceStatusChange(cIdx, iIdx, 'active')}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition ${
+                                  itemStatus === 'active'
+                                    ? 'bg-emerald-600 text-white shadow-2xs'
+                                    : 'text-gray-600 hover:bg-gray-100'
+                                }`}
+                              >
+                                🟢 ပြမည် (Active)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleQuickServiceStatusChange(cIdx, iIdx, 'coming_soon')}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition ${
+                                  itemStatus === 'coming_soon'
+                                    ? 'bg-amber-500 text-white shadow-2xs'
+                                    : 'text-gray-600 hover:bg-gray-100'
+                                }`}
+                              >
+                                ⏳ Coming Soon
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleQuickServiceStatusChange(cIdx, iIdx, 'hidden')}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition ${
+                                  itemStatus === 'hidden'
+                                    ? 'bg-red-600 text-white shadow-2xs'
+                                    : 'text-gray-600 hover:bg-gray-100'
+                                }`}
+                              >
+                                👁️‍🗨️ ဖျောက်မည် (Hide)
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Fields Grid */}
+                          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+                            <div className="lg:col-span-3">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase">Service Name</label>
+                              <input
+                                type="text"
+                                value={item.name}
+                                onChange={(e) => updateItem(cIdx, iIdx, 'name', e.target.value)}
+                                className="w-full p-2 text-sm bg-white border border-gray-200 rounded-lg focus:border-[#D4AF37] outline-none font-bold text-gray-800"
+                              />
+                            </div>
+
+                            <div className="lg:col-span-2">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase">Duration / Info</label>
+                              <input
+                                type="text"
+                                value={item.duration}
+                                onChange={(e) => updateItem(cIdx, iIdx, 'duration', e.target.value)}
+                                placeholder="60 Mins"
+                                className="w-full p-2 text-sm bg-white border border-gray-200 rounded-lg focus:border-[#D4AF37] outline-none font-semibold"
+                              />
+                            </div>
+
+                            <div className="lg:col-span-2">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase">Normal Price (Ks)</label>
+                              <input
+                                type="number"
+                                value={item.price || ''}
+                                onChange={(e) => updateItem(cIdx, iIdx, 'price', Number(e.target.value))}
+                                className="w-full p-2 text-sm bg-white border border-gray-200 rounded-lg focus:border-[#D4AF37] outline-none font-black text-[#123524]"
+                              />
+                            </div>
+
+                            <div className="lg:col-span-2">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase">VVIP Price (Ks)</label>
+                              <input
+                                type="number"
+                                value={item.vvipPrice || ''}
+                                onChange={(e) => updateItem(cIdx, iIdx, 'vvipPrice', e.target.value === '' ? undefined : Number(e.target.value))}
+                                placeholder="Optional"
+                                className="w-full p-2 text-sm bg-white border border-gray-200 rounded-lg focus:border-[#D4AF37] outline-none font-bold text-yellow-700"
+                              />
+                            </div>
+
+                            <div className="lg:col-span-2 flex items-center pt-4">
+                              <label className="text-xs font-bold text-gray-700 flex items-center cursor-pointer bg-white px-3 py-2 rounded-lg border border-gray-200 w-full shadow-2xs">
+                                <input
+                                  type="checkbox"
+                                  checked={item.vvipIncluded || false}
+                                  onChange={(e) => updateItem(cIdx, iIdx, 'vvipIncluded', e.target.checked)}
+                                  className="mr-2 accent-[#123524]"
+                                />
+                                VVIP Room Free
+                              </label>
+                            </div>
+
+                            <div className="lg:col-span-1 flex justify-end pt-4">
+                              <button
+                                type="button"
+                                onClick={() => deleteItem(cIdx, iIdx)}
+                                className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-xl transition"
+                                title="Delete Service"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Description & Photos */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-200/70">
+                            <div>
+                              <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">
+                                Description (အသေးစိတ်ဖော်ပြချက်)
+                              </label>
+                              <textarea
+                                value={item.description || ''}
+                                onChange={(e) => updateItem(cIdx, iIdx, 'description', e.target.value)}
+                                className="w-full p-2.5 border border-gray-200 rounded-xl text-xs h-20 resize-none outline-none focus:border-[#D4AF37] bg-white font-medium"
+                                placeholder="Service အကြောင်း အသေးစိတ်ရေးရန်..."
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">
+                                Service Photos (Max 5)
+                              </label>
+                              <div className="flex flex-wrap gap-2">
+                                {(item.images || (item.imageUrl ? [item.imageUrl] : [])).map((imgUrl: string, imgIdx: number) => {
+                                  const currentImages = item.images || (item.imageUrl ? [item.imageUrl] : []);
+                                  return (
+                                    <div key={imgIdx} className="w-20 aspect-[4/3] relative rounded-xl overflow-hidden shadow-sm border border-gray-200 group">
+                                      <img src={imgUrl} alt="Service" className="w-full h-full object-cover" />
+                                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            const newCategories = [...localCategories];
+                                            const cItem = newCategories[cIdx].items[iIdx];
+                                            const cImgs = cItem.images || (cItem.imageUrl ? [cItem.imageUrl] : []);
+                                            cImgs.splice(imgIdx, 1);
+                                            cItem.images = cImgs;
+                                            delete cItem.imageUrl;
+                                            setLocalCategories(newCategories);
+                                          }}
+                                          className="bg-red-500 text-white text-[9px] px-2 py-0.5 rounded font-bold"
+                                        >
+                                          Delete
+                                        </button>
+                                        <div className="flex gap-1">
+                                          {imgIdx > 0 && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                const newCategories = [...localCategories];
+                                                const cItem = newCategories[cIdx].items[iIdx];
+                                                const cImgs = cItem.images || (cItem.imageUrl ? [cItem.imageUrl] : []);
+                                                [cImgs[imgIdx - 1], cImgs[imgIdx]] = [cImgs[imgIdx], cImgs[imgIdx - 1]];
+                                                cItem.images = cImgs;
+                                                delete cItem.imageUrl;
+                                                setLocalCategories(newCategories);
+                                              }}
+                                              className="bg-white text-gray-900 text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full"
+                                            >
+                                              &lt;
+                                            </button>
+                                          )}
+                                          {imgIdx < currentImages.length - 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                const newCategories = [...localCategories];
+                                                const cItem = newCategories[cIdx].items[iIdx];
+                                                const cImgs = cItem.images || (cItem.imageUrl ? [cItem.imageUrl] : []);
+                                                [cImgs[imgIdx + 1], cImgs[imgIdx]] = [cImgs[imgIdx], cImgs[imgIdx + 1]];
+                                                cItem.images = cImgs;
+                                                delete cItem.imageUrl;
+                                                setLocalCategories(newCategories);
+                                              }}
+                                              className="bg-white text-gray-900 text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full"
+                                            >
+                                              &gt;
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                {(!(item.images || (item.imageUrl ? [item.imageUrl] : [])) || (item.images || (item.imageUrl ? [item.imageUrl] : [])).length < 5) && (
+                                  <label className="w-20 aspect-[4/3] rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-white text-gray-400">
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      multiple
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        handleServiceImageUpload(cIdx, iIdx, e.target.files);
+                                        e.target.value = '';
+                                      }}
+                                      disabled={uploadingImage === `service_${cIdx}_${iIdx}`}
+                                    />
+                                    {uploadingImage === `service_${cIdx}_${iIdx}` ? (
+                                      <span className="text-[9px] font-bold text-[#D4AF37] animate-pulse">Wait..</span>
+                                    ) : (
+                                      <div className="flex flex-col items-center">
+                                        <ImageIcon className="w-5 h-5 opacity-50 mb-0.5" />
+                                        <span className="text-[9px] font-bold text-gray-500">Upload</span>
+                                      </div>
+                                    )}
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 2: THERAPISTS VISIBILITY (ACTIVE / COMING SOON / HIDE) & STAFF APP ACCESS
+         ========================================================================= */}
+      {activeSubTab === 'therapists' && (
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6 animate-fade-in">
+          {/* Header & Save Button */}
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-gray-100 pb-4">
+            <div>
+              <h3 className="text-xl font-black text-[#123524] flex items-center gap-2">
+                <Users className="w-6 h-6 text-[#D4AF37]" />
+                <span>Therapists Visibility & Staff App Access Control</span>
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                ဝန်ထမ်းတစ်ဦးချင်းစီကို Customer App တွင် <strong>Active</strong> / <strong>Coming Soon (Booking လက်မခံသေးပါ)</strong> / <strong>Hidden</strong> သတ်မှတ်နိုင်ပြီး၊ Staff App အသုံးပြုခွင့် ပိတ်လိုက်ပါက <strong>လက်ရှိသုံးနေသော ဖုန်းမှ ချက်ချင်း Auto Log Out</strong> ဖြစ်သွားပါမည်
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 w-full lg:w-auto justify-end">
+              <button
+                type="button"
+                onClick={addTherapist}
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-[#123524] border border-gray-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition"
+              >
+                <PlusCircle className="w-4 h-4 text-[#D4AF37]" />
+                <span>+ Add New Therapist</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={savingCategory === 'therapists'}
+                onClick={handleSaveTherapists}
+                className="px-5 py-2.5 bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black flex items-center gap-2 shadow-md transition"
+              >
+                <Save className="w-4 h-4" />
+                <span>{savingCategory === 'therapists' ? 'Saving All...' : 'Save All Therapists'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Pills & Search */}
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-gray-50 p-3.5 rounded-2xl border border-gray-200">
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'all', label: `အားလုံး (${kpiMetrics.totalStaff})` },
+                { id: 'active', label: `🟢 Active (${kpiMetrics.activeStaff})` },
+                { id: 'coming_soon', label: `⏳ Coming Soon (${kpiMetrics.comingSoonStaff})` },
+                { id: 'hidden', label: `👁️‍🗨️ Hidden (${kpiMetrics.hiddenStaff})` },
+                { id: 'app_locked', label: `🚫 App ပိတ်ထားသူ (${kpiMetrics.totalStaff - kpiMetrics.appAllowedStaff})` }
+              ].map((tf) => (
+                <button
+                  key={tf.id}
+                  type="button"
+                  onClick={() => setTherapistFilterMode(tf.id as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition ${
+                    therapistFilterMode === tf.id
+                      ? 'bg-[#123524] text-[#D4AF37] shadow-xs'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  {tf.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <input
+                type="text"
+                value={therapistSearch}
+                onChange={(e) => setTherapistSearch(e.target.value)}
+                placeholder="ဝန်ထမ်းအမည် သို့မဟုတ် ID ရှာရန်..."
+                className="w-full pl-9 pr-7 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold outline-none focus:border-[#D4AF37]"
+              />
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+              {therapistSearch && (
+                <button
+                  type="button"
+                  onClick={() => setTherapistSearch('')}
+                  className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Therapists Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {localTherapists.map((therapist: any, tIdx: number) => {
+              const visStatus: 'active' | 'coming_soon' | 'hidden' = therapist.visibilityStatus || 'active';
+              const isAppAllowed = therapist.staffAppAccess !== false;
+
+              if (therapistFilterMode === 'active' && visStatus !== 'active') return null;
+              if (therapistFilterMode === 'coming_soon' && visStatus !== 'coming_soon') return null;
+              if (therapistFilterMode === 'hidden' && visStatus !== 'hidden') return null;
+              if (therapistFilterMode === 'app_locked' && isAppAllowed) return null;
+
+              const q = therapistSearch.trim().toLowerCase();
+              if (
+                q &&
+                !String(therapist.name || '').toLowerCase().includes(q) &&
+                !String(therapist.id || '').toLowerCase().includes(q)
+              ) {
+                return null;
+              }
+
+              return (
+                <div
+                  key={therapist.id}
+                  className={`rounded-3xl border-2 p-5 transition-all relative space-y-4 ${
+                    visStatus === 'hidden'
+                      ? 'bg-gray-100/70 border-gray-300 opacity-85'
+                      : visStatus === 'coming_soon'
+                      ? 'bg-amber-50/30 border-amber-300 shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-[#D4AF37] shadow-sm'
+                  }`}
+                >
+                  {/* Top Bar: Reorder, Login ID & Delete */}
+                  <div className="flex items-center justify-between gap-2 border-b border-gray-200/80 pb-3">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => moveTherapistUp(tIdx)}
+                        disabled={tIdx === 0}
+                        className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-40"
+                        title="Move Up"
+                      >
+                        <ChevronUp className="w-4 h-4 text-gray-700" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveTherapistDown(tIdx)}
+                        disabled={tIdx === localTherapists.length - 1}
+                        className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-40"
+                        title="Move Down"
+                      >
+                        <ChevronDown className="w-4 h-4 text-gray-700" />
+                      </button>
+                      <span className="bg-[#123524] text-[#D4AF37] text-[10px] font-mono font-black px-2.5 py-1 rounded-lg">
+                        ID: {therapist.id}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => removeTherapist(tIdx)}
+                      className="p-1.5 bg-red-50 text-red-500 hover:bg-red-100 rounded-lg transition"
+                      title="Delete Therapist"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Control 1: Customer App Visibility (Active / Coming Soon / Hidden) */}
+                  <div className="bg-gray-50 p-3.5 rounded-2xl border border-gray-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
+                        ၁။ Customer App တွင် ပြသမည့်ပုံစံ (Customer App Visibility)
+                      </span>
+                      {visStatus === 'active' && (
+                        <span className="text-[10px] font-black text-emerald-700">● ဘိုကင်လက်ခံနေသည်</span>
+                      )}
+                      {visStatus === 'coming_soon' && (
+                        <span className="text-[10px] font-black text-amber-700">⏳ Coming Soon (ဘိုကင်ပိတ်ထားသည်)</span>
+                      )}
+                      {visStatus === 'hidden' && (
+                        <span className="text-[10px] font-black text-red-600">👁️‍🗨️ Customer App တွင် ဖျောက်ထားသည်</span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleQuickTherapistVisibility(tIdx, 'active')}
+                        className={`py-2 px-2 rounded-xl text-[11px] font-black transition flex items-center justify-center gap-1 ${
+                          visStatus === 'active'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span>🟢 Active</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickTherapistVisibility(tIdx, 'coming_soon')}
+                        className={`py-2 px-2 rounded-xl text-[11px] font-black transition flex items-center justify-center gap-1 ${
+                          visStatus === 'coming_soon'
+                            ? 'bg-amber-500 text-white shadow-sm'
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span>⏳ Coming Soon</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickTherapistVisibility(tIdx, 'hidden')}
+                        className={`py-2 px-2 rounded-xl text-[11px] font-black transition flex items-center justify-center gap-1 ${
+                          visStatus === 'hidden'
+                            ? 'bg-red-600 text-white shadow-sm'
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span>👁️‍🗨️ Hide</span>
+                      </button>
+                    </div>
+
+                    {visStatus === 'coming_soon' && (
+                      <div className="pt-1">
+                        <label className="block text-[10px] font-bold text-amber-900 mb-1">
+                          Customer App တွင် ပြသမည့် Coming Soon စာသား:
+                        </label>
+                        <input
+                          type="text"
+                          value={therapist.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ'}
+                          onChange={(e) => updateTherapist(tIdx, 'comingSoonText', e.target.value)}
+                          className="w-full p-2 text-xs font-bold bg-white border border-amber-300 rounded-xl text-amber-950 outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Control 2: Staff App Login Access & Instant Auto-Logout Switch */}
+                  <div
+                    className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 transition ${
+                      isAppAllowed
+                        ? 'bg-emerald-50/60 border-emerald-200'
+                        : 'bg-red-50 border-red-300'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-black flex items-center gap-1.5 text-gray-800">
+                        <Power className={`w-4 h-4 ${isAppAllowed ? 'text-emerald-600' : 'text-red-600'}`} />
+                        <span>၂။ Staff App ဝင်ရောက်အသုံးပြုခွင့် (Staff Portal Access)</span>
+                      </div>
+                      <p className="text-[10px] font-semibold text-gray-500 mt-0.5">
+                        {isAppAllowed
+                          ? 'လက်ရှိတွင် ဝန်ထမ်းအနေဖြင့် Staff App သို့ ဝင်ရောက်အသုံးပြုနိုင်ပါသည်'
+                          : '🚫 ပိတ်ထားပါသည် (လက်ရှိသုံးနေသော ဖုန်းမှလည်း Auto Log Out လုပ်ထားပါသည်)'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStaffAppAccess(tIdx)}
+                      className={`px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider whitespace-nowrap transition shadow-xs ${
+                        isAppAllowed
+                          ? 'bg-red-600 hover:bg-red-700 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      {isAppAllowed ? '🚫 ပိတ်မည် (Auto Logout)' : '🔓 ပြန်ဖွင့်ပေးမည်'}
+                    </button>
+                  </div>
+
+                  {/* Name & Password Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Therapist Name</label>
+                      <input
+                        type="text"
+                        value={therapist.name}
+                        onChange={(e) => updateTherapist(tIdx, 'name', e.target.value)}
+                        placeholder="e.g. Therapist No-1"
+                        className="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:border-[#123524] outline-none font-bold text-[#123524]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Staff App Password</label>
+                      <input
+                        type="text"
+                        minLength={6}
+                        value={therapist.password}
+                        onChange={(e) => updateTherapist(tIdx, 'password', e.target.value)}
+                        placeholder="Min 6 chars"
+                        className="w-full p-2.5 text-sm bg-gray-50 border border-gray-300 rounded-xl focus:border-[#123524] outline-none font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Photos Upload (Max 5) */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2">
+                      Gallery Photos (Max 5 HD Photos)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {therapist.images && therapist.images.map((imgUrl: string, imgIdx: number) => (
+                        <div key={imgIdx} className="w-16 aspect-[3/4] relative rounded-xl overflow-hidden shadow-sm border border-gray-200 group">
+                          <img src={imgUrl} alt="Therapist" className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                const newTherapists = [...localTherapists];
+                                newTherapists[tIdx].images.splice(imgIdx, 1);
+                                setLocalTherapists(newTherapists);
+                              }}
+                              className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded font-bold"
+                            >
+                              Delete
+                            </button>
+                            <div className="flex gap-1">
+                              {imgIdx > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    const newTherapists = [...localTherapists];
+                                    const imgs = newTherapists[tIdx].images;
+                                    [imgs[imgIdx - 1], imgs[imgIdx]] = [imgs[imgIdx], imgs[imgIdx - 1]];
+                                    setLocalTherapists(newTherapists);
+                                  }}
+                                  className="bg-white text-gray-900 text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full"
+                                >
+                                  &lt;
+                                </button>
+                              )}
+                              {imgIdx < therapist.images.length - 1 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    const newTherapists = [...localTherapists];
+                                    const imgs = newTherapists[tIdx].images;
+                                    [imgs[imgIdx + 1], imgs[imgIdx]] = [imgs[imgIdx], imgs[imgIdx + 1]];
+                                    setLocalTherapists(newTherapists);
+                                  }}
+                                  className="bg-white text-gray-900 text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full"
+                                >
+                                  &gt;
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {(!therapist.images || therapist.images.length < 5) && (
+                        <label className="w-16 aspect-[3/4] rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors bg-gray-50">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setUploadingImage(`therapist_${tIdx}`);
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                  const img = new Image();
+                                  img.onload = () => {
+                                    const canvas = document.createElement('canvas');
+                                    const MAX_SIZE = 800;
+                                    let width = img.width;
+                                    let height = img.height;
+
+                                    if (width > height) {
+                                      if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+                                    } else {
+                                      if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                                    }
+                                    canvas.width = width;
+                                    canvas.height = height;
+                                    const ctx = canvas.getContext('2d');
+                                    if (ctx) {
+                                      ctx.fillStyle = '#FFFFFF';
+                                      ctx.fillRect(0, 0, width, height);
+                                      ctx.drawImage(img, 0, 0, width, height);
+                                    }
+                                    const finalBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                                    const newTherapists = [...localTherapists];
+                                    if (!newTherapists[tIdx].images) newTherapists[tIdx].images = [];
+                                    newTherapists[tIdx].images.push(finalBase64);
+                                    setLocalTherapists(newTherapists);
+                                    setUploadingImage(null);
+                                  };
+                                  img.src = event.target?.result as string;
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                            disabled={uploadingImage === `therapist_${tIdx}`}
+                          />
+                          <div className="text-center">
+                            {uploadingImage === `therapist_${tIdx}` ? (
+                              <span className="text-[9px] font-bold text-[#D4AF37]">Wait..</span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-gray-500">+ Photo</span>
+                            )}
+                          </div>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 3: INTERNATIONAL SPA OPERATIONS & ONLINE BOOKING MASTER CONTROL
+         ========================================================================= */}
+      {activeSubTab === 'operations' && (
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-4">
+            <div>
+              <h3 className="text-xl font-black text-[#123524] flex items-center gap-2">
+                <Globe className="w-6 h-6 text-[#D4AF37]" />
+                <span>Online Booking Master Switch & Spa Operating Hours</span>
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                ဆိုင်အချိန်ဇယားပြည့်နေချိန် သို့မဟုတ် အရေးပေါ်အချိန်များတွင် Customer App တစ်ခုလုံး၏ Online Booking ကို ခေတ္တပိတ်ထားနိုင်ပါသည်
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={savingCategory === 'spa_operations'}
+              onClick={handleSaveSpaOperations}
+              className="px-5 py-2.5 bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black flex items-center gap-2 shadow-md"
+            >
+              <Save className="w-4 h-4" />
+              <span>{savingCategory === 'spa_operations' ? 'Saving...' : 'Save Operations Settings'}</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Master Online Booking Switch */}
+            <div className={`p-5 rounded-2xl border-2 space-y-4 ${spaOperations.isOnlineBookingOpen ? 'bg-emerald-50/50 border-emerald-200' : 'bg-red-50/60 border-red-300'}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-black text-base text-[#123524]">Master Online Booking Switch</h4>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    {spaOperations.isOnlineBookingOpen
+                      ? '🟢 လက်ရှိတွင် Customer များ Online Booking ပုံမှန်တင်နိုင်ပါသည်'
+                      : '🚫 လက်ရှိတွင် Online Booking ခေတ္တပိတ်ထားပါသည်'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSpaOperations({ ...spaOperations, isOnlineBookingOpen: !spaOperations.isOnlineBookingOpen })}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase shadow-sm transition ${
+                    spaOperations.isOnlineBookingOpen
+                      ? 'bg-red-600 hover:bg-red-700 text-white'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
+                >
+                  {spaOperations.isOnlineBookingOpen ? '🚫 Pause Online Booking' : '🟢 Open Online Booking'}
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Booking ပိတ်ထားချိန် ပြသမည့် ခေါင်းစဉ် (Maintenance Title)
+                </label>
+                <input
+                  type="text"
+                  value={spaOperations.maintenanceTitle}
+                  onChange={(e) => setSpaOperations({ ...spaOperations, maintenanceTitle: e.target.value })}
+                  className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Booking ပိတ်ထားချိန် Customer ထံ ပြသမည့် အသိပေးစာသား
+                </label>
+                <textarea
+                  rows={3}
+                  value={spaOperations.maintenanceMessage}
+                  onChange={(e) => setSpaOperations({ ...spaOperations, maintenanceMessage: e.target.value })}
+                  className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Operating Hours & Announcement Banner */}
+            <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4">
+              <h4 className="font-black text-base text-[#123524] flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[#D4AF37]" />
+                <span>Operating Hours & Customer Announcement Banner</span>
+              </h4>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Opening Time</label>
+                  <input
+                    type="text"
+                    value={spaOperations.openingTime}
+                    onChange={(e) => setSpaOperations({ ...spaOperations, openingTime: e.target.value })}
+                    placeholder="10:00 AM"
+                    className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-[#123524]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Closing Time</label>
+                  <input
+                    type="text"
+                    value={spaOperations.closingTime}
+                    onChange={(e) => setSpaOperations({ ...spaOperations, closingTime: e.target.value })}
+                    placeholder="11:00 PM"
+                    className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-[#123524]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Min Lead Time (Mins)</label>
+                  <input
+                    type="number"
+                    value={spaOperations.leadTimeMins}
+                    onChange={(e) => setSpaOperations({ ...spaOperations, leadTimeMins: Number(e.target.value) })}
+                    className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-[#123524]"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-200 space-y-2">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="text-xs font-black text-gray-700">📢 Customer App ထိပ်ဆုံးတွင် အထူးကြေညာချက် (Banner) ပြသမည်</span>
+                  <input
+                    type="checkbox"
+                    checked={spaOperations.isAnnouncementActive}
+                    onChange={(e) => setSpaOperations({ ...spaOperations, isAnnouncementActive: e.target.checked })}
+                    className="w-4 h-4 accent-[#123524]"
+                  />
+                </label>
+                <textarea
+                  rows={2}
+                  value={spaOperations.announcementBanner}
+                  onChange={(e) => setSpaOperations({ ...spaOperations, announcementBanner: e.target.value })}
+                  placeholder="ဥပမာ - ယနေ့ ညပိုင်း Night Call ဝန်ဆောင်မှုများ ကြိုတင်ဘိုကင်တင်နိုင်ပါပြီ..."
+                  className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 outline-none"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 4: BRAND IDENTITY, CONTACT INFO & GPS GEOFENCING
+         ========================================================================= */}
+      {activeSubTab === 'branding' && (
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-4">
+            <div>
+              <h3 className="text-xl font-black text-[#123524] flex items-center gap-2">
+                <Settings className="w-5 h-5 text-[#D4AF37]" />
+                <span>App Branding, Contact Info & GPS Geofencing</span>
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                ဆိုင်၏ လိုဂို၊ အမည်၊ လိပ်စာ၊ ဖုန်းနံပါတ် နှင့် Staff Out Pass အတွက် GPS Location များ ပြင်ဆင်ရန်
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={savingCategory === 'branding'}
+              onClick={handleSaveBranding}
+              className="flex items-center bg-[#123524] text-[#D4AF37] px-5 py-2.5 rounded-xl text-xs font-black shadow-md hover:opacity-90"
+            >
+              <Save className="w-4 h-4 mr-2" /> {savingCategory === 'branding' ? 'Saving...' : 'Save Branding'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="border border-gray-200 rounded-2xl p-5 bg-gray-50 flex flex-col items-center justify-center">
+              <label className="block text-xs font-bold text-gray-500 mb-4 text-center w-full">Header Logo Image (Circle Format)</label>
+              <div className="w-28 h-28 bg-white border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center relative overflow-hidden mb-4 shadow-sm group">
+                {localBranding.logoUrl ? (
+                  <>
+                    <img src={localBranding.logoUrl} alt="Logo Preview" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={() => setLocalBranding({ ...localBranding, logoUrl: '' })}
+                        className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center text-gray-400">
+                    {uploadingImage === 'logo' ? <div className="text-xs font-bold animate-pulse">Uploading...</div> : "No Logo"}
+                  </div>
+                )}
+              </div>
+              <label className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-xl text-xs font-black cursor-pointer hover:bg-gray-100 transition shadow-sm">
+                {localBranding.logoUrl ? 'Change Logo' : 'Upload Logo'}
+                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingImage === 'logo'} />
+              </label>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Business Name</label>
+                <input
+                  type="text"
+                  value={localBranding.name || ''}
+                  onChange={e => setLocalBranding({ ...localBranding, name: e.target.value })}
+                  className="w-full p-2.5 text-sm border border-gray-300 rounded-xl focus:border-[#D4AF37] outline-none font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Address</label>
+                <textarea
+                  value={localBranding.address}
+                  onChange={e => setLocalBranding({ ...localBranding, address: e.target.value })}
+                  className="w-full p-2.5 text-sm border border-gray-300 rounded-xl focus:border-[#D4AF37] outline-none"
+                  rows={2}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Phone 1</label>
+                  <input
+                    type="text"
+                    value={localBranding.phone1}
+                    onChange={e => setLocalBranding({ ...localBranding, phone1: e.target.value })}
+                    className="w-full p-2.5 text-sm border border-gray-300 rounded-xl focus:border-[#D4AF37] outline-none font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Phone 2</label>
+                  <input
+                    type="text"
+                    value={localBranding.phone2}
+                    onChange={e => setLocalBranding({ ...localBranding, phone2: e.target.value })}
+                    className="w-full p-2.5 text-sm border border-gray-300 rounded-xl focus:border-[#D4AF37] outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Telegram Link</label>
+                  <input
+                    type="text"
+                    value={(localBranding as any).telegram || ''}
+                    onChange={e => setLocalBranding({ ...localBranding, telegram: e.target.value } as any)}
+                    placeholder="https://t.me/username"
+                    className="w-full p-2.5 text-sm border border-gray-300 rounded-xl focus:border-[#D4AF37] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Viber Link</label>
+                  <input
+                    type="text"
+                    value={(localBranding as any).viber || ''}
+                    onChange={e => setLocalBranding({ ...localBranding, viber: e.target.value } as any)}
+                    placeholder="viber://add?number=..."
+                    className="w-full p-2.5 text-sm border border-gray-300 rounded-xl focus:border-[#D4AF37] outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Copyright Text</label>
+                <input
+                  type="text"
+                  value={localBranding.copyright}
+                  onChange={e => setLocalBranding({ ...localBranding, copyright: e.target.value })}
+                  className="w-full p-2.5 text-sm border border-gray-300 rounded-xl focus:border-[#D4AF37] outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-6">
+            <h4 className="text-sm font-black text-[#123524] mb-2 flex items-center gap-1.5">
+              <MapPin className="w-4 h-4 text-[#D4AF37]" />
+              <span>Shop GPS Location (For Staff Out Pass 50m Geofencing)</span>
+            </h4>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <div className="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-200 text-xs text-gray-700 font-mono font-bold">
+                Lat: {localBranding.shopLat ? localBranding.shopLat.toFixed(5) : 'Not set'}, Lng: {localBranding.shopLng ? localBranding.shopLng.toFixed(5) : 'Not set'}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      setLocalBranding({ ...localBranding, shopLat: pos.coords.latitude, shopLng: pos.coords.longitude });
+                      alert("Location updated! Please click 'Save Branding' above to confirm.");
+                    },
+                    () => alert("Please enable Location Services in your browser to get coordinates."),
+                    { enableHighAccuracy: true }
+                  );
+                }}
+                className="bg-emerald-50 text-emerald-800 px-4 py-3 rounded-xl text-xs font-black border border-emerald-200 hover:bg-emerald-100 transition whitespace-nowrap"
+              >
+                📍 Get Current Shop GPS
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 5: PAYMENT GATEWAYS (KPAY, WAVEPAY, BANK ACCOUNTS)
+         ========================================================================= */}
+      {activeSubTab === 'payments' && (
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-4">
+            <div>
+              <h3 className="text-xl font-black text-[#123524] flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-[#D4AF37]" />
+                <span>Manage Payment Gateways</span>
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Customer App တွင် ငွေလွှဲလက်ခံမည့် KPay, WavePay နှင့် ဘဏ်အကောင့်များ စီမံရန်
+              </p>
+            </div>
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                onClick={addPaymentMethod}
+                className="flex items-center text-xs bg-gray-100 border border-gray-300 px-4 py-2.5 rounded-xl hover:bg-gray-200 font-black whitespace-nowrap"
+              >
+                <PlusCircle className="w-4 h-4 mr-1.5 text-[#D4AF37]" /> + Add Payment
+              </button>
+              <button
+                type="button"
+                disabled={savingCategory === 'payments'}
+                onClick={handleSavePayments}
+                className="flex items-center bg-[#123524] text-[#D4AF37] px-5 py-2.5 rounded-xl text-xs font-black shadow-md hover:opacity-90"
+              >
+                <Save className="w-4 h-4 mr-2" /> {savingCategory === 'payments' ? 'Saving...' : 'Save Payments'}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {localPaymentMethods.map((pm, pIdx) => (
+              <div key={pm.id} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center bg-gray-50 p-4 border border-gray-200 rounded-2xl hover:border-[#D4AF37] transition">
+                <div className="lg:col-span-2 flex flex-col items-center justify-center border-r border-gray-200 pr-2">
+                  <div className="w-12 h-12 bg-white border border-gray-200 rounded-xl mb-1 flex items-center justify-center overflow-hidden relative group">
+                    {pm.logoUrl ? (
+                      <>
+                        <img src={pm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+                        <button
+                          type="button"
+                          onClick={() => updatePaymentMethod(pIdx, 'logoUrl', '')}
+                          className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <div className="text-[8px] text-gray-400 text-center">{uploadingImage === `pay_${pIdx}` ? '...' : 'No Logo'}</div>
+                    )}
+                  </div>
+                  <label className="text-[10px] text-[#123524] font-black cursor-pointer hover:underline">
+                    Upload Logo
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePaymentLogoUpload(pIdx, e)} disabled={uploadingImage === `pay_${pIdx}`} />
+                  </label>
+                </div>
+                <div className="lg:col-span-3">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase">Bank / Wallet Name</label>
+                  <input
+                    type="text"
+                    value={pm.name}
+                    onChange={(e) => updatePaymentMethod(pIdx, 'name', e.target.value)}
+                    className="w-full p-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:border-[#D4AF37] outline-none font-bold text-gray-800"
+                  />
+                </div>
+                <div className="lg:col-span-3">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase">Account Number / Phone</label>
+                  <input
+                    type="text"
+                    value={pm.accountNumber}
+                    onChange={(e) => updatePaymentMethod(pIdx, 'accountNumber', e.target.value)}
+                    className="w-full p-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:border-[#D4AF37] outline-none font-mono font-black text-[#123524] tracking-wider"
+                  />
+                </div>
+                <div className="lg:col-span-3">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase">Account Holder Name</label>
+                  <input
+                    type="text"
+                    value={pm.accountName}
+                    onChange={(e) => updatePaymentMethod(pIdx, 'accountName', e.target.value)}
+                    className="w-full p-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:border-[#D4AF37] outline-none font-semibold"
+                  />
+                </div>
+                <div className="lg:col-span-1 flex justify-end pt-4 lg:pt-0">
+                  <button
+                    type="button"
+                    onClick={() => removePaymentMethod(pIdx)}
+                    className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-xl transition"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 6: VIP PROGRAM, WELCOME BONUS, INSTALL GUIDE & ENCRYPTION SECURITY
+         ========================================================================= */}
+      {activeSubTab === 'vip_security' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* 1. VIP Program Customization */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-4">
+              <div>
+                <h3 className="text-xl font-black text-[#123524] flex items-center gap-2">
+                  <Award className="w-6 h-6 text-[#D4AF37]" />
+                  <span>VIP Membership Program Customization</span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Jade Elite, Imperial Gold, Signature V-VIP အဆင့်များနှင့် Point စည်းမျဉ်းများကို ပြင်ဆင်ရန်
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={savingCategory === 'vip_settings'}
+                onClick={handleSaveVipSettings}
+                className="flex items-center bg-[#123524] text-[#D4AF37] px-5 py-2.5 rounded-xl text-xs font-black shadow-md hover:opacity-90"
+              >
+                <Save className="w-4 h-4 mr-2" /> {savingCategory === 'vip_settings' ? 'Saving...' : 'Save VIP Program'}
+              </button>
+            </div>
+
+            <div className="flex items-center space-x-3 bg-gray-50 p-3.5 rounded-xl border border-gray-200 w-fit">
+              <label className="text-xs font-black text-[#123524] cursor-pointer flex items-center">
+                <input
+                  type="checkbox"
+                  checked={localVipSettings.isActive}
+                  onChange={(e) => setLocalVipSettings({ ...localVipSettings, isActive: e.target.checked })}
+                  className="w-4 h-4 accent-[#123524] mr-2.5"
+                />
+                Enable VIP Program (Customer App တွင် VIP Tab ကို ဖွင့်ထားမည်)
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div>
+                <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center">
+                  <Star className="w-4 h-4 mr-2 text-[#D4AF37]" /> 1. Membership Tiers & Base Rule
+                </h4>
+                <div className="mb-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <label className="block text-[10px] font-bold text-gray-500 mb-1">Base Rule Text</label>
+                  <input
+                    type="text"
+                    value={localVipSettings.baseRuleText}
+                    onChange={(e) => setLocalVipSettings({ ...localVipSettings, baseRuleText: e.target.value })}
+                    className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:border-[#D4AF37] outline-none font-semibold text-gray-700"
+                  />
+                </div>
+                <div className="space-y-3">
+                  {localVipSettings.tiers.map((tier: any, tIdx: number) => (
+                    <div key={tier.id} className="p-4 bg-gray-50 border border-gray-200 rounded-xl shadow-2xs">
+                      <div className="grid grid-cols-2 gap-3 mb-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400">Tier Name</label>
+                          <input
+                            type="text"
+                            value={tier.name}
+                            onChange={(e) => updateVipTier(tIdx, 'name', e.target.value)}
+                            className="w-full p-2 text-sm border rounded-lg focus:border-[#D4AF37] outline-none font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400">Card Color Code</label>
+                          <input
+                            type="text"
+                            value={tier.colorTheme}
+                            onChange={(e) => updateVipTier(tIdx, 'colorTheme', e.target.value)}
+                            className="w-full p-2 text-sm border rounded-lg focus:border-[#D4AF37] outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400">Required Points</label>
+                          <input
+                            type="number"
+                            value={tier.requiredPoints}
+                            onChange={(e) => updateVipTier(tIdx, 'requiredPoints', Number(e.target.value))}
+                            className="w-full p-2 text-sm border rounded-lg focus:border-[#D4AF37] outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400">Discount (%)</label>
+                          <input
+                            type="number"
+                            value={tier.discountPercent}
+                            onChange={(e) => updateVipTier(tIdx, 'discountPercent', Number(e.target.value))}
+                            className="w-full p-2 text-sm border rounded-lg focus:border-[#D4AF37] outline-none text-red-600 font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400">Instant Upgrade Amt</label>
+                          <input
+                            type="text"
+                            value={tier.instantUpgrade || ''}
+                            onChange={(e) => updateVipTier(tIdx, 'instantUpgrade', e.target.value)}
+                            className="w-full p-2 text-sm border rounded-lg focus:border-[#D4AF37] outline-none text-blue-600 font-bold"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <h4 className="font-bold text-sm text-[#123524] mb-4 flex items-center">
+                    <Target className="w-4 h-4 mr-2 text-[#D4AF37]" /> 2. Target Rewards (Pre-Jade)
+                  </h4>
+                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <label className="block text-[10px] font-bold text-gray-500 mb-1">Section Description</label>
+                    <textarea
+                      value={localVipSettings.preJadeText}
+                      onChange={(e) => setLocalVipSettings({ ...localVipSettings, preJadeText: e.target.value })}
+                      rows={2}
+                      className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:border-[#D4AF37] outline-none font-semibold text-gray-700"
+                    />
+                    <label className="block text-[10px] font-bold text-gray-500 mt-3 mb-2">Reward Steps</label>
+                    <div className="space-y-2">
+                      {(localVipSettings.preJadeRewards || []).map((reward: string, rIdx: number) => (
+                        <div key={rIdx} className="flex space-x-2">
+                          <input
+                            type="text"
+                            value={reward}
+                            onChange={(e) => {
+                              const newR = [...localVipSettings.preJadeRewards];
+                              newR[rIdx] = e.target.value;
+                              setLocalVipSettings({ ...localVipSettings, preJadeRewards: newR });
+                            }}
+                            className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:border-[#D4AF37] outline-none font-semibold text-gray-700"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLocalVipSettings({
+                                ...localVipSettings,
+                                preJadeRewards: localVipSettings.preJadeRewards.filter((_: any, i: number) => i !== rIdx)
+                              })
+                            }
+                            className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLocalVipSettings({
+                            ...localVipSettings,
+                            preJadeRewards: [...localVipSettings.preJadeRewards, 'New Reward']
+                          })
+                        }
+                        className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center mt-2"
+                      >
+                        <PlusCircle className="w-3 h-3 mr-1" /> Add Reward Step
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="font-bold text-sm text-[#123524] mb-3 flex items-center">
+                    <ShieldCheck className="w-4 h-4 mr-2 text-[#D4AF37]" /> 3. VIP Rules & Terms
+                  </h4>
+                  <div className="space-y-2.5 bg-gray-50 p-4 rounded-xl border border-gray-200 max-h-64 overflow-y-auto">
+                    {localVipSettings.rules.map((rule: string, rIdx: number) => (
+                      <div key={rIdx} className="flex items-start space-x-2">
+                        <div className="mt-2 text-xs font-bold text-gray-400">{rIdx + 1}.</div>
+                        <textarea
+                          value={rule}
+                          onChange={(e) => updateVipRule(rIdx, e.target.value)}
+                          rows={2}
+                          className="w-full p-2 text-xs border border-gray-300 rounded-lg focus:border-[#D4AF37] outline-none font-semibold text-gray-700"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLocalVipSettings({
+                              ...localVipSettings,
+                              rules: localVipSettings.rules.filter((_: any, i: number) => i !== rIdx)
+                            })
+                          }
+                          className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLocalVipSettings({
+                          ...localVipSettings,
+                          rules: [...localVipSettings.rules, 'စည်းကမ်းချက်အသစ်...']
+                        })
+                      }
+                      className="text-xs font-bold bg-white border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-100 flex items-center mt-2"
+                    >
+                      <PlusCircle className="w-3 h-3 mr-1" /> Add Rule
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Welcome Bonus & Install Instructions Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Welcome Bonus */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-4">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <div>
+                  <h4 className="font-black text-base text-[#123524] flex items-center gap-2">
+                    <Gift className="w-5 h-5 text-purple-600" />
+                    <span>New User Welcome Bonus</span>
+                  </h4>
+                  <p className="text-xs text-gray-500">အကောင့်သစ်ဖွင့်သူများကို Point လက်ဆောင်ပေးမည့် အစီအစဉ်</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={savingCategory === 'signup_bonus'}
+                  onClick={handleSaveSignUpBonus}
+                  className="px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black"
+                >
+                  {savingCategory === 'signup_bonus' ? 'Saving...' : 'Save Bonus'}
+                </button>
+              </div>
+
+              <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200 cursor-pointer">
+                <span className="text-xs font-bold text-gray-700">Enable Welcome Bonus (ပွိုင့်လက်ဆောင်ပေးမည်)</span>
+                <input
+                  type="checkbox"
+                  checked={localSignUpBonus.isActive}
+                  onChange={(e) => setLocalSignUpBonus({ ...localSignUpBonus, isActive: e.target.checked })}
+                  className="w-4 h-4 accent-[#123524]"
+                />
+              </label>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Bonus Points Amount</label>
+                <input
+                  type="number"
+                  value={localSignUpBonus.points || ''}
+                  onChange={(e) => setLocalSignUpBonus({ ...localSignUpBonus, points: Number(e.target.value) })}
+                  className="w-full p-2.5 text-sm border border-gray-300 rounded-xl font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={localSignUpBonus.startDate}
+                    onChange={(e) => setLocalSignUpBonus({ ...localSignUpBonus, startDate: e.target.value })}
+                    className="w-full p-2 text-xs border border-gray-300 rounded-xl font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">End Date</label>
+                  <input
+                    type="date"
+                    value={localSignUpBonus.endDate}
+                    onChange={(e) => setLocalSignUpBonus({ ...localSignUpBonus, endDate: e.target.value })}
+                    className="w-full p-2 text-xs border border-gray-300 rounded-xl font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Encryption Key Security */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-4">
+              <div className="border-b border-gray-100 pb-3">
+                <h4 className="font-black text-base text-[#123524] flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-orange-500" />
+                  <span>AES-256 Encryption Key Rotation</span>
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Database တစ်ခုလုံးရှိ Data များကို Key အသစ်ဖြင့် အလိုအလျောက် ပြောင်းလဲပေးပါမည်
+                </p>
+              </div>
+
+              <div className="bg-orange-50 p-3.5 rounded-2xl border border-orange-200 text-xs text-orange-900 font-semibold">
+                ⚠️ သတိပြုရန်: Key ပြောင်းပြီးပါက Vercel Environment Variables (`VITE_SECRET_KEY`) တွင်ပါ တူညီသော Key အသစ်ကို ပြောင်းထည့်၍ Redeploy လုပ်ရပါမည်။
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                <input
+                  type="text"
+                  placeholder="Enter New Secret Key (Min 10 Chars)"
+                  value={newSecretKey}
+                  onChange={(e) => setNewSecretKey(e.target.value)}
+                  className="flex-1 p-3 border border-gray-300 rounded-xl outline-none focus:border-orange-500 font-mono text-xs font-bold"
+                />
+                <button
+                  type="button"
+                  disabled={migratingKey}
+                  onClick={handleChangeSecretKey}
+                  className="px-5 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-black shadow-sm transition whitespace-nowrap"
+                >
+                  {migratingKey ? 'Re-Encrypting...' : 'Rotate Key Now'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. App Install Instructions */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-4">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <div>
+                <h4 className="font-black text-base text-[#123524] flex items-center gap-2">
+                  <Download className="w-5 h-5 text-blue-600" />
+                  <span>Download App Instructions (PWA Guide)</span>
+                </h4>
+                <p className="text-xs text-gray-500">Customer App တွင် Download နှိပ်လျှင် ပြသမည့် လမ်းညွှန်အဆင့်များ</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (localInstallSteps.length < 10)
+                      setLocalInstallSteps([...localInstallSteps, { id: Date.now().toString(), text: '', imageUrl: '' }]);
+                  }}
+                  className="px-3.5 py-2 bg-gray-100 border border-gray-300 rounded-xl text-xs font-black"
+                >
+                  + Add Step
+                </button>
+                <button
+                  type="button"
+                  disabled={savingCategory === 'install_steps'}
+                  onClick={handleSaveInstallSteps}
+                  className="px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black"
+                >
+                  {savingCategory === 'install_steps' ? 'Saving...' : 'Save Steps'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {localInstallSteps.map((step, idx) => (
+                <div key={step.id} className="p-4 bg-gray-50 border border-gray-200 rounded-2xl relative space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setLocalInstallSteps(localInstallSteps.filter((_, i) => i !== idx))}
+                    className="absolute top-3 right-3 text-red-500 bg-red-50 p-1.5 rounded-full"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="font-black text-xs text-[#123524]">Step {idx + 1}</div>
+                  <textarea
+                    value={step.text}
+                    onChange={(e) => {
+                      const updated = [...localInstallSteps];
+                      updated[idx].text = e.target.value;
+                      setLocalInstallSteps(updated);
+                    }}
+                    className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-semibold outline-none"
+                    rows={2}
+                  />
+                  <div className="flex items-center gap-3">
+                    <div className="w-14 h-20 bg-gray-200 rounded-lg border border-gray-300 flex items-center justify-center overflow-hidden relative">
+                      {step.imageUrl ? (
+                        <>
+                          <img src={step.imageUrl} alt={`Step ${idx + 1}`} className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...localInstallSteps];
+                              updated[idx].imageUrl = '';
+                              setLocalInstallSteps(updated);
+                            }}
+                            className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </>
+                      ) : (
+                        <ImageIcon className="w-5 h-5 text-gray-400" />
+                      )}
+                    </div>
+                    <label className="text-[11px] font-black text-[#123524] bg-amber-50 px-3 py-2 rounded-xl border border-[#D4AF37]/40 cursor-pointer">
+                      {uploadingImage === `install_${idx}` ? 'Uploading...' : 'Upload Image'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleInstallImageUpload(idx, e)}
+                        disabled={uploadingImage === `install_${idx}`}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
