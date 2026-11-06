@@ -935,7 +935,7 @@ export function CustomerDashboard({ appData, onBookTherapist }: { appData: AppDa
      return () => clearInterval(timer);
   }, []);
 
-useEffect(() => {
+  useEffect(() => {
       const q = query(collection(db, 'bookings'), where('date', '>=', todayStr));
       const unsub = onSnapshot(q, (snap) => {
           const arr: Booking[] = [];
@@ -957,10 +957,8 @@ useEffect(() => {
   };
 
   const generateTimeline = (therapistName: string) => {
-      // 🌟 FIX: Name Exact Match ဖြင့်သာ စစ်ဆေးမည် (No-1 တွင် No-12 မရောသွားစေရန်) 🌟
       const tBookings = bookings.filter(b => {
           if (!b.therapist || b.date !== todayStr || b.status === 'cancelled' || b.status === 'completed') return false;
-          // Four Hands ကဲ့သို့ နာမည် နှစ်ခုပါလာပါက ခွဲထုတ်ပြီး အတိအကျ စစ်မည်
           const names = b.therapist.split('&').map(n => n.trim().replace('(Any Available)', '').trim());
           return names.includes(therapistName.trim());
       });
@@ -972,10 +970,10 @@ useEffect(() => {
            coveredSlots.forEach(slot => { coveredMap.set(slot, { service: cleanServiceName, status: 'Booked' }); });
            
            if (coveredSlots.length > 0) {
-               const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
-               if (firstIdx > 0 && !coveredMap.has(ALL_TIME_SLOTS[firstIdx - 1])) { coveredMap.set(ALL_TIME_SLOTS[firstIdx - 1], { service: 'နားချိန် (Rest)', status: 'Buffer' }); }
-               const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
-               if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1 && !coveredMap.has(ALL_TIME_SLOTS[lastIdx + 1])) { coveredMap.set(ALL_TIME_SLOTS[lastIdx + 1], { service: 'နားချိန် (Rest)', status: 'Buffer' }); }
+              const firstIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[0]);
+              if (firstIdx > 0 && !coveredMap.has(ALL_TIME_SLOTS[firstIdx - 1])) { coveredMap.set(ALL_TIME_SLOTS[firstIdx - 1], { service: 'နားချိန် (Rest)', status: 'Buffer' }); }
+              const lastIdx = ALL_TIME_SLOTS.indexOf(coveredSlots[coveredSlots.length - 1]);
+              if (lastIdx !== -1 && lastIdx < ALL_TIME_SLOTS.length - 1 && !coveredMap.has(ALL_TIME_SLOTS[lastIdx + 1])) { coveredMap.set(ALL_TIME_SLOTS[lastIdx + 1], { service: 'နားချိန် (Rest)', status: 'Buffer' }); }
            }
       });
 
@@ -1025,9 +1023,8 @@ useEffect(() => {
       bookings.forEach(b => {
           if (b.status === 'cancelled' || b.status === 'completed' || b.date !== todayStr || !b.therapist) return;
           
-          // 🌟 FIX: Name Exact Match ဖြင့်သာ စစ်ဆေးမည် 🌟
           const names = b.therapist.split('&').map(n => n.trim().replace('(Any Available)', '').trim());
-          if (!names.includes(tName.trim())) return; // အတိအကျ မတူလျှင် ကျော်သွားမည်
+          if (!names.includes(tName.trim())) return;
         
           const cleanServiceName = (b.service || '').split('(')[0].trim();
           const serviceLower = cleanServiceName.toLowerCase();
@@ -1085,9 +1082,15 @@ useEffect(() => {
       return { label: 'Available Now', mm: 'အားပါတယ်', color: 'bg-green-100 text-green-700 border-green-200', activeService: '' };
   };
 
+  // 🌟 Hide လုပ်ထားသော ဝန်ထမ်းများကို Dashboard နှင့် Top 5 တွင် လုံးဝ ဖယ်ထုတ်ရန် 🌟
+  const visibleTherapists = useMemo(() => {
+    return (appData.therapists || []).filter((t: any) => t.visibilityStatus !== 'hidden' && !t.isHidden);
+  }, [appData.therapists]);
+
   const bookingCounts: Record<string, number> = {};
   bookings.forEach(b => { if (b.status !== 'cancelled') { bookingCounts[b.therapist] = (bookingCounts[b.therapist] || 0) + 1; } });
-  const top5Therapists = [...appData.therapists].sort((a, b) => {
+  
+  const top5Therapists = [...visibleTherapists].sort((a, b) => {
      const countA = bookingCounts[a.name] || 0; const countB = bookingCounts[b.name] || 0;
      if (countA !== countB) return countB - countA; 
      return (a.order || 0) - (b.order || 0);
@@ -1112,7 +1115,7 @@ useEffect(() => {
                    <div className="p-4 overflow-y-auto flex-1 bg-gray-50 space-y-2">
                        {generateTimeline(viewingDetails.name).map((block, idx) => (
                             <div key={idx} className={`p-3 rounded-xl border flex items-center justify-between shadow-sm transition-colors ${block.state === 'Available' ? 'bg-green-50 border-green-200' : block.state === 'Booked' ? 'bg-blue-50 border-blue-200' : block.state === 'Buffer' ? 'bg-orange-50 border-orange-200' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
-                                <div className="text-xs font-mono font-bold text-gray-700 w-[45%]">{block.startSlot} - {block.endTime}</div>
+                                <div className="text-xs font-mono font-bold text-gray-700 w-[45%]{block.startSlot} - {block.endTime}</div>
                                 <div className="w-[55%] flex justify-end">
                                     {block.state === 'Available' && <span className="text-green-700 font-bold text-[10px] uppercase flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> အားပါသည်</span>}
                                     {block.state === 'Booked' && <span className="text-blue-700 font-bold text-[10px] uppercase leading-tight flex items-center text-right"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse"></span> {block.service}</span>}
@@ -1131,15 +1134,17 @@ useEffect(() => {
          <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဒီနေ့အတွက် ဝန်ထမ်းများ၏ ဘိုကင် အခြေအနေ)</p>
        </div>
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {appData.therapists.map(t => {
+          {visibleTherapists.map((t: any) => {
+             const isComingSoon = t.visibilityStatus === 'coming_soon' || Boolean(t.isComingSoon);
+             const comingSoonLabel = t.comingSoonText || 'Coming Soon .. Booking လက်မခံသေးပါ';
              const status = getTherapistStatus(t.name);
-             const isAvailable = status.label === 'Available Now';
-             const isPartiallyBooked = status.label === 'Partially Booked' || status.label === 'In Service (Active)';
-             const isFullyBooked = status.label.includes('Fully Booked');
+             const isAvailable = !isComingSoon && status.label === 'Available Now';
+             const isPartiallyBooked = !isComingSoon && (status.label === 'Partially Booked' || status.label === 'In Service (Active)');
+             const isFullyBooked = isComingSoon || status.label.includes('Fully Booked');
 
              return (
                 <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center hover:shadow-md transition">
-                   <div className={`w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border object-cover ${isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale opacity-80' : 'border-orange-200'}`}>
+                   <div className={`w-16 h-20 rounded-lg overflow-hidden flex-shrink-0 mr-3 sm:mr-4 border object-cover ${isComingSoon ? 'border-amber-300 grayscale-[20%]' : isAvailable ? 'border-green-200' : isPartiallyBooked ? 'border-blue-200' : isFullyBooked ? 'border-red-200 grayscale opacity-80' : 'border-orange-200'}`}>
                        {(t.images?.[0] || t.imageUrl) ? (
                            <img src={t.images?.[0] || t.imageUrl} loading="lazy" className="w-full h-full object-cover object-top" />
                        ) : (
@@ -1148,15 +1153,36 @@ useEffect(() => {
                    </div>
                    <div className="flex-1">
                        <h3 className="font-bold text-gray-800 text-sm mb-1">{t.name}</h3>
-                       <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
-                          <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>{status.label}</span>
-                          {status.activeService && (<span className="block pb-1 mb-1 border-b text-current opacity-90 leading-snug" style={{ borderColor: 'currentColor' }}>{status.activeService}</span>)}
-                          <span className="font-semibold block opacity-90 leading-snug">{status.mm}</span>
-                       </div>
+                       {isComingSoon ? (
+                         <div className="px-2 py-1 inline-block rounded border border-amber-300 bg-amber-50 text-amber-800 text-[9px] font-black leading-tight">
+                           <span className="block pb-0.5 mb-0.5 border-b border-amber-200 uppercase">⏳ Coming Soon</span>
+                           <span className="font-bold block">{comingSoonLabel}</span>
+                         </div>
+                       ) : (
+                         <div className={`px-2 py-1.5 inline-block rounded border text-[9px] sm:text-[10px] font-bold leading-tight ${status.color}`}>
+                            <span className="block pb-1 mb-1 border-b" style={{ borderColor: 'currentColor', opacity: 0.85 }}>{status.label}</span>
+                            {status.activeService && (<span className="block pb-1 mb-1 border-b text-current opacity-90 leading-snug" style={{ borderColor: 'currentColor' }}>{status.activeService}</span>)}
+                            <span className="font-semibold block opacity-90 leading-snug">{status.mm}</span>
+                         </div>
+                       )}
                    </div>
                    <div className="flex flex-col space-y-2 ml-2 flex-shrink-0">
-                       <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>Book Now</button>
-                       <button onClick={() => setViewingDetails(t)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200"><Clock className="w-3 h-3 mr-1" /> အချိန်ဇယား</button>
+                       <button
+                         disabled={isFullyBooked}
+                         onClick={() => !isComingSoon && onBookTherapist(t)}
+                         className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all ${
+                           isComingSoon
+                             ? 'bg-amber-100 text-amber-800 border-amber-300 cursor-not-allowed'
+                             : isFullyBooked
+                             ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed'
+                             : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'
+                         }`}
+                       >
+                         {isComingSoon ? 'Coming Soon' : 'Book Now'}
+                       </button>
+                       {!isComingSoon && (
+                         <button onClick={() => setViewingDetails(t)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-sm flex items-center justify-center border transition-all bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200"><Clock className="w-3 h-3 mr-1" /> အချိန်ဇယား</button>
+                       )}
                    </div>
                 </div>
              )
@@ -1170,13 +1196,19 @@ useEffect(() => {
                  <p className="text-sm font-bold mt-2" style={{ color: THEME.gold }}>(ဆိုင်၏ ဘိုကင်အယူအများဆုံး ဝန်ထမ်းများ)</p>
              </div>
              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                 {top5Therapists.map((t, idx) => {
+                 {top5Therapists.map((t: any, idx) => {
+                     const isComingSoon = t.visibilityStatus === 'coming_soon' || Boolean(t.isComingSoon);
                      const status = getTherapistStatus(t.name);
-                     const isFullyBooked = status.label.includes('Fully Booked');
+                     const isFullyBooked = isComingSoon || status.label.includes('Fully Booked');
 
                      return (
                          <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col relative hover:shadow-md transition">
                              <div className="absolute top-0 left-0 bg-yellow-500 text-white w-7 h-7 flex items-center justify-center rounded-br-lg font-bold text-xs z-10 shadow-sm border-r border-b border-yellow-600">{idx + 1}</div>
+                             {isComingSoon && (
+                               <div className="absolute top-1.5 right-1.5 bg-amber-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full z-10 shadow">
+                                 Coming Soon
+                               </div>
+                             )}
                              <div className={`w-full aspect-[3/4] bg-gray-100 relative ${isFullyBooked ? 'grayscale opacity-80' : ''}`}>
                                  {(t.images?.[0] || t.imageUrl) ? (
                                      <img src={t.images?.[0] || t.imageUrl} loading="lazy" className="w-full h-full object-cover object-top" />
@@ -1185,10 +1217,24 @@ useEffect(() => {
                                  )}
                              </div>
                              <div className="p-3 flex flex-col flex-1 justify-between bg-gray-50/50">
-                                 <div className="font-bold text-gray-800 text-sm text-center mb-3 truncate px-1">{t.name}</div>
+                                 <div className="font-bold text-gray-800 text-sm text-center mb-2 truncate px-1">{t.name}</div>
                                  <div className="flex flex-col space-y-2 mt-auto">
-                                     <button disabled={isFullyBooked} onClick={() => onBookTherapist(t)} className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed' : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#1a4a32]'}`}>Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}</button>
-                                     <button onClick={() => setViewingDetails(t)} className={`w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200' : 'bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200'}`}><Clock className="w-3 h-3 mr-1"/> အချိန်ဇယား</button>
+                                     <button
+                                       disabled={isFullyBooked}
+                                       onClick={() => !isComingSoon && onBookTherapist(t)}
+                                       className={`w-full py-2 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${
+                                         isComingSoon
+                                           ? 'bg-amber-100 text-amber-800 border-amber-300 cursor-not-allowed'
+                                           : isFullyBooked
+                                           ? 'bg-red-500/60 text-white border-transparent cursor-not-allowed'
+                                           : 'bg-[#123524] text-[#D4AF37] hover:bg-[#1a4a32] border-[#123524]'
+                                       }`}
+                                     >
+                                       {isComingSoon ? 'Booking ပိတ်ထားသည်' : <>Book Now {!isFullyBooked && <ChevronRight className="w-3 h-3 ml-0.5"/>}</>}
+                                     </button>
+                                     {!isComingSoon && (
+                                       <button onClick={() => setViewingDetails(t)} className={`w-full py-1.5 rounded-lg text-[10px] font-bold shadow-sm flex justify-center items-center border transition-all ${isFullyBooked ? 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200' : 'bg-yellow-50 text-[#123524] hover:bg-yellow-100 border-yellow-200'}`}><Clock className="w-3 h-3 mr-1"/> အချိန်ဇယား</button>
+                                     )}
                                  </div>
                              </div>
                          </div>
