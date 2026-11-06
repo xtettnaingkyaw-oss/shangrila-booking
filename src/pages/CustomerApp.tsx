@@ -2038,19 +2038,29 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   };
 
   const getAvailableTimeSlots = (targetDateOverride?: string) => {
-    let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("11:00 PM") + 1);
+    let allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
     if (formData.selectedItem) {
         const fixedDetails = getFixedServiceDetails(formData.selectedItem.name);
         if (fixedDetails) {
             let startIndex = ALL_TIME_SLOTS.indexOf(fixedDetails.start); let endIndex = ALL_TIME_SLOTS.indexOf(fixedDetails.end);
             if (fixedDetails.nextDay || endIndex === -1) endIndex = ALL_TIME_SLOTS.length; allowedSlots = ALL_TIME_SLOTS.slice(Math.max(0, startIndex), endIndex);
         } else {
-            const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id);
-            const serviceName = (formData.selectedItem.name || '').toLowerCase(); const isNightService = serviceName.includes("night");
-            if (isHotelService) {
-              if (serviceName.includes("outcall")) { allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1); } 
-              else if (isNightService) { allowedSlots = ["7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"]; }
-            } else { allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1); }
+            const serviceName = (formData.selectedItem.name || '').toLowerCase();
+            const isNightService = serviceName.includes("night");
+            const isOutcallService = serviceName.includes("outcall");
+            const isHotelCategory = appData.categories.some(c => 
+                (c.id === 'hotel' || (c.title || '').toLowerCase().includes('hotel') || (c.title || '').toLowerCase().includes('home')) &&
+                c.items.some(i => i.id === formData.selectedItem?.id || i.name === formData.selectedItem?.name)
+            );
+
+            if (isOutcallService) {
+                // 🌟 Part Time Outcall အား မနက် 7:00 AM မှ ည 7:00 PM အထိသာ တိကျစွာ ကန့်သတ်ထားသည်
+                allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("7:00 AM"), ALL_TIME_SLOTS.indexOf("7:00 PM") + 1);
+            } else if (isHotelCategory && isNightService) {
+                allowedSlots = ["7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM", "9:00 PM", "9:30 PM", "10:00 PM", "10:30 PM", "11:00 PM"];
+            } else {
+                allowedSlots = ALL_TIME_SLOTS.slice(ALL_TIME_SLOTS.indexOf("9:00 AM"), ALL_TIME_SLOTS.indexOf("9:00 PM") + 1);
+            }
         }
     }
     const targetDate = targetDateOverride || formData.date || todayStr;
@@ -2275,6 +2285,19 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isStaffMode && formData.txId.length !== 6) { setAlertMessage("Transaction ID နောက်ဆုံး ၆ လုံးကို မှန်ကန်စွာ ဖြည့်ပေးပါ။"); return; }
+
+    // 🌟 Guard: Part Time Outcall သည် ည 7:00 PM ထက် နောက်ကျ၍ လုံးဝ ဘိုကင်တင်ခွင့်မပြုပါ
+    if (!staffClockIn && formData.selectedItem) {
+      const startSlotOnly = (formData.time || '').split(' to ')[0].trim();
+      const validSlotsForService = getAvailableTimeSlots(formData.date || todayStr);
+      if (!validSlotsForService.includes(startSlotOnly)) {
+        setAlertMessage("ရွေးချယ်ထားသော ဝန်ဆောင်မှုအတွက် သတ်မှတ်ချိန် ကျော်လွန်နေပါသည် (Part Time Outcall သည် ည 7:00 PM နောက်ဆုံးဖြစ်ပါသည်)။ ကျေးဇူးပြု၍ အချိန်ပြန်ရွေးပေးပါ။");
+        setFormData(prev => ({ ...prev, time: '' }));
+        setStep(3);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       if (formData.phone && formData.phone.trim() !== '') {
