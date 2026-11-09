@@ -148,7 +148,7 @@ export const DEFAULT_BUSINESS_AUTO_REPLY_RULES: BusinessAutoReplyRule[] = [
       'ဝန်ထမ်းလိုသေးလား',
       'အလုပ်လျှောက်',
       'ဝန်ထမ်းခေါ်',
-      'လူခေါ်',
+      'လူခေါ်'
     ],
     replyMessage: `မင်္ဂလာပါ😊🫱🏻‍🫲🏾
 အလုပ်လျှောက်ထားရန် အတွက်
@@ -161,8 +161,70 @@ export const DEFAULT_BUSINESS_AUTO_REPLY_RULES: BusinessAutoReplyRule[] = [
 
 ✅ ပို့ပေးတဲ့ အချက်အလက်လေးတွေ ကိုကြည့်ပြီး အလုပ်ခန့်ရန်အတွက် အဆင်ပြေတယ်ဆိုရင် အလုပ်အကြောင်းလေးကိုဆက်လက် ရှင်းပြပေးပါ့မယ်။
 
-⚠️ အချက်အလက်လေးတွေ ပြည့်စုံမှသာ အလုပ်အတွက် အင်တာဗျူးဆက်ဖြေကြားပေးမှာဖြစ်ပါတယ်။`,
+⚠️ အချက်အလက်လေးတွေ ပြည့်စုံမှသာ အလုပ်အတွက် အင်တာဗျူးဆက်ဖြေကြားပေးမှာဖြစ်ပါတယ်။`
   },
+  {
+    id: 'menu_therapists_auto_reply',
+    name: 'ဝန်ထမ်းပုံများ / Profiles ကြည့်ရန် Auto-Reply',
+    enabled: true,
+    matchType: 'contains',
+    keywords: [
+      'ဝန်ထမ်းပုံ',
+      'ဝန်ထမ်းစာရင်း',
+      'therapist',
+      'staff',
+      'ဘယ်သူတွေရှိလဲ',
+      'ပုံတွေပြပါ',
+      'ဝန်ထမ်းတွေ'
+    ],
+    replyMessage: `👥 <strong>THE SHANGRI-LA MEN'S RETREAT — ဝန်ထမ်းများစာရင်း</strong>\n\nတာဝန်ကျ Therapist များ၏ ပုံစံ၊ ကိုယ်ရေးအချက်အလက်နှင့် ဝန်ဆောင်မှုများကို အောက်ပါ Mini App ခလုတ်မှတစ်ဆင့် လွယ်ကူစွာ ကြည့်ရှုနိုင်ပါသည်။ 👇`
+  },
+  {
+    id: 'menu_booking_auto_reply',
+    name: 'ဘိုကင်တင်ရန် / Booking Auto-Reply',
+    enabled: true,
+    matchType: 'contains',
+    keywords: [
+      'ဘိုကင်',
+      'ရက်ချိန်း',
+      'booking',
+      'book',
+      'အချိန်ယူချင်လို့',
+      'လာချင်လို့',
+      'ချိန်းချင်လို့'
+    ],
+    replyMessage: `📅 <strong>THE SHANGRI-LA MEN'S RETREAT — ရက်ချိန်းရယူရန်</strong>\n\nလူကြီးမင်း လိုချင်သည့် ဝန်ဆောင်မှု၊ အချိန်နှင့် Therapist ကို အောက်ပါ Mini App မှတစ်ဆင့် တိုက်ရိုက် ရွေးချယ်ဘိုကင်တင်နိုင်ပါသည်။ 👇`
+  },
+  {
+    id: 'menu_available_auto_reply',
+    name: 'အားနေသောဝန်ထမ်းများ / Available Now Auto-Reply',
+    enabled: true,
+    matchType: 'contains',
+    keywords: [
+      'အားနေလား',
+      'အားတဲ့သူ',
+      'available',
+      'free',
+      'ခုန်ဆက်လို့ရလား',
+      'сейчас'
+    ],
+    replyMessage: `🟢 <strong>လက်ရှိ အားလပ်နေသော ဝန်ထမ်းများ (Available Now)</strong>\n\nယခုအချိန်တွင် ဝန်ဆောင်မှုပေးရန် အသင့်ရှိနေသော Therapist များကို အောက်ပါ Mini App တွင် စစ်ဆေးနိုင်ပါသည်။ 👇`
+  },
+  {
+    id: 'menu_vip_auto_reply',
+    name: 'VIP Member & Points စစ်ရန် Auto-Reply',
+    enabled: true,
+    matchType: 'contains',
+    keywords: [
+      'vip',
+      'ပွိုင့်',
+      'points',
+      'member',
+      'membership',
+      'discount'
+    ],
+    replyMessage: `👑 <strong>VIP Membership & Privileges</strong>\n\nလူကြီးမင်း၏ Member အဆင့်၊ စုဆောင်းထားသော Points များနှင့် အထူးခံစားခွင့်များကို အောက်ပါ Mini App တွင် ကြည့်ရှုနိုင်ပါသည်။ 👇`
+  }
 ];
 
 export const DEFAULT_TELEGRAM_CONFIG: TelegramBotConfig = {
@@ -628,24 +690,47 @@ export async function pollAndProcessBusinessAutoReplies(
       const uniqueMsgKey = `${bMsg.chat.id}_${bMsg.message_id}`;
       if (repliedIds.has(uniqueMsgKey)) continue;
 
-      const matchedRule = matchBusinessKeywordRule(bMsg.text, config);
-      if (matchedRule) {
-        repliedIds.add(uniqueMsgKey);
-        const sendRes = await sendRawTelegramMessage(
-          config.botToken,
-          String(bMsg.chat.id),
-          matchedRule.replyMessage,
-          undefined,
-          `BUSINESS_AUTO_REPLY_${matchedRule.id.toUpperCase()}`,
-          {
-            businessConnectionId: bMsg.business_connection_id,
-            replyToMessageId: bMsg.message_id,
-            plainText: true,
-          }
-        );
-        if (sendRes.ok) {
-          processedCount++;
-        }
+      // pollAndProcessBusinessAutoReplies ထဲတွင် မက်ဆေ့ချ်ပို့မည့် အပိုင်း၌ —
+const matchedRule = matchBusinessKeywordRule(bMsg.text, config);
+if (matchedRule) {
+  repliedIds.add(uniqueMsgKey);
+
+  // Bot Menu များနှင့် ချိတ်ဆက်ထားသော Inline Keyboards များ တည်ဆောက်ခြင်း
+  let replyMarkup = undefined;
+  const cleanUrl = (config.webAppUrl || 'https://www.shangrilamenretreat.online').replace(/\/$/, '');
+
+  if (matchedRule.id === 'menu_therapists_auto_reply') {
+    replyMarkup = {
+      inline_keyboard: [[{ text: '👥 ဝန်ထမ်းပုံကြည့်ရန် (View Therapists)', web_app: { url: `${cleanUrl}/?tab=therapists` } }]]
+    };
+  } else if (matchedRule.id === 'menu_booking_auto_reply') {
+    replyMarkup = {
+      inline_keyboard: [[{ text: '📅 ယခုပဲ ဘိုကင်တင်ရန် (Book Now)', web_app: { url: `${cleanUrl}/?tab=booking` } }]]
+    };
+  } else if (matchedRule.id === 'menu_available_auto_reply') {
+    replyMarkup = {
+      inline_keyboard: [[{ text: '🟢 အားနေသော ဝန်ထမ်းများကြည့်ရန်', web_app: { url: `${cleanUrl}/?tab=available` } }]]
+    };
+  } else if (matchedRule.id === 'menu_vip_auto_reply') {
+    replyMarkup = {
+      inline_keyboard: [[{ text: '👑 VIP Member & Points စစ်ရန်', web_app: { url: `${cleanUrl}/?tab=vip` } }]]
+    };
+  }
+
+  await sendRawTelegramMessage(
+    config.botToken,
+    String(bMsg.chat.id),
+    matchedRule.replyMessage,
+    replyMarkup, // ထည့်သွင်းလိုက်သော Mini App ခလုတ်များ
+    `BUSINESS_AUTO_REPLY_${matchedRule.id.toUpperCase()}`,
+    {
+      businessConnectionId: bMsg.business_connection_id,
+      replyToMessageId: bMsg.message_id,
+      plainText: false
+    }
+  );
+  processedCount++;
+}
       }
     }
 
