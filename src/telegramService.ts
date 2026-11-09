@@ -579,9 +579,9 @@ export const matchBusinessKeywordRule = (
 
 let isBusinessAutoReplyPolling = false;
 
-export const pollAndProcessBusinessAutoReplies = async (
+export async function pollAndProcessBusinessAutoReplies(
   existingConfig?: TelegramBotConfig
-): Promise<{ processedCount: number }> => {
+): Promise<{ processedCount: number }> {
   if (isBusinessAutoReplyPolling) return { processedCount: 0 };
   isBusinessAutoReplyPolling = true;
   let processedCount = 0;
@@ -592,8 +592,12 @@ export const pollAndProcessBusinessAutoReplies = async (
       return { processedCount: 0 };
     }
 
+    // နောက်ဆုံး စစ်ဆေးပြီးသား update_id ကို LocalStorage မှ ရယူခြင်း
+    let lastUpdateId = Number(localStorage.getItem('shangrila_biz_last_update_id') || 0);
+    const offsetParam = lastUpdateId > 0 ? `&offset=${lastUpdateId + 1}` : '';
+
     const res = await fetch(
-      `https://api.telegram.org/bot${config.botToken.trim()}/getUpdates?limit=50&allowed_updates=${encodeURIComponent(
+      `https://api.telegram.org/bot${config.botToken.trim()}/getUpdates?limit=50${offsetParam}&allowed_updates=${encodeURIComponent(
         JSON.stringify(['message', 'business_message', 'edited_message', 'callback_query', 'my_chat_member'])
       )}`
     );
@@ -607,14 +611,16 @@ export const pollAndProcessBusinessAutoReplies = async (
     );
 
     for (const update of data.result) {
+      // update_id အမြဲတမ်း အမြင့်ဆုံးဖြစ်အောင် မှတ်ထားခြင်း (နောက်တစ်ခါခေါ်လျှင် ဒီထက်ကျော်ပြီးမှ ဆွဲထုတ်ရန်)
+      if (update.update_id > lastUpdateId) {
+        lastUpdateId = update.update_id;
+      }
+
       const bMsg = update.business_message || update.message;
       if (!bMsg || !bMsg.text || !bMsg.chat?.id) continue;
 
-      // Ignore bot messages
       if (bMsg.from?.is_bot) continue;
 
-      // For Telegram Business Account DMs:
-      // Only reply if the message was sent BY the customer (from.id === chat.id), never when the business owner replies
       if (update.business_message && String(bMsg.from?.id) !== String(bMsg.chat?.id)) {
         continue;
       }
@@ -643,6 +649,11 @@ export const pollAndProcessBusinessAutoReplies = async (
       }
     }
 
+    // နောက်ဆုံး update_id ကို LocalStorage တွင် အမြဲမှတ်ထားမည်
+    if (lastUpdateId > 0) {
+      localStorage.setItem('shangrila_biz_last_update_id', String(lastUpdateId));
+    }
+
     const trimmedReplied = Array.from(repliedIds).slice(-300);
     localStorage.setItem('shangrila_business_autoreplied_ids', JSON.stringify(trimmedReplied));
   } catch (err) {
@@ -652,7 +663,7 @@ export const pollAndProcessBusinessAutoReplies = async (
   }
 
   return { processedCount };
-};
+}
 
 // ==========================================
 // 5. CUSTOMER SUBSCRIBER MANAGEMENT (CLEAN & STABLE)
