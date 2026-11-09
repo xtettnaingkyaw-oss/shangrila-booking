@@ -4,7 +4,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 import { db, auth, secondaryAuth } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 import CryptoJS from 'crypto-js'; 
-import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock, Banknote, Timer, ClipboardList, PartyPopper, ShoppingBag, Users, BanEye, EyeOff, Power, Globe} from 'lucide-react';
+import { CalendarPlus, BarChart2, User, ShieldCheck, Settings, Trash2, Edit, ShieldAlert, Lock, UserCircle, KeyRound, AlertCircle, Save, PlusCircle, X, Copy, Crown, ChevronUp, ChevronDown, Activity, Coffee, Download, ImageIcon, Sparkles, CreditCard, MapPin, Phone, LogOut, Star, Award, Gift, Target, Info, Search, History, UserPlus, CheckCircle, MessageCircle, TrendingUp, Trophy, Calendar, Clock, Banknote, Timer, ClipboardList, PartyPopper, ShoppingBag, Users, Ban, Eye, EyeOff, Power, Globe} from 'lucide-react';
 import { DutyRosterSystem } from './DutyRosterSystem';
 import { AdminHRManagement } from './OnboardingSystem';
 import { THEME, AppData, TherapistProfile, Booking, OutPass, MenuCategory, PaymentMethod, UserProfile, AdminProfile, AppBranding, PromotionSettings, formatPrice, compressImage, VipSettings, VipTier, DEFAULT_VIP_SETTINGS, uploadBase64ToStorage } from '../shared';
@@ -11917,6 +11917,23 @@ function AdminBusinessKeywordAutoReplyStudio() {
   const [testingNow, setTestingNow] = useState<boolean>(false);
   const [lastSyncText, setLastSyncText] = useState<string>('');
 
+  const getDefaultButtonTextForTab = (tab?: string) => {
+    switch (tab) {
+      case 'therapists':
+        return '👥 ဝန်ထမ်းပုံများ ကြည့်ရန် (View Therapists)';
+      case 'booking':
+        return '📅 ဘိုကင်တင်ရန် နှင့် Menu ကြည့်ရန် (Book Now)';
+      case 'available':
+        return '🟢 အားနေသော ဝန်ထမ်းများကြည့်ရန် (Available Now)';
+      case 'history':
+        return '📋 My Booking History & Status စစ်ရန်';
+      case 'vip':
+        return '👑 VIP Member & Points ကြည့်ရန်';
+      default:
+        return '';
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     getTelegramConfig().then((cfg) => {
@@ -11940,6 +11957,8 @@ function AdminBusinessKeywordAutoReplyStudio() {
       name: `Auto-Reply Rule အသစ် #${rules.length + 1}`,
       enabled: true,
       matchType: 'contains',
+      buttonTab: 'none',
+      buttonText: '',
       keywords: [],
       replyMessage: ''
     };
@@ -11985,7 +12004,12 @@ function AdminBusinessKeywordAutoReplyStudio() {
   };
 
   const handleResetDefaultJobRule = () => {
-    if (!window.confirm('မူရင်း ဝန်ထမ်းခေါ်ယူမှု Keyword နှင့် စာသားများကို ပြန်လည်ထည့်သွင်းမည် သေချာပါသလား?')) return;
+    if (
+      !window.confirm(
+        'မူရင်း အလုပ်လျှောက်စာနှင့် Bot Menu Keyword Rules (၆) ခုလုံးကို အသင့်ပြန်လည်ထည့်သွင်းမည် သေချာပါသလား?'
+      )
+    )
+      return;
     setRules(DEFAULT_BUSINESS_AUTO_REPLY_RULES);
   };
 
@@ -12046,15 +12070,15 @@ function AdminBusinessKeywordAutoReplyStudio() {
                   : 'bg-red-500/30 text-red-200 border border-red-400/40'
               }`}
             >
-              {enabled ? '● Auto-Reply Active (6s Live Sync)' : '○ Paused'}
+              {enabled ? '● Auto-Reply & Auto-Subscribe Active (6s Sync)' : '○ Paused'}
             </span>
           </div>
           <h3 className="text-lg sm:text-xl font-black text-[#D4AF37] mt-1.5 flex items-center gap-2">
             <MessageCircle className="w-5 h-5 text-[#D4AF37]" />
-            <span>Direct Message (DM) Keyword Auto-Reply Studio</span>
+            <span>Direct Message (DM) & Bot Menu Keyword Auto-Reply Studio</span>
           </h3>
           <p className="text-xs text-gray-300 mt-1">
-            Bot ဆီသို့ မဟုတ်ဘဲ မူရင်း Telegram Account သို့ တိုက်ရိုက် (DM) လာပို့သော စာများထဲတွင် သတ်မှတ်ထားသော Keyword ပါဝင်ပါက မူရင်းအကောင့်မှ အလိုအလျောက် စာပြန်ပို့ပေးမည့် စနစ်
+            မူရင်း Telegram Account သို့ DM လာပို့သမျှ လူတိုင်း၏ Chat ID ကို Promotion Broadcast အတွက် Auto သိမ်းဆည်းပေးပြီး၊ သတ်မှတ်ထားသော Keyword ပါဝင်ပါက စာသားနှင့် သက်ဆိုင်ရာ Web App ခလုတ်ကို အလိုအလျောက် ပြန်ပို့ပေးပါသည်
           </p>
         </div>
 
@@ -12115,12 +12139,12 @@ function AdminBusinessKeywordAutoReplyStudio() {
                       rules.map((r) => (r.id === rule.id ? { ...r, name: e.target.value } : r))
                     )
                   }
-                  placeholder="Rule အမည် (ဥပမာ - ဝန်ထမ်းလျှောက်ထားမှု Auto-Reply)"
+                  placeholder="Rule အမည် (ဥပမာ - ဝန်ထမ်းပုံကြည့်ရန် Auto-Reply)"
                   className="flex-1 p-2 bg-gray-50 border border-gray-300 rounded-xl text-xs sm:text-sm font-black text-[#123524] outline-none focus:border-[#D4AF37]"
                 />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={rule.matchType || 'contains'}
                   onChange={(e) =>
@@ -12207,7 +12231,7 @@ function AdminBusinessKeywordAutoReplyStudio() {
                       handleAddKeywordsToRule(rule.id);
                     }
                   }}
-                  placeholder="Keyword အသစ် ရိုက်ထည့်ပါ (ကော်မာ , ခံ၍ အများကြီးထည့်နိုင်သည် — ဥပမာ လူလိုသေးလား, အလုပ်, ဝန်ထမ်းလိုသေးလား)"
+                  placeholder="Keyword အသစ် ရိုက်ထည့်ပါ (ကော်မာ , ခံ၍ အများကြီးထည့်နိုင်သည် — ဥပမာ ဝန်ထမ်းပုံ, ပုံပြပါ, therapist)"
                   className="flex-1 p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
                 />
                 <button
@@ -12220,13 +12244,71 @@ function AdminBusinessKeywordAutoReplyStudio() {
               </div>
             </div>
 
+            {/* 🌟 တွဲပို့မည့် Bot Menu / Web App ခလုတ် ရွေးချယ်ရန် အပိုင်း 🌟 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-amber-50/60 p-3.5 rounded-2xl border border-[#D4AF37]/40">
+              <div>
+                <label className="block text-[11px] font-extrabold text-[#123524] mb-1">
+                  🔘 စာသားအောက်တွင် တွဲပို့မည့် Web App Menu ခလုတ် (Attach Button)
+                </label>
+                <select
+                  value={rule.buttonTab || 'none'}
+                  onChange={(e) => {
+                    const nextTab = e.target.value as any;
+                    setRules(
+                      rules.map((r) =>
+                        r.id === rule.id
+                          ? {
+                              ...r,
+                              buttonTab: nextTab,
+                              buttonText:
+                                nextTab === 'none'
+                                  ? ''
+                                  : r.buttonText || getDefaultButtonTextForTab(nextTab)
+                            }
+                          : r
+                      )
+                    );
+                  }}
+                  className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-black text-[#123524] outline-none focus:border-[#D4AF37]"
+                >
+                  <option value="none">⚪ ခလုတ်မပါ (စာသားသီးသန့်သာ ပို့မည်)</option>
+                  <option value="therapists">👥 ဝန်ထမ်းပုံကြည့်ရန် ခလုတ် (?tab=therapists)</option>
+                  <option value="booking">📅 ဘိုကင်တင်ရန် / Menu ကြည့်ရန် ခလုတ် (?tab=booking)</option>
+                  <option value="available">🟢 အားနေသော ဝန်ထမ်းများကြည့်ရန် ခလုတ် (?tab=available)</option>
+                  <option value="history">📋 My Booking History စစ်ရန် ခလုတ် (?tab=history)</option>
+                  <option value="vip">👑 VIP Member & Points ကြည့်ရန် ခလုတ် (?tab=vip)</option>
+                </select>
+              </div>
+
+              {rule.buttonTab && rule.buttonTab !== 'none' && (
+                <div>
+                  <label className="block text-[11px] font-extrabold text-[#123524] mb-1">
+                    🏷️ ခလုတ်ပေါ်တွင် ပေါ်မည့်စာသား (Button Label)
+                  </label>
+                  <input
+                    type="text"
+                    value={rule.buttonText || getDefaultButtonTextForTab(rule.buttonTab)}
+                    onChange={(e) =>
+                      setRules(
+                        rules.map((r) =>
+                          r.id === rule.id ? { ...r, buttonText: e.target.value } : r
+                        )
+                      )
+                    }
+                    placeholder="ဥပမာ - 👥 ဝန်ထမ်းပုံများ ကြည့်ရန်"
+                    className="w-full p-2.5 bg-white border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Reply Message Textarea */}
             <div>
               <label className="block text-xs font-extrabold text-gray-700 mb-1.5">
                 💬 အလိုအလျောက် ပြန်ပို့မည့် စာသား (Auto-Reply Message)
               </label>
               <textarea
-                rows={9}
+                rows={6}
                 value={rule.replyMessage}
                 onChange={(e) =>
                   setRules(
@@ -12251,7 +12333,7 @@ function AdminBusinessKeywordAutoReplyStudio() {
               className="px-4 py-2.5 rounded-xl bg-white hover:bg-gray-100 text-[#123524] border border-gray-300 text-xs font-black flex items-center gap-1.5 shadow-2xs transition"
             >
               <PlusCircle className="w-4 h-4 text-[#D4AF37]" />
-              <span>+ နောက်ထပ် Keyword Rule အသစ်တိုးမည် (ဥပမာ - ဈေးနှုန်း / လိပ်စာ)</span>
+              <span>+ နောက်ထပ် Keyword Rule အသစ်တိုးမည်</span>
             </button>
 
             <button
@@ -12259,7 +12341,7 @@ function AdminBusinessKeywordAutoReplyStudio() {
               onClick={handleResetDefaultJobRule}
               className="px-3.5 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition"
             >
-              ↺ မူရင်း အလုပ်လျှောက်စာ ပြန်ထည့်မည်
+              ↺ မူရင်း အလုပ်လျှောက်စာ နှင့် Bot Menu Rules (၆) ခု ပြန်ထည့်မည်
             </button>
           </div>
 
