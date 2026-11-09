@@ -35,7 +35,7 @@ export interface CustomerTelegramSubscriber {
   lastName?: string;
   vipTier?: string;
   subscribed: boolean;
-  source?: 'mini_app' | 'booking_deeplink' | 'bot_command' | 'admin_manual';
+  source?: 'mini_app' | 'booking_deeplink' | 'bot_command' | 'admin_manual' | 'business_dm';
   lastBookingId?: string;
   subscribedAt: string;
   updatedAt: string;
@@ -48,6 +48,8 @@ export interface BusinessAutoReplyRule {
   keywords: string[];
   replyMessage: string;
   matchType?: 'contains' | 'exact';
+  buttonText?: string;
+  buttonTab?: 'booking' | 'therapists' | 'available' | 'history' | 'vip' | 'none';
 }
 
 export interface TelegramBotConfig {
@@ -142,13 +144,14 @@ export const DEFAULT_BUSINESS_AUTO_REPLY_RULES: BusinessAutoReplyRule[] = [
     name: 'ဝန်ထမ်းခေါ်ယူမှု / အလုပ်လျှောက်ထားမှု Auto-Reply',
     enabled: true,
     matchType: 'contains',
+    buttonTab: 'none',
     keywords: [
       'လူလိုသေးလား',
       'အလုပ်',
       'ဝန်ထမ်းလိုသေးလား',
       'အလုပ်လျှောက်',
       'ဝန်ထမ်းခေါ်',
-      'လူခေါ်'
+      'လူခေါ်',
     ],
     replyMessage: `မင်္ဂလာပါ😊🫱🏻‍🫲🏾
 အလုပ်လျှောက်ထားရန် အတွက်
@@ -161,70 +164,110 @@ export const DEFAULT_BUSINESS_AUTO_REPLY_RULES: BusinessAutoReplyRule[] = [
 
 ✅ ပို့ပေးတဲ့ အချက်အလက်လေးတွေ ကိုကြည့်ပြီး အလုပ်ခန့်ရန်အတွက် အဆင်ပြေတယ်ဆိုရင် အလုပ်အကြောင်းလေးကိုဆက်လက် ရှင်းပြပေးပါ့မယ်။
 
-⚠️ အချက်အလက်လေးတွေ ပြည့်စုံမှသာ အလုပ်အတွက် အင်တာဗျူးဆက်ဖြေကြားပေးမှာဖြစ်ပါတယ်။`
+⚠️ အချက်အလက်လေးတွေ ပြည့်စုံမှသာ အလုပ်အတွက် အင်တာဗျူးဆက်ဖြေကြားပေးမှာဖြစ်ပါတယ်။`,
   },
   {
     id: 'menu_therapists_auto_reply',
-    name: 'ဝန်ထမ်းပုံများ / Profiles ကြည့်ရန် Auto-Reply',
+    name: '👥 ဝန်ထမ်းပုံများ / Therapist Profiles ကြည့်ရန် (/staff)',
     enabled: true,
     matchType: 'contains',
+    buttonTab: 'therapists',
+    buttonText: '👥 ဝန်ထမ်းပုံများ ကြည့်ရန် (View Therapists)',
     keywords: [
       'ဝန်ထမ်းပုံ',
       'ဝန်ထမ်းစာရင်း',
+      'ပုံတွေပြ',
+      'ပုံလေးတွေပြ',
+      'ပုံကြည့်',
+      'ပုံပြ',
+      'ဘယ်သူတွေရှိ',
+      'ဝန်ထမ်းတွေ',
+      'ကောင်လေးပုံ',
       'therapist',
       'staff',
-      'ဘယ်သူတွေရှိလဲ',
-      'ပုံတွေပြပါ',
-      'ဝန်ထမ်းတွေ'
+      '/staff',
     ],
-    replyMessage: `👥 <strong>THE SHANGRI-LA MEN'S RETREAT — ဝန်ထမ်းများစာရင်း</strong>\n\nတာဝန်ကျ Therapist များ၏ ပုံစံ၊ ကိုယ်ရေးအချက်အလက်နှင့် ဝန်ဆောင်မှုများကို အောက်ပါ Mini App ခလုတ်မှတစ်ဆင့် လွယ်ကူစွာ ကြည့်ရှုနိုင်ပါသည်။ 👇`
+    replyMessage: `👥 <b>THE SHANGRI-LA MEN'S RETREAT — ဝန်ထမ်းပုံများကြည့်ရန်</b>\n\nတာဝန်ကျ Therapist များ၏ ပရိုဖိုင်ပုံများနှင့် ဝန်ဆောင်မှုများကို အောက်ပါခလုတ်ကိုနှိပ်၍ တိုက်ရိုက် ဝင်ရောက်ကြည့်ရှုနိုင်ပါသည်။ 👇`,
   },
   {
     id: 'menu_booking_auto_reply',
-    name: 'ဘိုကင်တင်ရန် / Booking Auto-Reply',
+    name: '📅 ဘိုကင်တင်ရန် / ဝန်ဆောင်မှုနှင့် ဈေးနှုန်းကြည့်ရန် (/book)',
     enabled: true,
     matchType: 'contains',
+    buttonTab: 'booking',
+    buttonText: '📅 ဘိုကင်တင်ရန် နှင့် Menu ကြည့်ရန် (Book Now)',
     keywords: [
       'ဘိုကင်',
       'ရက်ချိန်း',
       'booking',
       'book',
-      'အချိန်ယူချင်လို့',
+      'အချိန်ယူချင်',
       'လာချင်လို့',
-      'ချိန်းချင်လို့'
+      'ချိန်းချင်လို့',
+      'ဈေးနှုန်း',
+      'မီနူး',
+      'menu',
+      'price',
+      'ဘယ်လောက်လဲ',
+      '/book',
     ],
-    replyMessage: `📅 <strong>THE SHANGRI-LA MEN'S RETREAT — ရက်ချိန်းရယူရန်</strong>\n\nလူကြီးမင်း လိုချင်သည့် ဝန်ဆောင်မှု၊ အချိန်နှင့် Therapist ကို အောက်ပါ Mini App မှတစ်ဆင့် တိုက်ရိုက် ရွေးချယ်ဘိုကင်တင်နိုင်ပါသည်။ 👇`
+    replyMessage: `📅 <b>THE SHANGRI-LA MEN'S RETREAT — ရက်ချိန်းနှင့် ဝန်ဆောင်မှုများ</b>\n\nဝန်ဆောင်မှု ဈေးနှုန်းများ ကြည့်ရှုရန်နှင့် မိမိနှစ်သက်ရာ အချိန်၊ Therapist တို့ကို ရွေးချယ်၍ ဘိုကင်တင်ရန် အောက်ပါခလုတ်ကို နှိပ်ပါ။ 👇`,
   },
   {
     id: 'menu_available_auto_reply',
-    name: 'အားနေသောဝန်ထမ်းများ / Available Now Auto-Reply',
+    name: '🟢 လက်ရှိ အားနေသော ဝန်ထမ်းများကြည့်ရန် (/available)',
     enabled: true,
     matchType: 'contains',
+    buttonTab: 'available',
+    buttonText: '🟢 အားနေသော ဝန်ထမ်းများကြည့်ရန် (Available Now)',
     keywords: [
       'အားနေလား',
       'အားတဲ့သူ',
+      'ဘယ်သူအားလဲ',
+      'အားလား',
       'available',
       'free',
-      'ခုန်ဆက်လို့ရလား',
-      'сейчас'
+      'အခုရလား',
+      '/available',
     ],
-    replyMessage: `🟢 <strong>လက်ရှိ အားလပ်နေသော ဝန်ထမ်းများ (Available Now)</strong>\n\nယခုအချိန်တွင် ဝန်ဆောင်မှုပေးရန် အသင့်ရှိနေသော Therapist များကို အောက်ပါ Mini App တွင် စစ်ဆေးနိုင်ပါသည်။ 👇`
+    replyMessage: `🟢 <b>လက်ရှိ အားလပ်နေသော ဝန်ထမ်းများ (Available Now)</b>\n\nယခုအချိန်တွင် ဝန်ဆောင်မှုပေးရန် အသင့်အားလပ်နေသော Therapist များကို အောက်ပါခလုတ်ကိုနှိပ်၍ တိုက်ရိုက် စစ်ဆေးနိုင်ပါသည်။ 👇`,
+  },
+  {
+    id: 'menu_history_auto_reply',
+    name: '📋 မိမိဘိုကင် အခြေအနေ ပြန်စစ်ရန် (/history)',
+    enabled: true,
+    matchType: 'contains',
+    buttonTab: 'history',
+    buttonText: '📋 My Booking History & Status စစ်ရန်',
+    keywords: [
+      'ဘိုကင်အခြေအနေ',
+      'ဘိုကင်စစ်',
+      'history',
+      'status',
+      'တင်ထားတဲ့ဘိုကင်',
+      '/history',
+    ],
+    replyMessage: `📋 <b>My Booking History & Status</b>\n\nလူကြီးမင်း တင်ထားသော ဘိုကင်အခြေအနေနှင့် မှတ်တမ်းများကို အောက်ပါခလုတ်မှတစ်ဆင့် စစ်ဆေးကြည့်ရှုနိုင်ပါသည်။ 👇`,
   },
   {
     id: 'menu_vip_auto_reply',
-    name: 'VIP Member & Points စစ်ရန် Auto-Reply',
+    name: '👑 VIP Membership & Points စစ်ရန် (/vip)',
     enabled: true,
     matchType: 'contains',
+    buttonTab: 'vip',
+    buttonText: '👑 VIP Member & Points ကြည့်ရန်',
     keywords: [
       'vip',
       'ပွိုင့်',
       'points',
       'member',
       'membership',
-      'discount'
+      'discount',
+      'မန်ဘာ',
+      '/vip',
     ],
-    replyMessage: `👑 <strong>VIP Membership & Privileges</strong>\n\nလူကြီးမင်း၏ Member အဆင့်၊ စုဆောင်းထားသော Points များနှင့် အထူးခံစားခွင့်များကို အောက်ပါ Mini App တွင် ကြည့်ရှုနိုင်ပါသည်။ 👇`
-  }
+    replyMessage: `👑 <b>VIP Membership & Privileges</b>\n\nလူကြီးမင်း၏ VIP Member အဆင့်၊ စုဆောင်းထားသော Points များနှင့် အထူး Discount ခံစားခွင့်များကို အောက်ပါခလုတ်ကိုနှိပ်၍ ကြည့်ရှုနိုင်ပါသည်။ 👇`,
+  },
 ];
 
 export const DEFAULT_TELEGRAM_CONFIG: TelegramBotConfig = {
@@ -309,6 +352,12 @@ export const normalizePhone = (phone: string | undefined | null): string => {
   return digits;
 };
 
+export const extractMyanmarPhoneFromText = (text: string | undefined | null): string => {
+  if (!text) return '';
+  const match = String(text).match(/(?:\+?959|09)\d{7,9}/);
+  return match ? normalizePhone(match[0]) : '';
+};
+
 export const isPrivateUserChatId = (chatId: string | number | undefined | null): boolean => {
   if (!chatId) return false;
   const s = String(chatId).trim();
@@ -379,6 +428,24 @@ export const isStaffOrAdminSubscriber = (
   return false;
 };
 
+/**
+ * Firestore တွင် ယခင်သိမ်းထားသော Rule များနှင့် အသစ်ထပ်တိုးထားသော Default Bot Menu Rules များကို အလိုအလျောက် ပေါင်းစပ်ပေးခြင်း
+ */
+const mergeWithDefaultAutoReplyRules = (savedRules?: BusinessAutoReplyRule[]): BusinessAutoReplyRule[] => {
+  if (!Array.isArray(savedRules) || savedRules.length === 0) {
+    return DEFAULT_BUSINESS_AUTO_REPLY_RULES;
+  }
+  const merged = [...savedRules];
+  const existingIds = new Set(savedRules.map((r) => r.id));
+
+  for (const defRule of DEFAULT_BUSINESS_AUTO_REPLY_RULES) {
+    if (!existingIds.has(defRule.id)) {
+      merged.push(defRule);
+    }
+  }
+  return merged;
+};
+
 export const getTelegramConfig = async (): Promise<TelegramBotConfig> => {
   try {
     const docRef = doc(db, 'settings', 'telegramConfig');
@@ -390,6 +457,8 @@ export const getTelegramConfig = async (): Promise<TelegramBotConfig> => {
           localStorage.setItem('shangrila_bot_username', data.botUsername.replace(/^@/, '').trim());
         } catch {}
       }
+      const mergedRules = mergeWithDefaultAutoReplyRules(data.businessAutoReplyRules);
+
       return {
         ...DEFAULT_TELEGRAM_CONFIG,
         ...data,
@@ -401,10 +470,7 @@ export const getTelegramConfig = async (): Promise<TelegramBotConfig> => {
         excludedChatIds: Array.isArray(data.excludedChatIds) ? data.excludedChatIds : [],
         businessAutoReplyEnabled:
           data.businessAutoReplyEnabled !== undefined ? data.businessAutoReplyEnabled : true,
-        businessAutoReplyRules:
-          Array.isArray(data.businessAutoReplyRules) && data.businessAutoReplyRules.length > 0
-            ? data.businessAutoReplyRules
-            : DEFAULT_BUSINESS_AUTO_REPLY_RULES,
+        businessAutoReplyRules: mergedRules,
       };
     } else {
       await setDoc(docRef, DEFAULT_TELEGRAM_CONFIG);
@@ -454,38 +520,22 @@ const logTelegramActivity = async (
   }
 };
 
-export const buildCustomerMiniAppInlineKeyboard = (baseUrl: string = 'https://www.shangrilamenretreat.online') => {
+export const buildCustomerMiniAppInlineKeyboard = (
+  baseUrl: string = 'https://www.shangrilamenretreat.online',
+  isBusinessConnection: boolean = false
+) => {
   const cleanUrl = baseUrl.replace(/\/$/, '');
+  const makeBtn = (text: string, tab: string) =>
+    isBusinessConnection
+      ? { text, url: `${cleanUrl}/?tab=${tab}` }
+      : { text, web_app: { url: `${cleanUrl}/?tab=${tab}` } };
+
   return {
     inline_keyboard: [
-      [
-        {
-          text: '📅 ဘိုကင်တင်ရန် (Book Now)',
-          web_app: { url: `${cleanUrl}/?tab=booking` },
-        },
-      ],
-      [
-        {
-          text: '👥 ဝန်ထမ်းပုံကြည့်ရန်',
-          web_app: { url: `${cleanUrl}/?tab=therapists` },
-        },
-        {
-          text: '🟢 အားနေသောဝန်ထမ်းများ',
-          web_app: { url: `${cleanUrl}/?tab=available` },
-        },
-      ],
-      [
-        {
-          text: '📋 My Booking History & Status',
-          web_app: { url: `${cleanUrl}/?tab=history` },
-        },
-      ],
-      [
-        {
-          text: '👑 VIP Member & Privileges',
-          web_app: { url: `${cleanUrl}/?tab=vip` },
-        },
-      ],
+      [makeBtn('📅 ဘိုကင်တင်ရန် (Book Now)', 'booking')],
+      [makeBtn('👥 ဝန်ထမ်းပုံကြည့်ရန်', 'therapists'), makeBtn('🟢 အားနေသောဝန်ထမ်းများ', 'available')],
+      [makeBtn('📋 My Booking History & Status', 'history')],
+      [makeBtn('👑 VIP Member & Privileges', 'vip')],
     ],
   };
 };
@@ -507,6 +557,16 @@ export const sendRawTelegramMessage = async (
   }
 
   const url = `https://api.telegram.org/bot${botToken.trim()}/sendMessage`;
+
+  const executeSend = async (payloadObj: Record<string, unknown>) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadObj),
+    });
+    const data = await response.json();
+    return { ok: response.ok && data.ok, data, status: response.status };
+  };
 
   try {
     const bodyPayload: Record<string, unknown> = {
@@ -531,16 +591,26 @@ export const sendRawTelegramMessage = async (
       bodyPayload.reply_to_message_id = extraOptions.replyToMessageId;
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(bodyPayload),
-    });
+    let result = await executeSend(bodyPayload);
 
-    const data = await response.json();
+    // Fallback 1: If Telegram Business rejects web_app button or HTML parse mode, convert web_app -> url and retry
+    if (!result.ok && replyMarkup) {
+      const convertedMarkup = JSON.parse(
+        JSON.stringify(replyMarkup).replace(/"web_app":\s*\{\s*"url":\s*("[^"]+")\s*\}/g, '"url":$1')
+      );
+      bodyPayload.reply_markup = convertedMarkup;
+      result = await executeSend(bodyPayload);
+    }
 
-    if (!response.ok || !data.ok) {
-      const errMsg = data.description || `HTTP Error ${response.status}`;
+    // Fallback 2: If HTML tags in custom user replyMessage caused a parse error, retry as plain text
+    if (!result.ok && bodyPayload.parse_mode === 'HTML') {
+      delete bodyPayload.parse_mode;
+      bodyPayload.text = htmlText.replace(/<\/?[^>]+(>|$)/g, '');
+      result = await executeSend(bodyPayload);
+    }
+
+    if (!result.ok) {
+      const errMsg = result.data?.description || `HTTP Error ${result.status}`;
       await logTelegramActivity(logType, String(chatId), 'FAILED', htmlText.slice(0, 120), errMsg);
       return { ok: false, error: errMsg };
     }
@@ -608,7 +678,7 @@ export const sendRawTelegramPhoto = async (
 };
 
 // ==========================================
-// 4B. TELEGRAM BUSINESS DIRECT MESSAGE KEYWORD AUTO-REPLY ENGINE
+// 4B. TELEGRAM BUSINESS DIRECT MESSAGE KEYWORD AUTO-REPLY & AUTO-SUBSCRIBER ENGINE
 // ==========================================
 
 export const matchBusinessKeywordRule = (
@@ -616,13 +686,10 @@ export const matchBusinessKeywordRule = (
   config: TelegramBotConfig
 ): BusinessAutoReplyRule | null => {
   if (config.businessAutoReplyEnabled === false) return null;
-  const rules =
-    Array.isArray(config.businessAutoReplyRules) && config.businessAutoReplyRules.length > 0
-      ? config.businessAutoReplyRules
-      : DEFAULT_BUSINESS_AUTO_REPLY_RULES;
+  const rules = mergeWithDefaultAutoReplyRules(config.businessAutoReplyRules);
 
   const cleanText = String(incomingText || '').trim().toLowerCase();
-  if (!cleanText || cleanText.startsWith('/')) return null;
+  if (!cleanText) return null;
 
   for (const rule of rules) {
     if (!rule.enabled || !rule.replyMessage?.trim() || !Array.isArray(rule.keywords)) continue;
@@ -639,19 +706,81 @@ export const matchBusinessKeywordRule = (
   return null;
 };
 
+/**
+ * Rule အလိုက် သက်ဆိုင်ရာ Mini App Button တည်ဆောက်ပေးခြင်း
+ * (Business DM ဖြစ်ပါက Telegram က web_app ခလုတ်ကို ပိတ်ထားသဖြင့် Direct URL ခလုတ် အသုံးပြုပေးသည်)
+ */
+export const buildAutoReplyRuleInlineKeyboard = (
+  rule: BusinessAutoReplyRule,
+  config: TelegramBotConfig,
+  isBusinessDm: boolean
+): object | undefined => {
+  const cleanUrl = (config.webAppUrl || 'https://www.shangrilamenretreat.online').replace(/\/$/, '');
+
+  let targetTab: string | undefined = rule.buttonTab;
+  let btnText: string | undefined = rule.buttonText;
+
+  if (!targetTab) {
+    if (rule.id === 'menu_therapists_auto_reply' || rule.name.includes('ဝန်ထမ်းပုံ')) {
+      targetTab = 'therapists';
+      btnText = '👥 ဝန်ထမ်းပုံများ ကြည့်ရန် (View Therapists)';
+    } else if (rule.id === 'menu_booking_auto_reply' || rule.name.includes('ဘိုကင်')) {
+      targetTab = 'booking';
+      btnText = '📅 ယခုပဲ ဘိုကင်တင်ရန် (Book Now)';
+    } else if (rule.id === 'menu_available_auto_reply' || rule.name.includes('အားနေသော')) {
+      targetTab = 'available';
+      btnText = '🟢 အားနေသော ဝန်ထမ်းများကြည့်ရန်';
+    } else if (rule.id === 'menu_history_auto_reply' || rule.name.includes('History')) {
+      targetTab = 'history';
+      btnText = '📋 My Booking History & Status စစ်ရန်';
+    } else if (rule.id === 'menu_vip_auto_reply' || rule.name.includes('VIP')) {
+      targetTab = 'vip';
+      btnText = '👑 VIP Member & Points စစ်ရန်';
+    }
+  }
+
+  if (!targetTab || targetTab === 'none') return undefined;
+
+  const finalUrl = `${cleanUrl}/?tab=${targetTab}`;
+  const finalLabel = btnText || '🌿 Open Mini App';
+
+  // Telegram Business DM တွင် `url` ခလုတ်ဖြင့် ပို့မှသာ 100% ပို့နိုင်ပြီး၊ Bot Chat တွင် `web_app` ခလုတ်ဖြင့် ပို့ပေးမည်
+  const primaryButton = isBusinessDm
+    ? { text: finalLabel, url: finalUrl }
+    : { text: finalLabel, web_app: { url: finalUrl } };
+
+  const secondaryRow = isBusinessDm
+    ? [
+        { text: '👥 ဝန်ထမ်းပုံများ', url: `${cleanUrl}/?tab=therapists` },
+        { text: '📅 ဘိုကင်တင်ရန်', url: `${cleanUrl}/?tab=booking` },
+      ]
+    : [
+        { text: '👥 ဝန်ထမ်းပုံများ', web_app: { url: `${cleanUrl}/?tab=therapists` } },
+        { text: '📅 ဘိုကင်တင်ရန်', web_app: { url: `${cleanUrl}/?tab=booking` } },
+      ];
+
+  return {
+    inline_keyboard: [
+      [primaryButton],
+      ...(targetTab !== 'therapists' && targetTab !== 'booking' ? [secondaryRow] : []),
+    ],
+  };
+};
+
 let isBusinessAutoReplyPolling = false;
 
 export async function pollAndProcessBusinessAutoReplies(
   existingConfig?: TelegramBotConfig
-): Promise<{ processedCount: number }> {
-  if (isBusinessAutoReplyPolling) return { processedCount: 0 };
+): Promise<{ processedCount: number; newlySubscribedCount: number }> {
+  if (isBusinessAutoReplyPolling) return { processedCount: 0, newlySubscribedCount: 0 };
   isBusinessAutoReplyPolling = true;
   let processedCount = 0;
+  let newlySubscribedCount = 0;
 
   try {
     const config = existingConfig || (await getTelegramConfig());
-    if (!config.enabled || !config.botToken || config.businessAutoReplyEnabled === false) {
-      return { processedCount: 0 };
+    if (!config.enabled || !config.botToken) {
+      return { processedCount: 0, newlySubscribedCount: 0 };
     }
 
     let lastUpdateId = Number(localStorage.getItem('shangrila_biz_last_update_id') || 0);
@@ -664,7 +793,7 @@ export async function pollAndProcessBusinessAutoReplies(
     );
     const data = await res.json();
     if (!data?.ok || !Array.isArray(data.result)) {
-      return { processedCount: 0 };
+      return { processedCount: 0, newlySubscribedCount: 0 };
     }
 
     const repliedIds: Set<string> = new Set(
@@ -677,46 +806,70 @@ export async function pollAndProcessBusinessAutoReplies(
       }
 
       const bMsg = update.business_message || update.message;
-      if (!bMsg || !bMsg.text || !bMsg.chat?.id) continue;
+      if (!bMsg || !bMsg.chat?.id) continue;
 
       if (bMsg.from?.is_bot) continue;
 
+      // Telegram Business Account တွင် ဆိုင်ရှင်ဘက်မှ ပြန်ပို့သော စာများကို ကျော်သွားမည် (Customer ပို့သောစာကိုသာ ဖမ်းမည်)
       if (update.business_message && String(bMsg.from?.id) !== String(bMsg.chat?.id)) {
         continue;
       }
 
-      const uniqueMsgKey = `${bMsg.chat.id}_${bMsg.message_id}`;
+      const chatIdStr = String(bMsg.chat.id).trim();
+      const incomingText: string = String(bMsg.text || bMsg.caption || '').trim();
+
+      // 🌟 1. Telegram Acc သို့ စာလာပို့သမျှ Customer အားလုံး၏ Chat ID ကို Promotion Broadcast အတွက် အလိုအလျောက် သိမ်းဆည်းခြင်း 🌟
+      if (isPrivateUserChatId(chatIdStr)) {
+        const senderFirstName = bMsg.from?.first_name || bMsg.chat?.first_name || '';
+        const senderLastName = bMsg.from?.last_name || bMsg.chat?.last_name || '';
+        const senderUsername = bMsg.from?.username || bMsg.chat?.username || '';
+        const fullDisplayName =
+          [senderFirstName, senderLastName].filter(Boolean).join(' ') ||
+          senderUsername ||
+          'Telegram Guest';
+        const detectedPhone = extractMyanmarPhoneFromText(incomingText);
+
+        const savedSub = await saveCustomerTelegramSubscription({
+          chatId: chatIdStr,
+          customerName: fullDisplayName,
+          customerPhone: detectedPhone,
+          username: senderUsername,
+          firstName: senderFirstName,
+          lastName: senderLastName,
+          subscribed: true,
+          source: update.business_message ? 'business_dm' : 'bot_command',
+        });
+        if (savedSub) {
+          newlySubscribedCount++;
+        }
+      }
+
+      // 🌟 2. Keyword Auto-Reply စစ်ဆေးပြီး သက်ဆိုင်ရာ စာသားနှင့် Bot Menu ခလုတ် ပြန်ပို့ခြင်း 🌟
+      if (!incomingText || config.businessAutoReplyEnabled === false) continue;
+
+      const uniqueMsgKey = `${chatIdStr}_${bMsg.message_id}`;
       if (repliedIds.has(uniqueMsgKey)) continue;
 
-      const matchedRule = matchBusinessKeywordRule(bMsg.text, config);
+      const matchedRule = matchBusinessKeywordRule(incomingText, config);
       if (matchedRule) {
         repliedIds.add(uniqueMsgKey);
-        
-        let replyMarkup = undefined;
-        const cleanUrl = (config.webAppUrl || 'https://www.shangrilamenretreat.online').replace(/\/$/, '');
 
-        if (matchedRule.id === 'menu_therapists_auto_reply') {
-          replyMarkup = { inline_keyboard: [[{ text: '👥 ဝန်ထမ်းပုံကြည့်ရန် (View Therapists)', web_app: { url: `${cleanUrl}/?tab=therapists` } }]] };
-        } else if (matchedRule.id === 'menu_booking_auto_reply') {
-          replyMarkup = { inline_keyboard: [[{ text: '📅 ယခုပဲ ဘိုကင်တင်ရန် (Book Now)', web_app: { url: `${cleanUrl}/?tab=booking` } }]] };
-        } else if (matchedRule.id === 'menu_available_auto_reply') {
-          replyMarkup = { inline_keyboard: [[{ text: '🟢 အားနေသော ဝန်ထမ်းများကြည့်ရန်', web_app: { url: `${cleanUrl}/?tab=available` } }]] };
-        } else if (matchedRule.id === 'menu_vip_auto_reply') {
-          replyMarkup = { inline_keyboard: [[{ text: '👑 VIP Member & Points စစ်ရန်', web_app: { url: `${cleanUrl}/?tab=vip` } }]] };
-        }
+        const isBusinessDm = Boolean(bMsg.business_connection_id);
+        const replyMarkup = buildAutoReplyRuleInlineKeyboard(matchedRule, config, isBusinessDm);
 
         const sendRes = await sendRawTelegramMessage(
           config.botToken,
-          String(bMsg.chat.id),
+          chatIdStr,
           matchedRule.replyMessage,
           replyMarkup,
           `BUSINESS_AUTO_REPLY_${matchedRule.id.toUpperCase()}`,
           {
             businessConnectionId: bMsg.business_connection_id,
             replyToMessageId: bMsg.message_id,
-            plainText: false
+            plainText: false,
           }
         );
+
         if (sendRes.ok) {
           processedCount++;
         }
@@ -735,7 +888,7 @@ export async function pollAndProcessBusinessAutoReplies(
     isBusinessAutoReplyPolling = false;
   }
 
-  return { processedCount };
+  return { processedCount, newlySubscribedCount };
 }
 
 // ==========================================
@@ -857,7 +1010,8 @@ export const saveCustomerTelegramSubscription = async (
     (cleanInputName &&
     cleanInputName !== 'Shangri-La Guest' &&
     cleanInputName !== 'Telegram Customer' &&
-    cleanInputName !== 'Telegram User'
+    cleanInputName !== 'Telegram User' &&
+    cleanInputName !== 'Telegram Guest'
       ? cleanInputName
       : '') ||
     existingData?.customerName ||
@@ -1775,6 +1929,7 @@ export const fetchRecentBotChats = async (
     );
 
     const config = await getTelegramConfig();
+    let maxUpdateId = Number(localStorage.getItem('shangrila_biz_last_update_id') || 0);
 
     const existingBookings: any[] = [];
     try {
@@ -1786,6 +1941,10 @@ export const fetchRecentBotChats = async (
 
     if (data.ok && Array.isArray(data.result)) {
       for (const update of data.result) {
+        if (update.update_id > maxUpdateId) {
+          maxUpdateId = update.update_id;
+        }
+
         const msgObj = update.business_message || update.message || update.edited_message;
         const chat =
           msgObj?.chat ||
@@ -1802,30 +1961,33 @@ export const fetchRecentBotChats = async (
           [chat.first_name, chat.last_name].filter(Boolean).join(' ') ||
           chat.username ||
           'Telegram User';
-        const text: string = msgObj?.text || update.callback_query?.data || '';
+        const text: string = msgObj?.text || msgObj?.caption || update.callback_query?.data || '';
 
         // --- Telegram Business Direct Message Keyword Auto-Reply ---
         if (
           msgObj &&
-          msgObj.text &&
+          text &&
           !msgObj.from?.is_bot &&
           (!update.business_message || String(msgObj.from?.id) === String(msgObj.chat?.id))
         ) {
           const uniqueMsgKey = `${chatIdStr}_${msgObj.message_id}`;
           if (!businessRepliedIds.has(uniqueMsgKey)) {
-            const matchedRule = matchBusinessKeywordRule(msgObj.text, config);
+            const matchedRule = matchBusinessKeywordRule(text, config);
             if (matchedRule) {
               businessRepliedIds.add(uniqueMsgKey);
+              const isBusinessDm = Boolean(msgObj.business_connection_id);
+              const replyMarkup = buildAutoReplyRuleInlineKeyboard(matchedRule, config, isBusinessDm);
+
               await sendRawTelegramMessage(
                 cleanToken,
                 chatIdStr,
                 matchedRule.replyMessage,
-                undefined,
+                replyMarkup,
                 `BUSINESS_AUTO_REPLY_${matchedRule.id.toUpperCase()}`,
                 {
                   businessConnectionId: msgObj.business_connection_id,
                   replyToMessageId: msgObj.message_id,
-                  plainText: true,
+                  plainText: false,
                 }
               );
             }
@@ -1875,9 +2037,19 @@ export const fetchRecentBotChats = async (
           } else if (startPayload.startsWith('sub_')) {
             extractedPhone = startPayload.replace('sub_', '');
           }
-          await sendInteractiveMiniAppMenu(chatIdStr, config, extractedBookingId, extractedPhone);
+          await sendInteractiveMiniAppMenu(
+            chatIdStr,
+            config,
+            extractedBookingId,
+            extractedPhone,
+            msgObj?.business_connection_id
+          );
         }
       }
+    }
+
+    if (maxUpdateId > 0) {
+      localStorage.setItem('shangrila_biz_last_update_id', String(maxUpdateId));
     }
 
     localStorage.setItem(
@@ -1971,16 +2143,16 @@ export const fetchRecentBotChats = async (
           continue;
         }
 
-        let extractedPhone = '';
+        let extractedPhone = extractMyanmarPhoneFromText(discovered.lastMessage);
         let extractedBookingId = '';
         const payload = discovered.startPayload || '';
 
         if (payload.startsWith('book_')) {
           const tokens = payload.split('_');
           extractedBookingId = tokens[1] || '';
-          extractedPhone = tokens.slice(2).join('') || '';
+          extractedPhone = tokens.slice(2).join('') || extractedPhone;
         } else if (payload.startsWith('sub_')) {
-          extractedPhone = payload.replace('sub_', '');
+          extractedPhone = payload.replace('sub_', '') || extractedPhone;
         }
 
         const matchedBooking = sortedBookings.find((b) => {
@@ -2032,7 +2204,7 @@ export const fetchRecentBotChats = async (
           lastName: discovered.lastName || '',
           lastBookingId: extractedBookingId,
           subscribed: true,
-          source: payload ? 'booking_deeplink' : 'bot_command',
+          source: payload ? 'booking_deeplink' : 'business_dm',
         });
 
         if (saved) newlySubscribedCount++;
@@ -2056,7 +2228,8 @@ export const sendInteractiveMiniAppMenu = async (
   chatId: string,
   existingConfig?: TelegramBotConfig,
   linkedBookingId?: string,
-  linkedPhone?: string
+  linkedPhone?: string,
+  businessConnectionId?: string
 ): Promise<{ ok: boolean; error?: string }> => {
   const config = existingConfig || (await getTelegramConfig());
   if (!config.botToken || !chatId) return { ok: false, error: 'Missing token or chatId' };
@@ -2082,8 +2255,15 @@ export const sendInteractiveMiniAppMenu = async (
     `📞 09-458884517, 09-770072190`,
   ].join('\n');
 
-  const keyboard = buildCustomerMiniAppInlineKeyboard(config.webAppUrl);
-  return sendRawTelegramMessage(config.botToken, chatId, menuHtml, keyboard, 'CUSTOMER_MENU_WELCOME');
+  const keyboard = buildCustomerMiniAppInlineKeyboard(config.webAppUrl, Boolean(businessConnectionId));
+  return sendRawTelegramMessage(
+    config.botToken,
+    chatId,
+    menuHtml,
+    keyboard,
+    'CUSTOMER_MENU_WELCOME',
+    businessConnectionId ? { businessConnectionId } : undefined
+  );
 };
 
 export const syncBotCommandsAndMenu = async (config: TelegramBotConfig): Promise<{ ok: boolean; message: string }> => {
