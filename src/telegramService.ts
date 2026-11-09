@@ -654,7 +654,6 @@ export async function pollAndProcessBusinessAutoReplies(
       return { processedCount: 0 };
     }
 
-    // နောက်ဆုံး စစ်ဆေးပြီးသား update_id ကို LocalStorage မှ ရယူခြင်း
     let lastUpdateId = Number(localStorage.getItem('shangrila_biz_last_update_id') || 0);
     const offsetParam = lastUpdateId > 0 ? `&offset=${lastUpdateId + 1}` : '';
 
@@ -673,7 +672,6 @@ export async function pollAndProcessBusinessAutoReplies(
     );
 
     for (const update of data.result) {
-      // update_id အမြဲတမ်း အမြင့်ဆုံးဖြစ်အောင် မှတ်ထားခြင်း (နောက်တစ်ခါခေါ်လျှင် ဒီထက်ကျော်ပြီးမှ ဆွဲထုတ်ရန်)
       if (update.update_id > lastUpdateId) {
         lastUpdateId = update.update_id;
       }
@@ -690,51 +688,41 @@ export async function pollAndProcessBusinessAutoReplies(
       const uniqueMsgKey = `${bMsg.chat.id}_${bMsg.message_id}`;
       if (repliedIds.has(uniqueMsgKey)) continue;
 
-      // pollAndProcessBusinessAutoReplies ထဲတွင် မက်ဆေ့ချ်ပို့မည့် အပိုင်း၌ —
-const matchedRule = matchBusinessKeywordRule(bMsg.text, config);
-if (matchedRule) {
-  repliedIds.add(uniqueMsgKey);
+      const matchedRule = matchBusinessKeywordRule(bMsg.text, config);
+      if (matchedRule) {
+        repliedIds.add(uniqueMsgKey);
+        
+        let replyMarkup = undefined;
+        const cleanUrl = (config.webAppUrl || 'https://www.shangrilamenretreat.online').replace(/\/$/, '');
 
-  // Bot Menu များနှင့် ချိတ်ဆက်ထားသော Inline Keyboards များ တည်ဆောက်ခြင်း
-  let replyMarkup = undefined;
-  const cleanUrl = (config.webAppUrl || 'https://www.shangrilamenretreat.online').replace(/\/$/, '');
+        if (matchedRule.id === 'menu_therapists_auto_reply') {
+          replyMarkup = { inline_keyboard: [[{ text: '👥 ဝန်ထမ်းပုံကြည့်ရန် (View Therapists)', web_app: { url: `${cleanUrl}/?tab=therapists` } }]] };
+        } else if (matchedRule.id === 'menu_booking_auto_reply') {
+          replyMarkup = { inline_keyboard: [[{ text: '📅 ယခုပဲ ဘိုကင်တင်ရန် (Book Now)', web_app: { url: `${cleanUrl}/?tab=booking` } }]] };
+        } else if (matchedRule.id === 'menu_available_auto_reply') {
+          replyMarkup = { inline_keyboard: [[{ text: '🟢 အားနေသော ဝန်ထမ်းများကြည့်ရန်', web_app: { url: `${cleanUrl}/?tab=available` } }]] };
+        } else if (matchedRule.id === 'menu_vip_auto_reply') {
+          replyMarkup = { inline_keyboard: [[{ text: '👑 VIP Member & Points စစ်ရန်', web_app: { url: `${cleanUrl}/?tab=vip` } }]] };
+        }
 
-  if (matchedRule.id === 'menu_therapists_auto_reply') {
-    replyMarkup = {
-      inline_keyboard: [[{ text: '👥 ဝန်ထမ်းပုံကြည့်ရန် (View Therapists)', web_app: { url: `${cleanUrl}/?tab=therapists` } }]]
-    };
-  } else if (matchedRule.id === 'menu_booking_auto_reply') {
-    replyMarkup = {
-      inline_keyboard: [[{ text: '📅 ယခုပဲ ဘိုကင်တင်ရန် (Book Now)', web_app: { url: `${cleanUrl}/?tab=booking` } }]]
-    };
-  } else if (matchedRule.id === 'menu_available_auto_reply') {
-    replyMarkup = {
-      inline_keyboard: [[{ text: '🟢 အားနေသော ဝန်ထမ်းများကြည့်ရန်', web_app: { url: `${cleanUrl}/?tab=available` } }]]
-    };
-  } else if (matchedRule.id === 'menu_vip_auto_reply') {
-    replyMarkup = {
-      inline_keyboard: [[{ text: '👑 VIP Member & Points စစ်ရန်', web_app: { url: `${cleanUrl}/?tab=vip` } }]]
-    };
-  }
-
-  await sendRawTelegramMessage(
-    config.botToken,
-    String(bMsg.chat.id),
-    matchedRule.replyMessage,
-    replyMarkup, // ထည့်သွင်းလိုက်သော Mini App ခလုတ်များ
-    `BUSINESS_AUTO_REPLY_${matchedRule.id.toUpperCase()}`,
-    {
-      businessConnectionId: bMsg.business_connection_id,
-      replyToMessageId: bMsg.message_id,
-      plainText: false
-    }
-  );
-  processedCount++;
-}
+        const sendRes = await sendRawTelegramMessage(
+          config.botToken,
+          String(bMsg.chat.id),
+          matchedRule.replyMessage,
+          replyMarkup,
+          `BUSINESS_AUTO_REPLY_${matchedRule.id.toUpperCase()}`,
+          {
+            businessConnectionId: bMsg.business_connection_id,
+            replyToMessageId: bMsg.message_id,
+            plainText: false
+          }
+        );
+        if (sendRes.ok) {
+          processedCount++;
+        }
       }
     }
 
-    // နောက်ဆုံး update_id ကို LocalStorage တွင် အမြဲမှတ်ထားမည်
     if (lastUpdateId > 0) {
       localStorage.setItem('shangrila_biz_last_update_id', String(lastUpdateId));
     }
