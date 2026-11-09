@@ -41,6 +41,15 @@ export interface CustomerTelegramSubscriber {
   updatedAt: string;
 }
 
+export interface BusinessAutoReplyRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  keywords: string[];
+  replyMessage: string;
+  matchType?: 'contains' | 'exact';
+}
+
 export interface TelegramBotConfig {
   enabled: boolean;
   botToken: string;
@@ -78,6 +87,9 @@ export interface TelegramBotConfig {
   staffMappings: StaffTelegramMapping[];
   subscribers?: CustomerTelegramSubscriber[];
   excludedChatIds?: string[];
+  // --- Telegram Business Direct Message (Keyword Auto-Reply) ---
+  businessAutoReplyEnabled?: boolean;
+  businessAutoReplyRules?: BusinessAutoReplyRule[];
 }
 
 export interface BookingNotificationPayload {
@@ -123,6 +135,35 @@ export interface CustomerBroadcastPayload {
 // ==========================================
 // 2. DEFAULT CONFIGURATION
 // ==========================================
+
+export const DEFAULT_BUSINESS_AUTO_REPLY_RULES: BusinessAutoReplyRule[] = [
+  {
+    id: 'job_recruitment_auto_reply',
+    name: 'ဝန်ထမ်းခေါ်ယူမှု / အလုပ်လျှောက်ထားမှု Auto-Reply',
+    enabled: true,
+    matchType: 'contains',
+    keywords: [
+      'လူလိုသေးလား',
+      'အလုပ်',
+      'ဝန်ထမ်းလိုသေးလား',
+      'အလုပ်လျှောက်',
+      'ဝန်ထမ်းခေါ်',
+      'လူခေါ်',
+    ],
+    replyMessage: `မင်္ဂလာပါ😊🫱🏻‍🫲🏾
+အလုပ်လျှောက်ထားရန် အတွက်
+
+၁။ အမည်
+၂။ အသက်
+၃။ အရပ်အမြင့်
+၄။ ဇာတိ၊ လက်ရှိနေရပ်လိပ်စာ
+၅။ Ai Photo မဖြစ်ရ၊ Effect မသုံးပဲရိုက်ထားတဲ့ပုံ မျက်နှာသေချာမြင်ရတဲ့ ဓာတ်ပုံ ( ၃ ) ပုံတို့ကို ပို့ပေးပါ။
+
+✅ ပို့ပေးတဲ့ အချက်အလက်လေးတွေ ကိုကြည့်ပြီး အလုပ်ခန့်ရန်အတွက် အဆင်ပြေတယ်ဆိုရင် အလုပ်အကြောင်းလေးကိုဆက်လက် ရှင်းပြပေးပါ့မယ်။
+
+⚠️ အချက်အလက်လေးတွေ ပြည့်စုံမှသာ အလုပ်အတွက် အင်တာဗျူးဆက်ဖြေကြားပေးမှာဖြစ်ပါတယ်။`,
+  },
+];
 
 export const DEFAULT_TELEGRAM_CONFIG: TelegramBotConfig = {
   enabled: true,
@@ -170,6 +211,8 @@ export const DEFAULT_TELEGRAM_CONFIG: TelegramBotConfig = {
   ],
   subscribers: [],
   excludedChatIds: [],
+  businessAutoReplyEnabled: true,
+  businessAutoReplyRules: DEFAULT_BUSINESS_AUTO_REPLY_RULES,
 };
 
 // ==========================================
@@ -294,6 +337,12 @@ export const getTelegramConfig = async (): Promise<TelegramBotConfig> => {
         staffMappings: data.staffMappings || DEFAULT_TELEGRAM_CONFIG.staffMappings,
         subscribers: Array.isArray(data.subscribers) ? data.subscribers : [],
         excludedChatIds: Array.isArray(data.excludedChatIds) ? data.excludedChatIds : [],
+        businessAutoReplyEnabled:
+          data.businessAutoReplyEnabled !== undefined ? data.businessAutoReplyEnabled : true,
+        businessAutoReplyRules:
+          Array.isArray(data.businessAutoReplyRules) && data.businessAutoReplyRules.length > 0
+            ? data.businessAutoReplyRules
+            : DEFAULT_BUSINESS_AUTO_REPLY_RULES,
       };
     } else {
       await setDoc(docRef, DEFAULT_TELEGRAM_CONFIG);
@@ -388,7 +437,8 @@ export const sendRawTelegramMessage = async (
   chatId: string,
   htmlText: string,
   replyMarkup?: object,
-  logType: string = 'SYSTEM'
+  logType: string = 'SYSTEM',
+  extraOptions?: { businessConnectionId?: string; replyToMessageId?: number; plainText?: boolean }
 ): Promise<{ ok: boolean; error?: string }> => {
   if (!botToken || !chatId) {
     return { ok: false, error: 'Missing Bot Token or Chat ID' };
@@ -400,12 +450,23 @@ export const sendRawTelegramMessage = async (
     const bodyPayload: Record<string, unknown> = {
       chat_id: String(chatId).trim(),
       text: htmlText,
-      parse_mode: 'HTML',
       disable_web_page_preview: true,
     };
 
+    if (!extraOptions?.plainText) {
+      bodyPayload.parse_mode = 'HTML';
+    }
+
     if (replyMarkup) {
       bodyPayload.reply_markup = replyMarkup;
+    }
+
+    if (extraOptions?.businessConnectionId) {
+      bodyPayload.business_connection_id = extraOptions.businessConnectionId;
+    }
+
+    if (extraOptions?.replyToMessageId) {
+      bodyPayload.reply_to_message_id = extraOptions.replyToMessageId;
     }
 
     const response = await fetch(url, {
@@ -482,6 +543,115 @@ export const sendRawTelegramPhoto = async (
     await logTelegramActivity(logType, String(chatId), 'FAILED', htmlCaption.slice(0, 120), errMsg);
     return { ok: false, error: errMsg };
   }
+};
+
+// ==========================================
+// 4B. TELEGRAM BUSINESS DIRECT MESSAGE KEYWORD AUTO-REPLY ENGINE
+// ==========================================
+
+export const matchBusinessKeywordRule = (
+  incomingText: string,
+  config: TelegramBotConfig
+): BusinessAutoReplyRule | null => {
+  if (config.businessAutoReplyEnabled === false) return null;
+  const rules =
+    Array.isArray(config.businessAutoReplyRules) && config.businessAutoReplyRules.length > 0
+      ? config.businessAutoReplyRules
+      : DEFAULT_BUSINESS_AUTO_REPLY_RULES;
+
+  const cleanText = String(incomingText || '').trim().toLowerCase();
+  if (!cleanText || cleanText.startsWith('/')) return null;
+
+  for (const rule of rules) {
+    if (!rule.enabled || !rule.replyMessage?.trim() || !Array.isArray(rule.keywords)) continue;
+    const isMatched = rule.keywords.some((kw) => {
+      const cleanKw = String(kw || '').trim().toLowerCase();
+      if (!cleanKw) return false;
+      if (rule.matchType === 'exact') {
+        return cleanText === cleanKw;
+      }
+      return cleanText.includes(cleanKw);
+    });
+    if (isMatched) return rule;
+  }
+  return null;
+};
+
+let isBusinessAutoReplyPolling = false;
+
+export const pollAndProcessBusinessAutoReplies = async (
+  existingConfig?: TelegramBotConfig
+): Promise<{ processedCount: number }> => {
+  if (isBusinessAutoReplyPolling) return { processedCount: 0 };
+  isBusinessAutoReplyPolling = true;
+  let processedCount = 0;
+
+  try {
+    const config = existingConfig || (await getTelegramConfig());
+    if (!config.enabled || !config.botToken || config.businessAutoReplyEnabled === false) {
+      return { processedCount: 0 };
+    }
+
+    const res = await fetch(
+      `https://api.telegram.org/bot${config.botToken.trim()}/getUpdates?limit=50&allowed_updates=${encodeURIComponent(
+        JSON.stringify(['message', 'business_message', 'edited_message', 'callback_query', 'my_chat_member'])
+      )}`
+    );
+    const data = await res.json();
+    if (!data?.ok || !Array.isArray(data.result)) {
+      return { processedCount: 0 };
+    }
+
+    const repliedIds: Set<string> = new Set(
+      JSON.parse(localStorage.getItem('shangrila_business_autoreplied_ids') || '[]')
+    );
+
+    for (const update of data.result) {
+      const bMsg = update.business_message || update.message;
+      if (!bMsg || !bMsg.text || !bMsg.chat?.id) continue;
+
+      // Ignore bot messages
+      if (bMsg.from?.is_bot) continue;
+
+      // For Telegram Business Account DMs:
+      // Only reply if the message was sent BY the customer (from.id === chat.id), never when the business owner replies
+      if (update.business_message && String(bMsg.from?.id) !== String(bMsg.chat?.id)) {
+        continue;
+      }
+
+      const uniqueMsgKey = `${bMsg.chat.id}_${bMsg.message_id}`;
+      if (repliedIds.has(uniqueMsgKey)) continue;
+
+      const matchedRule = matchBusinessKeywordRule(bMsg.text, config);
+      if (matchedRule) {
+        repliedIds.add(uniqueMsgKey);
+        const sendRes = await sendRawTelegramMessage(
+          config.botToken,
+          String(bMsg.chat.id),
+          matchedRule.replyMessage,
+          undefined,
+          `BUSINESS_AUTO_REPLY_${matchedRule.id.toUpperCase()}`,
+          {
+            businessConnectionId: bMsg.business_connection_id,
+            replyToMessageId: bMsg.message_id,
+            plainText: true,
+          }
+        );
+        if (sendRes.ok) {
+          processedCount++;
+        }
+      }
+    }
+
+    const trimmedReplied = Array.from(repliedIds).slice(-300);
+    localStorage.setItem('shangrila_business_autoreplied_ids', JSON.stringify(trimmedReplied));
+  } catch (err) {
+    console.warn('pollAndProcessBusinessAutoReplies error:', err);
+  } finally {
+    isBusinessAutoReplyPolling = false;
+  }
+
+  return { processedCount };
 };
 
 // ==========================================
@@ -1494,12 +1664,20 @@ export const fetchRecentBotChats = async (
     const cleanToken = botToken.trim();
     await fetchBotUsername(cleanToken);
 
-    let response = await fetch(`https://api.telegram.org/bot${cleanToken}/getUpdates?limit=100`);
+    const allowedUpdatesParam = encodeURIComponent(
+      JSON.stringify(['message', 'business_message', 'edited_message', 'callback_query', 'my_chat_member'])
+    );
+
+    let response = await fetch(
+      `https://api.telegram.org/bot${cleanToken}/getUpdates?limit=100&allowed_updates=${allowedUpdatesParam}`
+    );
     let data = await response.json();
 
     if (!data.ok && (response.status === 409 || String(data.description || '').toLowerCase().includes('webhook'))) {
       await fetch(`https://api.telegram.org/bot${cleanToken}/deleteWebhook?drop_pending_updates=false`);
-      response = await fetch(`https://api.telegram.org/bot${cleanToken}/getUpdates?limit=100`);
+      response = await fetch(
+        `https://api.telegram.org/bot${cleanToken}/getUpdates?limit=100&allowed_updates=${allowedUpdatesParam}`
+      );
       data = await response.json();
     }
 
@@ -1507,6 +1685,9 @@ export const fetchRecentBotChats = async (
     let newlySubscribedCount = 0;
     const welcomedUpdateIds: Set<string> = new Set(
       JSON.parse(localStorage.getItem('shangrila_welcomed_tg_updates') || '[]')
+    );
+    const businessRepliedIds: Set<string> = new Set(
+      JSON.parse(localStorage.getItem('shangrila_business_autoreplied_ids') || '[]')
     );
 
     const config = await getTelegramConfig();
@@ -1521,9 +1702,9 @@ export const fetchRecentBotChats = async (
 
     if (data.ok && Array.isArray(data.result)) {
       for (const update of data.result) {
+        const msgObj = update.business_message || update.message || update.edited_message;
         const chat =
-          update.message?.chat ||
-          update.edited_message?.chat ||
+          msgObj?.chat ||
           update.callback_query?.message?.chat ||
           update.callback_query?.from ||
           update.my_chat_member?.chat;
@@ -1537,7 +1718,35 @@ export const fetchRecentBotChats = async (
           [chat.first_name, chat.last_name].filter(Boolean).join(' ') ||
           chat.username ||
           'Telegram User';
-        const text: string = update.message?.text || update.callback_query?.data || '';
+        const text: string = msgObj?.text || update.callback_query?.data || '';
+
+        // --- Telegram Business Direct Message Keyword Auto-Reply ---
+        if (
+          msgObj &&
+          msgObj.text &&
+          !msgObj.from?.is_bot &&
+          (!update.business_message || String(msgObj.from?.id) === String(msgObj.chat?.id))
+        ) {
+          const uniqueMsgKey = `${chatIdStr}_${msgObj.message_id}`;
+          if (!businessRepliedIds.has(uniqueMsgKey)) {
+            const matchedRule = matchBusinessKeywordRule(msgObj.text, config);
+            if (matchedRule) {
+              businessRepliedIds.add(uniqueMsgKey);
+              await sendRawTelegramMessage(
+                cleanToken,
+                chatIdStr,
+                matchedRule.replyMessage,
+                undefined,
+                `BUSINESS_AUTO_REPLY_${matchedRule.id.toUpperCase()}`,
+                {
+                  businessConnectionId: msgObj.business_connection_id,
+                  replyToMessageId: msgObj.message_id,
+                  plainText: true,
+                }
+              );
+            }
+          }
+        }
 
         let startPayload = '';
         if (text.startsWith('/start')) {
@@ -1554,8 +1763,8 @@ export const fetchRecentBotChats = async (
           lastName: chat.last_name || prevEntry?.lastName || '',
           type: chatType,
           lastMessage: text || prevEntry?.lastMessage || '[Bot Interaction]',
-          date: update.message?.date
-            ? new Date(update.message.date * 1000).toLocaleString()
+          date: msgObj?.date
+            ? new Date(msgObj.date * 1000).toLocaleString()
             : prevEntry?.date || '-',
           startPayload: startPayload || prevEntry?.startPayload || '',
         });
@@ -1586,6 +1795,11 @@ export const fetchRecentBotChats = async (
         }
       }
     }
+
+    localStorage.setItem(
+      'shangrila_business_autoreplied_ids',
+      JSON.stringify(Array.from(businessRepliedIds).slice(-300))
+    );
 
     let staffMappingChanged = false;
     const updatedStaffMappings = [...(config.staffMappings || [])];
@@ -1879,9 +2093,6 @@ export interface OutcallServiceNotificationPayload {
   notes?: string;
 }
 
-/**
- * Therapist အမည် ("Therapist No-3", "No. 3" စသည်) မှ သက်ဆိုင်ရာ ဝန်ထမ်းအားလုံး၏ Chat ID များကို တိကျစွာ ရှာဖွေပေးခြင်း
- */
 export const resolveAssignedStaffChatIds = (
   therapistNameStr: string,
   staffMappings: StaffTelegramMapping[]
@@ -1932,9 +2143,6 @@ export const resolveAssignedStaffChatIds = (
   return results;
 };
 
-/**
- * Hotel & Home Services (Outcall) 4-Stage Real-Time Telegram Notification
- */
 export const notifyOutcallServiceEvent = async (
   payload: OutcallServiceNotificationPayload
 ): Promise<{ adminSent: boolean; staffSent: boolean }> => {
