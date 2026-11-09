@@ -16,7 +16,7 @@ import { AdminStaffPayrollManager, calculateBookingCommissionForStaff, getStaffS
 import { AdminExpenseManager, AdminExpenseReportDashboard, AdminRevenueProfitDashboard } from './ExpenseAndRevenueSystem';
 import { BookOpen, Wallet, PieChart, Send } from 'lucide-react';
 import { TelegramNotificationCenter } from '../components/TelegramNotificationCenter';
-import { notifyBookingEvent, notifyStaffUpdate } from '../telegramService';
+import { notifyBookingEvent,notifyStaffUpdate,getTelegramConfig,saveTelegramConfig,pollAndProcessBusinessAutoReplies,DEFAULT_BUSINESS_AUTO_REPLY_RULES,BusinessAutoReplyRule,TelegramBotConfig} from '../telegramService';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -117,6 +117,15 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
 
   const activeLogoUrl = appData?.branding?.logoUrl || '';
+
+  // 🌟 Telegram Business Direct Message (Keyword Auto-Reply) Real-Time Background Listener 🌟
+  useEffect(() => {
+    pollAndProcessBusinessAutoReplies();
+    const tgAutoReplyTimer = setInterval(() => {
+      pollAndProcessBusinessAutoReplies();
+    }, 6000);
+    return () => clearInterval(tgAutoReplyTimer);
+  }, []);
 
   useEffect(() => {
     if (!activeLogoUrl) return;
@@ -802,7 +811,9 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 {tab === 'expense_report' && (hasAccess('bookings') || hasAccess('reports')) && <AdminExpenseReportDashboard bookings={bookings} therapists={appData.therapists} adminRole={adminRole} onOpenEntry={() => setTab('expenses')} />}
             {tab === 'handbook' && hasAccess('settings') && <AdminEmployeeHandbookManager />}
             {tab === 'pos_users' && (hasAccess('admins') || hasAccess('settings')) && <AdminPOSUsersManager adminRole={adminRole} />}
-            {tab === 'telegram_bot' && (hasAccess('admins') || hasAccess('settings')) && <TelegramNotificationCenter />}
+            {tab === 'telegram_bot' && (hasAccess('admins') || hasAccess('settings')) && (<div className="space-y-6"><AdminBusinessKeywordAutoReplyStudio /> <TelegramNotificationCenter />
+              </div>
+            )}
           </div>
         </main>
       </div>
@@ -11889,6 +11900,386 @@ function AdminPOSUsersManager({ adminRole }: { adminRole: string }) {
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 🌟 TELEGRAM BUSINESS DIRECT MESSAGE (KEYWORD AUTO-REPLY) STUDIO COMPONENT 🌟
+// ============================================================================
+function AdminBusinessKeywordAutoReplyStudio() {
+  const [config, setConfig] = useState<TelegramBotConfig | null>(null);
+  const [enabled, setEnabled] = useState<boolean>(true);
+  const [rules, setRules] = useState<BusinessAutoReplyRule[]>(DEFAULT_BUSINESS_AUTO_REPLY_RULES);
+  const [keywordInputs, setKeywordInputs] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<boolean>(false);
+  const [testingNow, setTestingNow] = useState<boolean>(false);
+  const [lastSyncText, setLastSyncText] = useState<string>('');
+
+  useEffect(() => {
+    let mounted = true;
+    getTelegramConfig().then((cfg) => {
+      if (!mounted) return;
+      setConfig(cfg);
+      setEnabled(cfg.businessAutoReplyEnabled !== false);
+      setRules(
+        Array.isArray(cfg.businessAutoReplyRules) && cfg.businessAutoReplyRules.length > 0
+          ? cfg.businessAutoReplyRules
+          : DEFAULT_BUSINESS_AUTO_REPLY_RULES
+      );
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleAddRule = () => {
+    const newRule: BusinessAutoReplyRule = {
+      id: `rule_${Date.now()}`,
+      name: `Auto-Reply Rule အသစ် #${rules.length + 1}`,
+      enabled: true,
+      matchType: 'contains',
+      keywords: [],
+      replyMessage: ''
+    };
+    setRules([...rules, newRule]);
+  };
+
+  const handleDeleteRule = (ruleId: string) => {
+    if (rules.length <= 1) {
+      alert('အနည်းဆုံး Auto-Reply Rule (၁) ခု ထားရှိရပါမည်။ မသုံးလိုပါက Toggle ပိတ်ထားနိုင်ပါသည်။');
+      return;
+    }
+    if (!window.confirm('ဤ Auto-Reply Rule ကို ဖျက်မည်မှာ သေချာပါသလား?')) return;
+    setRules(rules.filter((r) => r.id !== ruleId));
+  };
+
+  const handleAddKeywordsToRule = (ruleId: string) => {
+    const rawInput = (keywordInputs[ruleId] || '').trim();
+    if (!rawInput) return;
+
+    const newKws = rawInput
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean);
+
+    setRules(
+      rules.map((r) =>
+        r.id === ruleId
+          ? { ...r, keywords: Array.from(new Set([...r.keywords, ...newKws])) }
+          : r
+      )
+    );
+    setKeywordInputs({ ...keywordInputs, [ruleId]: '' });
+  };
+
+  const handleRemoveKeyword = (ruleId: string, kwToRemove: string) => {
+    setRules(
+      rules.map((r) =>
+        r.id === ruleId
+          ? { ...r, keywords: r.keywords.filter((k) => k !== kwToRemove) }
+          : r
+      )
+    );
+  };
+
+  const handleResetDefaultJobRule = () => {
+    if (!window.confirm('မူရင်း ဝန်ထမ်းခေါ်ယူမှု Keyword နှင့် စာသားများကို ပြန်လည်ထည့်သွင်းမည် သေချာပါသလား?')) return;
+    setRules(DEFAULT_BUSINESS_AUTO_REPLY_RULES);
+  };
+
+  const handleSaveRules = async () => {
+    if (!config) return;
+    setSaving(true);
+    try {
+      const updatedCfg: TelegramBotConfig = {
+        ...config,
+        businessAutoReplyEnabled: enabled,
+        businessAutoReplyRules: rules
+      };
+      const ok = await saveTelegramConfig(updatedCfg);
+      if (ok) {
+        setConfig(updatedCfg);
+        setLastSyncText(new Date().toLocaleTimeString());
+        alert('✅ Telegram Business Direct Message (Keyword Auto-Reply) သတ်မှတ်ချက်များကို သိမ်းဆည်းပြီးပါပြီ!');
+      } else {
+        alert('❌ သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleManualCheckNow = async () => {
+    setTestingNow(true);
+    try {
+      const res = await pollAndProcessBusinessAutoReplies(
+        config
+          ? { ...config, businessAutoReplyEnabled: enabled, businessAutoReplyRules: rules }
+          : undefined
+      );
+      setLastSyncText(new Date().toLocaleTimeString());
+      alert(
+        res.processedCount > 0
+          ? `✅ ဝင်ရောက်လာသော Keyword စာ (${res.processedCount}) စောင်ကို Auto-Reply ပြန်ပို့ပေးပြီးပါပြီ!`
+          : '✅ စစ်ဆေးပြီးပါပြီ။ လက်ရှိတွင် ပြန်ပို့ရန် ကျန်ရှိသော Keyword စာအသစ် မရှိပါ။'
+      );
+    } finally {
+      setTestingNow(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-3xl shadow-sm border-2 border-[#D4AF37]/40 overflow-hidden animate-fade-in">
+      {/* Header Banner */}
+      <div className="bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#0B2419] p-5 sm:p-6 text-white border-b border-[#D4AF37]/30 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/40">
+              Telegram Business • Secretary Mode
+            </span>
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase flex items-center gap-1 ${
+                enabled
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                  : 'bg-red-500/30 text-red-200 border border-red-400/40'
+              }`}
+            >
+              {enabled ? '● Auto-Reply Active (6s Live Sync)' : '○ Paused'}
+            </span>
+          </div>
+          <h3 className="text-lg sm:text-xl font-black text-[#D4AF37] mt-1.5 flex items-center gap-2">
+            <MessageCircle className="w-5 h-5 text-[#D4AF37]" />
+            <span>Direct Message (DM) Keyword Auto-Reply Studio</span>
+          </h3>
+          <p className="text-xs text-gray-300 mt-1">
+            Bot ဆီသို့ မဟုတ်ဘဲ မူရင်း Telegram Account သို့ တိုက်ရိုက် (DM) လာပို့သော စာများထဲတွင် သတ်မှတ်ထားသော Keyword ပါဝင်ပါက မူရင်းအကောင့်မှ အလိုအလျောက် စာပြန်ပို့ပေးမည့် စနစ်
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <label className="flex items-center gap-2 bg-black/30 border border-[#D4AF37]/40 px-3.5 py-2 rounded-xl cursor-pointer">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="w-4 h-4 accent-[#D4AF37]"
+            />
+            <span className="text-xs font-black text-[#D4AF37]">
+              {enabled ? 'Auto-Reply ဖွင့်ထားသည်' : 'Auto-Reply ပိတ်ထားသည်'}
+            </span>
+          </label>
+
+          <button
+            type="button"
+            disabled={testingNow}
+            onClick={handleManualCheckNow}
+            className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold transition"
+          >
+            {testingNow ? 'Checking...' : '🔄 ယခု ချက်ချင်းစစ်မည်'}
+          </button>
+
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSaveRules}
+            className="px-5 py-2.5 rounded-xl bg-[#D4AF37] hover:bg-yellow-500 text-[#0B2419] text-xs font-black shadow-md flex items-center gap-1.5 transition"
+          >
+            <Save className="w-4 h-4" />
+            <span>{saving ? 'Saving...' : 'Save Auto-Reply Rules'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Rules List Body */}
+      <div className="p-5 sm:p-6 space-y-5 bg-gray-50/50">
+        {rules.map((rule, rIdx) => (
+          <div
+            key={rule.id}
+            className={`p-5 rounded-2xl border-2 bg-white shadow-2xs space-y-4 transition ${
+              rule.enabled ? 'border-[#123524]/25' : 'border-gray-200 opacity-70'
+            }`}
+          >
+            {/* Rule Top Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2.5 flex-1 min-w-[240px]">
+                <span className="w-7 h-7 rounded-lg bg-[#123524] text-[#D4AF37] font-black text-xs flex items-center justify-center">
+                  {rIdx + 1}
+                </span>
+                <input
+                  type="text"
+                  value={rule.name}
+                  onChange={(e) =>
+                    setRules(
+                      rules.map((r) => (r.id === rule.id ? { ...r, name: e.target.value } : r))
+                    )
+                  }
+                  placeholder="Rule အမည် (ဥပမာ - ဝန်ထမ်းလျှောက်ထားမှု Auto-Reply)"
+                  className="flex-1 p-2 bg-gray-50 border border-gray-300 rounded-xl text-xs sm:text-sm font-black text-[#123524] outline-none focus:border-[#D4AF37]"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={rule.matchType || 'contains'}
+                  onChange={(e) =>
+                    setRules(
+                      rules.map((r) =>
+                        r.id === rule.id
+                          ? { ...r, matchType: e.target.value as 'contains' | 'exact' }
+                          : r
+                      )
+                    )
+                  }
+                  className="p-2 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 outline-none"
+                >
+                  <option value="contains">စာသားထဲတွင် ပါဝင်လျှင် (Contains Keyword)</option>
+                  <option value="exact">စာသား အတိအကျတူမှ (Exact Match)</option>
+                </select>
+
+                <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-black text-emerald-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={rule.enabled}
+                    onChange={(e) =>
+                      setRules(
+                        rules.map((r) =>
+                          r.id === rule.id ? { ...r, enabled: e.target.checked } : r
+                        )
+                      )
+                    }
+                    className="accent-[#123524]"
+                  />
+                  <span>Active</span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => handleDeleteRule(rule.id)}
+                  className="p-2 text-red-500 hover:bg-red-50 rounded-xl border border-red-100 transition"
+                  title="Delete Rule"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Keywords Chips & Input */}
+            <div>
+              <label className="block text-xs font-extrabold text-gray-700 mb-2">
+                🔑 စစ်ဆေးမည့် Keyword များ (Customer ပို့သောစာထဲတွင် ဤစကားလုံး တစ်ခုခုပါလာပါက အလိုအလျောက် စာပြန်မည်)
+              </label>
+
+              <div className="flex flex-wrap gap-2 mb-3">
+                {rule.keywords.length === 0 && (
+                  <span className="text-xs text-red-500 font-bold py-1">
+                    ⚠️ Keyword အနည်းဆုံး (၁) ခု ထည့်သွင်းပေးပါ။
+                  </span>
+                )}
+                {rule.keywords.map((kw) => (
+                  <span
+                    key={kw}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#123524] text-[#D4AF37] text-xs font-bold shadow-2xs"
+                  >
+                    <span>{kw}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveKeyword(rule.id, kw)}
+                      className="hover:text-red-300 font-black ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={keywordInputs[rule.id] || ''}
+                  onChange={(e) =>
+                    setKeywordInputs({ ...keywordInputs, [rule.id]: e.target.value })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddKeywordsToRule(rule.id);
+                    }
+                  }}
+                  placeholder="Keyword အသစ် ရိုက်ထည့်ပါ (ကော်မာ , ခံ၍ အများကြီးထည့်နိုင်သည် — ဥပမာ လူလိုသေးလား, အလုပ်, ဝန်ထမ်းလိုသေးလား)"
+                  className="flex-1 p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-[#123524]"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAddKeywordsToRule(rule.id)}
+                  className="px-4 py-2.5 bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black whitespace-nowrap transition"
+                >
+                  + Keyword ထည့်မည်
+                </button>
+              </div>
+            </div>
+
+            {/* Reply Message Textarea */}
+            <div>
+              <label className="block text-xs font-extrabold text-gray-700 mb-1.5">
+                💬 အလိုအလျောက် ပြန်ပို့မည့် စာသား (Auto-Reply Message)
+              </label>
+              <textarea
+                rows={9}
+                value={rule.replyMessage}
+                onChange={(e) =>
+                  setRules(
+                    rules.map((r) =>
+                      r.id === rule.id ? { ...r, replyMessage: e.target.value } : r
+                    )
+                  )
+                }
+                placeholder="အလိုအလျောက် ပြန်ပို့လိုသော စာသားကို ရိုက်ထည့်ပါ..."
+                className="w-full p-3.5 bg-gray-50 border border-gray-300 rounded-2xl text-xs sm:text-sm font-semibold text-gray-800 leading-relaxed outline-none focus:border-[#123524]"
+              />
+            </div>
+          </div>
+        ))}
+
+        {/* Footer Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleAddRule}
+              className="px-4 py-2.5 rounded-xl bg-white hover:bg-gray-100 text-[#123524] border border-gray-300 text-xs font-black flex items-center gap-1.5 shadow-2xs transition"
+            >
+              <PlusCircle className="w-4 h-4 text-[#D4AF37]" />
+              <span>+ နောက်ထပ် Keyword Rule အသစ်တိုးမည် (ဥပမာ - ဈေးနှုန်း / လိပ်စာ)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetDefaultJobRule}
+              className="px-3.5 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition"
+            >
+              ↺ မူရင်း အလုပ်လျှောက်စာ ပြန်ထည့်မည်
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {lastSyncText && (
+              <span className="text-[11px] font-bold text-gray-500">
+                Last Checked: {lastSyncText}
+              </span>
+            )}
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleSaveRules}
+              className="px-6 py-2.5 rounded-xl bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] text-xs font-black shadow-md flex items-center gap-2 transition"
+            >
+              <Save className="w-4 h-4" />
+              <span>{saving ? 'သိမ်းဆည်းနေပါသည်...' : '💾 Save Auto-Reply Settings'}</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
