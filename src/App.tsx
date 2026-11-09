@@ -14,6 +14,8 @@ import POSScreen from './pages/POSScreen';
 import ThadingyutCampaign from './pages/ThadingyutCampaign';
 import ThadingyutPopup from './components/ThadingyutPopup';
 
+import { pollAndProcessBusinessAutoReplies } from './telegramService';
+
 const AdminApp = lazy(() => import('./pages/AdminApp'));
 const StaffApp = lazy(() => import('./pages/StaffApp'));
 
@@ -239,6 +241,13 @@ function MainApp() {
       if (outcome === 'accepted') { setDeferredPrompt(null); setIsStandalone(true); }
     } else { setShowInstallModal(true); }
   };
+
+  useEffect(() => {
+  const interval = setInterval(() => {
+    pollAndProcessBusinessAutoReplies();
+  }, 6000); // 6 စက္ကန့်တစ်ကြိမ် DM Keyword စစ်ဆေးပေးမည်
+  return () => clearInterval(interval);
+}, []);
 
   // 🌟 Admin Panel မှ Logo နှင့် Branding အမည်ကို Browser Favicon နှင့် PWA Manifest သို့ အလိုအလျောက် ချိတ်ဆက်ပေးခြင်း 🌟
   useEffect(() => {
