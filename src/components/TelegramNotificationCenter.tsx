@@ -20,12 +20,16 @@ import {
   Smartphone,
   Image as ImageIcon,
   Check,
-  Trash2,
   UserX,
   Search,
   Phone,
+  CalendarPlus,
+  Clock,
+  CreditCard,
+  MapPin,
+  Wallet,
 } from 'lucide-react';
-import { collection, doc, query, orderBy, limit, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, doc, query, orderBy, limit, onSnapshot, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { decryptText } from '../security';
 import {
@@ -65,6 +69,57 @@ const safeDecrypt = (val: any): string => {
   } catch {
     return val;
   }
+};
+
+// 🌟 Default Fallback Services (Firestore တွင် services မရှိသေးပါက အသုံးပြုရန်) 🌟
+const FALLBACK_SERVICES = [
+  { id: 'svc-aroma-60', name: 'Shangri-La Signature Aromatherapy (60 Mins)', duration: 60, price: 50000 },
+  { id: 'svc-aroma-90', name: 'Shangri-La Signature Aromatherapy (90 Mins)', duration: 90, price: 70000 },
+  { id: 'svc-royal-90', name: 'Imperial Royal Package (Massage + Scrub)', duration: 90, price: 85000 },
+  { id: 'svc-wax-body', name: 'Full Body Grooming & Waxing Care', duration: 60, price: 60000 },
+  { id: 'svc-half-day', name: 'Half-Day Retreat / Outcall Package (6 Hrs)', duration: 360, price: 90000 },
+  { id: 'svc-night-call', name: 'Whole Night Outcall Service (8PM - 8AM)', duration: 720, price: 120000 },
+];
+
+// 🌟 Standard Time Slots (Day & Night Support) 🌟
+const MANUAL_TIME_SLOTS = [
+  '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM',
+  '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM', '07:00 PM',
+  '08:00 PM', '09:00 PM', '10:00 PM', '11:00 PM', '12:00 AM',
+];
+
+const PAYMENT_METHODS = [
+  'KBZPay',
+  'WavePay',
+  'AYA Pay',
+  'CB Pay',
+  'Bank Transfer (ဘဏ်လွှဲ)',
+  'Cash (ဆိုင်ရောက်မှရှင်း / လက်ငင်း)',
+];
+
+// Time String ("02:30 PM") ကို မိနစ်အဖြစ် ပြောင်းလဲသည့် Helper
+const parseTimeToMinutes = (timeStr: string): number => {
+  if (!timeStr) return -1;
+  const match = String(timeStr).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return -1;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const period = match[3]?.toUpperCase();
+  if (period === 'PM' && hours < 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+};
+
+// Duration String ("90 mins", "2 hrs") မှ မိနစ်ထုတ်ယူသည့် Helper
+const parseDurationToMinutes = (dur?: string | number): number => {
+  if (typeof dur === 'number' && dur > 0) return dur;
+  if (!dur) return 60;
+  const lower = String(dur).toLowerCase();
+  if (lower.includes('half') || lower.includes('6 hr')) return 360;
+  if (lower.includes('night') || lower.includes('12 hr')) return 720;
+  const num = parseInt(lower.replace(/[^0-9]/g, ''), 10);
+  if (lower.includes('hr') || lower.includes('hour')) return (num || 1) * 60;
+  return num || 60;
 };
 
 type ButtonFeedbackState = 'idle' | 'loading' | 'success' | 'error';
@@ -127,12 +182,35 @@ export const TelegramNotificationCenter: React.FC = () => {
   // Logs State
   const [logs, setLogs] = useState<any[]>([]);
 
+  // ============================================================================
+  // 🌟 QUICK MANUAL BOOKING & REAL-TIME CONFLICT ENGINE STATES 🌟
+  // ============================================================================
+  const [liveBookings, setLiveBookings] = useState<any[]>([]);
+  const [catalogServices, setCatalogServices] = useState<any[]>(FALLBACK_SERVICES);
+  const [therapistStatuses, setTherapistStatuses] = useState<Record<string, string>>({});
+
+  const [manualBookingTarget, setManualBookingTarget] = useState<CustomerTelegramSubscriber | null>(null);
+  const [mbPhone, setMbPhone] = useState<string>('');
+  const [mbServiceId, setMbServiceId] = useState<string>(FALLBACK_SERVICES[0].id);
+  const [mbCustomServiceName, setMbCustomServiceName] = useState<string>('');
+  const [mbStaffId, setMbStaffId] = useState<string>('No. 1');
+  const [mbDate, setMbDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [mbTime, setMbTime] = useState<string>('');
+  const [mbBookingType, setMbBookingType] = useState<'in_spa' | 'outcall_hotel' | 'outcall_home' | 'half_day' | 'night_call'>('in_spa');
+  const [mbRoomOrLocation, setMbRoomOrLocation] = useState<string>('VIP Private Suite');
+  const [mbTotalPrice, setMbTotalPrice] = useState<number>(FALLBACK_SERVICES[0].price);
+  const [mbPaymentMethod, setMbPaymentMethod] = useState<string>('KBZPay');
+  const [mbDepositAmount, setMbDepositAmount] = useState<number>(0);
+  const [mbPaymentRef, setMbPaymentRef] = useState<string>('');
+  const [mbNotes, setMbNotes] = useState<string>('');
+  const [isSubmittingManualBooking, setIsSubmittingManualBooking] = useState<boolean>(false);
+
   const showToast = (type: 'success' | 'error', text: string) => {
     setStatusBanner({ type, text });
     setTimeout(() => setStatusBanner(null), 4500);
   };
 
-  // 🌟 STABLE SUBSCRIBER LOADER: List အထက်အောက် လုံးဝ မခုန်စေရန် အပြောင်းအလဲရှိမှသာ State Update လုပ်သည် 🌟
+  // 🌟 STABLE SUBSCRIBER LOADER 🌟
   const loadSubscribers = async () => {
     const list = await getCustomerTelegramSubscribers(hrStaffNamesRef.current);
     setSubscribers((prev) => {
@@ -159,6 +237,7 @@ export const TelegramNotificationCenter: React.FC = () => {
       const hrByNum = new Map<number, { actualName: string; position: string; therapistName: string; status: string }>();
       const hrResignedNums = new Set<number>();
       const allDetectedStaffNames: string[] = [];
+      const statusMap: Record<string, string> = {};
 
       onboardingSnap.forEach((d) => {
         const raw = d.data();
@@ -213,6 +292,9 @@ export const TelegramNotificationCenter: React.FC = () => {
         }
         seenNums.add(num);
 
+        const staffKey = `No. ${num}`;
+        statusMap[staffKey] = String(raw.availability || raw.currentStatus || raw.status || 'available').toLowerCase();
+
         const hrInfo = hrByNum.get(num);
         const actualName = safeDecrypt(raw.actualName || raw.fullName || '') || hrInfo?.actualName || '';
         const position = safeDecrypt(raw.position || '') || hrInfo?.position || '';
@@ -221,7 +303,7 @@ export const TelegramNotificationCenter: React.FC = () => {
 
         activeStaffItems.push({
           num,
-          staffId: `No. ${num}`,
+          staffId: staffKey,
           staffName: rawName,
           actualName,
           position,
@@ -232,9 +314,11 @@ export const TelegramNotificationCenter: React.FC = () => {
       hrByNum.forEach((hrVal, num) => {
         if (num <= 50 && !seenNums.has(num) && !hrResignedNums.has(num)) {
           seenNums.add(num);
+          const staffKey = `No. ${num}`;
+          statusMap[staffKey] = 'available';
           activeStaffItems.push({
             num,
-            staffId: `No. ${num}`,
+            staffId: staffKey,
             staffName: hrVal.therapistName || `Therapist No-${num}`,
             actualName: hrVal.actualName,
             position: hrVal.position,
@@ -243,6 +327,7 @@ export const TelegramNotificationCenter: React.FC = () => {
         }
       });
 
+      setTherapistStatuses(statusMap);
       activeStaffItems.sort((a, b) => a.order - b.order);
 
       const finalStaffList =
@@ -313,9 +398,31 @@ export const TelegramNotificationCenter: React.FC = () => {
         if (scanRes.ok && scanRes.chats.length > 0) {
           setDiscoveredChats(scanRes.chats);
         }
-        // Re-fetch config in case auto-staff linking updated staffMappings
         const latestCfg = await getTelegramConfig();
         setConfig(latestCfg);
+      }
+
+      // Load Services from Firestore if available
+      try {
+        const svcSnap = await getDocs(collection(db, 'services'));
+        const loadedSvcs: any[] = [];
+        svcSnap.forEach((docSnap) => {
+          const d = docSnap.data();
+          const name = String(d.name || d.title || '').trim();
+          // Exclude test services
+          if (!name || name.toLowerCase().includes('test')) return;
+          loadedSvcs.push({
+            id: docSnap.id,
+            name,
+            duration: parseDurationToMinutes(d.duration || 60),
+            price: Number(d.price || d.amount || 50000),
+          });
+        });
+        if (loadedSvcs.length > 0) {
+          setCatalogServices(loadedSvcs);
+        }
+      } catch {
+        // Keep FALLBACK_SERVICES
       }
 
       await loadSubscribers();
@@ -323,6 +430,7 @@ export const TelegramNotificationCenter: React.FC = () => {
     };
     loadData();
 
+    // 🌟 Real-Time Listeners for Subscribers, Config, Logs, and Bookings (for Conflict Check) 🌟
     const unsubSubscribers = onSnapshot(
       collection(db, 'telegramSubscribers'),
       () => {
@@ -339,6 +447,15 @@ export const TelegramNotificationCenter: React.FC = () => {
       () => {}
     );
 
+    const unsubBookings = onSnapshot(
+      collection(db, 'bookings'),
+      (snap) => {
+        const bList = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setLiveBookings(bList);
+      },
+      () => {}
+    );
+
     const q = query(collection(db, 'telegramLogs'), orderBy('timestamp', 'desc'), limit(35));
     const unsubLogs = onSnapshot(
       q,
@@ -351,11 +468,12 @@ export const TelegramNotificationCenter: React.FC = () => {
     return () => {
       unsubSubscribers();
       unsubConfigDoc();
+      unsubBookings();
       unsubLogs();
     };
   }, []);
 
-  // Background Auto-Polling (Every 30s, completely silent & stable without list jumping)
+  // Background Auto-Polling (Every 30s)
   useEffect(() => {
     if (!config.botToken || !config.enabled) return;
     const interval = setInterval(async () => {
@@ -364,6 +482,359 @@ export const TelegramNotificationCenter: React.FC = () => {
     }, 30000);
     return () => clearInterval(interval);
   }, [config.botToken, config.enabled]);
+
+  // ============================================================================
+  // 🌟 REAL-TIME STAFF TIME-SLOT CONFLICT CHECKER & MANUAL BOOKING HANDLERS 🌟
+  // ============================================================================
+
+  const checkStaffSlotConflict = (
+    staffId: string,
+    dateStr: string,
+    candidateTime: string,
+    candidateDurationMins: number
+  ): { isBooked: boolean; conflictDetail?: string } => {
+    if (!staffId || !dateStr || !candidateTime) return { isBooked: false };
+
+    const targetStaffNum = extractStaffNumber(staffId);
+    const candStart = parseTimeToMinutes(candidateTime);
+    if (candStart < 0) return { isBooked: false };
+    const candEnd = candStart + candidateDurationMins;
+
+    // Combine Firestore liveBookings + localStorage fallback if any
+    let allBookings = [...liveBookings];
+    try {
+      const localRaw = localStorage.getItem('shangrila_bookings') || localStorage.getItem('bookings');
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw);
+        if (Array.isArray(parsed)) {
+          const existingIds = new Set(allBookings.map((b) => String(b.id)));
+          parsed.forEach((lb) => {
+            if (lb && lb.id && !existingIds.has(String(lb.id))) {
+              allBookings.push(lb);
+            }
+          });
+        }
+      }
+    } catch {
+      // ignore local storage parse error
+    }
+
+    for (const b of allBookings) {
+      const status = String(b.status || '').toLowerCase();
+      // Ignore cancelled, rejected, or completed bookings
+      if (status === 'cancelled' || status === 'rejected' || status === 'completed') continue;
+
+      const bDate = String(b.date || b.bookingDate || '').trim();
+      if (bDate !== dateStr) continue;
+
+      // Match staff by number or exact ID/name
+      const bStaffNum =
+        extractStaffNumber(b.therapistId || '') ??
+        extractStaffNumber(b.staffId || '') ??
+        extractStaffNumber(b.therapistName || '') ??
+        extractStaffNumber(b.staffName || '');
+
+      const isSameStaff =
+        (targetStaffNum !== null && bStaffNum !== null && targetStaffNum === bStaffNum) ||
+        String(b.therapistId || b.staffId || '').trim().toLowerCase() === staffId.trim().toLowerCase();
+
+      if (!isSameStaff) continue;
+
+      const bType = String(b.bookingType || b.serviceName || '').toLowerCase();
+      // Whole Night Call locks evening/night slots (7:00 PM onwards)
+      if (bType.includes('night') && candStart >= 19 * 60) {
+        return {
+          isBooked: true,
+          conflictDetail: `Night Call (${b.customerName || 'Booked'})`,
+        };
+      }
+
+      const existStart = parseTimeToMinutes(b.time || b.bookingTime || '');
+      if (existStart < 0) continue;
+
+      const existDuration = parseDurationToMinutes(b.duration || 60);
+      const outcallBuffer = b.isOutcall || bType.includes('outcall') || bType.includes('hotel') ? 30 : 0;
+      const existEnd = existStart + existDuration + outcallBuffer;
+
+      // Overlap check: StartA < EndB && StartB < EndA
+      if (candStart < existEnd && existStart < candEnd) {
+        return {
+          isBooked: true,
+          conflictDetail: `${b.time || ''} • ${b.customerName || 'Booked'}`,
+        };
+      }
+    }
+
+    return { isBooked: false };
+  };
+
+  const handleOpenManualBookingModal = (sub: CustomerTelegramSubscriber) => {
+    setManualBookingTarget(sub);
+    const cleanPhone =
+      sub.customerPhone && !sub.customerPhone.includes('xxxx') ? sub.customerPhone.trim() : '';
+    setMbPhone(cleanPhone);
+
+    const firstSvc = catalogServices[0] || FALLBACK_SERVICES[0];
+    setMbServiceId(firstSvc.id);
+    setMbCustomServiceName('');
+    setMbTotalPrice(Number(firstSvc.price || 50000));
+
+    const firstStaff = config.staffMappings[0]?.staffId || 'No. 1';
+    setMbStaffId(firstStaff);
+    setMbDate(new Date().toISOString().split('T')[0]);
+    setMbTime('');
+    setMbBookingType('in_spa');
+    setMbRoomOrLocation('VIP Private Suite');
+    setMbPaymentMethod('KBZPay');
+    setMbDepositAmount(0);
+    setMbPaymentRef('');
+    setMbNotes('');
+  };
+
+  const handleConfirmAndSendManualBooking = async () => {
+    if (!manualBookingTarget) return;
+
+    if (!mbStaffId || !mbDate || !mbTime) {
+      showToast('error', '❌ ကျေးဇူးပြု၍ ဝန်ထမ်း၊ နေ့ရက် နှင့် အချိန် (Time Slot) အပြည့်အစုံ ရွေးချယ်ပေးပါ။');
+      return;
+    }
+
+    const selectedService =
+      catalogServices.find((s) => String(s.id) === String(mbServiceId)) || FALLBACK_SERVICES[0];
+    const finalServiceName =
+      mbServiceId === 'custom'
+        ? mbCustomServiceName.trim() || 'Custom Retreat Package'
+        : selectedService.name;
+    const durationMins =
+      mbBookingType === 'half_day'
+        ? 360
+        : mbBookingType === 'night_call'
+        ? 720
+        : parseDurationToMinutes(selectedService?.duration || 60);
+
+    // Final Real-Time Conflict Verification
+    const conflict = checkStaffSlotConflict(mbStaffId, mbDate, mbTime, durationMins);
+    if (conflict.isBooked) {
+      showToast(
+        'error',
+        `⛔ ရွေးချယ်ထားသော ဝန်ထမ်း (${mbStaffId}) သည် ${mbDate} (${mbTime}) တွင် ဘိုကင်ရှိနှင့်ပြီးသား ဖြစ်နေပါသည် (${conflict.conflictDetail})။`
+      );
+      return;
+    }
+
+    const selectedStaffMapping = config.staffMappings.find((s) => s.staffId === mbStaffId);
+    const staffDisplayName = selectedStaffMapping?.staffName || `Therapist ${mbStaffId}`;
+
+    const totalPrice = Math.max(0, Number(mbTotalPrice) || 0);
+    const depositPaid = Math.min(totalPrice, Math.max(0, Number(mbDepositAmount) || 0));
+    const remainingBalance = Math.max(0, totalPrice - depositPaid);
+
+    const paymentStatusLabel =
+      depositPaid <= 0
+        ? 'UNPAID (ဆိုင်ရောက်မှရှင်းရန်)'
+        : remainingBalance === 0
+        ? `FULL PAID (${mbPaymentMethod})`
+        : `DEPOSIT PAID (${mbPaymentMethod})`;
+
+    const bookingTypeLabel =
+      mbBookingType === 'outcall_hotel'
+        ? '🏨 Hotel Outcall Service'
+        : mbBookingType === 'outcall_home'
+        ? '🏠 Home Outcall Service'
+        : mbBookingType === 'half_day'
+        ? '🌤️ Half-Day Outcall Package'
+        : mbBookingType === 'night_call'
+        ? '🌙 Whole Night Call (8PM - 8AM)'
+        : '🏢 In-Spa Private Room';
+
+    const bookingId = `BK-${Date.now().toString().slice(-6)}`;
+    const finalPhone = mbPhone.trim() || manualBookingTarget.customerPhone || `TG-${manualBookingTarget.chatId}`;
+    const isOutcall = mbBookingType !== 'in_spa';
+
+    setIsSubmittingManualBooking(true);
+    const btnKey = `manual_bk_${manualBookingTarget.chatId}`;
+    setButtonFeedback(btnKey, 'loading');
+
+    try {
+      const paymentSummaryNote =
+        `[Payment: ${mbPaymentMethod} | စရံပေးချေပြီး: ${depositPaid.toLocaleString()} Ks | ကျန်ငွေ: ${remainingBalance.toLocaleString()} Ks` +
+        `${mbPaymentRef.trim() ? ` | Ref: ${mbPaymentRef.trim()}` : ''}]`;
+
+      const combinedNotes = [
+        `[Telegram Manual Booking] ${bookingTypeLabel}`,
+        paymentSummaryNote,
+        mbNotes.trim(),
+      ]
+        .filter(Boolean)
+        .join(' — ');
+
+      // 1. Construct Official Synchronized Booking Payload
+      const bookingRecord: Record<string, any> = {
+        id: bookingId,
+        bookingId: bookingId,
+        customerName: manualBookingTarget.customerName || 'VIP Guest',
+        customerPhone: finalPhone,
+        phone: finalPhone,
+        customerChatId: String(manualBookingTarget.chatId),
+        telegramChatId: String(manualBookingTarget.chatId),
+        vipTier: manualBookingTarget.vipTier || 'Member',
+        serviceId: selectedService?.id || mbServiceId,
+        serviceName: finalServiceName,
+        duration: durationMins,
+        price: totalPrice,
+        totalAmount: totalPrice,
+        paymentMethod: mbPaymentMethod,
+        depositAmount: depositPaid,
+        advancePaid: depositPaid,
+        remainingBalance: remainingBalance,
+        balanceDue: remainingBalance,
+        paymentReference: mbPaymentRef.trim() || '',
+        paymentStatus: depositPaid >= totalPrice ? 'paid' : depositPaid > 0 ? 'deposit_paid' : 'unpaid',
+        date: mbDate,
+        bookingDate: mbDate,
+        time: mbTime,
+        bookingTime: mbTime,
+        therapistId: mbStaffId,
+        staffId: mbStaffId,
+        therapistName: staffDisplayName,
+        staffName: staffDisplayName,
+        bookingType: mbBookingType,
+        isOutcall: isOutcall,
+        roomName: mbRoomOrLocation.trim() || (isOutcall ? bookingTypeLabel : 'VIP Private Suite'),
+        address: mbRoomOrLocation.trim() || (isOutcall ? bookingTypeLabel : "The Shangri-La Men's Retreat (Mandalay)"),
+        status: 'confirmed',
+        source: 'TELEGRAM_MANUAL',
+        notes: combinedNotes,
+        createdAt: new Date().toISOString(),
+        confirmedAt: new Date().toISOString(),
+        updatedBy: 'Admin (Telegram Manual Booking)',
+      };
+
+      // 2. Save directly to Firestore `bookings` collection (Locks Time Slot across Web App & Admin Dashboard)
+      await setDoc(doc(db, 'bookings', bookingId), bookingRecord, { merge: true });
+
+      // 3. Also sync with localStorage if any legacy view reads from localStorage
+      try {
+        const localRaw = localStorage.getItem('shangrila_bookings');
+        if (localRaw) {
+          const parsed = JSON.parse(localRaw);
+          if (Array.isArray(parsed)) {
+            localStorage.setItem('shangrila_bookings', JSON.stringify([bookingRecord, ...parsed]));
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      // 4. Update Subscriber's Phone & lastBookingId in Firestore so future notifications stay linked
+      await saveCustomerTelegramSubscription(
+        {
+          ...manualBookingTarget,
+          customerPhone: mbPhone.trim() || manualBookingTarget.customerPhone || '',
+          lastBookingId: bookingId,
+        },
+        true
+      );
+      await loadSubscribers();
+
+      // 5. Send Detailed Official Booking & Payment Confirmation Card to Customer via Telegram Bot
+      const customerSlipHtml =
+        `🌿 <b>THE SHANGRI-LA MEN'S RETREAT</b>\n` +
+        `✅ <b>BOOKING CONFIRMED (ဘိုကင်အတည်ပြုပြီး)</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `🆔 <b>Booking ID:</b> <code>#${bookingId}</code>\n` +
+        `👤 <b>Customer:</b> ${bookingRecord.customerName}\n` +
+        `📞 <b>Phone:</b> ${finalPhone}\n` +
+        `💆‍♂️ <b>Service:</b> ${finalServiceName} (${durationMins} Mins)\n` +
+        `🏷️ <b>Service Type:</b> ${bookingTypeLabel}\n` +
+        `👨‍💼 <b>Therapist:</b> ${staffDisplayName} (${mbStaffId})\n` +
+        `📅 <b>Date:</b> ${mbDate}\n` +
+        `⏰ <b>Time:</b> <b>${mbTime}</b>\n` +
+        `📍 <b>Room / Location:</b> ${bookingRecord.roomName}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `💳 <b>PAYMENT & BALANCE SUMMARY</b>\n` +
+        `• <b>ငွေပေးချေမှုစနစ်:</b> ${mbPaymentMethod}${mbPaymentRef.trim() ? ` (Ref: ${mbPaymentRef.trim()})` : ''}\n` +
+        `• <b>စုစုပေါင်းကျသင့်ငွေ:</b> ${totalPrice.toLocaleString()} MMK\n` +
+        `• <b>ပေးချေပြီး စရံငွေ (Deposit):</b> ${depositPaid.toLocaleString()} MMK\n` +
+        `• <b>ကျန်ငွေ (Remaining Balance):</b> <b>${remainingBalance.toLocaleString()} MMK</b>\n` +
+        `• <b>Payment Status:</b> ${paymentStatusLabel}\n` +
+        (mbNotes.trim() ? `📝 <b>မှတ်ချက်:</b> ${mbNotes.trim()}\n` : '') +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `💛 လူကြီးမင်း၏ ဘိုကင်ကို အတည်ပြုသိမ်းဆည်းပြီးဖြစ်ပါသည်။ သတ်မှတ်ချိန်ထက် (၁၀) မိနစ်ခန့် ကြိုတင်ရောက်ရှိပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်ခင်ဗျာ။\n` +
+        `📍 33th(B) St, Between 65th & 65th(A) Sts, Chan Aye Tharzan Tsp, Mandalay\n` +
+        `☎️ 09-458884517, 09-770072190`;
+
+      const customerSendRes = await sendRawTelegramMessage(
+        config.botToken,
+        manualBookingTarget.chatId,
+        customerSlipHtml,
+        undefined,
+        'MANUAL_BOOKING_CONFIRMED'
+      );
+
+      // 6. Notify Admin Group & Assigned Therapist automatically
+      await notifyBookingEvent('BOOKING_CONFIRMED', {
+        id: bookingId,
+        customerName: bookingRecord.customerName,
+        customerPhone: finalPhone,
+        serviceName: finalServiceName,
+        duration: durationMins,
+        price: totalPrice,
+        date: mbDate,
+        time: mbTime,
+        therapistId: mbStaffId,
+        therapistName: staffDisplayName,
+        roomName: bookingRecord.roomName,
+        vipTier: bookingRecord.vipTier,
+        status: 'confirmed',
+        notes: combinedNotes,
+        updatedBy: 'Admin Manual Booking Console',
+      }).catch(() => {});
+
+      // Direct Staff Alert with Payment/Location info if staff has Telegram linked
+      if (selectedStaffMapping?.telegramChatId && selectedStaffMapping.receiveBookingAssign) {
+        const staffAlertHtml =
+          `🔔 <b>NEW CONFIRMED BOOKING ASSIGNED</b>\n` +
+          `━━━━━━━━━━━━━━━━━━━━\n` +
+          `🆔 <b>Booking ID:</b> <code>#${bookingId}</code>\n` +
+          `👨‍💼 <b>Assigned To:</b> ${staffDisplayName} (${mbStaffId})\n` +
+          `👤 <b>Customer:</b> ${bookingRecord.customerName}\n` +
+          `💆‍♂️ <b>Service:</b> ${finalServiceName} (${durationMins} Mins)\n` +
+          `📅 <b>Date & Time:</b> ${mbDate} @ <b>${mbTime}</b>\n` +
+          `📍 <b>Location:</b> ${bookingRecord.roomName}\n` +
+          `💵 <b>Total:</b> ${totalPrice.toLocaleString()} Ks (စရံ: ${depositPaid.toLocaleString()} Ks | ကောက်ခံရန်ကျန်ငွေ: <b>${remainingBalance.toLocaleString()} Ks</b> - ${mbPaymentMethod})`;
+
+        await sendRawTelegramMessage(
+          config.botToken,
+          selectedStaffMapping.telegramChatId,
+          staffAlertHtml,
+          undefined,
+          'STAFF_MANUAL_ASSIGN'
+        ).catch(() => {});
+      }
+
+      setButtonFeedback(btnKey, 'success', 3000);
+      setManualBookingTarget(null);
+
+      if (customerSendRes.ok) {
+        showToast(
+          'success',
+          `✅ Booking #${bookingId} (${staffDisplayName} • ${mbTime}) ကို အတည်ပြုသိမ်းဆည်းပြီး ${manualBookingTarget.customerName} ထံသို့ Confirmation Slip ပေးပို့ပြီးပါပြီ!`
+        );
+      } else {
+        showToast(
+          'error',
+          `⚠️ Booking #${bookingId} ကို System ထဲ သိမ်းဆည်းပြီးသော်လည်း Telegram ပို့ရာတွင် အမှားရှိပါသည်: ${customerSendRes.error}`
+        );
+      }
+    } catch (err: any) {
+      console.error('Error creating manual booking:', err);
+      setButtonFeedback(btnKey, 'error');
+      showToast('error', `❌ Manual Booking သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိပါသည်: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setIsSubmittingManualBooking(false);
+    }
+  };
 
   // ==========================================
   // INTERACTIVE ACTION HANDLERS WITH UI FEEDBACK
@@ -404,7 +875,6 @@ export const TelegramNotificationCenter: React.FC = () => {
     };
     setConfig(updatedConfig);
     const ok = await saveTelegramConfig(updatedConfig);
-    // Admin ID ဖြစ်သွားသဖြင့် Customer Subscriber စာရင်းထဲ ရှိနေပါက ဖယ်ထုတ်ပေးမည်
     await removeCustomerTelegramSubscriber(chatId, false);
     await loadSubscribers();
 
@@ -431,7 +901,6 @@ export const TelegramNotificationCenter: React.FC = () => {
     };
     setConfig(updatedConfig);
     const ok = await saveTelegramConfig(updatedConfig);
-    // ဝန်ထမ်းဖြစ်သွားသဖြင့် Customer List မှ အလိုအလျောက် ဖယ်ရှားပေးမည်
     await removeCustomerTelegramSubscriber(chatId, true);
     await loadSubscribers();
 
@@ -758,9 +1227,20 @@ export const TelegramNotificationCenter: React.FC = () => {
     );
   }
 
+  // Selected service duration & price helpers for Manual Booking Modal
+  const currentModalService =
+    catalogServices.find((s) => String(s.id) === String(mbServiceId)) || FALLBACK_SERVICES[0];
+  const currentModalDurationMins =
+    mbBookingType === 'half_day'
+      ? 360
+      : mbBookingType === 'night_call'
+      ? 720
+      : parseDurationToMinutes(currentModalService?.duration || 60);
+  const computedRemainingBalance = Math.max(0, (Number(mbTotalPrice) || 0) - (Number(mbDepositAmount) || 0));
+
   return (
     <div className="relative bg-[#0B2419] text-stone-100 rounded-2xl border border-[#C8A951]/30 shadow-2xl overflow-hidden">
-      {/* Floating Bottom-Right Toast Notification (မည်သည့်နေရာကို Scroll ဆွဲထားပါစေ ချက်ချင်းမြင်ရစေရန်) */}
+      {/* Floating Bottom-Right Toast Notification */}
       {statusBanner && (
         <div
           className={`fixed bottom-5 right-5 z-50 max-w-md px-4 py-3 rounded-xl shadow-2xl border text-xs font-semibold flex items-center gap-3 transition-all duration-200 ${
@@ -1055,7 +1535,7 @@ export const TelegramNotificationCenter: React.FC = () => {
               </button>
             </div>
 
-            {/* RECENT DISCOVERED CHATS TABLE (WITH CHECKMARKS & INTERACTIVE FEEDBACK) */}
+            {/* RECENT DISCOVERED CHATS TABLE */}
             {discoveredChats.length > 0 && (
               <div className="bg-black/30 rounded-xl border border-[#C8A951]/30 p-4 space-y-3">
                 <h3 className="text-xs font-bold text-[#C8A951]">
@@ -1113,7 +1593,6 @@ export const TelegramNotificationCenter: React.FC = () => {
                             <td className="py-2.5 px-2 text-stone-400 truncate max-w-[140px]">{c.lastMessage}</td>
                             <td className="py-2.5 px-2">
                               <div className="flex items-center justify-end gap-2 flex-wrap">
-                                {/* Copy ID Button with Instant Feedback */}
                                 <button
                                   onClick={() => handleCopyChatId(c.chatId, 'copy')}
                                   className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1 active:scale-95 transition duration-150 ${
@@ -1133,7 +1612,6 @@ export const TelegramNotificationCenter: React.FC = () => {
                                   )}
                                 </button>
 
-                                {/* Set as Admin ID Button with Persistent Checkmark */}
                                 <button
                                   onClick={() => handleSetAsAdminId(c.chatId, c.titleOrName)}
                                   className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1 active:scale-95 transition duration-150 ${
@@ -1157,7 +1635,6 @@ export const TelegramNotificationCenter: React.FC = () => {
                                   )}
                                 </button>
 
-                                {/* Quick Link to Staff Dropdown */}
                                 <select
                                   value={linkedStaff?.staffId || ''}
                                   onChange={(e) => handleAssignChatToStaff(c.chatId, e.target.value)}
@@ -1436,7 +1913,7 @@ export const TelegramNotificationCenter: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 4: SUBSCRIBED CUSTOMERS (CLEAN, STABLE, NO ADMIN/STAFF MIXING) */}
+        {/* TAB 4: SUBSCRIBED CUSTOMERS (WITH + MANUAL BOOKING & CONFIRM BUTTON) */}
         {activeTab === 'customers' && (
           <div className="space-y-4">
             <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20 space-y-3">
@@ -1577,6 +2054,7 @@ export const TelegramNotificationCenter: React.FC = () => {
                       const menuKey = `send_menu_${sub.chatId}`;
                       const phoneKey = `save_phone_${sub.chatId}`;
                       const copySubKey = `copy_sub_${sub.chatId}`;
+                      const manualBkKey = `manual_bk_${sub.chatId}`;
                       const currentPhoneVal =
                         editingPhones[sub.chatId] !== undefined ? editingPhones[sub.chatId] : sub.customerPhone || '';
 
@@ -1650,6 +2128,21 @@ export const TelegramNotificationCenter: React.FC = () => {
                           </td>
                           <td className="py-2.5 px-3 text-right">
                             <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                              {/* 🌟 NEW: + Manual Booking & Confirm Button 🌟 */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenManualBookingModal(sub)}
+                                className={`px-2.5 py-1 rounded text-[11px] font-bold flex items-center gap-1 active:scale-95 transition duration-150 shadow-sm ${
+                                  btnStates[manualBkKey] === 'success'
+                                    ? 'bg-emerald-500 text-black'
+                                    : 'bg-gradient-to-r from-[#C8A951] to-[#b39136] text-[#071810] hover:brightness-110'
+                                }`}
+                                title="Telegram Manual Booking သွင်းပြီး Bot Confirmation Slip တန်းပို့ရန်"
+                              >
+                                <CalendarPlus className="w-3.5 h-3.5" />
+                                {btnStates[manualBkKey] === 'success' ? '✓ Booked & Sent' : '+ Manual Booking'}
+                              </button>
+
                               {/* Test Booking Alert Button */}
                               <button
                                 onClick={() => handleTestCustomerBookingNoti(sub)}
@@ -1982,6 +2475,396 @@ export const TelegramNotificationCenter: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ============================================================================
+          🌟 QUICK MANUAL BOOKING, CONFLICT CHECK & DEPOSIT/BALANCE MODAL 🌟
+      ============================================================================ */}
+      {manualBookingTarget && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0B2419] border-2 border-[#C8A951] rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-auto">
+            {/* Modal Header */}
+            <div className="px-5 py-4 bg-gradient-to-r from-[#071810] via-[#0B2419] to-[#071810] border-b border-[#C8A951]/30 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-[#C8A951] flex items-center gap-2">
+                  <CalendarPlus className="w-5 h-5" />
+                  Quick Manual Booking & Bot Confirmation Slip
+                </h3>
+                <p className="text-xs text-stone-300 mt-0.5">
+                  Customer: <b className="text-white">{manualBookingTarget.customerName}</b>{' '}
+                  {manualBookingTarget.username ? `(@${manualBookingTarget.username})` : ''} • Chat ID:{' '}
+                  <code className="text-emerald-300 font-mono">{manualBookingTarget.chatId}</code>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManualBookingTarget(null)}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-stone-300 hover:text-white transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
+              {/* Row 1: Customer Phone & Booking Mode */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[#C8A951] font-semibold mb-1 flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5" /> Customer ဖုန်းနံပါတ် (Auto-Sync)
+                  </label>
+                  <input
+                    type="text"
+                    value={mbPhone}
+                    onChange={(e) => setMbPhone(e.target.value)}
+                    placeholder="09-xxxxxxxxx (မရှိပါက အလွတ်ထားနိုင်သည်)"
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[#C8A951] font-semibold mb-1 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5" /> Booking အမျိုးအစား (Service Mode)
+                  </label>
+                  <select
+                    value={mbBookingType}
+                    onChange={(e) => {
+                      const val = e.target.value as any;
+                      setMbBookingType(val);
+                      if (val === 'in_spa') {
+                        setMbRoomOrLocation('VIP Private Suite');
+                      } else if (val === 'outcall_hotel') {
+                        setMbRoomOrLocation('Hotel Outcall (ဟိုတယ်အမည်/အခန်းနံပါတ် ထည့်ရန်)');
+                      } else if (val === 'outcall_home') {
+                        setMbRoomOrLocation('Home Outcall (အိမ်လိပ်စာ ထည့်ရန်)');
+                      } else if (val === 'half_day') {
+                        setMbTotalPrice(90000);
+                        setMbRoomOrLocation('Half-Day Outcall');
+                      } else if (val === 'night_call') {
+                        setMbTotalPrice(120000);
+                        setMbTime('08:00 PM');
+                        setMbRoomOrLocation('Whole Night Outcall (8:00 PM - 8:00 AM)');
+                      }
+                    }}
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-white"
+                  >
+                    <option value="in_spa">🏢 In-Spa Retreat (ဆိုင်တွင်လာရောက်မည်)</option>
+                    <option value="outcall_hotel">🏨 Hotel Outcall (ဟိုတယ်သို့ခေါ်ယူမည်)</option>
+                    <option value="outcall_home">🏠 Home Outcall (အိမ်သို့ခေါ်ယူမည်)</option>
+                    <option value="half_day">🌤️ Half-Day Service (6 Hours)</option>
+                    <option value="night_call">🌙 Whole Night Call (8:00 PM - 8:00 AM)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Row 2: Service Selection & Room/Address */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[#C8A951] font-semibold mb-1">
+                    💆‍♂️ ဝန်ဆောင်မှု ရွေးချယ်ရန် (Service Package) *
+                  </label>
+                  <select
+                    value={mbServiceId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setMbServiceId(id);
+                      const found = catalogServices.find((s) => String(s.id) === id);
+                      if (found) {
+                        setMbTotalPrice(Number(found.price || 50000));
+                      }
+                    }}
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-white"
+                  >
+                    {catalogServices.map((svc) => (
+                      <option key={svc.id} value={svc.id}>
+                        {svc.name} — {Number(svc.price).toLocaleString()} Ks
+                      </option>
+                    ))}
+                    <option value="custom">✨ Custom Service (စိတ်ကြိုက်ဝန်ဆောင်မှုအမည် ရိုက်ထည့်မည်)</option>
+                  </select>
+                  {mbServiceId === 'custom' && (
+                    <input
+                      type="text"
+                      value={mbCustomServiceName}
+                      onChange={(e) => setMbCustomServiceName(e.target.value)}
+                      placeholder="ဝန်ဆောင်မှုအမည် ရိုက်ထည့်ပါ..."
+                      className="mt-2 w-full bg-[#071810] border border-[#C8A951]/40 rounded-lg px-3 py-1.5 text-white"
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[#C8A951] font-semibold mb-1">
+                    📍 အခန်းအမည် သို့မဟုတ် ဟိုတယ်/အိမ်လိပ်စာ (Room / Location)
+                  </label>
+                  <input
+                    type="text"
+                    value={mbRoomOrLocation}
+                    onChange={(e) => setMbRoomOrLocation(e.target.value)}
+                    placeholder="ဥပမာ - VIP Suite 1 သို့မဟုတ် Hotel Hazel Room 305"
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Staff Selection & Date */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[#C8A951] font-semibold mb-1">
+                    👨‍💼 တာဝန်ကျ ဝန်ထမ်း ရွေးချယ်ရန် (Active Staff) *
+                  </label>
+                  <select
+                    value={mbStaffId}
+                    onChange={(e) => {
+                      setMbStaffId(e.target.value);
+                      setMbTime(''); // Reset time slot when changing staff to re-verify conflicts
+                    }}
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-white font-semibold"
+                  >
+                    {config.staffMappings.map((st) => {
+                      const hrMeta = staffHrMeta[st.staffId];
+                      const stStatus = therapistStatuses[st.staffId] || 'available';
+                      const isOff = stStatus.includes('off') || stStatus.includes('leave');
+                      return (
+                        <option key={st.staffId} value={st.staffId}>
+                          {st.staffId} — {st.staffName} {hrMeta?.actualName ? `(${hrMeta.actualName})` : ''}{' '}
+                          {isOff ? ' [⚠️ OFF/LEAVE]' : ' [🟢 ACTIVE]'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[#C8A951] font-semibold mb-1">
+                    📅 ဘိုကင်နေ့ရက် (Booking Date) *
+                  </label>
+                  <input
+                    type="date"
+                    value={mbDate}
+                    onChange={(e) => {
+                      setMbDate(e.target.value);
+                      setMbTime('');
+                    }}
+                    className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: Real-Time Staff Availability & Time-Slot Conflict Grid */}
+              <div className="bg-black/30 p-3.5 rounded-xl border border-[#C8A951]/25 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[#C8A951] font-bold flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" />
+                    အချိန်ရွေးချယ်ရန် ({mbStaffId} ၏ {mbDate} ရက်နေ့ အား/မအား Real-Time စစ်ဆေးချက်) *
+                  </label>
+                  <span className="text-[11px] text-stone-400">
+                    ကြာချိန်: <b className="text-emerald-300">{currentModalDurationMins} Mins</b>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {MANUAL_TIME_SLOTS.map((slot) => {
+                    const conflict = checkStaffSlotConflict(
+                      mbStaffId,
+                      mbDate,
+                      slot,
+                      currentModalDurationMins
+                    );
+                    const isSelected = mbTime === slot;
+
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        disabled={conflict.isBooked}
+                        onClick={() => setMbTime(slot)}
+                        className={`py-2 px-1.5 rounded-lg text-[11px] font-bold border transition flex flex-col items-center justify-center ${
+                          conflict.isBooked
+                            ? 'bg-red-950/50 border-red-500/40 text-red-300/80 cursor-not-allowed opacity-75'
+                            : isSelected
+                            ? 'bg-[#C8A951] border-white text-[#071810] shadow-md scale-[1.02]'
+                            : 'bg-[#071810] border-[#C8A951]/30 text-stone-200 hover:border-[#C8A951]'
+                        }`}
+                        title={conflict.isBooked ? `Booked: ${conflict.conflictDetail}` : 'Available'}
+                      >
+                        <span>{slot}</span>
+                        {conflict.isBooked ? (
+                          <span className="text-[9px] text-red-400 font-normal truncate max-w-full">
+                            🔒 Booked
+                          </span>
+                        ) : (
+                          <span
+                            className={`text-[9px] font-normal ${
+                              isSelected ? 'text-[#071810] font-semibold' : 'text-emerald-400'
+                            }`}
+                          >
+                            {isSelected ? '✓ Selected' : '🟢 Free'}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Row 5: Payment Method, Deposit (စရံငွေ) & Auto Remaining Balance (ကျန်ငွေ) */}
+              <div className="bg-gradient-to-br from-[#071810] to-black/60 p-4 rounded-xl border border-[#C8A951]/40 space-y-3">
+                <div className="flex items-center justify-between border-b border-[#C8A951]/20 pb-2">
+                  <h4 className="font-bold text-[#C8A951] flex items-center gap-1.5">
+                    <Wallet className="w-4 h-4" />
+                    💳 ငွေပေးချေမှုစနစ်၊ စရံငွေ (Deposit) နှင့် ကျန်ငွေ (Balance) တွက်ချက်မှု
+                  </h4>
+                  <div className="flex items-center gap-1">
+                    {[
+                      { label: 'စရံမရှိ (0)', ratio: 0 },
+                      { label: '30%', ratio: 0.3 },
+                      { label: '50%', ratio: 0.5 },
+                      { label: 'အပြည့်ရှင်း (100%)', ratio: 1 },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setMbDepositAmount(Math.round((Number(mbTotalPrice) || 0) * preset.ratio))}
+                        className="px-2 py-0.5 rounded bg-[#C8A951]/15 hover:bg-[#C8A951]/30 text-[#C8A951] border border-[#C8A951]/30 text-[10px] font-semibold active:scale-95 transition"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-stone-300 mb-1">
+                      ငွေပေးချေသည့် နည်းလမ်း
+                    </label>
+                    <select
+                      value={mbPaymentMethod}
+                      onChange={(e) => setMbPaymentMethod(e.target.value)}
+                      className="w-full bg-[#0B2419] border border-[#C8A951]/30 rounded-lg px-2.5 py-2 text-white font-semibold"
+                    >
+                      {PAYMENT_METHODS.map((pm) => (
+                        <option key={pm} value={pm}>
+                          {pm}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-stone-300 mb-1">
+                      စုစုပေါင်းကျသင့်ငွေ (Total MMK)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={mbTotalPrice}
+                      onChange={(e) => setMbTotalPrice(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-full bg-[#0B2419] border border-[#C8A951]/30 rounded-lg px-2.5 py-2 text-white font-mono font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-emerald-300 font-semibold mb-1">
+                      လွှဲထားသော စရံငွေ (Deposit MMK)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={mbDepositAmount}
+                      onChange={(e) => setMbDepositAmount(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-full bg-[#0B2419] border border-emerald-500/50 rounded-lg px-2.5 py-2 text-emerald-300 font-mono font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-amber-300 font-semibold mb-1">
+                      ကျန်ငွေ (Remaining Balance)
+                    </label>
+                    <div className="w-full bg-black/50 border border-amber-400/50 rounded-lg px-2.5 py-2 text-amber-300 font-mono font-extrabold flex items-center justify-between">
+                      <span>{computedRemainingBalance.toLocaleString()}</span>
+                      <span className="text-[10px] text-stone-400">Ks</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Summary Bar & Transaction Ref */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <input
+                    type="text"
+                    value={mbPaymentRef}
+                    onChange={(e) => setMbPaymentRef(e.target.value)}
+                    placeholder="ငွေလွှဲပြေစာ အမှတ်စဉ် (Last 4/6 Digits - Optional)"
+                    className="bg-[#0B2419] border border-[#C8A951]/25 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
+                  />
+                  <input
+                    type="text"
+                    value={mbNotes}
+                    onChange={(e) => setMbNotes(e.target.value)}
+                    placeholder="အထူးမှတ်ချက် (ဥပမာ - Carebeau Oil / အခန်းအေးအေးလေး ပြင်ပေးရန်)"
+                    className="bg-[#0B2419] border border-[#C8A951]/25 rounded-lg px-3 py-1.5 text-xs text-white"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-emerald-950/40 border border-emerald-500/30 rounded-lg px-3 py-2 text-[11px]">
+                  <span className="text-stone-300">
+                    💳 ပေးချေမှု: <b className="text-white">{mbPaymentMethod}</b>
+                  </span>
+                  <span className="text-stone-300">
+                    စုစုပေါင်း: <b className="text-white">{Number(mbTotalPrice || 0).toLocaleString()} Ks</b>
+                  </span>
+                  <span className="text-emerald-300">
+                    စရံငွေ: <b>{Number(mbDepositAmount || 0).toLocaleString()} Ks</b>
+                  </span>
+                  <span className="text-amber-300 font-bold">
+                    ထပ်ရှင်းရန်ကျန်ငွေ: {computedRemainingBalance.toLocaleString()} Ks
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3.5 bg-[#071810] border-t border-[#C8A951]/30 flex items-center justify-between gap-3">
+              <div className="text-[11px] text-stone-400">
+                Confirm နှိပ်လိုက်သည်နှင့် <b>{mbStaffId}</b> ၏ <b>{mbTime || '...'}</b> Time Slot ကို Lock ချပြီး Bot မှ Slip ပို့ပေးပါမည်။
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setManualBookingTarget(null)}
+                  className="px-4 py-2 rounded-xl border border-stone-600 text-stone-300 hover:bg-white/5 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmittingManualBooking || !mbTime}
+                  onClick={handleConfirmAndSendManualBooking}
+                  className={`px-5 py-2 rounded-xl font-bold text-xs flex items-center gap-2 active:scale-95 transition shadow-lg ${
+                    !mbTime
+                      ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black'
+                  }`}
+                >
+                  {isSubmittingManualBooking ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Confirming & Sending...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Confirm Booking & Send Bot Slip
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
