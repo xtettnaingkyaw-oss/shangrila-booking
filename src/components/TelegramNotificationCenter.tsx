@@ -33,7 +33,6 @@ import {
 import { collection, doc, query, orderBy, limit, onSnapshot, getDocs, setDoc, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { decryptText } from '../security';
-import { useAppData } from '../AppDataContext';
 import {
   TelegramBotConfig,
   StaffTelegramMapping,
@@ -43,7 +42,6 @@ import {
   saveTelegramConfig,
   sendRawTelegramMessage,
   notifyBookingEvent,
-  notifyCustomerBookingStatus,
   notifyStaffUpdate,
   fetchRecentBotChats,
   syncBotCommandsAndMenu,
@@ -73,7 +71,7 @@ const safeDecrypt = (val: any): string => {
   }
 };
 
-// 🌟 Official Shangri-La Customer App Menu Catalog (Synced with CustomerApp.tsx) 🌟
+// 🌟 Official Shangri-La Customer App Menu Catalog 🌟
 export interface ManualMenuServiceItem {
   id: string;
   name: string;
@@ -192,7 +190,6 @@ const sendResilientTelegramMessage = async (
     if (primaryRes && primaryRes.ok) {
       return { ok: true };
     }
-    // If Telegram returned a specific logical error (not "Failed to fetch"), return it immediately
     if (primaryRes?.error && !String(primaryRes.error).toLowerCase().includes('failed to fetch')) {
       return { ok: false, error: primaryRes.error };
     }
@@ -200,7 +197,7 @@ const sendResilientTelegramMessage = async (
     // Proceed to fallback routes
   }
 
-  // Route 2: Simple GET Query Request (Avoids CORS Preflight `OPTIONS` block on strict networks)
+  // Route 2: Simple GET Query Request (Avoids CORS Preflight `OPTIONS` block)
   const tgGetUrl = `https://api.telegram.org/bot${cleanToken}/sendMessage?chat_id=${encodeURIComponent(
     cleanChatId
   )}&parse_mode=HTML&disable_web_page_preview=true&text=${encodeURIComponent(htmlText)}`;
@@ -222,10 +219,10 @@ const sendResilientTelegramMessage = async (
       return { ok: false, error: data2.description };
     }
   } catch {
-    // Proceed to Route 3 (ISP / Firewall Bypass Proxy)
+    // Proceed to Route 3
   }
 
-  // Route 3: CORS / ISP Proxy Fallback (For Myanmar ISP / Browser blocks on api.telegram.org)
+  // Route 3: CORS / ISP Proxy Fallback
   try {
     const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(tgGetUrl)}`;
     const res3 = await fetch(proxyUrl, { method: 'GET' });
@@ -247,7 +244,7 @@ const sendResilientTelegramMessage = async (
     // Proceed to Route 4
   }
 
-  // Route 4: Final no-cors fire-and-forget dispatch so packet still reaches Telegram
+  // Route 4: Final no-cors dispatch
   try {
     await fetch(tgGetUrl, { method: 'GET', mode: 'no-cors' });
     await addDoc(collection(db, 'telegramLogs'), {
@@ -275,9 +272,6 @@ const sendResilientTelegramMessage = async (
 type ButtonFeedbackState = 'idle' | 'loading' | 'success' | 'error';
 
 export const TelegramNotificationCenter: React.FC = () => {
-  // 🌟 Connect to Global AppDataContext so CustomerApp Menu & Bookings stay 100% in sync 🌟
-  const appData = useAppData() as any;
-
   const [config, setConfig] = useState<TelegramBotConfig>(DEFAULT_TELEGRAM_CONFIG);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -345,7 +339,6 @@ export const TelegramNotificationCenter: React.FC = () => {
   const [manualBookingTarget, setManualBookingTarget] = useState<CustomerTelegramSubscriber | null>(null);
   const [mbPhone, setMbPhone] = useState<string>('');
   const [mbSelectedCategory, setMbSelectedCategory] = useState<string>('ALL');
-  // Supports selecting 1 or multiple services just like Customer App
   const [mbSelectedServiceIds, setMbSelectedServiceIds] = useState<string[]>([OFFICIAL_CUSTOMER_APP_MENU[0].id]);
   const [mbCustomServiceName, setMbCustomServiceName] = useState<string>('');
   const [mbStaffId, setMbStaffId] = useState<string>('No. 1');
@@ -358,7 +351,7 @@ export const TelegramNotificationCenter: React.FC = () => {
   const [mbSubtotalPrice, setMbSubtotalPrice] = useState<number>(OFFICIAL_CUSTOMER_APP_MENU[0].price);
   const [mbApplyDiscount, setMbApplyDiscount] = useState<boolean>(false);
   const [mbDiscountMode, setMbDiscountMode] = useState<'PERCENT' | 'FIXED'>('PERCENT');
-  const [mbDiscountValue, setMbDiscountValue] = useState<number>(10); // e.g. 10% or 5000 Ks
+  const [mbDiscountValue, setMbDiscountValue] = useState<number>(10);
   const [mbDiscountReason, setMbDiscountReason] = useState<string>('VIP / Promo Discount');
 
   // Payment & Deposit States
@@ -385,25 +378,6 @@ export const TelegramNotificationCenter: React.FC = () => {
     }
     return map;
   }, [logs]);
-
-  // 🌟 Merge Services from AppDataContext (CustomerApp's exact live menu) + Firestore 🌟
-  useEffect(() => {
-    const contextServices = appData?.services || appData?.menuItems || [];
-    if (Array.isArray(contextServices) && contextServices.length > 0) {
-      const normalized: ManualMenuServiceItem[] = contextServices
-        .filter((s: any) => s && (s.name || s.title) && !String(s.name || s.title).toLowerCase().includes('test'))
-        .map((s: any, idx: number) => ({
-          id: String(s.id || `ctx-svc-${idx}`),
-          name: String(s.name || s.title).trim(),
-          category: String(s.category || s.type || '💆‍♂️ Retreat Services').trim(),
-          duration: parseDurationToMinutes(s.duration || 60),
-          price: Number(s.price || s.amount || 45000),
-        }));
-      if (normalized.length > 0) {
-        setCatalogServices(normalized);
-      }
-    }
-  }, [appData?.services, appData?.menuItems]);
 
   // 🌟 STABLE SUBSCRIBER LOADER 🌟
   const loadSubscribers = async () => {
@@ -597,7 +571,7 @@ export const TelegramNotificationCenter: React.FC = () => {
         setConfig(latestCfg);
       }
 
-      // Load Services from Firestore if not already populated by AppDataContext
+      // Load Services from Firestore & localStorage (CustomerApp Menu)
       try {
         const svcSnap = await getDocs(collection(db, 'services'));
         const loadedSvcs: ManualMenuServiceItem[] = [];
@@ -613,9 +587,9 @@ export const TelegramNotificationCenter: React.FC = () => {
             price: Number(d.price || d.amount || 45000),
           });
         });
+
         if (loadedSvcs.length > 0) {
           setCatalogServices((prev) => {
-            // Combine Firestore services with Official Customer App Menu without duplicates
             const seenNames = new Set(loadedSvcs.map((s) => s.name.toLowerCase()));
             const merged = [...loadedSvcs];
             prev.forEach((item) => {
@@ -704,18 +678,7 @@ export const TelegramNotificationCenter: React.FC = () => {
     if (candStart < 0) return { isBooked: false };
     const candEnd = candStart + candidateDurationMins;
 
-    // Combine Firestore liveBookings + AppDataContext bookings + localStorage
-    let allBookings = [...liveBookings];
-    const ctxBookings = appData?.bookings || [];
-    if (Array.isArray(ctxBookings)) {
-      const existingIds = new Set(allBookings.map((b) => String(b.id)));
-      ctxBookings.forEach((cb: any) => {
-        if (cb && cb.id && !existingIds.has(String(cb.id))) {
-          allBookings.push(cb);
-        }
-      });
-    }
-
+    const allBookings = [...liveBookings];
     try {
       const localRaw = localStorage.getItem('shangrila_bookings') || localStorage.getItem('bookings');
       if (localRaw) {
@@ -785,7 +748,6 @@ export const TelegramNotificationCenter: React.FC = () => {
       const next = exists ? prev.filter((id) => id !== svc.id) : [...prev, svc.id];
       const finalIds = next.length > 0 ? next : [svc.id];
 
-      // Auto-sum price of selected services
       const sumPrice = finalIds.reduce((acc, id) => {
         const found = catalogServices.find((item) => item.id === id);
         return acc + (found ? Number(found.price || 0) : 0);
@@ -845,12 +807,13 @@ export const TelegramNotificationCenter: React.FC = () => {
 
   // Calculate live pricing, discount, net total, and remaining balance
   const selectedMenuObjects = catalogServices.filter((s) => mbSelectedServiceIds.includes(s.id));
-  const combinedServiceNames = [
-    ...selectedMenuObjects.map((s) => s.name),
-    mbCustomServiceName.trim() ? mbCustomServiceName.trim() : '',
-  ]
-    .filter(Boolean)
-    .join(' + ') || 'Shangri-La Signature Retreat Service';
+  const combinedServiceNames =
+    [
+      ...selectedMenuObjects.map((s) => s.name),
+      mbCustomServiceName.trim() ? mbCustomServiceName.trim() : '',
+    ]
+      .filter(Boolean)
+      .join(' + ') || 'Shangri-La Signature Retreat Service';
 
   const calculatedDurationMins =
     mbBookingType === 'half_day'
@@ -992,12 +955,7 @@ export const TelegramNotificationCenter: React.FC = () => {
       // 1. Save to Firestore `bookings` collection
       await setDoc(doc(db, 'bookings', bookingId), bookingRecord, { merge: true });
 
-      // 2. Sync to Global AppDataContext if available so Admin & CustomerApp update immediately
-      if (typeof appData?.setBookings === 'function') {
-        appData.setBookings((prev: any[]) => [bookingRecord, ...(Array.isArray(prev) ? prev : [])]);
-      }
-
-      // 3. Sync to localStorage fallback
+      // 2. Sync to localStorage fallback
       try {
         const localRaw = localStorage.getItem('shangrila_bookings');
         if (localRaw) {
@@ -1010,7 +968,7 @@ export const TelegramNotificationCenter: React.FC = () => {
         // ignore
       }
 
-      // 4. Update Subscriber's Phone & lastBookingId
+      // 3. Update Subscriber's Phone & lastBookingId
       await saveCustomerTelegramSubscription(
         {
           ...manualBookingTarget,
@@ -1021,7 +979,7 @@ export const TelegramNotificationCenter: React.FC = () => {
       );
       await loadSubscribers();
 
-      // 5. Build Official Customer Telegram Confirmation Slip (with Discount & Balance Breakdown)
+      // 4. Build Official Customer Telegram Confirmation Slip (with Discount & Balance Breakdown)
       const discountBlockHtml = mbApplyDiscount
         ? `• <b>မူရင်းကျသင့်ငွေ (Subtotal):</b> ${rawSubtotal.toLocaleString()} MMK\n` +
           `• <b>Discount လျှော့ငွေ (${mbDiscountMode === 'PERCENT' ? `${mbDiscountValue}%` : 'Special'}):</b> -${calculatedDiscountAmount.toLocaleString()} MMK\n` +
@@ -1055,7 +1013,7 @@ export const TelegramNotificationCenter: React.FC = () => {
         `📍 33th(B) St, Between 65th & 65th(A) Sts, Chan Aye Tharzan Tsp, Mandalay\n` +
         `☎️ 09-458884517, 09-770072190`;
 
-      // Send via Resilient Multi-Route Sender (Eliminates "Failed to fetch")
+      // Send via Resilient Multi-Route Sender
       const customerSendRes = await sendResilientTelegramMessage(
         config.botToken,
         manualBookingTarget.chatId,
@@ -1063,7 +1021,7 @@ export const TelegramNotificationCenter: React.FC = () => {
         'MANUAL_BOOKING_CONFIRMED'
       );
 
-      // 6. Notify Admin Group & Assigned Therapist
+      // 5. Notify Admin Group & Assigned Therapist
       if (config.adminGroupChatId) {
         const adminCopyHtml =
           `📋 <b>[ADMIN COPY] MANUAL BOOKING CONFIRMED</b>\n` + customerSlipHtml;
@@ -1495,7 +1453,6 @@ export const TelegramNotificationCenter: React.FC = () => {
     );
   });
 
-  // Extract unique categories for Customer App style category tabs
   const serviceCategories = React.useMemo(() => {
     const cats = Array.from(new Set(catalogServices.map((s) => s.category)));
     return ['ALL', ...cats];
@@ -2190,7 +2147,7 @@ export const TelegramNotificationCenter: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 4: SUBSCRIBED CUSTOMERS (WITH LIVE LAST NOTI DELIVERY BADGE & + MANUAL BOOKING) */}
+        {/* TAB 4: SUBSCRIBED CUSTOMERS */}
         {activeTab === 'customers' && (
           <div className="space-y-4">
             <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20 space-y-3">
@@ -2538,7 +2495,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         {/* TAB 5: MINI APP MENU & BULK PROMO BROADCAST */}
         {activeTab === 'botflow' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Customer Bulk Promotion & Instant Push Noti */}
             <div className="bg-black/25 p-5 rounded-xl border border-[#C8A951]/30 space-y-4">
               <div className="flex items-center justify-between border-b border-[#C8A951]/20 pb-3">
                 <h3 className="text-sm font-bold text-[#C8A951] flex items-center gap-2">
@@ -2843,7 +2799,7 @@ export const TelegramNotificationCenter: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Category Filter Pills (Just like CustomerApp) */}
+                {/* Category Filter Pills */}
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
                   {serviceCategories.map((cat) => {
                     const active = mbSelectedCategory === cat;
