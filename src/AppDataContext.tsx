@@ -28,16 +28,33 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       const settingsSnap = await getDoc(doc(db, 'settings', 'appData'));
       const settingsData = settingsSnap.exists() ? settingsSnap.data() : {};
 
-      // 2. Fetch Therapists
+      // 2. Fetch Therapists (Active နှင့် Archived ဝန်ထမ်းဟောင်းများကို ခွဲထုတ်ခြင်း)
       const therapistsSnap = await getDocs(collection(db, 'therapists'));
-      const therapistsList: TherapistProfile[] = [];
-      therapistsSnap.forEach((doc) => therapistsList.push(doc.data() as TherapistProfile));
-      therapistsList.sort((a, b) => (a.order || 0) - (b.order || 0));
+      const activeTherapistsList: TherapistProfile[] = [];
+      const archivedTherapistsList: TherapistProfile[] = [];
+
+      therapistsSnap.forEach((docSnap) => {
+        const data = docSnap.data() as TherapistProfile;
+        const profile: TherapistProfile = {
+          ...data,
+          id: data.id || docSnap.id,
+        };
+        if (profile.isArchived) {
+          archivedTherapistsList.push(profile);
+        } else {
+          activeTherapistsList.push(profile);
+        }
+      });
+
+      activeTherapistsList.sort((a, b) => (a.order || 0) - (b.order || 0));
+      archivedTherapistsList.sort(
+        (a, b) => (b.archivedAtMillis || 0) - (a.archivedAtMillis || 0)
+      );
 
       // 3. Fetch Categories
       const categoriesSnap = await getDocs(collection(db, 'categories'));
       const categoriesList: MenuCategory[] = [];
-      categoriesSnap.forEach((doc) => categoriesList.push(doc.data() as MenuCategory));
+      categoriesSnap.forEach((docSnap) => categoriesList.push(docSnap.data() as MenuCategory));
       categoriesList.sort((a, b) => (a.order || 0) - (b.order || 0));
 
       // Merge Data
@@ -48,7 +65,10 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         signUpBonus: settingsData.signUpBonus || {},
         paymentMethods: settingsData.paymentMethods || [],
         installSteps: settingsData.installSteps || [],
-        therapists: therapistsList,
+        spaOperations: settingsData.spaOperations || {},
+        savedCampaignCards: settingsData.savedCampaignCards || [],
+        therapists: activeTherapistsList,
+        archivedTherapists: archivedTherapistsList,
         categories: categoriesList,
       };
 
