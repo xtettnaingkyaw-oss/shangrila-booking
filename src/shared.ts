@@ -48,6 +48,17 @@ export interface TherapistProfile {
   comingSoonText?: string;
   staffAppAccess?: boolean;
   forceLogoutAt?: number;
+
+  // 🌟 ဝန်ထမ်းအသစ်/အဟောင်း Data ခွဲခြားရန်နှင့် Soft Delete (Archive) စနစ်အတွက် Fields အသစ်များ 🌟
+  realName?: string;            // Admin မှတ်သားရန် အမည်ရင်း သို့မဟုတ် မှတ်ချက် (ဥပမာ - "မောင်မောင် - 2026 Nov ဝင်")
+  joinedDate?: string;          // အလုပ်စဝင်သည့်ရက်စွဲ (YYYY-MM-DD) - ၎င်းရက်နောက်ပိုင်း Data များကိုသာ Staff App တွင်ပြမည်
+  joinedAtMillis?: number;      // အလုပ်စဝင်သည့် Timestamp (ms) - တိကျစွာ စစ်ထုတ်ရန်
+  employmentCycleId?: string;   // လူသစ်ပြောင်းတိုင်း အသစ်ထုတ်ပေးမည့် Unique Employment ID
+  isArchived?: boolean;         // အလုပ်ထွက်သွားသော ဝန်ထမ်းဟောင်း ဟုတ်/မဟုတ် (Soft Delete Flag)
+  archivedAt?: string;          // အလုပ်ထွက်သည့်ရက်စွဲ (YYYY-MM-DD)
+  archivedAtMillis?: number;    // အလုပ်ထွက်သည့် Timestamp (ms)
+  archiveReason?: string;       // အလုပ်ထွက်သည့် အကြောင်းအရင်း / မှတ်ချက်
+  originalBadgeName?: string;   // မူလဝန်ထမ်းနံပါတ် (ဥပမာ - "Therapist No-12")
 }
 
 export interface PaymentMethod {
@@ -154,6 +165,7 @@ export interface SpaOperationsSettings {
 export interface AppData {
   categories: MenuCategory[];
   therapists: TherapistProfile[];
+  archivedTherapists?: TherapistProfile[]; // 🌟 အလုပ်ထွက်သွားသော ဝန်ထမ်းဟောင်းများ၏ Profile မှတ်တမ်း
   paymentMethods: PaymentMethod[];
   branding: AppBranding;
   promotion: PromotionSettings;
@@ -423,6 +435,47 @@ export function isHotelOrHomeServiceBooking(
   ];
 
   return outcallKeywords.some((kw) => combinedText.includes(kw));
+}
+
+/**
+ * 🌟 ဝန်ထမ်းသစ်၏ Staff App တွင် ဝန်ထမ်းဟောင်း၏ Data များ (Fine, Loan, Deposit, Payslip, Booking)
+ * လုံးဝ မရောထွေးစေရန် စစ်ထုတ်ပေးသော Universal Helper Function
+ */
+export function isRecordBelongingToCurrentTherapist(
+  record: any,
+  therapist?: TherapistProfile | null
+): boolean {
+  if (!record || !therapist) return false;
+
+  // ၁။ Record တွင် archived ဖြစ်ကြောင်း သို့မဟုတ် အခြား cycleId ဖြစ်ကြောင်း သတ်မှတ်ထားလျှင် ဖယ်ထုတ်မည်
+  if (record.isArchivedStaffRecord && !therapist.isArchived) {
+    return false;
+  }
+
+  // ၂။ နှစ်ဖက်လုံးတွင် employmentCycleId ရှိပါက တူညီမှသာ လက်ခံမည်
+  if (therapist.employmentCycleId && record.employmentCycleId) {
+    return therapist.employmentCycleId === record.employmentCycleId;
+  }
+
+  // ၃။ ဝန်ထမ်းသစ်တွင် joinedDate သို့မဟုတ် joinedAtMillis ရှိပါက အလုပ်စဝင်သည့်ရက်မတိုင်မီက Data အဟောင်းများကို ဖယ်ထုတ်မည်
+  if (therapist.joinedDate) {
+    const recDateStr = String(record.date || record.createdAtDate || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(recDateStr) && recDateStr < therapist.joinedDate) {
+      return false;
+    }
+  }
+
+  if (therapist.joinedAtMillis && typeof record.createdAt === 'number') {
+    // joinedDate ၏ မနက် 00:00:00 မတိုင်မီ သွင်းထားသော မှတ်တမ်းဟောင်းများကို ဖယ်ထုတ်မည်
+    const joinedDayStart = therapist.joinedDate
+      ? new Date(`${therapist.joinedDate}T00:00:00`).getTime()
+      : therapist.joinedAtMillis;
+    if (record.createdAt < joinedDayStart) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // 🚀 Firebase Storage Upload Function
