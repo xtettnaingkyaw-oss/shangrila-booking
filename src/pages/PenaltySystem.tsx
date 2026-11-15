@@ -2,9 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   collection,
   onSnapshot,
-  addDoc,
   deleteDoc,
-  updateDoc,
   doc,
   getDoc,
   getDocs,
@@ -25,9 +23,18 @@ import {
   Sparkles,
   RefreshCw,
   Layers,
-  Send
+  Send,
+  UserCheck,
+  Archive,
+  RotateCcw
 } from 'lucide-react';
-import { THEME, formatPrice } from '../shared';
+import {
+  THEME,
+  formatPrice,
+  TherapistProfile,
+  isRecordBelongingToCurrentTherapist
+} from '../shared';
+import { useAppStore } from '../AppDataContext';
 import { notifyStaffUpdate } from '../telegramService';
 import {
   isSameStaffMember,
@@ -104,8 +111,44 @@ const extractStaffNumber = (val: any): string | null => {
   return null;
 };
 
-const isMatchingTherapistRecord = (record: any, staffId: string, staffName: string): boolean => {
+/**
+ * 🌟 Updated Matching Logic:
+ * Supports both Active Staff (filters out archived old staff records)
+ * and Archived Staff (matches their specific archived cycle/records).
+ */
+export const isMatchingTherapistRecord = (
+  record: any,
+  staffId: string,
+  staffName: string,
+  therapistObj?: TherapistProfile | null
+): boolean => {
   if (!record) return false;
+
+  // ၁။ အကယ်၍ ဝန်ထမ်းဟောင်း (Archived Profile) အတွက် စစ်ဆေးနေခြင်းဖြစ်ပါက
+  if (therapistObj?.isArchived) {
+    if (record.archivedTherapistId && String(record.archivedTherapistId) === String(therapistObj.id)) {
+      return true;
+    }
+    if (
+      therapistObj.employmentCycleId &&
+      record.employmentCycleId &&
+      therapistObj.employmentCycleId === record.employmentCycleId
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  // ၂။ လက်ရှိ Active ဝန်ထမ်းအတွက် စစ်ဆေးရာတွင် ဝန်ထမ်းဟောင်း၏ Archive လုပ်ထားသော Record ဖြစ်နေပါက လုံးဝဖယ်ထုတ်မည်
+  if (record.isArchivedStaffRecord) {
+    return false;
+  }
+
+  // ၃။ ဝန်ထမ်းသစ်တွင် employmentCycleId သို့မဟုတ် joinedDate သတ်မှတ်ထားပါက ဝန်ထမ်းဟောင်း Data များ မပါဝင်စေရန် စစ်ထုတ်မည်
+  if (therapistObj && !isRecordBelongingToCurrentTherapist(record, therapistObj)) {
+    return false;
+  }
+
   const recId = String(record.therapistId || '').trim();
   const recName = String(record.therapistName || '').trim();
   const targetId = String(staffId || '').trim();
@@ -184,16 +227,40 @@ async function syncDeductionToStaffPayrollDoc(
 // ============================================================================
 // 🌟 1. ADMIN PENALTY, DEPOSIT & LOAN LUXURY MANAGEMENT STUDIO 🌟
 // ============================================================================
-export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists: any[]; bookings?: any[] }) {
+export function AdminPenaltyManager({
+  therapists,
+  bookings = []
+}: {
+  therapists: any[];
+  bookings?: any[];
+}) {
+  const { appData, refreshAppData } = useAppStore();
+  const [showArchivedStaff, setShowArchivedStaff] = useState(false);
+
   const uniqueTherapists = useMemo(() => {
-    return Array.from(
+    const activeList = Array.from(
       new Map(
         (therapists || [])
-          .filter((t) => t.name && t.name.trim() !== '')
+          .filter((t) => t && !t.isArchived && t.name && t.name.trim() !== '')
           .map((t) => [t.name.trim(), t])
       ).values()
     );
+    return activeList;
   }, [therapists]);
+
+  const archivedTherapistsList = useMemo(() => {
+    const fromContext = appData?.archivedTherapists || [];
+    const fromProps = (therapists || []).filter((t) => t && t.isArchived);
+    const map = new Map<string, TherapistProfile>();
+    [...fromContext, ...fromProps].forEach((t) => {
+      if (t?.id) map.set(String(t.id), t);
+    });
+    return Array.from(map.values()).sort(
+      (a, b) => (b.archivedAtMillis || 0) - (a.archivedAtMillis || 0)
+    );
+  }, [appData?.archivedTherapists, therapists]);
+
+  const displayedTherapists = showArchivedStaff ? archivedTherapistsList : uniqueTherapists;
 
   const todayStr = getLocalTodayStr();
   const todayObj = new Date();
@@ -216,7 +283,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
     'dashboard'
   );
 
-  // Primary Collection States + Mirror Fallback States +Deleted IDs Tracker
+  // Primary Collection States + Mirror Fallback States + Deleted IDs Tracker
   const [rawPenalties, setRawPenalties] = useState<any[]>([]);
   const [rawDeposits, setRawDeposits] = useState<any[]>([]);
   const [rawLoans, setRawLoans] = useState<any[]>([]);
@@ -233,6 +300,13 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
   const [modalActiveTab, setModalActiveTab] = useState<'penalties' | 'deposits' | 'loans'>(
     'penalties'
   );
+
+  // 🌟 Archive Old Staff & Reset Slot Modal State 🌟
+  const [archiveModalTarget, setArchiveModalTarget] = useState<TherapistProfile | null>(null);
+  const [archiveOldStaffLabel, setArchiveOldStaffLabel] = useState('');
+  const [newStaffJoinedDate, setNewStaffJoinedDate] = useState(todayStr);
+  const [newStaffRealName, setNewStaffRealName] = useState('');
+  const [isArchivingSlot, setIsArchivingSlot] = useState(false);
 
   // Date & Period Filter States
   const [periodPreset, setPeriodPreset] = useState<
@@ -349,7 +423,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
     };
   }, []);
 
-  // Merge Primary Collection + Mirror Document (Mirror takes priority on recent edits, deletedIds are excluded)
+  // Merge Primary Collection + Mirror Document
   const penalties = useMemo(() => {
     const map = new Map<string, any>();
     rawPenalties.forEach((item) => {
@@ -452,10 +526,177 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         if (Array.isArray(mData.deposits)) setMirrorDeposits(mData.deposits);
         if (Array.isArray(mData.loans)) setMirrorLoans(mData.loans);
       }
+      await refreshAppData();
     } catch (e) {
       console.warn('Manual sync warning:', e);
     } finally {
       setIsRefreshingCloud(false);
+    }
+  };
+
+  // 🌟 ARCHIVE OLD STAFF DATA & RESET SLOT FOR NEW STAFF HANDLER 🌟
+  const handleArchiveOldStaffAndResetSlot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!archiveModalTarget) return;
+
+    const target = archiveModalTarget;
+    const cutoffDate = newStaffJoinedDate || todayStr;
+    const oldLabel =
+      archiveOldStaffLabel.trim() || `${target.name} (ဝန်ထမ်းဟောင်း - ${cutoffDate} မတိုင်မီ)`;
+
+    if (
+      !window.confirm(
+        `${target.name} ၏ (${cutoffDate}) မတိုင်မီက ရှိခဲ့သော ဝန်ထမ်းဟောင်း ဒဏ်ကြေး၊ အပ်ငွေ၊ ကြိုထုတ်ငွေ မှတ်တမ်းအားလုံးကို "${oldLabel}" အမည်ဖြင့် သီးသန့်သိမ်းဆည်း(Archive)ပြီး၊\n\nယခု ဝန်ထမ်းသစ် ${target.name} အတွက် စာရင်းအားလုံး သုည (0 Ks) မှ သန့်သန့်ရှင်းရှင်း စတင်မည်မှာ သေချာပါသလား?`
+      )
+    ) {
+      return;
+    }
+
+    setIsArchivingSlot(true);
+    try {
+      const nowMs = Date.now();
+      const archivedId = `archived_${target.id}_${nowMs}`;
+      const oldCycleId = target.employmentCycleId || `cycle_old_${target.id}_${nowMs}`;
+      const newCycleId = `cycle_${target.id}_${nowMs}`;
+
+      // 1. Create Archived Therapist Profile in `therapists` collection so history is preserved forever
+      const archivedProfile: TherapistProfile = {
+        ...target,
+        id: archivedId,
+        name: oldLabel,
+        originalBadgeName: target.name,
+        isArchived: true,
+        archivedAt: todayStr,
+        archivedAtMillis: nowMs,
+        employmentCycleId: oldCycleId,
+        staffAppAccess: false,
+        visibilityStatus: 'hidden',
+        isHidden: true
+      };
+
+      // 2. Update Current Active Therapist Profile with clean `joinedDate` & new `employmentCycleId`
+      const updatedActiveProfile: TherapistProfile = {
+        ...target,
+        joinedDate: cutoffDate,
+        joinedAtMillis: new Date(`${cutoffDate}T00:00:00`).getTime(),
+        employmentCycleId: newCycleId,
+        realName: newStaffRealName.trim() || target.realName || '',
+        isArchived: false
+      };
+
+      // 3. Tag all existing records before cutoffDate (or belonging to this slot prior to reset) as belonging to the archived staff
+      const isOldRecordOfTarget = (rec: any) => {
+        if (!rec || rec.isArchivedStaffRecord) return false;
+        const rawMatch = isMatchingTherapistRecord(rec, target.id, target.name, null);
+        if (!rawMatch) return false;
+        const recDate = String(rec.date || '').slice(0, 10);
+        // If record date is strictly before newStaffJoinedDate, or if cutoffDate is today, move existing historical records to archived staff
+        return !recDate || recDate <= cutoffDate;
+      };
+
+      const updatedPenalties = penalties.map((p) => {
+        if (isOldRecordOfTarget(p)) {
+          return {
+            ...p,
+            isArchivedStaffRecord: true,
+            archivedTherapistId: archivedId,
+            originalTherapistName: p.therapistName,
+            therapistName: oldLabel,
+            employmentCycleId: oldCycleId,
+            updatedAt: nowMs
+          };
+        }
+        return p;
+      });
+
+      const updatedDeposits = deposits.map((d) => {
+        if (isOldRecordOfTarget(d)) {
+          return {
+            ...d,
+            isArchivedStaffRecord: true,
+            archivedTherapistId: archivedId,
+            originalTherapistName: d.therapistName,
+            therapistName: oldLabel,
+            employmentCycleId: oldCycleId,
+            updatedAt: nowMs
+          };
+        }
+        return d;
+      });
+
+      const updatedLoans = loans.map((l) => {
+        if (isOldRecordOfTarget(l)) {
+          return {
+            ...l,
+            isArchivedStaffRecord: true,
+            archivedTherapistId: archivedId,
+            originalTherapistName: l.therapistName,
+            therapistName: oldLabel,
+            employmentCycleId: oldCycleId,
+            updatedAt: nowMs
+          };
+        }
+        return l;
+      });
+
+      // Update local state immediately
+      setRawPenalties(updatedPenalties);
+      setRawDeposits(updatedDeposits);
+      setRawLoans(updatedLoans);
+
+      // Save to Firestore
+      await Promise.all([
+        withTimeout(setDoc(doc(db, 'therapists', archivedId), archivedProfile), 2500),
+        withTimeout(
+          setDoc(doc(db, 'therapists', String(target.id)), updatedActiveProfile, { merge: true }),
+          2500
+        ),
+        saveMirrorLedgerNow(updatedPenalties, updatedDeposits, updatedLoans),
+        ...updatedPenalties
+          .filter((p) => p.archivedTherapistId === archivedId)
+          .map((p) => withTimeout(setDoc(doc(db, 'penalties', p.id), p, { merge: true }), 2000)),
+        ...updatedDeposits
+          .filter((d) => d.archivedTherapistId === archivedId)
+          .map((d) => withTimeout(setDoc(doc(db, 'deposits', d.id), d, { merge: true }), 2000)),
+        ...updatedLoans
+          .filter((l) => l.archivedTherapistId === archivedId)
+          .map((l) => withTimeout(setDoc(doc(db, 'loans', l.id), l, { merge: true }), 2000))
+      ]);
+
+      // Also archive any old payroll adjustments under `settings/payroll_YYYY-MM` so old payslip deductions don't show on new staff's Payslip
+      const monthsToClean = Array.from(new Set([currentYearMonth, prevYearMonth, cutoffDate.slice(0, 7)]));
+      for (const ym of monthsToClean) {
+        const payrollRef = doc(db, 'settings', `payroll_${ym}`);
+        const snap = await withTimeout(getDoc(payrollRef), 2000);
+        if (snap && snap.exists()) {
+          const pData = snap.data() as any;
+          const adj = { ...(pData.adjustments || {}) };
+          const cleanName = target.name.trim();
+          if (adj[cleanName]) {
+            adj[oldLabel] = {
+              ...adj[cleanName],
+              archivedAt: todayStr,
+              originalBadgeName: cleanName
+            };
+            delete adj[cleanName];
+            await withTimeout(
+              setDoc(payrollRef, { adjustments: adj, updatedAt: nowMs }, { merge: true }),
+              2000
+            );
+          }
+        }
+      }
+
+      await refreshAppData();
+      setArchiveModalTarget(null);
+      setSelectedTherapistId(null);
+      alert(
+        `✅ အောင်မြင်ပါသည်!\n\n• ဝန်ထမ်းဟောင်း၏ မှတ်တမ်းအားလုံးကို "${oldLabel}" အောက်သို့ သီးသန့်သိမ်းဆည်းပြီးပါပြီ။\n• ဝန်ထမ်းသစ် ${target.name} ၏ Staff App တွင် အပ်ငွေ (0 Ks)၊ ဒဏ်ကြေး (0 Ks) နှင့် Payslip အသစ်ဖြင့် သန့်ရှင်းစွာ စတင်နိုင်ပါပြီ!`
+      );
+    } catch (err: any) {
+      alert('Archive & Reset ပြုလုပ်ရာတွင် အမှားအယွင်းရှိနေပါသည်: ' + (err?.message || ''));
+    } finally {
+      setIsArchivingSlot(false);
     }
   };
 
@@ -481,16 +722,31 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
     }
   };
 
+  const allKnownTherapists = useMemo(
+    () => [...uniqueTherapists, ...archivedTherapistsList],
+    [uniqueTherapists, archivedTherapistsList]
+  );
+
   // Filtered Lists by Date, Staff & Search
   const filteredPenalties = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const selectedStaffObj = uniqueTherapists.find((t) => String(t.id) === String(historyFilter));
+    const selectedStaffObj = allKnownTherapists.find((t) => String(t.id) === String(historyFilter));
 
     return penalties.filter((p) => {
+      if (!showArchivedStaff && !historyFilter && p.isArchivedStaffRecord) return false;
+      if (showArchivedStaff && !historyFilter && !p.isArchivedStaffRecord) return false;
       if (startDate && p.date && p.date < startDate) return false;
       if (endDate && p.date && p.date > endDate) return false;
       if (historyFilter && selectedStaffObj) {
-        if (!isMatchingTherapistRecord(p, selectedStaffObj.id, selectedStaffObj.name)) return false;
+        if (
+          !isMatchingTherapistRecord(
+            p,
+            selectedStaffObj.id,
+            selectedStaffObj.name,
+            selectedStaffObj
+          )
+        )
+          return false;
       }
       if (penaltyStatusFilter === 'unpaid' && p.isPaid) return false;
       if (penaltyStatusFilter === 'paid' && !p.isPaid) return false;
@@ -504,17 +760,36 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       }
       return true;
     });
-  }, [penalties, startDate, endDate, historyFilter, penaltyStatusFilter, searchQuery, uniqueTherapists]);
+  }, [
+    penalties,
+    startDate,
+    endDate,
+    historyFilter,
+    penaltyStatusFilter,
+    searchQuery,
+    allKnownTherapists,
+    showArchivedStaff
+  ]);
 
   const filteredDeposits = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const selectedStaffObj = uniqueTherapists.find((t) => String(t.id) === String(depositFilter));
+    const selectedStaffObj = allKnownTherapists.find((t) => String(t.id) === String(depositFilter));
 
     return deposits.filter((d) => {
+      if (!showArchivedStaff && !depositFilter && d.isArchivedStaffRecord) return false;
+      if (showArchivedStaff && !depositFilter && !d.isArchivedStaffRecord) return false;
       if (startDate && d.date && d.date < startDate) return false;
       if (endDate && d.date && d.date > endDate) return false;
       if (depositFilter && selectedStaffObj) {
-        if (!isMatchingTherapistRecord(d, selectedStaffObj.id, selectedStaffObj.name)) return false;
+        if (
+          !isMatchingTherapistRecord(
+            d,
+            selectedStaffObj.id,
+            selectedStaffObj.name,
+            selectedStaffObj
+          )
+        )
+          return false;
       }
       if (q) {
         const matchText =
@@ -525,17 +800,35 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       }
       return true;
     });
-  }, [deposits, startDate, endDate, depositFilter, searchQuery, uniqueTherapists]);
+  }, [
+    deposits,
+    startDate,
+    endDate,
+    depositFilter,
+    searchQuery,
+    allKnownTherapists,
+    showArchivedStaff
+  ]);
 
   const filteredLoans = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const selectedStaffObj = uniqueTherapists.find((t) => String(t.id) === String(loanFilter));
+    const selectedStaffObj = allKnownTherapists.find((t) => String(t.id) === String(loanFilter));
 
     return loans.filter((l) => {
+      if (!showArchivedStaff && !loanFilter && l.isArchivedStaffRecord) return false;
+      if (showArchivedStaff && !loanFilter && !l.isArchivedStaffRecord) return false;
       if (startDate && l.date && l.date < startDate) return false;
       if (endDate && l.date && l.date > endDate) return false;
       if (loanFilter && selectedStaffObj) {
-        if (!isMatchingTherapistRecord(l, selectedStaffObj.id, selectedStaffObj.name)) return false;
+        if (
+          !isMatchingTherapistRecord(
+            l,
+            selectedStaffObj.id,
+            selectedStaffObj.name,
+            selectedStaffObj
+          )
+        )
+          return false;
       }
       if (q) {
         const matchText =
@@ -546,14 +839,19 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       }
       return true;
     });
-  }, [loans, startDate, endDate, loanFilter, searchQuery, uniqueTherapists]);
+  }, [loans, startDate, endDate, loanFilter, searchQuery, allKnownTherapists, showArchivedStaff]);
 
-  // Calculate Individual Staff Stats
+  // Calculate Individual Staff Stats (Supports both Active & Archived Staff accurately)
   const getStats = useCallback(
-    (id: string, name: string) => {
-      const pAll = penalties.filter((item) => isMatchingTherapistRecord(item, id, name));
+    (id: string, name: string, therapistObj?: TherapistProfile | null) => {
+      const targetProfile =
+        therapistObj || allKnownTherapists.find((t) => String(t.id) === String(id)) || null;
+
+      const pAll = penalties.filter((item) =>
+        isMatchingTherapistRecord(item, id, name, targetProfile)
+      );
       const pPeriod = filteredPenalties.filter((item) =>
-        isMatchingTherapistRecord(item, id, name)
+        isMatchingTherapistRecord(item, id, name, targetProfile)
       );
 
       const unpaidAll = pAll.filter((item) => !item.isPaid);
@@ -563,7 +861,9 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       const totalPaid = paidAll.reduce((sum, item) => sum + calculateAmount(item), 0);
       const overdueCount = unpaidAll.filter((item) => getDaysOverdue(item.date) > 0).length;
 
-      const dAll = deposits.filter((item) => isMatchingTherapistRecord(item, id, name));
+      const dAll = deposits.filter((item) =>
+        isMatchingTherapistRecord(item, id, name, targetProfile)
+      );
       const depositBalance = dAll.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
       const totalDepositedIn = dAll
         .filter((item) => Number(item.amount) > 0)
@@ -572,7 +872,9 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         .filter((item) => Number(item.amount) < 0)
         .reduce((sum, item) => sum + Math.abs(Number(item.amount)), 0);
 
-      const lAll = loans.filter((item) => isMatchingTherapistRecord(item, id, name));
+      const lAll = loans.filter((item) =>
+        isMatchingTherapistRecord(item, id, name, targetProfile)
+      );
       const totalLoan = Math.max(
         0,
         lAll.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
@@ -594,7 +896,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         loanList: lAll
       };
     },
-    [penalties, filteredPenalties, deposits, loans]
+    [penalties, filteredPenalties, deposits, loans, allKnownTherapists]
   );
 
   // Global Executive KPI Summary
@@ -608,7 +910,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
     let staffWithLoansCount = 0;
 
     uniqueTherapists.forEach((t) => {
-      const st = getStats(t.id, t.name);
+      const st = getStats(t.id, t.name, t);
       if (st.depositBalance > 0) {
         totalDepositsHeld += st.depositBalance;
         staffWithDepositsCount += 1;
@@ -623,23 +925,6 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         staffWithLoansCount += 1;
       }
     });
-
-    const directDepositsSum = deposits.reduce((s, d) => s + (Number(d.amount) || 0), 0);
-    if (totalDepositsHeld === 0 && directDepositsSum > 0) {
-      totalDepositsHeld = directDepositsSum;
-      const distinctStaff = new Set(deposits.map((d) => d.therapistName || d.therapistId));
-      staffWithDepositsCount = distinctStaff.size;
-    }
-
-    const directLoansSum = Math.max(
-      0,
-      loans.reduce((s, l) => s + (Number(l.amount) || 0), 0)
-    );
-    if (totalActiveLoansAmt === 0 && directLoansSum > 0) {
-      totalActiveLoansAmt = directLoansSum;
-      const distinctLoanStaff = new Set(loans.map((l) => l.therapistName || l.therapistId));
-      staffWithLoansCount = distinctLoanStaff.size;
-    }
 
     const periodDepositsAdded = filteredDeposits
       .filter((d) => Number(d.amount) > 0)
@@ -661,9 +946,9 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       staffWithLoansCount,
       totalPayrollDeductionReady: totalUnpaidPenaltiesAmt + totalActiveLoansAmt
     };
-  }, [uniqueTherapists, getStats, deposits, loans, filteredDeposits]);
+  }, [uniqueTherapists, getStats, filteredDeposits]);
 
-  // 🌟 ရွေးချယ်ထားသော လစာကာလ (loanForm.payrollMonth) အတွက် ဝန်ထမ်းရရှိမည့် လစာစုစုပေါင်းကို တိုက်ရိုက်တွက်ချက်ခြင်း 🌟
+  // ရွေးချယ်ထားသော လစာကာလ (loanForm.payrollMonth) အတွက် ဝန်ထမ်းရရှိမည့် လစာစုစုပေါင်းကို တိုက်ရိုက်တွက်ချက်ခြင်း
   const [selectedMonthPayrollDoc, setSelectedMonthPayrollDoc] = useState<any>(null);
 
   useEffect(() => {
@@ -705,6 +990,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       if (!b || b.status === 'cancelled') return;
       const bDate = String(b.date || '').trim();
       if (!bDate.startsWith(ym)) return;
+      if (!isRecordBelongingToCurrentTherapist(b, tObj)) return;
 
       const rawTx = String(decryptText(b.txId) || b.txId || '').trim().toUpperCase();
       const rawService = String(b.service || '').trim().toLowerCase();
@@ -722,7 +1008,11 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       }
 
       const rawTherapistStr = String(b.therapist || '').trim();
-      if (!rawTherapistStr || rawTherapistStr === '-' || rawTherapistStr.toLowerCase().includes('any available')) {
+      if (
+        !rawTherapistStr ||
+        rawTherapistStr === '-' ||
+        rawTherapistStr.toLowerCase().includes('any available')
+      ) {
         return;
       }
 
@@ -764,12 +1054,15 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
     }
     wifiFee = Math.max(0, isNaN(wifiFee) ? 10000 : wifiFee);
 
-    const otherCustomTotal = otherCustom.reduce((s: number, d: any) => s + (Number(d.amount) || 0), 0);
+    const otherCustomTotal = otherCustom.reduce(
+      (s: number, d: any) => s + (Number(d.amount) || 0),
+      0
+    );
 
     const monthPenalties = penalties
       .filter(
         (p) =>
-          isMatchingTherapistRecord(p, tObj.id, staffName) &&
+          isMatchingTherapistRecord(p, tObj.id, staffName, tObj) &&
           String(p.date || '').startsWith(ym) &&
           !p.isPaid
       )
@@ -777,7 +1070,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
 
     const existingDeductions = wifiFee + otherCustomTotal + monthPenalties;
     const availableNetSalary = Math.max(0, grossPay - existingDeductions);
-    const currentLoanBalance = getStats(tObj.id, staffName).totalLoan;
+    const currentLoanBalance = getStats(tObj.id, staffName, tObj).totalLoan;
 
     return {
       staffName,
@@ -787,17 +1080,25 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       availableNetSalary,
       currentLoanBalance
     };
-  }, [loanForm.therapistId, loanForm.payrollMonth, uniqueTherapists, bookings, selectedMonthPayrollDoc, penalties, getStats]);
+  }, [
+    loanForm.therapistId,
+    loanForm.payrollMonth,
+    uniqueTherapists,
+    bookings,
+    selectedMonthPayrollDoc,
+    penalties,
+    getStats
+  ]);
 
   const selectedTherapistStats = useMemo(() => {
     if (!selectedTherapistId) return null;
-    const tObj = uniqueTherapists.find((t) => String(t.id) === String(selectedTherapistId));
+    const tObj = allKnownTherapists.find((t) => String(t.id) === String(selectedTherapistId));
     if (!tObj) return null;
     return {
       ...tObj,
-      ...getStats(tObj.id, tObj.name)
+      ...getStats(tObj.id, tObj.name, tObj)
     };
-  }, [selectedTherapistId, uniqueTherapists, getStats]);
+  }, [selectedTherapistId, allKnownTherapists, getStats]);
 
   // ============================================================================
   // 🌟 ROBUST NON-BLOCKING ACTION HANDLERS (100% GUARANTEED EXECUTION) 🌟
@@ -822,6 +1123,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         id: customId,
         therapistId: targetStaffId,
         therapistName: targetStaffName,
+        employmentCycleId: tObj?.employmentCycleId || null,
         category: formData.category,
         amount: penaltyAmountNum,
         remark: formData.remark.trim(),
@@ -835,7 +1137,6 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       const nextPenalties = [newRecord, ...penalties];
       setRawPenalties((prev) => [newRecord, ...prev]);
 
-      // Save to Mirror Doc & Collection concurrently with non-blocking timeout
       await Promise.all([
         saveMirrorLedgerNow(nextPenalties, deposits, loans),
         withTimeout(setDoc(doc(db, 'penalties', customId), newRecord), 2500)
@@ -882,7 +1183,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       uniqueTherapists[0];
     const targetStaffId = tObj?.id || depositForm.therapistId;
     const targetStaffName = tObj?.name || 'Unknown';
-    const currentStats = getStats(targetStaffId, targetStaffName);
+    const currentStats = getStats(targetStaffId, targetStaffName, tObj);
 
     if (depositForm.txType === 'withdraw' && rawAmt > currentStats.depositBalance) {
       return alert(
@@ -905,6 +1206,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         id: customId,
         therapistId: targetStaffId,
         therapistName: targetStaffName,
+        employmentCycleId: tObj?.employmentCycleId || null,
         amount: finalAmount,
         date: depositForm.date || todayStr,
         type: depositForm.txType === 'withdraw' ? 'deduction' : 'deposit',
@@ -948,7 +1250,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
     }
   };
 
-  // 3. Submit Loan Borrow / Repay (Fixes the Frozen Repay Button!)
+  // 3. Submit Loan Borrow / Repay
   const handleSubmitLoan = async (e: React.FormEvent) => {
     e.preventDefault();
     const amountNum = Math.abs(Number(loanForm.amount) || 0);
@@ -964,7 +1266,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
     let finalNote = loanForm.note.trim();
 
     if (loanForm.type === 'repay') {
-      const currentBalance = getStats(targetStaffId, targetStaffName).totalLoan;
+      const currentBalance = getStats(targetStaffId, targetStaffName, tObj).totalLoan;
       if (amountNum > currentBalance) {
         return alert(
           `${targetStaffName} ၏ လက်ကျန် ကြိုထုတ်ငွေ (${formatPrice(
@@ -991,6 +1293,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         id: customId,
         therapistId: targetStaffId,
         therapistName: targetStaffName,
+        employmentCycleId: tObj?.employmentCycleId || null,
         amount: finalAmount,
         date: loanForm.date || todayStr,
         type: loanForm.type,
@@ -1007,7 +1310,6 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       const nextLoans = [newRecord, ...loans];
       setRawLoans((prev) => [newRecord, ...prev]);
 
-      // Save to Mirror Doc & Collection concurrently with non-blocking timeout
       await Promise.all([
         saveMirrorLedgerNow(penalties, deposits, nextLoans),
         withTimeout(setDoc(doc(db, 'loans', customId), newRecord), 2500)
@@ -1059,10 +1361,15 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
   // 4. Settle Penalty via Cash, Deposit, OR Direct Salary Deduction
   const handleMarkAsPaid = async (p: any, method: 'cash' | 'deposit' | 'salary') => {
     const currentAmt = calculateAmount(p);
+    const tObj = allKnownTherapists.find(
+      (t) =>
+        String(t.id) === String(p.therapistId) ||
+        String(t.name).trim() === String(p.therapistName).trim()
+    );
 
     if (method === 'deposit') {
       const d = deposits.filter((item) =>
-        isMatchingTherapistRecord(item, p.therapistId, p.therapistName)
+        isMatchingTherapistRecord(item, p.therapistId, p.therapistName, tObj)
       );
       const depositBalance = d.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
       if (depositBalance < currentAmt) {
@@ -1084,6 +1391,9 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         id: depId,
         therapistId: p.therapistId,
         therapistName: p.therapistName,
+        employmentCycleId: p.employmentCycleId || tObj?.employmentCycleId || null,
+        isArchivedStaffRecord: Boolean(p.isArchivedStaffRecord),
+        archivedTherapistId: p.archivedTherapistId || null,
         amount: -currentAmt,
         date: todayStr,
         type: 'deduction',
@@ -1112,7 +1422,9 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         withTimeout(setDoc(doc(db, 'deposits', depId), depRecord), 2500),
         withTimeout(setDoc(doc(db, 'penalties', p.id), updatedPenalty, { merge: true }), 2500)
       ]);
-      alert(`✅ ${p.therapistName} ၏ အပ်ငွေထဲမှ ဒဏ်ကြေး ${formatPrice(currentAmt)} နှုတ်ယူပြီးပါပြီ။`);
+      alert(
+        `✅ ${p.therapistName} ၏ အပ်ငွေထဲမှ ဒဏ်ကြေး ${formatPrice(currentAmt)} နှုတ်ယူပြီးပါပြီ။`
+      );
     } else if (method === 'salary') {
       const penaltyYm = String(p.date || targetPayrollMonth).substring(0, 7) || targetPayrollMonth;
       if (
@@ -1185,7 +1497,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
     }
   };
 
-  // 5. Delete Handlers (Instant Optimistic Removal + Mirror & Collection Sync)
+  // 5. Delete Handlers
   const handleDeletePenaltyRecord = async (id: string) => {
     if (!window.confirm('ဤဒဏ်ကြေးမှတ်တမ်းကို ဖျက်ရန် သေချာပါသလား?')) return;
     setDeletedIds((prev) => new Set(prev).add(id));
@@ -1238,11 +1550,13 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
 
     setIsSyncingPayroll(staffId);
     try {
+      const tObj = uniqueTherapists.find((t) => String(t.id) === String(staffId));
       const customId = `loan_sync_${Date.now()}`;
       const newRecord = {
         id: customId,
         therapistId: staffId,
         therapistName: staffName,
+        employmentCycleId: tObj?.employmentCycleId || null,
         amount: -loanBalance,
         date: todayStr,
         type: 'repay',
@@ -1284,6 +1598,8 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
   const handleExportCSV = () => {
     const headers = [
       'Therapist Name',
+      'Status',
+      'Joined Date',
       'Deposit Balance (Ks)',
       'Unpaid Penalties (Ks)',
       'Unpaid Penalty Count',
@@ -1291,10 +1607,12 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
       'Active Loan Balance (Ks)',
       'Net Payroll Deduction Ready (Ks)'
     ];
-    const rows = uniqueTherapists.map((t) => {
-      const st = getStats(t.id, t.name);
+    const rows = displayedTherapists.map((t) => {
+      const st = getStats(t.id, t.name, t);
       return [
         `"${t.name}"`,
+        t.isArchived ? 'Archived (Resigned)' : 'Active',
+        t.joinedDate || '-',
         st.depositBalance,
         st.totalUnpaid,
         st.unpaidCount,
@@ -1346,7 +1664,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
               ဝန်ထမ်း ဒဏ်ကြေး၊ အပ်ငွေနှင့် ကြိုထုတ်ငွေ စီမံခန့်ခွဲမှု (Penalty, Deposit & Loans)
             </h2>
             <p className="text-xs text-gray-500 mt-1">
-              ဝန်ထမ်းတစ်ဦးချင်းစီ၏ စုစုပေါင်းအပ်ထားငွေ (Deposits)၊ စည်းကမ်းထိန်းသိမ်းရေး ဒဏ်ကြေးများနှင့် လစာကြိုထုတ်ငွေများကို Staff Pay Roll နှင့် တိုက်ရိုက်ချိတ်ဆက် စီမံနိုင်ပါသည်
+              ဝန်ထမ်းအသစ်ကို ဝန်ထမ်းဟောင်းနံပါတ်တွင် အစားထိုးပါက &ldquo;🔄 လူဟောင်းသိမ်း &amp; လူသစ်စတင်&rdquo; ခလုတ်ဖြင့် ဒေတာမရောအောင် သီးသန့်ခွဲထုတ်နိုင်ပါသည်
             </p>
           </div>
 
@@ -1514,26 +1832,53 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
         </div>
 
         {/* =====================================================================
-            3. SMART DATE FILTER, QUICK PERIOD PRESETS & SEARCH BAR
+            3. SMART DATE FILTER, QUICK PERIOD PRESETS, ACTIVE/ARCHIVED TOGGLE & SEARCH BAR
            ===================================================================== */}
         {subTab !== 'add' && (
           <div className="bg-gray-50/90 p-3.5 rounded-2xl border border-gray-200 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
-            {/* Quick Period Presets */}
+            {/* Quick Period Presets + Active/Archived Staff Toggle */}
             <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex bg-white p-1 rounded-xl border border-gray-200 mr-2 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setShowArchivedStaff(false)}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 transition ${
+                    !showArchivedStaff
+                      ? 'bg-[#123524] text-[#D4AF37]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <UserCheck className="w-3 h-3" />
+                  <span>လက်ရှိဝန်ထမ်းများ ({uniqueTherapists.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowArchivedStaff(true)}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-1 transition ${
+                    showArchivedStaff
+                      ? 'bg-amber-700 text-white'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Archive className="w-3 h-3" />
+                  <span>ဝန်ထမ်းဟောင်း မှတ်တမ်း ({archivedTherapistsList.length})</span>
+                </button>
+              </div>
+
               <span className="text-[11px] font-extrabold text-[#123524] flex items-center mr-1">
                 <Calendar className="w-3.5 h-3.5 mr-1 text-[#D4AF37]" /> ကာလရွေးရန်:
               </span>
               {[
-                { id: 'all_time', label: 'မှတ်တမ်းအားလုံး (All Time)' },
+                { id: 'all_time', label: 'မှတ်တမ်းအားလုံး' },
                 { id: 'this_month', label: `ယခုလ (${currentYearMonth})` },
-                { id: 'last_month', label: `ပြီးခဲ့သည့်လ (${prevYearMonth} လစာ)` },
-                { id: 'today', label: 'ယနေ့ (Today)' }
+                { id: 'last_month', label: `ပြီးခဲ့သည့်လ (${prevYearMonth})` },
+                { id: 'today', label: 'ယနေ့' }
               ].map((p) => (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => handleSelectPeriodPreset(p.id as any)}
-                  className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${
+                  className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black transition ${
                     periodPreset === p.id
                       ? 'bg-[#123524] text-[#D4AF37] shadow-2xs'
                       : 'bg-white text-gray-600 border border-gray-200 hover:border-[#D4AF37]'
@@ -1570,7 +1915,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                 />
               </div>
 
-              <div className="relative flex-1 sm:w-56">
+              <div className="relative flex-1 sm:w-52">
                 <input
                   type="text"
                   value={searchQuery}
@@ -1599,14 +1944,17 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
          ========================================================================= */}
       {subTab === 'dashboard' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-fade-in">
-          {uniqueTherapists
+          {displayedTherapists
             .filter((t) =>
               !searchQuery.trim()
                 ? true
-                : t.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+                : t.name.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+                  String(t.realName || '')
+                    .toLowerCase()
+                    .includes(searchQuery.trim().toLowerCase())
             )
             .map((t) => {
-              const stats = getStats(t.id, t.name);
+              const stats = getStats(t.id, t.name, t);
               const hasUnpaid = stats.unpaidCount > 0;
               const hasLoan = stats.totalLoan > 0;
               const isClean = !hasUnpaid && !hasLoan;
@@ -1619,7 +1967,9 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                     setModalActiveTab('penalties');
                   }}
                   className={`rounded-2xl border-2 bg-white overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-lg flex flex-col justify-between ${
-                    hasUnpaid
+                    t.isArchived
+                      ? 'border-amber-300 bg-amber-50/20'
+                      : hasUnpaid
                       ? 'border-red-300 hover:border-red-400'
                       : hasLoan
                       ? 'border-purple-200 hover:border-[#D4AF37]'
@@ -1627,22 +1977,36 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                   }`}
                 >
                   {/* Card Top Header */}
-                  <div className="p-4 bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white flex items-center justify-between gap-2 border-b border-[#D4AF37]/30">
+                  <div
+                    className={`p-4 text-white flex items-center justify-between gap-2 border-b ${
+                      t.isArchived
+                        ? 'bg-gradient-to-r from-stone-800 to-stone-700 border-amber-400/30'
+                        : 'bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] border-[#D4AF37]/30'
+                    }`}
+                  >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="w-9 h-9 rounded-xl bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center text-[#D4AF37] font-serif font-black text-xs flex-shrink-0">
                         {t.name.replace(/[^0-9]/g, '')
-                          ? `No-${t.name.replace(/[^0-9]/g, '')}`
+                          ? `No-${t.name.replace(/[^0-9]/g, '').slice(0, 2)}`
                           : t.name.substring(0, 2).toUpperCase()}
                       </div>
                       <div className="min-w-0">
                         <h3 className="font-black text-sm text-[#D4AF37] truncate">{t.name}</h3>
-                        <p className="text-[10px] text-gray-300 font-semibold">
-                          Click to view full 360° ledger
+                        <p className="text-[10px] text-gray-300 font-semibold truncate">
+                          {t.isArchived
+                            ? `Archived on ${t.archivedAt || '-'}`
+                            : t.joinedDate
+                            ? `အလုပ်စဝင်ရက်: ${t.joinedDate}${t.realName ? ` • ${t.realName}` : ''}`
+                            : 'Click to view full 360° ledger'}
                         </p>
                       </div>
                     </div>
 
-                    {hasUnpaid ? (
+                    {t.isArchived ? (
+                      <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase bg-amber-500/20 border border-amber-400/40 text-amber-200 flex-shrink-0">
+                        ဝန်ထမ်းဟောင်း
+                      </span>
+                    ) : hasUnpaid ? (
                       <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase bg-red-600 text-white shadow animate-pulse flex-shrink-0">
                         ⚠️ ဒဏ်ကြေး ({stats.unpaidCount})
                       </span>
@@ -1724,47 +2088,67 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                       )}
                     </div>
 
-                    <div
-                      className="pt-2.5 border-t border-gray-100 grid grid-cols-3 gap-1.5"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormData((prev) => ({ ...prev, therapistId: t.id }));
-                          setSubTab('add');
-                        }}
-                        className="py-1.5 px-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10px] font-black transition text-center"
+                    {!t.isArchived && (
+                      <div
+                        className="pt-2.5 border-t border-gray-100 space-y-1.5"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        + ဒဏ်ကြေး
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDepositForm((prev) => ({
-                            ...prev,
-                            therapistId: t.id,
-                            txType: 'deposit'
-                          }));
-                          setSubTab('deposits');
-                        }}
-                        className="py-1.5 px-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[10px] font-black transition text-center"
-                      >
-                        + အပ်ငွေ
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLoanForm((prev) => ({ ...prev, therapistId: t.id, type: 'borrow' }));
-                          setSubTab('loans');
-                        }}
-                        className="py-1.5 px-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-black transition text-center"
-                      >
-                        + ကြိုထုတ်
-                      </button>
-                    </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData((prev) => ({ ...prev, therapistId: t.id }));
+                              setSubTab('add');
+                            }}
+                            className="py-1.5 px-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[10px] font-black transition text-center"
+                          >
+                            + ဒဏ်ကြေး
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDepositForm((prev) => ({
+                                ...prev,
+                                therapistId: t.id,
+                                txType: 'deposit'
+                              }));
+                              setSubTab('deposits');
+                            }}
+                            className="py-1.5 px-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[10px] font-black transition text-center"
+                          >
+                            + အပ်ငွေ
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLoanForm((prev) => ({ ...prev, therapistId: t.id, type: 'borrow' }));
+                              setSubTab('loans');
+                            }}
+                            className="py-1.5 px-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-black transition text-center"
+                          >
+                            + ကြိုထုတ်
+                          </button>
+                        </div>
 
-                    {stats.totalLoan > 0 && (
+                        {/* 🌟 1-Click Archive Old Staff & Reset Slot Button 🌟 */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setArchiveModalTarget(t);
+                            setArchiveOldStaffLabel(`${t.name} (ဝန်ထမ်းဟောင်း)`);
+                            setNewStaffJoinedDate(todayStr);
+                            setNewStaffRealName('');
+                          }}
+                          className="w-full py-1.5 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black flex items-center justify-center gap-1 transition"
+                          title="ဝန်ထမ်းဟောင်း၏ စာရင်းများကို သီးသန့်သိမ်းဆည်းပြီး ဝန်ထမ်းသစ်အတွက် 0 Ks မှ ပြန်စရန်"
+                        >
+                          <RotateCcw className="w-3 h-3 text-amber-700" />
+                          <span>🔄 လူဟောင်းစာရင်းသိမ်း &amp; လူသစ်အတွက် သုညမှစမည်</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {!t.isArchived && stats.totalLoan > 0 && (
                       <div onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
@@ -1787,6 +2171,13 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                 </div>
               );
             })}
+          {displayedTherapists.length === 0 && (
+            <div className="col-span-full bg-white p-10 rounded-2xl border border-gray-200 text-center text-gray-400 font-bold text-xs">
+              {showArchivedStaff
+                ? 'သိမ်းဆည်းထားသော ဝန်ထမ်းဟောင်း မှတ်တမ်း မရှိသေးပါ။'
+                : 'လက်ရှိ ဝန်ထမ်းစာရင်း မရှိသေးပါ။'}
+            </div>
+          )}
         </div>
       )}
 
@@ -1977,8 +2368,12 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                 onChange={(e) => setHistoryFilter(e.target.value)}
                 className="p-2 border border-[#D4AF37]/50 rounded-xl text-xs outline-none bg-white text-[#123524] font-black shadow-sm"
               >
-                <option value="">All Therapists (ဝန်ထမ်းအားလုံး)</option>
-                {uniqueTherapists.map((t) => (
+                <option value="">
+                  {showArchivedStaff
+                    ? 'All Archived Staff (ဝန်ထမ်းဟောင်းအားလုံး)'
+                    : 'All Active Therapists (လက်ရှိဝန်ထမ်းအားလုံး)'}
+                </option>
+                {displayedTherapists.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
                   </option>
@@ -1992,7 +2387,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 text-[11px] text-gray-500 uppercase tracking-wider">
                   <th className="p-3.5">Name / Date</th>
-                  <th className="p-3.5">Category & Status</th>
+                  <th className="p-3.5">Category &amp; Status</th>
                   <th className="p-3.5 text-right">Amount</th>
                   <th className="p-3.5 text-right">Settlement Actions</th>
                 </tr>
@@ -2183,7 +2578,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                       }
                     >
                       {uniqueTherapists.map((t) => {
-                        const bal = getStats(t.id, t.name).depositBalance;
+                        const bal = getStats(t.id, t.name, t).depositBalance;
                         return (
                           <option key={t.id} value={t.id}>
                             {t.name} (လက်ကျန်: {formatPrice(bal)})
@@ -2279,8 +2674,8 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                 </span>
               </div>
               <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                {uniqueTherapists.map((t) => {
-                  const st = getStats(t.id, t.name);
+                {displayedTherapists.map((t) => {
+                  const st = getStats(t.id, t.name, t);
                   return (
                     <div
                       key={t.id}
@@ -2325,7 +2720,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                 className="p-2 border border-[#D4AF37]/50 rounded-xl text-xs outline-none bg-white text-[#123524] font-black shadow-sm"
               >
                 <option value="">All Therapists (ဝန်ထမ်းအားလုံး)</option>
-                {uniqueTherapists.map((t) => (
+                {displayedTherapists.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
                   </option>
@@ -2338,7 +2733,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-[11px] text-gray-500 uppercase">
                     <th className="p-3.5">Name / Date</th>
-                    <th className="p-3.5">Type & Note</th>
+                    <th className="p-3.5">Type &amp; Note</th>
                     <th className="p-3.5 text-right">Amount</th>
                     <th className="p-3.5 text-center">Action</th>
                   </tr>
@@ -2410,7 +2805,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
               <div className="bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] p-4 text-white border-b border-[#D4AF37]/40">
                 <h3 className="font-black text-sm text-[#D4AF37] flex items-center gap-2">
                   <Banknote className="w-4 h-4" />
-                  <span>ကြိုထုတ်ငွေ / ပြန်ဆပ်ငွေ (Loans & Salary Advance)</span>
+                  <span>ကြိုထုတ်ငွေ / ပြန်ဆပ်ငွေ (Loans &amp; Salary Advance)</span>
                 </h3>
                 <p className="text-[10px] text-gray-300 mt-0.5">
                   လစာမှနှုတ်၍ ပြန်ဆပ်ခြင်း ရွေးချယ်ပါက Staff Pay Roll Tab ထဲသို့ အလိုအလျောက် ပေါင်းထည့်နှုတ်ယူပေးပါမည်
@@ -2454,7 +2849,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                       onChange={(e) => setLoanForm({ ...loanForm, therapistId: e.target.value })}
                     >
                       {uniqueTherapists.map((t) => {
-                        const bal = getStats(t.id, t.name).totalLoan;
+                        const bal = getStats(t.id, t.name, t).totalLoan;
                         return (
                           <option key={t.id} value={t.id}>
                             {t.name} (ချေးငွေကျန်: {formatPrice(bal)})
@@ -2517,7 +2912,6 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                           />
                         </div>
 
-                        {/* 🌟 ရွေးချယ်ထားသောလ၏ လစာစုစုပေါင်း ပြသသည့် Box + အားလုံးဆပ်မည် / ပမာဏရိုက်ထည့်မည် ခလုတ် 🌟 */}
                         <div className="p-3 rounded-xl bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#1a4a32] text-white border border-[#D4AF37]/50 space-y-2.5 shadow-sm">
                           <div className="flex items-center justify-between border-b border-white/15 pb-2">
                             <span className="text-[10px] font-extrabold text-[#D4AF37] uppercase">
@@ -2547,7 +2941,6 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                             </div>
                           </div>
 
-                          {/* အားလုံးဆပ်မည် vs ပမာဏရိုက်ထည့်မည် ရွေးချယ်သည့် ခလုတ် (၂) ခု */}
                           <div className="pt-1 space-y-1.5">
                             <span className="text-[10px] font-bold text-gray-200 block">
                               ပြန်ဆပ်မည့် ပမာဏ ရွေးချယ်ရန်:
@@ -2608,7 +3001,6 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                               </button>
                             </div>
 
-                            {/* အကယ်၍ ရိုက်ထည့်လိုက်သော ပမာဏက လစာထက် ပိုများနေပါက သတိပေးချက်ပြသပြီး ကျန်ရှိမည့်လစာကို တွက်ပြမည် */}
                             {Number(loanForm.amount) > 0 && (
                               <div className="pt-1 flex items-center justify-between text-[10px] font-bold">
                                 <span className="text-gray-300">ချေးငွေနှုတ်ပြီး ကျန်မည့်လစာ:</span>
@@ -2716,7 +3108,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                 className="p-2 border border-[#D4AF37]/50 rounded-xl text-xs outline-none bg-white text-[#123524] font-black shadow-sm"
               >
                 <option value="">All Therapists (ဝန်ထမ်းအားလုံး)</option>
-                {uniqueTherapists.map((t) => (
+                {displayedTherapists.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
                   </option>
@@ -2729,7 +3121,7 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-[11px] text-gray-500 uppercase">
                     <th className="p-3.5">Name / Date</th>
-                    <th className="p-3.5">Type & Note</th>
+                    <th className="p-3.5">Type &amp; Note</th>
                     <th className="p-3.5 text-right">Amount</th>
                     <th className="p-3.5 text-center">Action</th>
                   </tr>
@@ -2808,6 +3200,11 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
                 <h3 className="font-black text-lg text-white mt-0.5">
                   {selectedTherapistStats.name} — အသေးစိတ် ငွေစာရင်းမှတ်တမ်း
                 </h3>
+                {selectedTherapistStats.joinedDate && (
+                  <p className="text-[11px] text-emerald-200 font-semibold mt-0.5">
+                    အလုပ်စဝင်သည့်ရက်: {selectedTherapistStats.joinedDate}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -3010,30 +3407,44 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
               )}
             </div>
 
-            <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-              {selectedTherapistStats.totalLoan > 0 ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleSyncLoanToPayroll(
-                      selectedTherapistStats.id,
-                      selectedTherapistStats.name,
-                      selectedTherapistStats.totalLoan
-                    )
-                  }
-                  className="px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black flex items-center gap-1.5"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>
-                    ကြိုထုတ်ငွေ ({formatPrice(selectedTherapistStats.totalLoan)}) အား{' '}
-                    {targetPayrollMonth} လစာမှနှုတ်ရန် ပို့မည်
-                  </span>
-                </button>
-              ) : (
-                <span className="text-xs text-gray-500 font-bold">
-                  ✓ ကြိုထုတ်ငွေ လက်ကျန်မရှိပါ
-                </span>
-              )}
+            <div className="p-4 bg-gray-50 border-t border-gray-200 flex flex-wrap justify-between items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {!selectedTherapistStats.isArchived && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setArchiveModalTarget(selectedTherapistStats);
+                      setArchiveOldStaffLabel(`${selectedTherapistStats.name} (ဝန်ထမ်းဟောင်း)`);
+                      setNewStaffJoinedDate(todayStr);
+                      setNewStaffRealName('');
+                    }}
+                    className="px-3.5 py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>🔄 လူဟောင်းစာရင်းသိမ်း &amp; လူသစ်အတွက် သုညမှစမည်</span>
+                  </button>
+                )}
+
+                {selectedTherapistStats.totalLoan > 0 && !selectedTherapistStats.isArchived && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSyncLoanToPayroll(
+                        selectedTherapistStats.id,
+                        selectedTherapistStats.name,
+                        selectedTherapistStats.totalLoan
+                      )
+                    }
+                    className="px-4 py-2 bg-[#123524] text-[#D4AF37] rounded-xl text-xs font-black flex items-center gap-1.5"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>
+                      ကြိုထုတ်ငွေ ({formatPrice(selectedTherapistStats.totalLoan)}) အား{' '}
+                      {targetPayrollMonth} လစာမှနှုတ်ရန် ပို့မည်
+                    </span>
+                  </button>
+                )}
+              </div>
 
               <button
                 type="button"
@@ -3046,6 +3457,112 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
           </div>
         </div>
       )}
+
+      {/* =========================================================================
+          10. ARCHIVE OLD STAFF & RESET SLOT FOR NEW STAFF MODAL
+         ========================================================================= */}
+      {archiveModalTarget && (
+        <div
+          className="fixed inset-0 z-[10000] bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setArchiveModalTarget(null)}
+        >
+          <div
+            className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border-2 border-[#D4AF37] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#1a4a32] text-white flex items-center justify-between border-b border-[#D4AF37]/40">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37] block">
+                  Soft Delete &amp; Clean Slot Reassignment
+                </span>
+                <h3 className="font-black text-base text-white mt-0.5">
+                  🔄 {archiveModalTarget.name} — လူဟောင်းမှတ်တမ်းသိမ်း &amp; လူသစ်စတင်ရန်
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setArchiveModalTarget(null)}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-red-500 text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleArchiveOldStaffAndResetSlot} className="p-5 space-y-4 text-xs">
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 space-y-1">
+                <div className="font-black text-xs">💡 ဤလုပ်ဆောင်ချက်က ဘာလုပ်ပေးမလဲ?</div>
+                <p className="text-[11px] leading-relaxed font-semibold text-amber-900">
+                  ၁။ ဝန်ထမ်းဟောင်း၏ အပ်ငွေ၊ ဒဏ်ကြေး၊ ကြိုထုတ်ငွေနှင့် Payslip မှတ်တမ်းအားလုံးကို ဖျက်မပစ်ဘဲ <strong>&ldquo;ဝန်ထမ်းဟောင်း မှတ်တမ်း (Archived Staff)&rdquo;</strong> ထဲသို့ သီးသန့် ရွှေ့ပြောင်းသိမ်းဆည်းပေးပါမည်။
+                  <br />
+                  ၂။ ဝန်ထမ်းသစ် <strong>{archiveModalTarget.name}</strong> ၏ Staff App တွင် အပ်ငွေ <code>0 Ks</code>၊ ဒဏ်ကြေး <code>0 Ks</code> နှင့် Payslip အသစ်ဖြင့် လူဟောင်းဒေတာ လုံးဝမရောတော့ဘဲ သန့်ရှင်းစွာ စတင်ပေးပါမည်။
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold text-gray-700 uppercase mb-1">
+                  ၁။ ဝန်ထမ်းဟောင်းအား မှတ်တမ်းတင်မည့် အမည် (Archived Label) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={archiveOldStaffLabel}
+                  onChange={(e) => setArchiveOldStaffLabel(e.target.value)}
+                  placeholder="ဥပမာ - Therapist No-12 (ဝန်ထမ်းဟောင်း - Oct 2026)"
+                  className="w-full p-3 border-2 border-gray-200 focus:border-[#123524] rounded-xl font-black text-[#123524] bg-gray-50 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold text-gray-700 uppercase mb-1">
+                  ၂။ ဝန်ထမ်းသစ် အလုပ်စဝင်သည့်ရက်စွဲ (New Staff Joined Date) *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={newStaffJoinedDate}
+                  onChange={(e) => setNewStaffJoinedDate(e.target.value)}
+                  className="w-full p-3 border-2 border-gray-200 focus:border-[#123524] rounded-xl font-black text-[#123524] bg-gray-50 outline-none"
+                />
+                <p className="text-[10px] text-gray-500 mt-1 font-semibold">
+                  * ဤရက်စွဲနှင့် မတိုင်မီက သွင်းထားသော မှတ်တမ်းဟောင်းအားလုံးကို ဝန်ထမ်းဟောင်းစာရင်းသို့ အလိုအလျောက် ရွှေ့ပေးပါမည်။
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold text-gray-700 uppercase mb-1">
+                  ၃။ ဝန်ထမ်းသစ် အမည်ရင်း / မှတ်ချက် (Admin Only - Optional)
+                </label>
+                <input
+                  type="text"
+                  value={newStaffRealName}
+                  onChange={(e) => setNewStaffRealName(e.target.value)}
+                  placeholder="ဥပမာ - မောင်အောင် (Nov 15 အသစ်ဝင်)"
+                  className="w-full p-3 border-2 border-gray-200 focus:border-[#123524] rounded-xl font-semibold text-gray-800 bg-gray-50 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setArchiveModalTarget(null)}
+                  className="px-4 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-black"
+                >
+                  မလုပ်တော့ပါ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isArchivingSlot}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] font-black shadow-md hover:opacity-95 disabled:opacity-50"
+                >
+                  {isArchivingSlot
+                    ? 'သိမ်းဆည်းနေပါသည်...'
+                    : '✓ လူဟောင်းစာရင်းသိမ်းပြီး လူသစ်အတွက် Reset လုပ်မည်'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3053,7 +3570,14 @@ export function AdminPenaltyManager({ therapists, bookings = [] }: { therapists:
 // ============================================================================
 // 🌟 2. STAFF PENALTY, DEPOSIT & LOAN VIEW (FOR STAFF PORTAL APP) 🌟
 // ============================================================================
-export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
+export function StaffPenaltyView({
+  therapistName,
+  therapistProfile
+}: {
+  therapistName: string;
+  therapistProfile?: TherapistProfile | null;
+}) {
+  const { appData } = useAppStore();
   const [rawPenalties, setRawPenalties] = useState<any[]>([]);
   const [rawLoans, setRawLoans] = useState<any[]>([]);
   const [rawDeposits, setRawDeposits] = useState<any[]>([]);
@@ -3063,6 +3587,20 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
   const [mirrorDeposits, setMirrorDeposits] = useState<any[]>([]);
 
   const [activeView, setActiveView] = useState<'penalties' | 'loans' | 'deposits'>('penalties');
+
+  // Resolve Current Active Therapist Profile so joinedDate & employmentCycleId filters work automatically
+  const currentTherapist = useMemo(() => {
+    if (therapistProfile) return therapistProfile;
+    const list = appData?.therapists || [];
+    return (
+      list.find(
+        (t) =>
+          !t.isArchived &&
+          (t.name.trim().toLowerCase() === String(therapistName || '').trim().toLowerCase() ||
+            isSameStaffMember(t.name, therapistName, t.id))
+      ) || null
+    );
+  }, [therapistProfile, appData?.therapists, therapistName]);
 
   useEffect(() => {
     const unsubP = onSnapshot(
@@ -3105,27 +3643,33 @@ export function StaffPenaltyView({ therapistName }: { therapistName: string }) {
     rawPenalties.forEach((p) => p?.id && map.set(p.id, p));
     mirrorPenalties.forEach((p) => p?.id && map.set(p.id, p));
     return Array.from(map.values())
-      .filter((p) => isMatchingTherapistRecord(p, '', therapistName))
+      .filter((p) =>
+        isMatchingTherapistRecord(p, currentTherapist?.id || '', therapistName, currentTherapist)
+      )
       .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
-  }, [rawPenalties, mirrorPenalties, therapistName]);
+  }, [rawPenalties, mirrorPenalties, therapistName, currentTherapist]);
 
   const loans = useMemo(() => {
     const map = new Map<string, any>();
     rawLoans.forEach((l) => l?.id && map.set(l.id, l));
     mirrorLoans.forEach((l) => l?.id && map.set(l.id, l));
     return Array.from(map.values())
-      .filter((l) => isMatchingTherapistRecord(l, '', therapistName))
+      .filter((l) =>
+        isMatchingTherapistRecord(l, currentTherapist?.id || '', therapistName, currentTherapist)
+      )
       .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
-  }, [rawLoans, mirrorLoans, therapistName]);
+  }, [rawLoans, mirrorLoans, therapistName, currentTherapist]);
 
   const deposits = useMemo(() => {
     const map = new Map<string, any>();
     rawDeposits.forEach((d) => d?.id && map.set(d.id, d));
     mirrorDeposits.forEach((d) => d?.id && map.set(d.id, d));
     return Array.from(map.values())
-      .filter((d) => isMatchingTherapistRecord(d, '', therapistName))
+      .filter((d) =>
+        isMatchingTherapistRecord(d, currentTherapist?.id || '', therapistName, currentTherapist)
+      )
       .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
-  }, [rawDeposits, mirrorDeposits, therapistName]);
+  }, [rawDeposits, mirrorDeposits, therapistName, currentTherapist]);
 
   const totalUnpaidPenalties = penalties
     .filter((p) => !p.isPaid)
