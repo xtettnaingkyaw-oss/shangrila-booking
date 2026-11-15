@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { decryptText } from '../security';
-import { Booking, TherapistProfile, formatPrice } from '../shared';
+import { Booking, TherapistProfile, formatPrice, isRecordBelongingToCurrentTherapist} from '../shared';
 import {
   Banknote, Download, User, Award, Trash2, Search, FileSpreadsheet,
   Sliders, Wifi, RotateCcw, Edit3, Check, Calendar, Clock, ChevronDown,
@@ -68,7 +68,12 @@ export const getStaffSeniority = (
   if (jobPos.includes('senior')) return 'Senior';
   if (jobPos.includes('junior')) return 'Junior';
 
-  if (num !== null && DEFAULT_SENIOR_NUMBERS.includes(num)) {
+  if (
+    num !== null &&
+    DEFAULT_SENIOR_NUMBERS.includes(num) &&
+    !matchedProfile?.joinedDate &&
+    !matchedProfile?.employmentCycleId
+  ) {
     return 'Senior';
   }
   return 'Junior';
@@ -911,6 +916,7 @@ export function AdminStaffPayrollManager({
 
       splitNames.forEach((tNameRaw) => {
         const matchedProfile = uniqueTherapists.find((tp) => isSameStaffMember(tNameRaw, tp.name, tp.id));
+        if (matchedProfile && !isRecordBelongingToCurrentTherapist(b, matchedProfile)) return;
         const canonicalName = matchedProfile ? matchedProfile.name.trim() : tNameRaw.trim();
 
         if (!map.has(canonicalName)) {
@@ -965,8 +971,11 @@ export function AdminStaffPayrollManager({
     });
 
     const finalRows = Array.from(map.values()).map((row) => {
+      const matchedStaffObj = uniqueTherapists.find((tp) => tp.name.trim() === row.staffName);
       const myPenalties = penalties.filter((p) => {
+        if (p.isArchivedStaffRecord) return false;
         if (!isSameStaffMember(p.therapistName || '', row.staffName, row.staffId)) return false;
+        if (matchedStaffObj && !isRecordBelongingToCurrentTherapist(p, matchedStaffObj)) return false;
         const pDate = String(p.date || '');
         return pDate.startsWith(selectedMonth) && !p.isPaid;
       });
@@ -2286,11 +2295,20 @@ export function StaffPaySlipView({
   const availableHistoryMonths = useMemo(() => {
     const list: string[] = [];
     const startOffset = isPrevMonthUnlocked ? 1 : 2;
+    const joinedYM = loggedInStaff?.joinedDate ? loggedInStaff.joinedDate.slice(0, 7) : '';
+
     for (let i = startOffset; i <= 12; i++) {
-      list.push(formatYM(currentYear, currentMonth - i));
+      const ym = formatYM(currentYear, currentMonth - i);
+      // ဝန်ထမ်းသစ် အလုပ်စဝင်သည့်လ (joinedYM) မတိုင်မီက လဟောင်းများကို ဖယ်ထုတ်မည်
+      if (joinedYM && ym < joinedYM) continue;
+      list.push(ym);
+    }
+    // အကယ်၍ ယခုလမှ အသစ်ဝင်သော ဝန်ထမ်းဖြစ်၍ ယခင်လစာရင်း မရှိသေးပါက လက်ရှိလကိုသာ ပြထားမည်
+    if (list.length === 0) {
+      list.push(joinedYM || formatYM(currentYear, currentMonth));
     }
     return list;
-  }, [currentYear, currentMonth, isPrevMonthUnlocked]);
+  }, [currentYear, currentMonth, isPrevMonthUnlocked, loggedInStaff?.joinedDate]);
 
   useEffect(() => {
     if (availableHistoryMonths.length > 0 && !availableHistoryMonths.includes(selectedPayMonth)) {
@@ -2408,6 +2426,9 @@ export function StaffPaySlipView({
       );
       if (!isAssignedToMe) return;
 
+      // 👇 ဤ (၁) ကြောင်းကို အသစ်ထပ်ထည့်ပါ (ဝန်ထမ်းသစ် အလုပ်မဝင်မီက ဝန်ထမ်းဟောင်း၏ ကော်မရှင်များ မပါဝင်စေရန်)
+      if (!isRecordBelongingToCurrentTherapist(b, loggedInStaff)) return;
+
       const salesShare = Math.round(totalAmt / splitNames.length);
       const commResult = calculateBookingCommissionForStaff(b, seniority, splitNames.length);
 
@@ -2431,15 +2452,29 @@ export function StaffPaySlipView({
       });
     });
 
-    let myAdj: StaffMonthlyPayrollAdjustment | undefined = payrollDocData.adjustments[loggedInStaff.name.trim()];
-    if (!myAdj) {
-      const foundKey = Object.keys(payrollDocData.adjustments).find((k) =>
-        isSameStaffMember(k, loggedInStaff.name, loggedInStaff.id)
+    // ဝန်ထမ်းသစ် အလုပ်မဝင်မီ လဟောင်းဖြစ်နေပါက ဝန်ထမ်းဟောင်း၏ Adjustments / ဖြတ်တောက်ငွေများကို လုံးဝမယူပါ
+    const isBeforeJoinedMonth =
+      Boolean(loggedInStaff.joinedDate) &&
+      selectedPayMonth < String(loggedInStaff.joinedDate).slice(0, 7);
+
+    let myAdj: StaffMonthlyPayrollAdjustment | undefined = !isBeforeJoinedMonth
+      ? payrollDocData.adjustments[loggedInStaff.name.trim()]
+      : undefined;
+
+    if (!myAdj && !isBeforeJoinedMonth) {
+      const foundKey = Object.keys(payrollDocData.adjustments).find(
+        (k) =>
+          !k.includes('ဝန်ထမ်းဟောင်း') &&
+          !k.toLowerCase().includes('archived') &&
+          isSameStaffMember(k, loggedInStaff.name, loggedInStaff.id)
       );
       if (foundKey) myAdj = payrollDocData.adjustments[foundKey];
     }
 
-    const rawCustomList = myAdj?.customDeductions || [];
+    // Custom Deductions ထဲတွင် ဝန်ထမ်းသစ် အလုပ်မဝင်မီရက်စွဲဖြင့် သွင်းထားသော ဝန်ထမ်းဟောင်း၏ ဖြတ်တောက်ငွေများ (ဥပမာ -359,000 Ks) ကို စစ်ထုတ်မည်
+    const rawCustomList = (myAdj?.customDeductions || []).filter((d) =>
+      isRecordBelongingToCurrentTherapist(d, loggedInStaff)
+    );
     const wifiItemInList = rawCustomList.find(
       (d) => d.reason.toLowerCase().includes('wifi') || d.id === 'default_wifi'
     );
@@ -2447,16 +2482,22 @@ export function StaffPaySlipView({
       (d) => !d.reason.toLowerCase().includes('wifi') && d.id !== 'default_wifi'
     );
 
-    let wifiFee = payrollDocData.defaultWifiFee;
-    if (myAdj?.wifiFeeOverride !== undefined && myAdj?.wifiFeeOverride !== null) {
+    let wifiFee = isBeforeJoinedMonth ? 0 : payrollDocData.defaultWifiFee;
+    if (!isBeforeJoinedMonth && myAdj?.wifiFeeOverride !== undefined && myAdj?.wifiFeeOverride !== null) {
       wifiFee = Number(myAdj.wifiFeeOverride);
     } else if (wifiItemInList) {
       wifiFee = Number(wifiItemInList.amount) || 0;
     }
+    // ကော်မရှင် လုံးဝမရှိသေးသော ဝန်ထမ်းသစ်အတွက် လဟောင်းတွင် WiFi ကြေး အနှုတ်မပြစေရန်
+    if (sectionsCount === 0 && otherCustomDeductions.length === 0 && (myAdj?.baseSalary || 0) === 0) {
+      wifiFee = 0;
+    }
     wifiFee = Math.max(0, wifiFee);
 
     const myPenalties = penalties.filter((p) => {
+      if (p.isArchivedStaffRecord) return false;
       if (!isSameStaffMember(p.therapistName || '', loggedInStaff.name, loggedInStaff.id)) return false;
+      if (!isRecordBelongingToCurrentTherapist(p, loggedInStaff)) return false;
       const pDate = String(p.date || '');
       return pDate.startsWith(selectedPayMonth) && !p.isPaid;
     });
