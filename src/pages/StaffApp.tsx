@@ -9,7 +9,7 @@ import {
   TrendingUp, Target, Award, Crown, Banknote, ClipboardList, Bell,
   BookOpen, CheckCircle2, Timer, AlertTriangle, Hourglass, Zap
 } from 'lucide-react';
-import { THEME, AppData, Booking, OutPass, TherapistProfile } from '../shared';
+import { THEME, AppData, Booking, OutPass, TherapistProfile, isRecordBelongingToCurrentTherapist} from '../shared';
 
 import { useAppStore } from '../AppDataContext';
 import { StaffPenaltyView } from './PenaltySystem';
@@ -750,12 +750,19 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
     const unsubscribe = onSnapshot(q, (snap) => {
       let count = 0;
       snap.forEach((d) => {
-        if (d.data().isPaid === false) count++;
+        const pData = d.data();
+        if (
+          pData.isPaid === false &&
+          !pData.isArchivedStaffRecord &&
+          isRecordBelongingToCurrentTherapist(pData, liveStaff)
+        ) {
+          count++;
+        }
       });
       setUnpaidPenaltyCount(count);
     });
     return () => unsubscribe();
-  }, [liveStaff.name]);
+  }, [liveStaff]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'dutyRoster'), (docSnap) => {
@@ -1007,7 +1014,7 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
       {staffTab === 'history' && <StaffDailyHistoryTab loggedInStaff={liveStaff} appData={appData} />}
       {staffTab === 'outpass' && <StaffOutPassTab appData={appData} loggedInStaff={liveStaff} />}
       {staffTab === 'performance' && <StaffPerformanceTab loggedInStaff={liveStaff} />}
-      {staffTab === 'financials' && <StaffPenaltyView therapistName={liveStaff.name} />}
+      {staffTab === 'financials' && (<StaffPenaltyView therapistName={liveStaff.name} therapistProfile={liveStaff} />)}
       {staffTab === 'payslip' && <StaffPaySlipView loggedInStaff={liveStaff} therapists={appData.therapists} />}
       {staffTab === 'profile' && <StaffProfileView staff={liveStaff} />}
       {staffTab === 'handbook' && <StaffEmployeeHandbookReader staffId={liveStaff.id} staffName={liveStaff.name} />}
@@ -1850,7 +1857,8 @@ function StaffDailyHistoryTab({ loggedInStaff, appData }: { loggedInStaff: Thera
           specialRequest: decryptText(raw.specialRequest) || raw.specialRequest
         } as Booking;
 
-        if (b.status === 'completed' || b.status === 'cancelled') {
+       if (!isRecordBelongingToCurrentTherapist(b, loggedInStaff)) return;
+       if (b.status === 'completed' || b.status === 'cancelled') {
           arr.push(b);
         }
       });
@@ -2403,6 +2411,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
 
       splitNames.forEach((tNameRaw) => {
         const matchedProfile = uniqueTherapists.find((tp) => isSameStaffMember(tNameRaw, tp.name, tp.id));
+        if (matchedProfile && !isRecordBelongingToCurrentTherapist(b, matchedProfile)) return;
         const finalStaffName = matchedProfile ? matchedProfile.name.trim() : tNameRaw.trim();
 
         // 🌟 Excel ဖိုင်ပါ Senior/Junior နှင့် ဝန်ဆောင်မှုအလိုက် နှုန်းထားအတိအကျဖြင့် ကော်မရှင်တွက်ချက်ခြင်း 🌟
@@ -2531,7 +2540,7 @@ function StaffPerformanceTab({ loggedInStaff }: { loggedInStaff: TherapistProfil
   const myTotalSections = myEntries.length;
   const mySeniority = getStaffSeniority(loggedInStaff.name, uniqueTherapists);
 
-  const pastDays = allMonthDates.filter((d) => d <= todayStr);
+  const pastDays = allMonthDates.filter((d) => d <= todayStr && (!loggedInStaff.joinedDate || d >= loggedInStaff.joinedDate));
   const workedDaysSet = new Set(myEntries.map((e) => e.date));
   const workedDaysCount = pastDays.filter((d) => workedDaysSet.has(d)).length;
   const missedDays = pastDays.filter((d) => !workedDaysSet.has(d));
