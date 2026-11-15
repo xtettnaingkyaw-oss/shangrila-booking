@@ -25,7 +25,6 @@ import {
   Phone,
   CalendarPlus,
   Clock,
-  CreditCard,
   MapPin,
   Wallet,
 } from 'lucide-react';
@@ -122,6 +121,26 @@ const parseDurationToMinutes = (dur?: string | number): number => {
   return num || 60;
 };
 
+// 🌟 Format Timestamp for Customer Delivery Badge 🌟
+const formatLogTimeShort = (ts: any): string => {
+  if (!ts) return '';
+  try {
+    const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const isToday =
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear();
+    const timePart = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (isToday) return `Today, ${timePart}`;
+    const datePart = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return `${datePart}, ${timePart}`;
+  } catch {
+    return '';
+  }
+};
+
 type ButtonFeedbackState = 'idle' | 'loading' | 'success' | 'error';
 
 export const TelegramNotificationCenter: React.FC = () => {
@@ -179,7 +198,7 @@ export const TelegramNotificationCenter: React.FC = () => {
   const [sendingPromo, setSendingPromo] = useState<boolean>(false);
   const [promoProgress, setPromoProgress] = useState<{ sent: number; total: number } | null>(null);
 
-  // Logs State
+  // Logs State (Expanded to 200 to map per-customer latest delivery status accurately)
   const [logs, setLogs] = useState<any[]>([]);
 
   // ============================================================================
@@ -209,6 +228,20 @@ export const TelegramNotificationCenter: React.FC = () => {
     setStatusBanner({ type, text });
     setTimeout(() => setStatusBanner(null), 4500);
   };
+
+  // 🌟 Build Per-ChatId Latest Notification Status Map from Real-Time Logs 🌟
+  const latestNotiByChatId = React.useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const log of logs) {
+      const cid = String(log.targetChatId || '').trim();
+      if (!cid) continue;
+      // Since `logs` is ordered by `timestamp desc`, the first match is the latest notification
+      if (!map[cid]) {
+        map[cid] = log;
+      }
+    }
+    return map;
+  }, [logs]);
 
   // 🌟 STABLE SUBSCRIBER LOADER 🌟
   const loadSubscribers = async () => {
@@ -409,7 +442,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         svcSnap.forEach((docSnap) => {
           const d = docSnap.data();
           const name = String(d.name || d.title || '').trim();
-          // Exclude test services
           if (!name || name.toLowerCase().includes('test')) return;
           loadedSvcs.push({
             id: docSnap.id,
@@ -430,7 +462,6 @@ export const TelegramNotificationCenter: React.FC = () => {
     };
     loadData();
 
-    // 🌟 Real-Time Listeners for Subscribers, Config, Logs, and Bookings (for Conflict Check) 🌟
     const unsubSubscribers = onSnapshot(
       collection(db, 'telegramSubscribers'),
       () => {
@@ -456,7 +487,8 @@ export const TelegramNotificationCenter: React.FC = () => {
       () => {}
     );
 
-    const q = query(collection(db, 'telegramLogs'), orderBy('timestamp', 'desc'), limit(35));
+    // Fetch up to 200 recent logs so every subscribed customer's latest noti status is available
+    const q = query(collection(db, 'telegramLogs'), orderBy('timestamp', 'desc'), limit(200));
     const unsubLogs = onSnapshot(
       q,
       (snap) => {
@@ -500,7 +532,6 @@ export const TelegramNotificationCenter: React.FC = () => {
     if (candStart < 0) return { isBooked: false };
     const candEnd = candStart + candidateDurationMins;
 
-    // Combine Firestore liveBookings + localStorage fallback if any
     let allBookings = [...liveBookings];
     try {
       const localRaw = localStorage.getItem('shangrila_bookings') || localStorage.getItem('bookings');
@@ -516,18 +547,16 @@ export const TelegramNotificationCenter: React.FC = () => {
         }
       }
     } catch {
-      // ignore local storage parse error
+      // ignore
     }
 
     for (const b of allBookings) {
       const status = String(b.status || '').toLowerCase();
-      // Ignore cancelled, rejected, or completed bookings
       if (status === 'cancelled' || status === 'rejected' || status === 'completed') continue;
 
       const bDate = String(b.date || b.bookingDate || '').trim();
       if (bDate !== dateStr) continue;
 
-      // Match staff by number or exact ID/name
       const bStaffNum =
         extractStaffNumber(b.therapistId || '') ??
         extractStaffNumber(b.staffId || '') ??
@@ -541,7 +570,6 @@ export const TelegramNotificationCenter: React.FC = () => {
       if (!isSameStaff) continue;
 
       const bType = String(b.bookingType || b.serviceName || '').toLowerCase();
-      // Whole Night Call locks evening/night slots (7:00 PM onwards)
       if (bType.includes('night') && candStart >= 19 * 60) {
         return {
           isBooked: true,
@@ -556,7 +584,6 @@ export const TelegramNotificationCenter: React.FC = () => {
       const outcallBuffer = b.isOutcall || bType.includes('outcall') || bType.includes('hotel') ? 30 : 0;
       const existEnd = existStart + existDuration + outcallBuffer;
 
-      // Overlap check: StartA < EndB && StartB < EndA
       if (candStart < existEnd && existStart < candEnd) {
         return {
           isBooked: true,
@@ -612,7 +639,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         ? 720
         : parseDurationToMinutes(selectedService?.duration || 60);
 
-    // Final Real-Time Conflict Verification
     const conflict = checkStaffSlotConflict(mbStaffId, mbDate, mbTime, durationMins);
     if (conflict.isBooked) {
       showToast(
@@ -668,7 +694,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         .filter(Boolean)
         .join(' — ');
 
-      // 1. Construct Official Synchronized Booking Payload
       const bookingRecord: Record<string, any> = {
         id: bookingId,
         bookingId: bookingId,
@@ -710,10 +735,8 @@ export const TelegramNotificationCenter: React.FC = () => {
         updatedBy: 'Admin (Telegram Manual Booking)',
       };
 
-      // 2. Save directly to Firestore `bookings` collection (Locks Time Slot across Web App & Admin Dashboard)
       await setDoc(doc(db, 'bookings', bookingId), bookingRecord, { merge: true });
 
-      // 3. Also sync with localStorage if any legacy view reads from localStorage
       try {
         const localRaw = localStorage.getItem('shangrila_bookings');
         if (localRaw) {
@@ -726,7 +749,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         // ignore
       }
 
-      // 4. Update Subscriber's Phone & lastBookingId in Firestore so future notifications stay linked
       await saveCustomerTelegramSubscription(
         {
           ...manualBookingTarget,
@@ -737,7 +759,6 @@ export const TelegramNotificationCenter: React.FC = () => {
       );
       await loadSubscribers();
 
-      // 5. Send Detailed Official Booking & Payment Confirmation Card to Customer via Telegram Bot
       const customerSlipHtml =
         `🌿 <b>THE SHANGRI-LA MEN'S RETREAT</b>\n` +
         `✅ <b>BOOKING CONFIRMED (ဘိုကင်အတည်ပြုပြီး)</b>\n` +
@@ -772,7 +793,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         'MANUAL_BOOKING_CONFIRMED'
       );
 
-      // 6. Notify Admin Group & Assigned Therapist automatically
       await notifyBookingEvent('BOOKING_CONFIRMED', {
         id: bookingId,
         customerName: bookingRecord.customerName,
@@ -791,7 +811,6 @@ export const TelegramNotificationCenter: React.FC = () => {
         updatedBy: 'Admin Manual Booking Console',
       }).catch(() => {});
 
-      // Direct Staff Alert with Payment/Location info if staff has Telegram linked
       if (selectedStaffMapping?.telegramChatId && selectedStaffMapping.receiveBookingAssign) {
         const staffAlertHtml =
           `🔔 <b>NEW CONFIRMED BOOKING ASSIGNED</b>\n` +
@@ -1227,7 +1246,6 @@ export const TelegramNotificationCenter: React.FC = () => {
     );
   }
 
-  // Selected service duration & price helpers for Manual Booking Modal
   const currentModalService =
     catalogServices.find((s) => String(s.id) === String(mbServiceId)) || FALLBACK_SERVICES[0];
   const currentModalDurationMins =
@@ -1913,7 +1931,7 @@ export const TelegramNotificationCenter: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 4: SUBSCRIBED CUSTOMERS (WITH + MANUAL BOOKING & CONFIRM BUTTON) */}
+        {/* TAB 4: SUBSCRIBED CUSTOMERS (WITH LIVE LAST NOTI DELIVERY BADGE & + MANUAL BOOKING) */}
         {activeTab === 'customers' && (
           <div className="space-y-4">
             <div className="bg-black/25 p-4 rounded-xl border border-[#C8A951]/20 space-y-3">
@@ -1923,7 +1941,7 @@ export const TelegramNotificationCenter: React.FC = () => {
                     📲 Subscribed Customers ({subscribers.length}) — Real-Time Booking Noti & Promo List
                   </h3>
                   <p className="text-xs text-stone-400">
-                    Admin အကောင့်နှင့် ဝန်ထမ်းအကောင့်များကို အလိုအလျောက် ဖယ်ထုတ်ထားပြီး Customer စစ်စစ်များကိုသာ တည်ငြိမ်စွာ ပြသထားပါသည်။
+                    Customer တစ်ဦးချင်းစီထံ နောက်ဆုံးပေးပို့ထားသော Notification အခြေအနေ (Sent / Failed နှင့် အချိန်) ကို တိုက်ရိုက် စစ်ဆေးနိုင်ပါသည်။
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2036,7 +2054,7 @@ export const TelegramNotificationCenter: React.FC = () => {
                     <th className="py-3 px-3">Phone (Editable)</th>
                     <th className="py-3 px-3">Telegram Chat ID</th>
                     <th className="py-3 px-3">VIP Tier</th>
-                    <th className="py-3 px-3">Source</th>
+                    <th className="py-3 px-3">Last Noti Status</th>
                     <th className="py-3 px-3 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -2058,6 +2076,10 @@ export const TelegramNotificationCenter: React.FC = () => {
                       const currentPhoneVal =
                         editingPhones[sub.chatId] !== undefined ? editingPhones[sub.chatId] : sub.customerPhone || '';
 
+                      // Lookup latest notification delivery record for this customer's chatId
+                      const lastLog = latestNotiByChatId[String(sub.chatId).trim()];
+                      const lastLogTimeStr = lastLog ? formatLogTimeShort(lastLog.timestamp) : '';
+
                       return (
                         <tr key={sub.chatId} className="hover:bg-white/5">
                           <td className="py-2.5 px-3">
@@ -2075,8 +2097,13 @@ export const TelegramNotificationCenter: React.FC = () => {
                             />
                           </td>
                           <td className="py-2.5 px-3 font-semibold text-white">
-                            {sub.customerName}{' '}
-                            {sub.username ? <span className="text-stone-400">(@{sub.username})</span> : null}
+                            <div>
+                              {sub.customerName}{' '}
+                              {sub.username ? <span className="text-stone-400">(@{sub.username})</span> : null}
+                            </div>
+                            <div className="text-[10px] text-stone-500 uppercase">
+                              {sub.source || 'mini_app'}
+                            </div>
                           </td>
                           <td className="py-2.5 px-3">
                             <div className="flex items-center gap-1">
@@ -2123,12 +2150,51 @@ export const TelegramNotificationCenter: React.FC = () => {
                               {sub.vipTier || 'Member'}
                             </span>
                           </td>
-                          <td className="py-2.5 px-3 text-stone-400 uppercase text-[10px]">
-                            {sub.source || 'mini_app'}
+
+                          {/* 🌟 NEW: LIVE LAST NOTIFICATION STATUS & TIME BADGE 🌟 */}
+                          <td className="py-2.5 px-3">
+                            {!lastLog ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/5 text-stone-400 border border-white/10 text-[10px]">
+                                No Noti Yet
+                              </span>
+                            ) : lastLog.status === 'SUCCESS' ? (
+                              <div
+                                className="flex flex-col items-start gap-0.5"
+                                title={lastLog.summary ? lastLog.summary.replace(/<[^>]+>/g, '') : 'Delivered to Telegram'}
+                              >
+                                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                                  <span>SENT</span>
+                                  {lastLogTimeStr && (
+                                    <span className="text-emerald-200/90 font-normal">• {lastLogTimeStr}</span>
+                                  )}
+                                </div>
+                                <span className="text-[9px] text-stone-400 font-mono pl-0.5 truncate max-w-[150px]">
+                                  {lastLog.type || 'NOTIFICATION'}
+                                </span>
+                              </div>
+                            ) : (
+                              <div
+                                className="flex flex-col items-start gap-0.5"
+                                title={lastLog.errorDetail || 'Delivery Failed'}
+                              >
+                                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/20 text-red-300 border border-red-500/40 text-[10px] font-bold">
+                                  <XCircle className="w-3 h-3 text-red-400 shrink-0" />
+                                  <span>FAILED</span>
+                                  {lastLogTimeStr && (
+                                    <span className="text-red-200/90 font-normal">• {lastLogTimeStr}</span>
+                                  )}
+                                </div>
+                                <span className="text-[9px] text-red-300/90 pl-0.5 truncate max-w-[160px]">
+                                  {lastLog.errorDetail || lastLog.type || 'Blocked / Invalid Chat'}
+                                </span>
+                              </div>
+                            )}
                           </td>
+
                           <td className="py-2.5 px-3 text-right">
                             <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                              {/* 🌟 NEW: + Manual Booking & Confirm Button 🌟 */}
+                              {/* + Manual Booking & Confirm Button */}
                               <button
                                 type="button"
                                 onClick={() => handleOpenManualBookingModal(sub)}
@@ -2420,7 +2486,7 @@ export const TelegramNotificationCenter: React.FC = () => {
         {activeTab === 'logs' && (
           <div className="space-y-3">
             <h3 className="text-xs font-bold text-[#C8A951]">
-              📜 နောက်ဆုံး ပေးပို့ခဲ့သော Telegram Notification မှတ်တမ်းများ (Last 35 Logs)
+              📜 နောက်ဆုံး ပေးပို့ခဲ့သော Telegram Notification မှတ်တမ်းများ (Recent Logs)
             </h3>
             <div className="overflow-x-auto bg-black/25 rounded-xl border border-[#C8A951]/20">
               <table className="w-full text-left text-xs">
@@ -2441,7 +2507,7 @@ export const TelegramNotificationCenter: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    logs.map((log) => (
+                    logs.slice(0, 50).map((log) => (
                       <tr key={log.id} className="hover:bg-white/5">
                         <td className="py-2 px-3 text-stone-400 whitespace-nowrap">
                           {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '-'}
@@ -2616,7 +2682,7 @@ export const TelegramNotificationCenter: React.FC = () => {
                     value={mbStaffId}
                     onChange={(e) => {
                       setMbStaffId(e.target.value);
-                      setMbTime(''); // Reset time slot when changing staff to re-verify conflicts
+                      setMbTime('');
                     }}
                     className="w-full bg-[#071810] border border-[#C8A951]/30 rounded-lg px-3 py-2 text-white font-semibold"
                   >
