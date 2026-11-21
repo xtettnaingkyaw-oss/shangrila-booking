@@ -65,31 +65,18 @@ const FALLBACK_APPDATA: AppData = {
   installSteps: DEFAULT_INSTALL_STEPS
 };
 
-// 🌟 Admin Panel မှ Logo URL ကို PWA စံချိန်မီ 192x192 နှင့် 512x512 PNG အဖြစ် ပြောင်းပေးမည့် Helper (Safe CORS & Fallback) 🌟
+// 🌟 System Settings (App Branding) မှ Logo ကို PWA Icon အဖြစ် ပြောင်းပေးမည့် Helper (CORS ဖြစ်လျှင်လည်း S မပေါ်ဘဲ Logo အစစ်ကိုသာ ပြန်ပေးမည်) 🌟
 const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> => {
   return new Promise((resolve) => {
-    const createFallbackIcon = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#123524';
-        ctx.fillRect(0, 0, size, size);
-        ctx.strokeStyle = '#D4AF37';
-        ctx.lineWidth = Math.max(6, size * 0.04);
-        ctx.strokeRect(size * 0.06, size * 0.06, size * 0.88, size * 0.88);
-        ctx.fillStyle = '#D4AF37';
-        ctx.font = `bold ${Math.floor(size * 0.5)}px serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('S', size / 2, size / 2 + size * 0.03);
-      }
-      return canvas.toDataURL('image/png');
-    };
-
+    const fallbackUrl = `${window.location.origin}/logo.png`;
     if (!logoUrl) {
-      resolve(createFallbackIcon());
+      resolve(fallbackUrl);
+      return;
+    }
+
+    // Base64 Data URL ဖြစ်နေပါက တိုက်ရိုက် ပြန်သုံးမည်
+    if (logoUrl.startsWith('data:image/')) {
+      resolve(logoUrl);
       return;
     }
 
@@ -113,11 +100,11 @@ const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> 
           return;
         }
       } catch {
-        // CORS Error တက်ပါက Fallback သုံးမည် (Xiaomi Launcher Crash ကာကွယ်ရန်)
+        // Canvas CORS Error တက်ပါက S အက္ခရာ မထုတ်ဘဲ မူရင်း Logo URL အစစ်ကိုသာ တိုက်ရိုက်သုံးမည်
       }
-      resolve(createFallbackIcon());
+      resolve(logoUrl);
     };
-    img.onerror = () => resolve(createFallbackIcon());
+    img.onerror = () => resolve(logoUrl || fallbackUrl);
     img.src = logoUrl;
   });
 };
@@ -243,13 +230,13 @@ function MainApp() {
   };
 
   useEffect(() => {
-  const interval = setInterval(() => {
-    pollAndProcessBusinessAutoReplies();
-  }, 6000); // 6 စက္ကန့်တစ်ကြိမ် DM Keyword စစ်ဆေးပေးမည်
-  return () => clearInterval(interval);
-}, []);
+    const interval = setInterval(() => {
+      pollAndProcessBusinessAutoReplies();
+    }, 6000); // 6 စက္ကန့်တစ်ကြိမ် DM Keyword စစ်ဆေးပေးမည်
+    return () => clearInterval(interval);
+  }, []);
 
-  // 🌟 Admin Panel မှ Logo နှင့် Branding အမည်ကို Browser Favicon နှင့် PWA Manifest သို့ အလိုအလျောက် ချိတ်ဆက်ပေးခြင်း 🌟
+  // 🌟 System Settings > App Branding မှ Logo ကို Favicon, Apple Touch Icon နှင့် PWA Manifest သို့ အလိုအလျောက် ချိတ်ဆက်ခြင်း 🌟
   useEffect(() => {
     const brandName = appData?.branding?.name || "The Shangri-La";
     const isStaffMode = appMode === 'staff';
@@ -261,23 +248,31 @@ function MainApp() {
       ? `${brandName} | POS`
       : `${brandName} | Men's Retreat`;
 
+    // System Settings (Firebase) မှ Logo ကို ဦးစားပေးယူမည်၊ မရှိသေးခင် Cache မှ ယူမည်
     const cachedLogo = localStorage.getItem('shangrila_logo_cache') || '';
-    const candidateLogo = appData?.branding?.logoUrl || cachedLogo || '';
-
-    // imgbb link ပျက်များ ဖြစ်နေပါက ကိုယ်ပိုင် Domain ပေါ်က /logo.png ကိုသာ သုံးမည်
-    const isBrokenImgbb = candidateLogo.includes('ibb.co') || candidateLogo.includes('imgbb.com');
-    const safeLogoUrl = (!candidateLogo || isBrokenImgbb)
+    const rawLogo = appData?.branding?.logoUrl || cachedLogo || '';
+    const isBrokenImgbb = rawLogo.includes('ibb.co') || rawLogo.includes('imgbb.com');
+    const activeLogoUrl = (!rawLogo || isBrokenImgbb)
       ? `${window.location.origin}/logo.png`
-      : candidateLogo;
+      : rawLogo;
+
+    // နောက်တစ်ကြိမ် Page ပြန်ဖွင့်ချိန် index.html က ချက်ချင်းဖတ်နိုင်ရန် LocalStorage တွင် အမြဲ Sync လုပ်ထားမည်
+    if (appData?.branding) {
+      try {
+        localStorage.setItem('shangrila_branding', JSON.stringify({
+          ...appData.branding,
+          logoUrl: activeLogoUrl
+        }));
+        if (!isBrokenImgbb && rawLogo) {
+          localStorage.setItem('shangrila_logo_cache', rawLogo);
+        }
+      } catch {}
+    }
 
     const syncBrandingAndManifest = async () => {
-      if (safeLogoUrl && !isBrokenImgbb) {
-        try { localStorage.setItem('shangrila_logo_cache', safeLogoUrl); } catch {}
-      }
-
       const [icon192, icon512] = await Promise.all([
-        generatePwaIconFromUrl(safeLogoUrl, 192),
-        generatePwaIconFromUrl(safeLogoUrl, 512)
+        generatePwaIconFromUrl(activeLogoUrl, 192),
+        generatePwaIconFromUrl(activeLogoUrl, 512)
       ]);
 
       // 1. Browser Tab Favicon ပြောင်းလဲခြင်း
@@ -293,13 +288,19 @@ function MainApp() {
         document.head.appendChild(newIcon);
       }
 
-      // 2. macOS Safari (Add to Dock) & iOS အတွက် Data URI မသုံးဘဲ တိုက်ရိုက် HTTPS URL သုံးရန်
+      // 2. macOS Safari (Add to Dock) & iOS (Add to Home Screen) အတွက် Data URI မသုံးဘဲ တိုက်ရိုက် Logo URL သုံးရန်
       const appleIconEl = document.getElementById('app-apple-icon') as HTMLLinkElement | null;
       if (appleIconEl) {
-        appleIconEl.href = safeLogoUrl;
+        appleIconEl.href = activeLogoUrl;
       }
 
-      // 3. Dynamic PWA Manifest တည်ဆောက်ခြင်း
+      // 3. Open Graph (og:image) ကိုပါ လက်ရှိ Branding Logo နှင့် ညှိပေးခြင်း
+      const ogImageEl = document.querySelector('meta[property="og:image"]') as HTMLMetaElement | null;
+      if (ogImageEl && activeLogoUrl.startsWith('http')) {
+        ogImageEl.content = activeLogoUrl;
+      }
+
+      // 4. Dynamic PWA Manifest တည်ဆောက်ခြင်း (Xiaomi/Redmi Launcher များအတွက် 'any' purpose သီးသန့်သုံးမည်)
       const startUrl = isStaffMode
         ? `${window.location.origin}/?mode=staff`
         : isPosMode
@@ -341,7 +342,7 @@ function MainApp() {
         const manifestJson = JSON.stringify(dynamicManifest);
         const blob = new Blob([manifestJson], { type: 'application/manifest+json' });
         const manifestUrl = URL.createObjectURL(blob);
-
+        
         const manifestEl = document.getElementById('app-manifest') as HTMLLinkElement | null;
         if (manifestEl) {
           manifestEl.href = manifestUrl;
@@ -358,7 +359,7 @@ function MainApp() {
     };
 
     syncBrandingAndManifest();
-  }, [appData?.branding?.logoUrl, appData?.branding?.name, appMode]);
+  }, [appData?.branding, appMode]);
 
   // 🌟 REAL-TIME CAMPAIGN & POPUP LOCKOUT GUARD (Admin မှ ပိတ်ထားလျှင် customer mode သို့ အလိုအလျောက် ပြန်ပို့မည်) 🌟
   useEffect(() => {
