@@ -261,19 +261,26 @@ function MainApp() {
       ? `${brandName} | POS`
       : `${brandName} | Men's Retreat`;
 
-    const rawLogoUrl = appData?.branding?.logoUrl || localStorage.getItem('shangrila_logo_cache') || '';
+    const cachedLogo = localStorage.getItem('shangrila_logo_cache') || '';
+    const candidateLogo = appData?.branding?.logoUrl || cachedLogo || '';
+
+    // imgbb link ပျက်များ ဖြစ်နေပါက ကိုယ်ပိုင် Domain ပေါ်က /logo.png ကိုသာ သုံးမည်
+    const isBrokenImgbb = candidateLogo.includes('ibb.co') || candidateLogo.includes('imgbb.com');
+    const safeLogoUrl = (!candidateLogo || isBrokenImgbb)
+      ? `${window.location.origin}/logo.png`
+      : candidateLogo;
 
     const syncBrandingAndManifest = async () => {
-      if (rawLogoUrl) {
-        try { localStorage.setItem('shangrila_logo_cache', rawLogoUrl); } catch {}
+      if (safeLogoUrl && !isBrokenImgbb) {
+        try { localStorage.setItem('shangrila_logo_cache', safeLogoUrl); } catch {}
       }
 
       const [icon192, icon512] = await Promise.all([
-        generatePwaIconFromUrl(rawLogoUrl, 192),
-        generatePwaIconFromUrl(rawLogoUrl, 512)
+        generatePwaIconFromUrl(safeLogoUrl, 192),
+        generatePwaIconFromUrl(safeLogoUrl, 512)
       ]);
 
-      // 1. Favicon နှင့် Apple Touch Icon အသစ်ပြောင်းလဲခြင်း
+      // 1. Browser Tab Favicon ပြောင်းလဲခြင်း
       const faviconEl = document.getElementById('app-favicon') as HTMLLinkElement | null;
       if (faviconEl) {
         faviconEl.href = icon192;
@@ -286,12 +293,13 @@ function MainApp() {
         document.head.appendChild(newIcon);
       }
 
+      // 2. macOS Safari (Add to Dock) & iOS အတွက် Data URI မသုံးဘဲ တိုက်ရိုက် HTTPS URL သုံးရန်
       const appleIconEl = document.getElementById('app-apple-icon') as HTMLLinkElement | null;
       if (appleIconEl) {
-        appleIconEl.href = icon192;
+        appleIconEl.href = safeLogoUrl;
       }
 
-      // 2. Dynamic PWA Manifest တည်ဆောက်ခြင်း (Xiaomi/Redmi Launcher များအတွက် 'any' purpose သီးသန့်သုံးမည်)
+      // 3. Dynamic PWA Manifest တည်ဆောက်ခြင်း
       const startUrl = isStaffMode
         ? `${window.location.origin}/?mode=staff`
         : isPosMode
@@ -333,7 +341,7 @@ function MainApp() {
         const manifestJson = JSON.stringify(dynamicManifest);
         const blob = new Blob([manifestJson], { type: 'application/manifest+json' });
         const manifestUrl = URL.createObjectURL(blob);
-        
+
         const manifestEl = document.getElementById('app-manifest') as HTMLLinkElement | null;
         if (manifestEl) {
           manifestEl.href = manifestUrl;
