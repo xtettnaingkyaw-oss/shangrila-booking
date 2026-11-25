@@ -466,6 +466,9 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
   const [otpSentToTelegram, setOtpSentToTelegram] = useState(false);
   const [otpBotUrls, setOtpBotUrls] = useState<{ httpsUrl: string; tgAppUrl: string } | null>(null);
   const [otpInput, setOtpInput] = useState('');
+  const [focusedOtpIdx, setFocusedOtpIdx] = useState<number | null>(null);
+  const otpBoxRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const lastAutoVerifiedRef = useRef<string>('');
   const [otpAttempts, setOtpAttempts] = useState(0);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [otpRemainingSecs, setOtpRemainingSecs] = useState(0);
@@ -507,7 +510,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       }).catch(() => {});
   }, [prefilledPhone, userId]);
 
-  // Real-time listener on users/{userId} so when Telegram Bot delivers OTP, UI immediately turns green
+  // Real-time listener on users/{userId} so when Telegram Bot delivers OTP, UI immediately turns green & stays synced
   useEffect(() => {
       if (step === 3 && otpState === 'verify' && userId) {
           const unsub = onSnapshot(doc(db, 'users', userId), (docSnap) => {
@@ -516,14 +519,20 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
                   if (data.otpSentToTelegram === true && (!otpToken || data.otpToken === otpToken)) {
                       setOtpSentToTelegram(true);
                   }
-                  if (data.resetOtp && !generatedOtp) {
-                      setGeneratedOtp(decryptText(data.resetOtp) || '');
+                  if (data.resetOtp) {
+                      const dec = decryptText(data.resetOtp) || '';
+                      if (dec && dec.length === 6) {
+                          setGeneratedOtp((prev) => (prev !== dec ? dec : prev));
+                      }
+                  }
+                  if (data.otpExpiresAt) {
+                      setOtpExpiresAt(Number(data.otpExpiresAt));
                   }
               }
           });
           return () => unsub();
       }
-  }, [step, otpState, userId, otpToken, generatedOtp]);
+  }, [step, otpState, userId, otpToken]);
 
   // Background Telegram Bot delivery poller (works even when Admin Panel is closed!)
   useEffect(() => {
@@ -679,6 +688,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           setOtpExpiresAt(expiresAt);
           setOtpAttempts(0);
           setOtpInput('');
+          lastAutoVerifiedRef.current = '';
           setOtpSentToTelegram(false);
           setResendCooldown(45);
 
@@ -735,10 +745,9 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       }
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-      e.preventDefault();
+  const verifyOtpCode = async (codeOverride?: string) => {
       setError('');
-      const entered = otpInput.replace(/\D/g, '').trim();
+      const entered = (codeOverride ?? otpInput).replace(/\D/g, '').slice(0, 6);
       if (entered.length !== 6) {
           setError('Telegram Bot မှ ရရှိသော ဂဏန်း ၆ လုံး (OTP) ကို ပြည့်စုံစွာ ရိုက်ထည့်ပေးပါ။');
           return;
@@ -752,22 +761,41 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           return;
       }
 
-      // Verify against freshest Firestore doc (prevents stale state mismatch)
+      // 🌟 Fast-Path Instant Verification (0ms, zero hang even after iOS app-switch from Telegram!) 🌟
+      if (generatedOtp && generatedOtp.length === 6 && entered === generatedOtp) {
+          setError('');
+          setLoading(false);
+          setStep(5);
+          return;
+      }
+
+      // Fallback: Check Firestore with a strict 2.5s timeout so iOS WebKit resume NEVER hangs on "စစ်ဆေးနေပါသည်..."
       setLoading(true);
       try {
           let expectedOtp = generatedOtp;
           if (userId) {
-              const uSnap = await getDoc(doc(db, 'users', userId));
-              if (uSnap.exists()) {
+              const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+              const uSnap = await Promise.race([
+                  getDoc(doc(db, 'users', userId)).catch(() => null),
+                  timeoutPromise
+              ]);
+              if (uSnap && uSnap.exists()) {
                   const uData = uSnap.data();
                   if (uData.otpExpiresAt && Date.now() > Number(uData.otpExpiresAt)) {
                       setError('OTP သက်တမ်း ကုန်ဆုံးသွားပါပြီ။ OTP အသစ် ပြန်တောင်းပေးပါ။');
-                      setLoading(false);
                       return;
                   }
                   const freshOtp = decryptText(uData.resetOtp) || '';
-                  if (freshOtp) expectedOtp = freshOtp;
+                  if (freshOtp) {
+                      expectedOtp = freshOtp;
+                      setGeneratedOtp(freshOtp);
+                  }
               }
+          }
+
+          if (!expectedOtp) {
+              setError('အင်တာနက်ချိတ်ဆက်မှု နှေးကွေးနေပါသည်။ ခဏစောင့်ပြီး ထပ်မံအတည်ပြုပေးပါ။');
+              return;
           }
 
           if (entered !== expectedOtp) {
@@ -776,8 +804,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
               if (userId) {
                   updateDoc(doc(db, 'users', userId), { otpAttempts: nextAttempts }).catch(() => {});
               }
-              setError(`OTP ကုဒ် မှားယွင်းနေပါသည်။ (${5 - nextAttempts} ကြိမ်သာ ကျန်ရှိတော့သည်)`);
-              setLoading(false);
+              setError(`OTP ကုဒ် မှားယွင်းနေပါသည်။ (${Math.max(0, 5 - nextAttempts)} ကြိမ်သာ ကျန်ရှိတော့သည်)`);
               return;
           }
 
@@ -785,10 +812,94 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           setError('');
           setStep(5);
       } catch {
-          setError('OTP စစ်ဆေးရာတွင် အခက်အခဲရှိနေပါသည်။');
+          setError('OTP စစ်ဆေးရာတွင် အခက်အခဲရှိနေပါသည်။ ထပ်မံကြိုးစားပေးပါ။');
       } finally {
           setLoading(false);
       }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+      e.preventDefault();
+      await verifyOtpCode();
+  };
+
+  // Auto-verify smoothly when all 6 digits are filled (e.g. Copy/Paste or 6th digit typed)
+  useEffect(() => {
+      if (step !== 3 || otpState !== 'verify') return;
+      const clean = otpInput.replace(/\D/g, '');
+      if (clean.length < 6) {
+          lastAutoVerifiedRef.current = '';
+          return;
+      }
+      if (clean.length === 6 && !loading && lastAutoVerifiedRef.current !== clean) {
+          lastAutoVerifiedRef.current = clean;
+          const t = setTimeout(() => {
+              verifyOtpCode(clean);
+          }, 180);
+          return () => clearTimeout(t);
+      }
+  }, [otpInput, step, otpState, loading]);
+
+  const applyOtpString = (raw: string, startIndex: number = 0) => {
+      const digits = raw.replace(/\D/g, '');
+      if (!digits) return;
+      if (error) setError('');
+
+      // Full or multi-digit paste (e.g. "985604" or "OTP: 985 604") -> fill from box 0
+      if (digits.length > 1) {
+          const six = digits.slice(0, 6);
+          setOtpInput(six);
+          const focusIdx = Math.min(six.length - 1, 5);
+          requestAnimationFrame(() => otpBoxRefs.current[focusIdx]?.focus());
+          return;
+      }
+
+      // Single digit entry: replace existing slot or append at first empty slot
+      const targetIdx = startIndex > otpInput.length ? otpInput.length : startIndex;
+      const chars = Array.from({ length: 6 }, (_, i) => otpInput[i] || '');
+      chars[targetIdx] = digits[0];
+      const next = chars.join('').slice(0, 6);
+      setOtpInput(next);
+      if (targetIdx < 5) {
+          requestAnimationFrame(() => otpBoxRefs.current[targetIdx + 1]?.focus());
+      }
+  };
+
+  const handleOtpBoxKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Backspace') {
+          e.preventDefault();
+          if (error) setError('');
+          const chars = Array.from({ length: 6 }, (_, i) => otpInput[i] || '');
+          if (chars[idx]) {
+              chars[idx] = '';
+              setOtpInput(chars.join(''));
+          } else if (idx > 0) {
+              chars[idx - 1] = '';
+              setOtpInput(chars.join(''));
+              requestAnimationFrame(() => otpBoxRefs.current[idx - 1]?.focus());
+          }
+      } else if (e.key === 'ArrowLeft' && idx > 0) {
+          e.preventDefault();
+          otpBoxRefs.current[idx - 1]?.focus();
+      } else if (e.key === 'ArrowRight' && idx < 5) {
+          e.preventDefault();
+          otpBoxRefs.current[idx + 1]?.focus();
+      }
+  };
+
+  const handlePasteOtpFromClipboard = async () => {
+      try {
+          if (navigator.clipboard && navigator.clipboard.readText) {
+              const clip = await navigator.clipboard.readText();
+              const digits = (clip || '').replace(/\D/g, '').slice(0, 6);
+              if (digits.length > 0) {
+                  applyOtpString(digits, 0);
+                  return;
+              }
+          }
+      } catch {}
+      // Graceful fallback on iOS if clipboard prompt is declined: focus box 1 so user can tap native Paste
+      otpBoxRefs.current[0]?.focus();
   };
 
   const handleSetNewPassword = async (e: React.FormEvent) => {
@@ -799,20 +910,33 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       
       setLoading(true); setError('');
       try {
-          await updateDoc(doc(db, 'users', userId), {
-              password: encryptText(newPassword),
-              resetRequested: false,
-              resetOtp: '',
-              otpToken: '',
-              otpExpiresAt: 0,
-              otpAttempts: 0,
-              otpSentToTelegram: false,
-              otpApproved: false
-          });
+          const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('timeout')), 10000)
+          );
+          await Promise.race([
+              updateDoc(doc(db, 'users', userId), {
+                  password: encryptText(newPassword),
+                  resetRequested: false,
+                  resetOtp: '',
+                  otpToken: '',
+                  otpExpiresAt: 0,
+                  otpAttempts: 0,
+                  otpSentToTelegram: false,
+                  otpApproved: false
+              }),
+              timeoutPromise
+          ]);
           setSuccessMsg('စကားဝှက်အသစ် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။');
           setTimeout(() => { onLoginSuccess(phone.trim()); }, 1500);
-      } catch (e) { setError('Error updating password.'); }
-      setLoading(false);
+      } catch (err: any) {
+          setError(
+              err?.message === 'timeout'
+                  ? 'အင်တာနက်ချိတ်ဆက်မှု နှေးကွေးနေပါသည်။ ထပ်မံနှိပ်ပေးပါ။'
+                  : 'စကားဝှက်ပြောင်းလဲရာတွင် အခက်အခဲရှိနေပါသည်။ ထပ်မံကြိုးစားပေးပါ။'
+          );
+      } finally {
+          setLoading(false);
+      }
   };
 
   const checkBonusValid = () => {
@@ -883,7 +1007,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
   };
 
   return (
-    <div className="relative bg-white p-8 sm:p-10 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#D4AF37]/20 max-w-sm mx-auto text-center mt-8 mb-12 animate-fade-in overflow-hidden">
+    <div className="relative bg-white px-5 py-7 sm:p-10 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#D4AF37]/20 max-w-sm mx-auto text-center mt-8 mb-12 animate-fade-in overflow-hidden">
       <div className="absolute -top-16 -right-16 w-40 h-40 bg-[#D4AF37] opacity-10 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-[#123524] opacity-[0.03] rounded-full blur-3xl pointer-events-none"></div>
 
@@ -1031,42 +1155,140 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
                     </div>
                   )}
 
-                  {/* 6-Digit OTP Input */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                        Enter 6-Digit OTP Code
+                  {/* Luxury 6-Box Segmented OTP Input */}
+                  <div className="bg-gradient-to-b from-[#FAFBF9] to-white p-3.5 sm:p-4 rounded-2xl border border-[#D4AF37]/25 shadow-inner space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-[10px] font-extrabold text-[#123524]/75 uppercase tracking-[0.12em]">
+                        6-Digit OTP Code
                       </label>
                       {otpRemainingSecs > 0 ? (
-                        <span className="text-[10px] font-mono font-bold text-[#123524] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          ⏱ {Math.floor(otpRemainingSecs / 60)}:{String(otpRemainingSecs % 60).padStart(2, '0')}
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+                            otpRemainingSecs <= 60
+                              ? 'text-amber-700 bg-amber-50 border-amber-200'
+                              : 'text-[#123524] bg-emerald-50 border-emerald-200/80'
+                          }`}
+                        >
+                          <Clock className="w-3 h-3" />
+                          {Math.floor(otpRemainingSecs / 60)}:{String(otpRemainingSecs % 60).padStart(2, '0')}
                         </span>
                       ) : (
-                        <span className="text-[10px] font-bold text-red-600">Expired</span>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200">
+                          သက်တမ်းကုန်ဆုံး
+                        </span>
                       )}
                     </div>
-                    <input
-                      required
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      placeholder="• • • • • •"
-                      value={otpInput}
-                      onChange={(e) => {
-                        setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6));
-                        if (error) setError('');
+
+                    <div
+                      className="grid grid-cols-6 gap-1.5 sm:gap-2"
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        const pasted = e.clipboardData.getData('text') || '';
+                        applyOtpString(pasted, 0);
                       }}
-                      className="w-full p-4 bg-gray-50 border-2 border-[#D4AF37]/40 rounded-xl outline-none focus:border-[#123524] focus:ring-2 focus:ring-[#D4AF37]/25 transition-all font-mono font-black text-2xl text-center tracking-[0.5em] text-[#123524] shadow-inner"
-                    />
+                    >
+                      {[0, 1, 2, 3, 4, 5].map((idx) => {
+                        const digit = otpInput[idx] || '';
+                        const isFocused = focusedOtpIdx === idx;
+                        const hasErr = Boolean(error);
+                        return (
+                          <div key={idx} className="relative">
+                            <input
+                              ref={(el) => { otpBoxRefs.current[idx] = el; }}
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              autoComplete={idx === 0 ? 'one-time-code' : 'off'}
+                              aria-label={`OTP digit ${idx + 1}`}
+                              value={digit}
+                              onFocus={(e) => {
+                                setFocusedOtpIdx(idx);
+                                e.target.select();
+                              }}
+                              onBlur={() => setFocusedOtpIdx((prev) => (prev === idx ? null : prev))}
+                              onChange={(e) => {
+                                const rawVal = e.target.value;
+                                if (!rawVal) {
+                                  const chars = Array.from({ length: 6 }, (_, i) => otpInput[i] || '');
+                                  chars[idx] = '';
+                                  setOtpInput(chars.join(''));
+                                  if (error) setError('');
+                                  return;
+                                }
+                                const clean = rawVal.replace(/\D/g, '');
+                                if (!clean) return;
+                                // If box already had 1 digit and user typed a replacement digit (e.g. "9" -> "95")
+                                if (digit && clean.length === 2) {
+                                  const replaced = clean[0] === digit ? clean[1] : clean[0];
+                                  applyOtpString(replaced, idx);
+                                  return;
+                                }
+                                if (clean.length > 1) {
+                                  applyOtpString(clean, 0);
+                                } else {
+                                  applyOtpString(clean, idx);
+                                }
+                              }}
+                              onKeyDown={(e) => handleOtpBoxKeyDown(idx, e)}
+                              className={`w-full h-12 sm:h-14 rounded-xl text-center font-mono font-black text-xl sm:text-2xl tabular-nums outline-none transition-all duration-200 caret-[#D4AF37] ${
+                                hasErr
+                                  ? 'border-2 border-red-400 bg-red-50/70 text-red-700 ring-2 ring-red-100'
+                                  : isFocused
+                                  ? 'border-2 border-[#123524] bg-white text-[#123524] ring-4 ring-[#D4AF37]/25 -translate-y-0.5 shadow-md'
+                                  : digit
+                                  ? 'border-2 border-[#123524]/70 bg-gradient-to-b from-[#F3F9F5] to-[#FFFDF5] text-[#123524] shadow-sm'
+                                  : 'border-[1.5px] border-[#D4AF37]/40 bg-white text-[#123524] hover:border-[#D4AF37]/75 shadow-[0_1px_4px_rgba(18,53,36,0.04)]'
+                              }`}
+                            />
+                            {!digit && !isFocused && (
+                              <span
+                                aria-hidden="true"
+                                className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]/45" />
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Quick Paste / Clear Bar */}
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[10px] text-gray-400 font-semibold">
+                        Copy / Paste ဖြင့် တိုက်ရိုက်ထည့်နိုင်သည်
+                      </span>
+                      {otpInput.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOtpInput('');
+                            lastAutoVerifiedRef.current = '';
+                            setError('');
+                            requestAnimationFrame(() => otpBoxRefs.current[0]?.focus());
+                          }}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-500 hover:text-red-500 transition px-2 py-0.5 rounded-md hover:bg-red-50"
+                        >
+                          <X className="w-3 h-3" /> ပြန်ဖျက်ရန်
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handlePasteOtpFromClipboard}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-[#123524] bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 border border-[#D4AF37]/35 px-2.5 py-0.5 rounded-full transition active:scale-95"
+                        >
+                          <Copy className="w-3 h-3 text-[#b59021]" /> ကုဒ် Paste လုပ်ရန်
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <button
                     type="submit"
                     disabled={loading || otpInput.length !== 6}
-                    className="w-full py-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:brightness-110 active:scale-[0.98] transition-all flex justify-center items-center gap-2 uppercase tracking-widest text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:brightness-110 active:scale-[0.98] transition-all flex justify-center items-center gap-2 tracking-wide text-xs disabled:opacity-45 disabled:cursor-not-allowed"
                   >
-                    <ShieldCheck className="w-4 h-4" />
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
                     <span>{loading ? 'စစ်ဆေးနေပါသည်...' : 'OTP အတည်ပြုပြီး Password အသစ်လုပ်မည်'}</span>
                   </button>
 
