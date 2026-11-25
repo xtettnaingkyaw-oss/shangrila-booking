@@ -9,6 +9,7 @@ import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, forma
 import { useAppStore } from '../AppDataContext';
 import ThadingyutCampaign from './ThadingyutCampaign';
 import { notifyBookingEvent, notifyStaffUpdate, fetchBotUsername, normalizePhone } from '../telegramService';
+import { playCustomerChime, unlockAudioContext } from '../utils/soundEffects';
 
 // 🌟 iOS PWA / Safari / Browser အားလုံးတွင် Popup မပိတ်စေဘဲ ချက်ချင်း Telegram ပွင့်စေမည့် Synchronous Helper 🌟
 const getInstantTelegramLink = (phoneStr?: string, bookingId?: string) => {
@@ -3233,8 +3234,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
        });
        if (!isFirstLoad.current && changed) {
          if (activeTab !== 'history') setHasNoti(true);
-         const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
-         if (audioEl) { audioEl.currentTime = 0; audioEl.play().catch(() => {}); }
+         playCustomerChime();
        }
        isFirstLoad.current = false;
      });
@@ -3244,8 +3244,7 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
    useEffect(() => { if (activeTab === 'history') setHasNoti(false); }, [activeTab]);
 
    const handleInteraction = () => {
-     const audioEl = document.getElementById('customer-alert-sound') as HTMLAudioElement;
-     if (audioEl && audioEl.paused) { audioEl.play().then(() => { audioEl.pause(); audioEl.currentTime = 0; }).catch(() => {}); }
+     unlockAudioContext();
    };
 
    const handleDashboardBook = (t: TherapistProfile) => { setPrefillTherapist(t); setActiveTab('therapists'); };
@@ -3262,7 +3261,6 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 
    return (
      <div className="w-full relative" onClick={handleInteraction}>
-       <audio id="customer-alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto" />
 
        {/* 🌟 ညာဘက်အောက်နားတွင် အမြဲပေါ်နေမည့် Floating Telegram Direct Link Button (100% Mobile & iOS PWA Ready) 🌟 */}
        <div className="fixed bottom-6 right-5 z-[999] flex items-center gap-2">

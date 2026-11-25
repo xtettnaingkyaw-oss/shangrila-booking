@@ -11,8 +11,8 @@
     <meta name="google-site-verification" content="tdKsN1wAtPm-EBB8GKfgd800fB0wFS6WVhMAupWfDA4" />
 
     <!-- 🌟 Tab တွင်ပေါ်မည့် လိုဂို (Favicon) - Admin Panel မှ အလိုအလျောက် ပြောင်းလဲနိုင်ရန် id ထည့်ထားသည် 🌟 -->
-    <link id="app-favicon" rel="icon" type="image/png" href="https://www.shangrilamenretreat.online/logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link id="app-favicon" rel="icon" type="image/png" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- 🌟 Google တွင် ပေါ်မည့် Title နှင့် Description (SEO) 🌟 -->
     <title>The Shangri-La Men's Retreat | Best Men Spa in Mandalay</title>
@@ -41,55 +41,67 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Shangri-La Spa" />
-    <link id="app-apple-icon" rel="apple-touch-icon" href="https://www.shangrilamenretreat.online/logo.png" />
+    <link id="app-apple-icon" rel="apple-touch-icon" href="/logo.png" />
 
-    <!-- 🌟 NEW: Telegram Mini App Official SDK (Auto Chat ID Capture & Mini App UI) 🌟 -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- 🌟 Non-Blocking Conditional Telegram Mini App SDK (VPN မလိုဘဲ မြန်မာနိုင်ငံတွင် ချက်ချင်းပွင့်စေရန် Telegram Context ရှိမှသာ Async ခေါ်မည်) 🌟 -->
     <script>
       (function () {
+        function initTelegramWebApp() {
+          try {
+            if (window.Telegram && window.Telegram.WebApp) {
+              var tg = window.Telegram.WebApp;
+              tg.ready();
+              tg.expand();
+              if (typeof tg.setHeaderColor === 'function') tg.setHeaderColor('#0B2419');
+              if (typeof tg.setBackgroundColor === 'function') tg.setBackgroundColor('#0B2419');
+
+              var tgUser = tg.initDataUnsafe && tg.initDataUnsafe.user;
+              if (tgUser && tgUser.id) {
+                var capturedUser = {
+                  chatId: String(tgUser.id),
+                  firstName: tgUser.first_name || '',
+                  lastName: tgUser.last_name || '',
+                  username: tgUser.username || '',
+                  languageCode: tgUser.language_code || 'my',
+                  capturedAt: new Date().toISOString()
+                };
+                localStorage.setItem('shangrila_tg_user', JSON.stringify(capturedUser));
+                localStorage.setItem('shangrila_customer_chat_id', String(tgUser.id));
+              }
+
+              var startParam = tg.initDataUnsafe && tg.initDataUnsafe.start_param;
+              if (startParam) {
+                sessionStorage.setItem('shangrila_tg_start_param', String(startParam));
+              }
+            }
+          } catch (e) {
+            console.warn('Telegram WebApp init warning:', e);
+          }
+        }
+
         try {
-          if (window.Telegram && window.Telegram.WebApp) {
-            var tg = window.Telegram.WebApp;
-            tg.ready();
-            tg.expand(); // Mini App ပွင့်လာသည်နှင့် မျက်နှာပြင်အပြည့် ဆွဲချဲ့ပေးခြင်း
-            if (typeof tg.setHeaderColor === 'function') {
-              tg.setHeaderColor('#0B2419');
-            }
-            if (typeof tg.setBackgroundColor === 'function') {
-              tg.setBackgroundColor('#0B2419');
-            }
-            // Telegram မှ ဝင်လာသော User ၏ Chat ID နှင့် အချက်အလက်ကို အလိုအလျောက် ဖမ်းယူသိမ်းဆည်းခြင်း
-            var tgUser = tg.initDataUnsafe && tg.initDataUnsafe.user;
-            if (tgUser && tgUser.id) {
-              var capturedUser = {
-                chatId: String(tgUser.id),
-                firstName: tgUser.first_name || '',
-                lastName: tgUser.last_name || '',
-                username: tgUser.username || '',
-                languageCode: tgUser.language_code || 'my',
-                capturedAt: new Date().toISOString()
-              };
-              localStorage.setItem('shangrila_tg_user', JSON.stringify(capturedUser));
-              localStorage.setItem('shangrila_customer_chat_id', String(tgUser.id));
-            }
-            // Telegram Direct Link (?startapp=...) မှ ဝင်လာသည့် Tab Parameter ကို ဖမ်းယူခြင်း
-            var startParam = tg.initDataUnsafe && tg.initDataUnsafe.start_param;
-            if (startParam) {
-              sessionStorage.setItem('shangrila_tg_start_param', String(startParam));
-            }
+          var hash = window.location.hash || '';
+          var search = window.location.search || '';
+          var isTelegramContext =
+            Boolean(window.TelegramWebviewProxy) ||
+            hash.indexOf('tgWebAppData') !== -1 ||
+            hash.indexOf('tgWebAppVersion') !== -1 ||
+            search.indexOf('tgWebAppData') !== -1 ||
+            search.indexOf('tgWebAppStartParam') !== -1 ||
+            /Telegram/i.test(navigator.userAgent || '');
+
+          if (isTelegramContext) {
+            var s = document.createElement('script');
+            s.src = 'https://telegram.org/js/telegram-web-app.js';
+            s.async = true;
+            s.onload = initTelegramWebApp;
+            s.onerror = function () { /* Ignore when Telegram is unreachable */ };
+            document.head.appendChild(s);
           }
         } catch (e) {
-          console.warn('Telegram WebApp init warning:', e);
+          console.warn('Telegram loader warning:', e);
         }
       })();
-    </script>
-
-    <!-- 🌟 မူလ Tailwind v3 CDN (Primary) နှင့် VPN မဖွင့်ထားချိန်အတွက် v3 Mirror (Conflict လုံးဝမဖြစ်ပါ) 🌟 -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      if (typeof window.tailwind === 'undefined') {
-        document.write('<script src="https://unpkg.com/tailwindcss-cdn@3.4.10/tailwindcss.js"><\/script>');
-      }
     </script>
 
     <!-- 🌟 Dynamic PWA Manifest (Admin မှ Branding တွင်ပြောင်းသော Logo ကို PWA Icon အဖြစ် အလိုအလျောက် သုံးရန်) 🌟 -->
@@ -98,7 +110,7 @@
       (function () {
         try {
           var brandingData = localStorage.getItem('shangrila_branding');
-          var logoUrl = "https://www.shangrilamenretreat.online/logo.png";
+          var logoUrl = window.location.origin + '/logo.png';
 
           if (brandingData) {
             try {
@@ -115,18 +127,18 @@
 
           var params = new URLSearchParams(window.location.search);
           var path = window.location.pathname.toLowerCase();
-          var isStaff = params.get('portal') === 'staff' || path.indexOf('staff') !== -1;
+          var isStaff = params.get('portal') === 'staff' || params.get('mode') === 'staff' || path.indexOf('staff') !== -1;
 
           if (isStaff) {
             document.title = 'Shangri-La Staff Portal';
           }
 
           var manifestObj = {
-            "id": isStaff ? "/?portal=staff" : "/",
+            "id": isStaff ? "/?mode=staff" : "/",
             "name": isStaff ? "Shangri-La Staff Portal" : "The Shangri-La Men's Retreat",
             "short_name": isStaff ? "SL Staff" : "Shangri-La",
             "description": "The Shangri-La Men's Retreat - Beyond Relaxation",
-            "start_url": isStaff ? "/?portal=staff" : "/",
+            "start_url": isStaff ? "/?mode=staff" : "/",
             "scope": "/",
             "display": "standalone",
             "orientation": "portrait",
@@ -166,15 +178,7 @@
 
     <div id="root"></div>
 
-    <!-- 🌟 App ရဲ့ Main Code သို့ ညွှန်းခြင်း 🌟 -->
+    <!-- 🌟 App ရဲ့ Main Code သို့ ညွှန်းခြင်း (Service Worker ကို src/main.tsx တွင် တစ်ကြိမ်တည်း Register လုပ်ထားသည်) 🌟 -->
     <script type="module" src="/src/main.tsx"></script>
-
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('SW error:', err));
-        });
-      }
-    </script>
   </body>
 </html>

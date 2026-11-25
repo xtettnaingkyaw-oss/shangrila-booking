@@ -101,6 +101,7 @@ export interface BookingNotificationPayload {
   customerChatId?: string;
   serviceName: string;
   duration?: string | number;
+  durationMins?: number;
   price?: number;
   date: string;
   time: string;

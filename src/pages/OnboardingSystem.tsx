@@ -105,7 +105,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
 
         try {
             const smallBase64 = await compressImageToSmallBase64(file);
-            setFormData(prev => ({ ...prev, [field]: smallBase64 }));
+            setFormData((prev: any) => ({ ...prev, [field]: smallBase64 }));
         } catch (err: any) { 
             console.error("Image Upload Error:", err);
             alert("Image upload failed. Error: " + err.message); 
@@ -314,7 +314,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                             {DOC_CHECKLIST.map((doc, idx) => (
                                 <label key={idx} className="flex items-start space-x-3 mb-2 cursor-pointer">
                                     <input type="checkbox" checked={formData.documents.includes(doc)} onChange={(e) => {
-                                        const newDocs = e.target.checked ? [...formData.documents, doc] : formData.documents.filter(d => d !== doc);
+                                        const newDocs = e.target.checked ? [...formData.documents, doc] : formData.documents.filter((d: string) => d !== doc);
                                         setFormData({...formData, documents: newDocs});
                                     }} className="mt-1 w-4 h-4 accent-[#123524]" />
                                     <span className="text-xs font-semibold text-gray-700 leading-relaxed">{doc}</span>
@@ -327,7 +327,7 @@ export function NewEmployeeOnboardingForm({ onBack, existingStaffId = null, exis
                             {RULES_LIST.map((rule, idx) => (
                                 <label key={idx} className="flex items-start space-x-3 mb-2 cursor-pointer bg-gray-50 p-2 rounded-lg border border-gray-100">
                                     <input type="checkbox" checked={formData.rules.includes(rule)} onChange={(e) => {
-                                        const newRules = e.target.checked ? [...formData.rules, rule] : formData.rules.filter(r => r !== rule);
+                                        const newRules = e.target.checked ? [...formData.rules, rule] : formData.rules.filter((r: string) => r !== rule);
                                         setFormData({...formData, rules: newRules});
                                     }} className="mt-1 w-4 h-4 accent-[#D4AF37]" />
                                     <span className="text-[11px] font-semibold text-gray-700 leading-relaxed">{rule}</span>
@@ -676,22 +676,7 @@ export function AdminHRManagement() {
             }
         });
 
-        // ၃။ Resign Requests
-        const unsubResign = onSnapshot(collection(db, 'resign_requests'), snap => {
-            const arr: any[] = []; 
-            snap.forEach(d => arr.push({ id: d.id, ...d.data() })); 
-            if (typeof setResignReqs !== 'undefined') setResignReqs(arr);
-        });
-
-        // ၄။ Resigned Staff List
-        const unsubResignedList = onSnapshot(query(collection(db, 'therapists'), where('isResigned', '==', true)), snap => {
-            const arr: any[] = []; 
-            snap.forEach(d => arr.push({ id: d.id, ...d.data() })); 
-            if (typeof setResignedStaffList !== 'undefined') setResignedStaffList(arr);
-        });
-
-        // 🌟 ပြင်ဆင်ချက်: unsubPositions ကိုပါ ဖြုတ်သိမ်းသည့်စာရင်းတွင် ထည့်သွင်းထားသည် 🌟
-        return () => { unsubReq(); unsubStaff(); unsubPositions(); unsubResign(); unsubResignedList(); };
+        return () => { unsubReq(); unsubStaff(); unsubPositions(); };
     }, []);
     
     // 🌟 ရာထူး အသစ်ထည့်ရန် Function 🌟

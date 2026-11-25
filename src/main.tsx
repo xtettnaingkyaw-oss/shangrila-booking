@@ -11,13 +11,24 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </AppDataProvider>
   </React.StrictMode>
 )
-// 🌟 Register Service Worker for Offline POS Support 🌟
+// 🌟 Register Service Worker in production builds for Offline POS Support (avoid intercepting dev server requests) 🌟
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((registration) => {
-      console.log('ServiceWorker registration successful with scope: ', registration.scope);
-    }, (err) => {
-      console.log('ServiceWorker registration failed: ', err);
-    });
+    if (import.meta.env.PROD) {
+      navigator.serviceWorker.register('/sw.js').then((registration) => {
+        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+      }, (err) => {
+        console.log('ServiceWorker registration failed: ', err);
+      });
+    } else {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((reg) => reg.unregister().catch(() => {}));
+      }).catch(() => {});
+      if ('caches' in window) {
+        caches.keys().then((keys) => {
+          keys.forEach((k) => caches.delete(k).catch(() => {}));
+        }).catch(() => {});
+      }
+    }
   });
 }

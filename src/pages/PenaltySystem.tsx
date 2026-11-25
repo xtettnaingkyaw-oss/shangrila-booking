@@ -8,8 +8,7 @@ import {
   getDocs,
   setDoc
 } from 'firebase/firestore';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { db, auth } from '../firebase';
+import { db } from '../firebase';
 import {
   Calendar,
   Wallet,
@@ -369,12 +368,7 @@ export function AdminPenaltyManager({
     }
   }, [uniqueTherapists]);
 
-  // Ensure Firebase Auth is active on Tablet/Desktop
-  useEffect(() => {
-    if (!auth.currentUser) {
-      signInWithEmailAndPassword(auth, 'admin@shangrila.com', 'admin123').catch(() => {});
-    }
-  }, []);
+  // Firebase Auth session is managed by AdminApp / StaffApp login flow
 
   // Real-Time Listeners + Mirror Document Listener
   useEffect(() => {
@@ -499,12 +493,6 @@ export function AdminPenaltyManager({
   const handleManualCloudSync = async () => {
     setIsRefreshingCloud(true);
     try {
-      if (!auth.currentUser) {
-        await withTimeout(
-          signInWithEmailAndPassword(auth, 'admin@shangrila.com', 'admin123'),
-          2000
-        );
-      }
       const [pSnap, dSnap, lSnap, mSnap] = await Promise.all([
         withTimeout(getDocs(collection(db, 'penalties')), 2500),
         withTimeout(getDocs(collection(db, 'deposits')), 2500),

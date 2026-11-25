@@ -17,6 +17,7 @@ import { AdminExpenseManager, AdminExpenseReportDashboard, AdminRevenueProfitDas
 import { BookOpen, Wallet, PieChart, Send } from 'lucide-react';
 import { TelegramNotificationCenter } from '../components/TelegramNotificationCenter';
 import { notifyBookingEvent,notifyStaffUpdate,getTelegramConfig,saveTelegramConfig,pollAndProcessBusinessAutoReplies,DEFAULT_BUSINESS_AUTO_REPLY_RULES,BusinessAutoReplyRule,TelegramBotConfig} from '../telegramService';
+import { playAdminAlertSound, unlockAudioContext } from '../utils/soundEffects';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
 const DEFAULT_INSTALL_STEPS: InstallStep[] = [
@@ -30,7 +31,7 @@ const getLocalTodayStr = () => {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 };
 
-interface LocalAdminProfile extends AdminProfile { docId?: string; username?: string; password?: string; role?: 'super_admin' | 'custom'; permissions?: string[]; }
+interface LocalAdminProfile extends Omit<AdminProfile, 'username'> { docId?: string; username?: string; password?: string; role?: 'super_admin' | 'custom'; permissions?: string[]; }
 
 export default function AdminApp({ appData, onSettingsUpdated }: { appData: AppData, onSettingsUpdated: (data: AppData) => void }) {
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
@@ -72,16 +73,9 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError('');
     try {
-      if (username === 'admin' && password === 'admin123') {
-          try { await signInWithEmailAndPassword(auth, 'admin@shangrila.com', password); } 
-          catch (e: any) {
-              await createUserWithEmailAndPassword(auth, 'admin@shangrila.com', password);
-              await addDoc(collection(db, 'admins'), { username: encryptText('admin'), password: encryptText('admin123'), role: 'super_admin', permissions: ['bookings', 'reports', 'users', 'points', 'admins', 'settings'] });
-          }
-          onLogin('admin'); setLoading(false); return;
-      }
-      await signInWithEmailAndPassword(auth, `${username.toLowerCase()}@shangrila.com`, password);
-      onLogin(username);
+      const cleanUser = username.trim();
+      await signInWithEmailAndPassword(auth, `${cleanUser.toLowerCase()}@shangrila.com`, password);
+      onLogin(cleanUser);
     } catch (e) { setError('Invalid Admin Username or Password'); }
     setLoading(false);
   };
@@ -118,12 +112,15 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 
   const activeLogoUrl = appData?.branding?.logoUrl || '';
 
-  // 🌟 Telegram Business Direct Message (Keyword Auto-Reply) Real-Time Background Listener 🌟
+  // 🌟 Telegram Business Direct Message (Keyword Auto-Reply) Real-Time Background Listener (Active tab + Online only) 🌟
   useEffect(() => {
-    pollAndProcessBusinessAutoReplies();
-    const tgAutoReplyTimer = setInterval(() => {
+    const runPoll = () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
       pollAndProcessBusinessAutoReplies();
-    }, 6000);
+    };
+    runPoll();
+    const tgAutoReplyTimer = setInterval(runPoll, 6000);
     return () => clearInterval(tgAutoReplyTimer);
   }, []);
 
@@ -143,11 +140,13 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
       try {
         const allAdmins = await getDocs(collection(db, 'admins'));
         let matchedAdmin: LocalAdminProfile | null = null;
-        allAdmins.forEach(d => {
+        for (const d of allAdmins.docs) {
           const raw = d.data();
           const decUser = decryptText(raw.username) || d.id;
-          if (decUser.toLowerCase() === loggedInAdmin.toLowerCase()) matchedAdmin = raw as LocalAdminProfile;
-        });
+          if (decUser.toLowerCase() === loggedInAdmin.toLowerCase()) {
+            matchedAdmin = raw as LocalAdminProfile;
+          }
+        }
         if (matchedAdmin) {
           const r = matchedAdmin.role || 'super_admin';
           const p = matchedAdmin.permissions || ['bookings', 'reports', 'users', 'points', 'admins', 'settings', 'penalties'];
@@ -234,15 +233,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
       setBookings(data);
       setPendingCount(currentPendingCount);
       if (!isFirstLoad.current && snap.docChanges().some(change => change.type === 'added' && change.doc.data().status === 'pending')) {
-        const audioEl = document.getElementById('admin-alert-sound') as HTMLAudioElement;
-        if (audioEl) {
-          audioEl.currentTime = 0;
-          audioEl.play().catch(e => console.log("Audio blocked", e));
-          setTimeout(() => {
-            audioEl.pause();
-            audioEl.currentTime = 0;
-          }, 5000);
-        }
+        playAdminAlertSound();
       }
       isFirstLoad.current = false;
     });
@@ -250,13 +241,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   }, []);
 
   const handleInteraction = useCallback(() => {
-    const audioEl = document.getElementById('admin-alert-sound') as HTMLAudioElement;
-    if (audioEl && audioEl.paused) {
-      audioEl.play().then(() => {
-        audioEl.pause();
-        audioEl.currentTime = 0;
-      }).catch(() => {});
-    }
+    unlockAudioContext();
   }, []);
 
   const hasAccess = useCallback((tabId: string) => {
@@ -518,7 +503,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
       className="fixed inset-0 z-[100] bg-[#F4F6F5] flex overflow-hidden font-sans text-gray-800"
       onClick={handleInteraction}
     >
-      <audio id="admin-alert-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto" loop />
+      {/* Local Web Audio API alert chime (no external actions.google.com dependency) */}
 
       {/* ==========================================
           MOBILE / TABLET BACKDROP OVERLAY

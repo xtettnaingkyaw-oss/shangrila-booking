@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shangrila-pos-cache-v10';
+const CACHE_NAME = 'shangrila-pos-cache-v12';
 const CORE_ASSETS = [
   '/',
   '/index.html',
@@ -7,18 +7,47 @@ const CORE_ASSETS = [
   '/manifest.json'
 ];
 
-// 1. Install: Service Worker အသစ်ကို ချက်ချင်း အသက်သွင်းမည်
+// Preview / Local Dev environments must NEVER be intercepted or cached by the Service Worker
+// (otherwise a transient warmup page can be cached and trap Live Preview).
+const IS_PREVIEW_OR_DEV =
+  self.location.hostname === 'localhost' ||
+  self.location.hostname === '127.0.0.1' ||
+  self.location.hostname.endsWith('.run.app') ||
+  self.location.hostname.startsWith('ais-dev-');
+
+const isCacheableHtml = async (response) => {
+  try {
+    if (!response || !response.ok || response.type !== 'basic') return false;
+    const text = await response.clone().text();
+    if (
+      text.includes('__aistudio_warmup_failed') ||
+      text.includes('<title>Starting Server...</title>')
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// 1. Install
 self.addEventListener('install', (event) => {
   self.skipWaiting();
+  if (IS_PREVIEW_OR_DEV) return;
+
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
       for (const url of CORE_ASSETS) {
         try {
-          const res = await fetch(url, { cache: 'no-store' });
+          const res = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
           if (res && res.ok) {
-            await cache.put(url, res.clone());
-            if (url === '/') {
-              await cache.put('/index.html', res.clone());
+            const isHtml = (res.headers.get('content-type') || '').includes('text/html');
+            if (!isHtml || (await isCacheableHtml(res))) {
+              await cache.put(url, res.clone());
+              if (url === '/') {
+                await cache.put('/index.html', res.clone());
+              }
             }
           }
         } catch (err) {
@@ -29,8 +58,31 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activate: Cache အဟောင်း (v9 အပါအဝင် အားလုံး) ကို ချက်ချင်း ဖျက်ထုတ်မည်
+// 2. Activate
 self.addEventListener('activate', (event) => {
+  if (IS_PREVIEW_OR_DEV) {
+    event.waitUntil(
+      (async () => {
+        try {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((key) => caches.delete(key)));
+        } catch {}
+        try {
+          await self.registration.unregister();
+        } catch {}
+        try {
+          const clients = await self.clients.matchAll({ type: 'window' });
+          clients.forEach((client) => {
+            if ('navigate' in client) {
+              client.navigate(client.url).catch(() => {});
+            }
+          });
+        } catch {}
+      })()
+    );
+    return;
+  }
+
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -44,28 +96,42 @@ self.addEventListener('activate', (event) => {
 
 // 3. Fetch: Online ဖြစ်နေပါက ကုဒ်အသစ်ကို အမြဲဦးစားပေးဆွဲပြီး Offline ဖြစ်မှသာ Cache ကို သုံးမည်
 self.addEventListener('fetch', (event) => {
+  if (IS_PREVIEW_OR_DEV) return;
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
 
-  // Blob/Data URLs နှင့် ပြင်ပ API များ (Firebase, Google Fonts/APIs) ကို Service Worker မှ မထိန်းချုပ်ပါ
-  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.origin !== self.location.origin) {
+  // Blob/Data URLs, ပြင်ပ API များ နှင့် Dev/Internal paths များကို Service Worker မှ မထိန်းချုပ်ပါ
+  if (
+    (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith('/__aistudio') ||
+    url.pathname.startsWith('/_aistudio') ||
+    url.pathname.startsWith('/@vite') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/')
+  ) {
     return;
   }
 
-  // 🌟 Page Navigation 🌟
+  // 🌟 Page Navigation (Use URL string with cache:'no-store' to avoid Fetch Spec TypeError on navigate Request) 🌟
   if (event.request.mode === 'navigate') {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE_NAME);
 
         try {
-          // Online ဖြစ်နေပါက Browser Cache မသုံးဘဲ Server မှ ကုဒ်အသစ်ကို တိုက်ရိုက်ဆွဲမည်
-          const networkResponse = await fetch(event.request, { cache: 'no-store' });
-          if (networkResponse && networkResponse.ok) {
+          const networkResponse = await fetch(event.request.url, {
+            cache: 'no-store',
+            credentials: 'same-origin'
+          });
+          if (networkResponse && networkResponse.ok && (await isCacheableHtml(networkResponse))) {
             await cache.put(event.request, networkResponse.clone());
             await cache.put('/', networkResponse.clone());
             await cache.put('/index.html', networkResponse.clone());
+            return networkResponse;
+          }
+          if (networkResponse && networkResponse.ok) {
             return networkResponse;
           }
         } catch (err) {
@@ -100,10 +166,11 @@ self.addEventListener('fetch', (event) => {
 
       try {
         const networkResponse = await fetch(event.request);
-        if (networkResponse && networkResponse.ok) {
+        if (networkResponse && networkResponse.ok && networkResponse.type === 'basic') {
           cache.put(event.request, networkResponse.clone());
           return networkResponse;
         }
+        if (networkResponse) return networkResponse;
       } catch (err) {
         // Offline ဖြစ်နေချိန်တွင် အောက်ပါ Cache မှ ပြန်ပေးမည်
       }

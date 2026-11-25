@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, getDoc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { decryptText } from '../security';
 import { Booking, TherapistProfile, formatPrice, isRecordBelongingToCurrentTherapist} from '../shared';
@@ -2316,8 +2316,24 @@ export function StaffPaySlipView({
     }
   }, [availableHistoryMonths, selectedPayMonth]);
 
+  const earliestHistoryDate = useMemo(() => {
+    if (availableHistoryMonths.length > 0) {
+      const oldestMonth = availableHistoryMonths[availableHistoryMonths.length - 1];
+      if (/^\d{4}-\d{2}$/.test(oldestMonth)) {
+        return `${oldestMonth}-01`;
+      }
+    }
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }, [availableHistoryMonths]);
+
   useEffect(() => {
-    const unsubBookings = onSnapshot(collection(db, 'bookings'), (snap) => {
+    const bookingsQuery = query(
+      collection(db, 'bookings'),
+      where('date', '>=', earliestHistoryDate)
+    );
+    const unsubBookings = onSnapshot(bookingsQuery, (snap) => {
       const arr: Booking[] = [];
       snap.forEach((d) => {
         const raw = d.data();
@@ -2344,7 +2360,7 @@ export function StaffPaySlipView({
       unsubBookings();
       unsubPenalties();
     };
-  }, []);
+  }, [earliestHistoryDate]);
 
   useEffect(() => {
     if (!selectedPayMonth) return;

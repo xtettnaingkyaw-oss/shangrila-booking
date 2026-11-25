@@ -18,7 +18,7 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || "The Shangri-La";
   const notificationOptions = {
     body: payload.notification?.body || "",
-    icon: '/THE SHANGRI LA - LOGO.png'
+    icon: '/logo.png'
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);

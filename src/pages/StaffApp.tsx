@@ -2052,6 +2052,11 @@ function StaffOutPassTab({ appData, loggedInStaff }: { appData: AppData; loggedI
         const overtimeMillis = Math.max(0, now - myActivePass.expectedInTimeMillis);
         const overtimeSecs = Math.floor(overtimeMillis / 1000);
 
+        if (!myActivePass?.id) {
+          setLocating(false);
+          return;
+        }
+
         await updateDoc(doc(db, 'outpasses', myActivePass.id), {
           status: 'returned',
           inTimeMillis: now,

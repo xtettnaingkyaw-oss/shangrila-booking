@@ -1,28 +1,62 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  Firestore
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { getStorage } from 'firebase/storage'; // 👈 အသစ်ထည့်ထားသည်
-
-const firebaseConfig = {
-  apiKey: "AIzaSyD72t-U4ZQY1DVmsxj9O2Vu_XXXXKxwlKo",
-  authDomain: "shangrila-online-booking-app.firebaseapp.com",
-  projectId: "shangrila-online-booking-app",
-  storageBucket: "shangrila-online-booking-app.firebasestorage.app",
-  messagingSenderId: "696764910771",
-  appId: "1:696764910771:web:04fb68544c4db32ff9b4c6"
-};
-
+import { getStorage } from 'firebase/storage';
 import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 
-// 🌟 FIX: Browser က Support လုပ်မှသာ Initialize လုပ်ပါမည် (App White Screen မဖြစ်စေရန်) 🌟
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyD72t-U4ZQY1DVmsxj9O2Vu_XXXXKxwlKo",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "shangrila-online-booking-app.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "shangrila-online-booking-app",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "shangrila-online-booking-app.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "696764910771",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:696764910771:web:04fb68544c4db32ff9b4c6"
+};
+
+// Initialize primary Firebase app first
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+// Dedicated secondary app instance so creating staff/admin accounts never overwrites the active Admin Auth session
+const secondaryApp =
+  getApps().find((a) => a.name === 'secondary') ||
+  initializeApp(firebaseConfig, 'secondary');
+
+// Firebase v10 standard offline cache with multi-tab support (replaces deprecated enableIndexedDbPersistence)
+let firestoreInstance: Firestore;
+try {
+  firestoreInstance = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+} catch {
+  firestoreInstance = getFirestore(app);
+}
+
+export const db = firestoreInstance;
+export const auth = getAuth(app);
+export const secondaryAuth = getAuth(secondaryApp);
+export const storage = getStorage(app);
+
+// Initialize Firebase Cloud Messaging only if browser supports it
 export let messaging: any = null;
 
 if (typeof window !== 'undefined') {
-  isSupported().then((supported) => {
-    if (supported) {
-      messaging = getMessaging(app);
-    }
-  }).catch(console.error);
+  isSupported()
+    .then((supported) => {
+      if (supported) {
+        messaging = getMessaging(app);
+      }
+    })
+    .catch((err) => {
+      console.warn('FCM messaging not supported in this browser:', err);
+    });
 }
 
 export const requestNotificationPermission = async () => {
@@ -37,34 +71,7 @@ export const requestNotificationPermission = async () => {
       return token;
     }
   } catch (error) {
-    console.error('Error getting notification token:', error);
+    console.warn('Notification token warning:', error);
   }
   return null;
 };
-
-const app = initializeApp(firebaseConfig);
-
-
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
-
-// ... (အစ်ကို့ရဲ့ လက်ရှိ Firebase app config များ) ...
-
-export const db = getFirestore(app);
-
-// 🌟 FIX: Offline တွင်ပါ အလုပ်လုပ်နိုင်ရန် Persistence ကို ဖွင့်ခြင်း 🌟
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db)
-    .catch((err) => {
-      if (err.code === 'failed-precondition') {
-        // Browser Tab အများကြီးဖွင့်ထားလျှင် ပေါ်တတ်သော Warning
-        console.warn('Multiple tabs open, offline mode can only be enabled in one tab at a time.');
-      } else if (err.code === 'unimplemented') {
-        // Browser က Offline Mode ကို Support မလုပ်လျှင်
-        console.warn('The current browser does not support offline database.');
-      }
-    });
-}
-
-export const auth = getAuth(app);
-export const secondaryAuth = getAuth(app); // သင့် မူလ Code အရ ပါဝင်သည်ဟု ယူဆပါသည်
-export const storage = getStorage(app); // 👈 အသစ်ထည့်ထားသည်

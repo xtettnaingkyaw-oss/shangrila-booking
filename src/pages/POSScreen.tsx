@@ -2756,7 +2756,7 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       let foundUser = false;
       let vipBenefit: { tierName: string; discountPercent: number } | null = null;
 
-      usersSnap.forEach((d) => {
+      for (const d of usersSnap.docs) {
         try {
           const data = d.data();
           const decPhone = decryptText(data.phone) || d.id;
@@ -2784,7 +2784,7 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
             );
           }
         } catch {}
-      });
+      }
 
       if (!foundUser) {
         setFoundCustomerPts(0);
@@ -2796,7 +2796,7 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       const campTitle = (localAppData?.promotion as any)?.campaignTitle || 'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း';
 
       if (campaignSnap) {
-        campaignSnap.forEach((docSnap) => {
+        for (const docSnap of campaignSnap.docs) {
           try {
             const cData = docSnap.data();
             const rawPhone = String(cData.phone || '').trim();
@@ -2813,7 +2813,7 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
               }
             }
           } catch {}
-        });
+        }
       }
 
       setDetectedCampaignWin(latestCampaignWin);

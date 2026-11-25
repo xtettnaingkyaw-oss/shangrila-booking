@@ -1,69 +1,29 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { doc, getDoc, collection, getDocs, query, orderBy, setDoc } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth'; 
-import { db, auth, requestNotificationPermission } from './firebase'; 
+import { doc, setDoc } from 'firebase/firestore';
+import { signInAnonymously } from 'firebase/auth';
+import { db, auth, requestNotificationPermission } from './firebase';
 import { Download, X, MapPin, Phone, LogOut } from 'lucide-react';
-import { AppData, TherapistProfile, MenuCategory, PaymentMethod, AppBranding, PromotionSettings, InstallStep } from './shared';
+import { AppData } from './shared';
+import {
+  useAppStore,
+  FALLBACK_APPDATA,
+  DEFAULT_INSTALL_STEPS,
+  getCachedAppData
+} from './AppDataContext';
 
 // 🌟 Premium Loading Screen ကို Import ခေါ်ယူခြင်း (မူလ public folder မှ logo အတိုင်း သုံးမည်) 🌟
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
-import CustomerApp from './pages/CustomerApp'; 
-
-// 🌟 POS နှင့် Campaign Screen များကို Import ခေါ်ယူခြင်း 🌟
-import POSScreen from './pages/POSScreen';
-import ThadingyutCampaign from './pages/ThadingyutCampaign';
+import CustomerApp from './pages/CustomerApp';
 import ThadingyutPopup from './components/ThadingyutPopup';
 
-import { pollAndProcessBusinessAutoReplies } from './telegramService';
-
+// 🌟 Code Splitting: Admin, Staff, POS နှင့် Campaign များကို လိုအပ်မှသာ Lazy Load လုပ်မည် (Initial Load 60%+ ပိုမြန်စေရန်) 🌟
 const AdminApp = lazy(() => import('./pages/AdminApp'));
 const StaffApp = lazy(() => import('./pages/StaffApp'));
+const POSScreen = lazy(() => import('./pages/POSScreen'));
+const ThadingyutCampaign = lazy(() => import('./pages/ThadingyutCampaign'));
 
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
-const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
 const PREFERRED_MODE_KEY = 'shangrila_preferred_portal_mode';
-
-const DEFAULT_BRANDING: AppBranding = {
-  logoUrl: '', name: "The Shangri-La", address: "33th(B) St, Between 65th & 65th(A) Sts, Mandalay",
-  phone1: "09-458884517", phone2: "09-770072190", copyright: "© 2026 The Shangri-La Men's Retreat."
-};
-const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [{ id: 'p1', name: 'KBZ PAY', accountNumber: '09458888510', accountName: 'Htet Naing Kyaw', logoUrl: '' }];
-const DEFAULT_THERAPISTS: TherapistProfile[] = Array.from({ length: 15 }, (_, i) => ({ id: `t_${i}`, name: `Therapist No-${i + 1}`, images: [], order: i, password: '' }));
-const DEFAULT_PROMOTION: PromotionSettings = { isBoxActive: false, isPopupActive: false, hotelDiscountPercent: 10, otherDiscountPercent: 20, startDate: '', endDate: '' };
-
-const DEFAULT_CATEGORIES: MenuCategory[] = [
-  { 
-    id: 'massage', title: 'Massage', 
-    items: [
-      { id: 'm1', name: 'Traditional Massage', price: 25000, duration: '60 Mins' },
-      { id: 'm2', name: 'Aroma Oil Massage', price: 35000, duration: '60 Mins' },
-      { id: 'm3', name: 'Deep Tissue Sport Massage', price: 40000, duration: '90 Mins' },
-      { id: 'm4', name: 'Special VIP Package', price: 60000, duration: '120 Mins' }
-    ] 
-  },
-  { 
-    id: 'hotel', title: 'Hotel & Home Services', 
-    items: [
-      { id: 'h1', name: 'Part Time Outcall Service', price: 70000, duration: '100 Mins' },
-      { id: 'h2', name: 'VVIP Master Room', price: 90000, duration: '120 Mins' }
-    ] 
-  }
-];
-
-const DEFAULT_INSTALL_STEPS: InstallStep[] = [
-   { id: '1', text: 'Browser ၏ Menu (⋮) သို့မဟုတ် Share icon ကိုနှိပ်ပါ။', imageUrl: '' },
-   { id: '2', text: '"Install app" သို့မဟုတ် "Add to Home Screen" ကို ရွေးချယ်ပါ။', imageUrl: '' },
-   { id: '3', text: '"Install" သို့မဟုတ် "Add" ကို နှိပ်ပါ။ ဖုန်း Screen တွင် App အဖြစ် ရောက်ရှိသွားပါမည်။', imageUrl: '' }
-];
-
-const FALLBACK_APPDATA: AppData = {
-  categories: DEFAULT_CATEGORIES,
-  therapists: DEFAULT_THERAPISTS,
-  branding: DEFAULT_BRANDING,
-  paymentMethods: DEFAULT_PAYMENT_METHODS,
-  promotion: DEFAULT_PROMOTION,
-  installSteps: DEFAULT_INSTALL_STEPS
-};
 
 // 🌟 System Settings (App Branding) မှ Logo ကို PWA Icon အဖြစ် ပြောင်းပေးမည့် Helper (CORS ဖြစ်လျှင်လည်း S မပေါ်ဘဲ Logo အစစ်ကိုသာ ပြန်ပေးမည်) 🌟
 const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> => {
@@ -74,7 +34,6 @@ const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> 
       return;
     }
 
-    // Base64 Data URL ဖြစ်နေပါက တိုက်ရိုက် ပြန်သုံးမည်
     if (logoUrl.startsWith('data:image/')) {
       resolve(logoUrl);
       return;
@@ -91,7 +50,6 @@ const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> 
         if (ctx) {
           ctx.fillStyle = '#123524';
           ctx.fillRect(0, 0, size, size);
-          // ပုံကို Center တွင် အချိုးကျ ဆွဲခြင်း
           const minDim = Math.min(img.width, img.height);
           const sx = (img.width - minDim) / 2;
           const sy = (img.height - minDim) / 2;
@@ -107,22 +65,6 @@ const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> 
     img.onerror = () => resolve(logoUrl || fallbackUrl);
     img.src = logoUrl;
   });
-};
-
-// LocalStorage မှ သိမ်းထားသော Cache Data ကို ချက်ချင်း ဆွဲထုတ်မည့် Helper Function
-const getInitialAppData = (): AppData | null => {
-  try {
-    const cached = localStorage.getItem(CACHED_APPDATA_KEY);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed && parsed.categories?.length > 0) return parsed;
-    }
-  } catch {}
-  const isPos = window.location.search.includes('mode=pos');
-  if (!navigator.onLine || isPos) {
-    return FALLBACK_APPDATA;
-  }
-  return null;
 };
 
 class ErrorBoundary extends React.Component<{ children: any }, { hasError: boolean, error: any }> {
@@ -171,7 +113,7 @@ function MainApp() {
   });
 
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
-  const [appData, setAppData] = useState<AppData | null>(() => getInitialAppData());
+  const { appData, setAppData } = useAppStore();
 
   const [isLoaderFinished, setIsLoaderFinished] = useState<boolean>(() => {
     const isPos = window.location.search.includes('mode=pos');
@@ -229,12 +171,8 @@ function MainApp() {
     } else { setShowInstallModal(true); }
   };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      pollAndProcessBusinessAutoReplies();
-    }, 6000); // 6 စက္ကန့်တစ်ကြိမ် DM Keyword စစ်ဆေးပေးမည်
-    return () => clearInterval(interval);
-  }, []);
+  // Note: Telegram Business DM auto-reply polling is intentionally scoped to AdminApp only
+  // to avoid Customer browsers hitting api.telegram.org (blocked without VPN in Myanmar) and causing 409 conflicts.
 
   // 🌟 System Settings > App Branding မှ Logo ကို Favicon, Apple Touch Icon နှင့် PWA Manifest သို့ အလိုအလျောက် ချိတ်ဆက်ခြင်း 🌟
   useEffect(() => {
@@ -382,7 +320,7 @@ function MainApp() {
 
   useEffect(() => {
     const safetyTimer = setTimeout(() => {
-      setAppData((prev) => prev || getInitialAppData() || FALLBACK_APPDATA);
+      setAppData((prev) => prev || getCachedAppData() || FALLBACK_APPDATA);
       setIsLoaderFinished(true);
     }, 2500);
 
@@ -390,51 +328,8 @@ function MainApp() {
       signInAnonymously(auth).catch((error) => { console.warn("Firebase Auth Warning:", error); });
     }
 
-    const initData = async () => {
-      if (!navigator.onLine) {
-        setAppData((prev) => prev || getInitialAppData() || FALLBACK_APPDATA);
-        setIsLoaderFinished(true);
-        return;
-      }
-
-      try {
-        const [settingsSnap, therapistsSnap] = await Promise.all([
-            getDoc(doc(db, 'settings', 'appData')).catch(err => { console.warn(err); return null; }),
-            getDocs(query(collection(db, 'therapists'), orderBy('order', 'asc'))).catch(err => { console.warn(err); return null; })
-        ]);
-
-        let loadedData: Partial<AppData> = {}; 
-        let loadedTherapists: TherapistProfile[] = [];
-        
-        if (settingsSnap && settingsSnap.exists()) { 
-          loadedData = settingsSnap.data() || {}; 
-        }
-        if (therapistsSnap && !therapistsSnap.empty) { 
-          therapistsSnap.forEach(d => loadedTherapists.push({ id: d.id, ...d.data() } as TherapistProfile)); 
-        }
-
-        if ((settingsSnap && settingsSnap.exists()) || loadedTherapists.length > 0) {
-          const freshAppData: AppData = { 
-            categories: Array.isArray(loadedData.categories) && loadedData.categories.length > 0 ? loadedData.categories : DEFAULT_CATEGORIES, 
-            therapists: loadedTherapists.length > 0 ? loadedTherapists : DEFAULT_THERAPISTS, 
-            branding: { ...DEFAULT_BRANDING, ...(loadedData.branding || {}) }, 
-            paymentMethods: Array.isArray(loadedData.paymentMethods) ? loadedData.paymentMethods : DEFAULT_PAYMENT_METHODS, 
-            promotion: loadedData.promotion || DEFAULT_PROMOTION, 
-            installSteps: loadedData.installSteps || DEFAULT_INSTALL_STEPS 
-          };
-          setAppData(freshAppData);
-        } else {
-          setAppData((prev) => prev || getInitialAppData() || FALLBACK_APPDATA);
-        }
-      } catch (err) {
-        console.warn("Using cached/fallback data due to offline/network:", err);
-        setAppData((prev) => prev || getInitialAppData() || FALLBACK_APPDATA);
-      }
-    };
-
-    initData();
     return () => clearTimeout(safetyTimer);
-  }, []);
+  }, [setAppData]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -521,7 +416,7 @@ function MainApp() {
             {appMode === 'admin' ? (
               <AdminApp appData={safeAppData} onSettingsUpdated={setAppData} />
             ) : appMode === 'staff' ? (
-              <StaffApp appData={safeAppData} />
+              <StaffApp />
             ) : appMode === 'pos' ? (
               <POSScreen appData={safeAppData} />
             ) : appMode === 'campaign' ? (
