@@ -176,7 +176,28 @@
   <body class="bg-gray-50 text-gray-900 antialiased selection:bg-[#D4AF37] selection:text-[#123524]">
     <noscript>You need to enable JavaScript to run this app.</noscript>
 
-    <div id="root"></div>
+    <div id="root">
+      <!-- 🌟 Instant Zero-White-Screen Splash (JS/CSS Load နေစဉ် အဖြူ Screen မပြဘဲ ချက်ချင်း Shangri-La Loading Screen ပြပေးမည်) 🌟 -->
+      <div
+        id="initial-boot-splash"
+        style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0a1f15 0%,#123524 50%,#0a1f15 100%);overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
+      >
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28rem;height:28rem;background:#D4AF37;border-radius:9999px;filter:blur(120px);opacity:0.12;pointer-events:none;"></div>
+        <div style="position:relative;z-index:10;display:flex;flex-direction:column;align-items:center;padding:0 2rem;">
+          <img
+            src="/logo.png"
+            alt="The Shangri-La Logo"
+            style="width:10.5rem;height:10.5rem;object-fit:contain;margin-bottom:2.25rem;filter:drop-shadow(0 0 15px rgba(212,175,55,0.3));"
+          />
+          <div style="color:#D4AF37;font-size:11px;font-weight:700;letter-spacing:0.35em;text-transform:uppercase;margin-bottom:1.5rem;opacity:0.85;">
+            Preparing Your Retreat
+          </div>
+          <div style="width:14rem;height:3px;background:#1a4a32;border-radius:9999px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,0.4);">
+            <div style="width:28%;height:100%;background:linear-gradient(90deg,#b38b22,#D4AF37);border-radius:9999px;box-shadow:0 0 10px rgba(212,175,55,0.8);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 🌟 App ရဲ့ Main Code သို့ ညွှန်းခြင်း (Service Worker ကို src/main.tsx တွင် တစ်ကြိမ်တည်း Register လုပ်ထားသည်) 🌟 -->
     <script type="module" src="/src/main.tsx"></script>

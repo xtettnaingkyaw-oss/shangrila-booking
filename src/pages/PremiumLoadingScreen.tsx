@@ -1,43 +1,55 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 // 🌟 FIX: Admin မှ Logo ကိုမသုံးတော့ဘဲ src အောက်ရှိ Local ဖိုင်ကို တိုက်ရိုက် Import ခေါ်သုံးထားပါသည် 🌟
 import loadingLogo from '../THE SHANGRI LA - LOGO.png'; 
 
 export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: { isDataReady?: boolean, onFinish?: () => void }) {
-    const [progress, setProgress] = useState(0);
+    // Start at 28% to continue seamlessly from the instant boot splash in index.html
+    const [progress, setProgress] = useState(28);
     const [fadeAnim, setFadeAnim] = useState(false); // App ပွင့်ခါနီး ပျောက်သွားမည့် Effect
+    const onFinishRef = useRef(onFinish);
+
+    useEffect(() => {
+        onFinishRef.current = onFinish;
+    }, [onFinish]);
 
     // 🌟 Real-time Progress Bar Logic 🌟
     useEffect(() => {
-        let interval: NodeJS.Timeout;
         if (!isDataReady) {
             // Data မရသေးခင် ၉၅% ထိ ဖြည်းဖြည်းချင်း တက်နေမည်
-            interval = setInterval(() => {
+            const interval = setInterval(() => {
                 setProgress(old => {
-                    if (old < 70) return old + (Math.random() * 10);
-                    if (old < 95) return old + (Math.random() * 2);
+                    if (old < 72) return Math.min(72, old + (6 + Math.random() * 8));
+                    if (old < 94) return Math.min(94, old + (1 + Math.random() * 2));
                     return old;
                 });
-            }, 300);
-        } else {
-            // Data ရပြီဆိုပါက ၁၀၀% သို့ ချက်ချင်းပြည့်သွားမည်
-            setProgress(100);
+            }, 220);
+            return () => clearInterval(interval);
         }
-        return () => clearInterval(interval);
+
+        // Data ရပြီ (သို့) Cache ရှိနေပြီဆိုပါက ချက်ချင်းမပျောက်ဘဲ ၁၀၀% အထိ ချောချောမွေ့မွေ့ ပြည့်သွားမည်
+        const stepTimer = setTimeout(() => {
+            setProgress(100);
+        }, 180);
+        return () => clearTimeout(stepTimer);
     }, [isDataReady]);
 
-    // 🌟 ၁၀၀% ပြည့်သွားပါက ချက်ချင်းမပိတ်ဘဲ Welcome Effect ပြပြီးမှ ပိတ်မည် 🌟
+    const isComplete = progress >= 100;
+
+    // 🌟 ၁၀၀% ပြည့်သွားပါက Welcome Effect ပြပြီးမှ အောက်ခံ App ပေါ်သို့ ချောချောမွေ့မွေ့ Fade Out လုပ်ပေးမည် 🌟
     useEffect(() => {
-        if (progress >= 100) {
-            setTimeout(() => setFadeAnim(true), 400); // Bar အပြည့်ဖြစ်သွားချိန် ခဏစောင့်မည်
-            const t = setTimeout(() => {
-                if (onFinish) onFinish(); // အားလုံးပြီးမှ App အစစ်ကို ဖွင့်ပေးမည်
-            }, 1000); 
-            return () => clearTimeout(t);
-        }
-    }, [progress, onFinish]);
+        if (!isComplete) return;
+        const fadeTimer = setTimeout(() => setFadeAnim(true), 450);
+        const doneTimer = setTimeout(() => {
+            if (onFinishRef.current) onFinishRef.current();
+        }, 1050);
+        return () => {
+            clearTimeout(fadeTimer);
+            clearTimeout(doneTimer);
+        };
+    }, [isComplete]);
 
     return (
-        <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gradient-to-br from-[#0a1f15] via-[#123524] to-[#0a1f15] overflow-hidden transition-all duration-700 ease-in-out ${fadeAnim ? 'opacity-0 scale-110 pointer-events-none' : 'opacity-100 scale-100'}`}>
+        <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gradient-to-br from-[#0a1f15] via-[#123524] to-[#0a1f15] overflow-hidden transition-all duration-700 ease-in-out ${fadeAnim ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'}`}>
             
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[35rem] h-[35rem] bg-[#D4AF37] rounded-full blur-[140px] opacity-10 animate-pulse pointer-events-none"></div>
 

@@ -13,10 +13,10 @@ import {
 
 // 🌟 Premium Loading Screen ကို Import ခေါ်ယူခြင်း (မူလ public folder မှ logo အတိုင်း သုံးမည်) 🌟
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
-import CustomerApp from './pages/CustomerApp';
 import ThadingyutPopup from './components/ThadingyutPopup';
 
-// 🌟 Code Splitting: Admin, Staff, POS နှင့် Campaign များကို လိုအပ်မှသာ Lazy Load လုပ်မည် (Initial Load 60%+ ပိုမြန်စေရန်) 🌟
+// 🌟 Code Splitting: Portal အားလုံးကို Lazy Load လုပ်ထားသဖြင့် Initial Bundle အလွန်သေးငယ်ပြီး PremiumLoadingScreen ချက်ချင်းပေါ်မည် 🌟
+const CustomerApp = lazy(() => import('./pages/CustomerApp'));
 const AdminApp = lazy(() => import('./pages/AdminApp'));
 const StaffApp = lazy(() => import('./pages/StaffApp'));
 const POSScreen = lazy(() => import('./pages/POSScreen'));
@@ -319,16 +319,21 @@ function MainApp() {
   }, [appData?.promotion, appMode]);
 
   useEffect(() => {
-    const safetyTimer = setTimeout(() => {
+    const dataSafetyTimer = setTimeout(() => {
       setAppData((prev) => prev || getCachedAppData() || FALLBACK_APPDATA);
-      setIsLoaderFinished(true);
     }, 2500);
+    const loaderSafetyTimer = setTimeout(() => {
+      setIsLoaderFinished(true);
+    }, 4500);
 
     if (navigator.onLine) {
       signInAnonymously(auth).catch((error) => { console.warn("Firebase Auth Warning:", error); });
     }
 
-    return () => clearTimeout(safetyTimer);
+    return () => {
+      clearTimeout(dataSafetyTimer);
+      clearTimeout(loaderSafetyTimer);
+    };
   }, [setAppData]);
 
   useEffect(() => {
@@ -339,10 +344,7 @@ function MainApp() {
     return () => clearInterval(interval);
   }, [loggedInAdmin]);
 
-  if (!isLoaderFinished && appMode !== 'pos') { 
-      return <PremiumLoadingScreen isDataReady={!!appData} onFinish={() => setIsLoaderFinished(true)} />; 
-  }
-
+  const showLoadingOverlay = !isLoaderFinished && appMode !== 'pos';
   const safeAppData = appData || FALLBACK_APPDATA;
   const stepsToShow = safeAppData.installSteps && safeAppData.installSteps.length > 0 ? safeAppData.installSteps : DEFAULT_INSTALL_STEPS;
 
@@ -361,9 +363,16 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col relative">
-      
-      {/* 🌟 Promotion Popup (Customer Mode Only & When Allowed by Admin) 🌟 */}
-      {appMode === 'customer' && isGlobalPopupAllowed && safeAppData && <ThadingyutPopup appData={safeAppData} />}
+      {/* 🌟 Premium Loading Screen Overlay (Fade out ဖြစ်ချိန်တွင် အဖြူ Screen မပေါ်ဘဲ အောက်ခံ App တိုက်ရိုက်ပေါ်လာမည်) 🌟 */}
+      {showLoadingOverlay && (
+        <PremiumLoadingScreen
+          isDataReady={!!appData}
+          onFinish={() => setIsLoaderFinished(true)}
+        />
+      )}
+
+      {/* 🌟 Promotion Popup (Customer Mode Only & When Allowed by Admin, after Loader finishes) 🌟 */}
+      {!showLoadingOverlay && appMode === 'customer' && isGlobalPopupAllowed && safeAppData && <ThadingyutPopup appData={safeAppData} />}
 
       {showInstallModal && (
         <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
