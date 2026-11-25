@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, addDoc, where } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { db, auth } from '../firebase';
@@ -14,9 +14,13 @@ import { THEME, AppData, Booking, OutPass, TherapistProfile, isRecordBelongingTo
 import { useAppStore } from '../AppDataContext';
 import { StaffPenaltyView } from './PenaltySystem';
 import { NewEmployeeOnboardingForm, StaffProfileView } from './OnboardingSystem';
-import { StaffEmployeeHandbookReader } from './EmployeeHandbookSystem';
 import { calculateBookingCommissionForStaff, getStaffSeniority, StaffPaySlipView } from './StaffPayrollSystem';
 import { notifyBookingEvent, notifyStaffUpdate, notifyOutcallServiceEvent } from '../telegramService';
+
+// 🌟 Lazy-load 534KB Employee Handbook only when the staff member opens the Handbook tab (massive startup speedup on iPhone) 🌟
+const StaffEmployeeHandbookReader = lazy(() =>
+  import('./EmployeeHandbookSystem').then((m) => ({ default: m.StaffEmployeeHandbookReader }))
+);
 
 const formatPrice = (price: any) => {
   const num = Number(price);
@@ -1017,7 +1021,11 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
       {staffTab === 'financials' && (<StaffPenaltyView therapistName={liveStaff.name} therapistProfile={liveStaff} />)}
       {staffTab === 'payslip' && <StaffPaySlipView loggedInStaff={liveStaff} therapists={appData.therapists} />}
       {staffTab === 'profile' && <StaffProfileView staff={liveStaff} />}
-      {staffTab === 'handbook' && <StaffEmployeeHandbookReader staffId={liveStaff.id} staffName={liveStaff.name} />}
+      {staffTab === 'handbook' && (
+        <Suspense fallback={<div className="py-16 text-center text-xs font-bold text-[#123524]">Loading Employee Handbook...</div>}>
+          <StaffEmployeeHandbookReader staffId={liveStaff.id} staffName={liveStaff.name} />
+        </Suspense>
+      )}
 
       {staffTab === 'roster' && (
         <div className="space-y-4 animate-fade-in mt-4">

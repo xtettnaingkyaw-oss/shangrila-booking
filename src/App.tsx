@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth, requestNotificationPermission } from './firebase';
-import { Download, X, MapPin, Phone, LogOut } from 'lucide-react';
+import { Download, X, MapPin, Phone, LogOut, WifiOff } from 'lucide-react';
 import { AppData } from './shared';
 import {
   useAppStore,
@@ -15,12 +15,41 @@ import {
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
 import ThadingyutPopup from './components/ThadingyutPopup';
 
-// 🌟 Code Splitting: Portal အားလုံးကို Lazy Load လုပ်ထားသဖြင့် Initial Bundle အလွန်သေးငယ်ပြီး PremiumLoadingScreen ချက်ချင်းပေါ်မည် 🌟
-const CustomerApp = lazy(() => import('./pages/CustomerApp'));
-const AdminApp = lazy(() => import('./pages/AdminApp'));
-const StaffApp = lazy(() => import('./pages/StaffApp'));
-const POSScreen = lazy(() => import('./pages/POSScreen'));
-const ThadingyutCampaign = lazy(() => import('./pages/ThadingyutCampaign'));
+// 🌟 Code Splitting + Eager Preload of Active Portal Chunk (iPhone တွင် ချက်ချင်းပွင့်စေရန်) 🌟
+const loadCustomerApp = () => import('./pages/CustomerApp');
+const loadAdminApp = () => import('./pages/AdminApp');
+const loadStaffApp = () => import('./pages/StaffApp');
+const loadPOSScreen = () => import('./pages/POSScreen');
+const loadThadingyutCampaign = () => import('./pages/ThadingyutCampaign');
+
+const CustomerApp = lazy(loadCustomerApp);
+const AdminApp = lazy(loadAdminApp);
+const StaffApp = lazy(loadStaffApp);
+const POSScreen = lazy(loadPOSScreen);
+const ThadingyutCampaign = lazy(loadThadingyutCampaign);
+
+const detectInitialPortalMode = (): 'customer' | 'admin' | 'staff' | 'pos' | 'campaign' => {
+  if (typeof window === 'undefined') return 'customer';
+  const searchParams = new URLSearchParams(window.location.search);
+  const rawMode = (searchParams.get('mode') || searchParams.get('portal') || '').toLowerCase();
+  const path = (window.location.pathname || '').toLowerCase();
+
+  if (rawMode === 'staff' || path.startsWith('/staff')) return 'staff';
+  if (rawMode === 'pos' || path.startsWith('/pos')) return 'pos';
+  if (rawMode === 'admin' || path.startsWith('/admin')) return 'admin';
+  if (rawMode === 'campaign' || path.startsWith('/campaign')) return 'campaign';
+  return 'customer';
+};
+
+// Preload the active portal JS bundle immediately in parallel with Firebase startup
+if (typeof window !== 'undefined') {
+  const bootMode = detectInitialPortalMode();
+  if (bootMode === 'staff') loadStaffApp().catch(() => {});
+  else if (bootMode === 'pos') loadPOSScreen().catch(() => {});
+  else if (bootMode === 'admin') loadAdminApp().catch(() => {});
+  else if (bootMode === 'campaign') loadThadingyutCampaign().catch(() => {});
+  else loadCustomerApp().catch(() => {});
+}
 
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 const PREFERRED_MODE_KEY = 'shangrila_preferred_portal_mode';
@@ -84,23 +113,20 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
 
 function MainApp() {
   const [appMode, setAppMode] = useState<'customer' | 'admin' | 'staff' | 'pos' | 'campaign'>(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const mode = searchParams.get('mode');
-    
-    if (mode === 'admin' || mode === 'staff' || mode === 'pos') {
+    const detected = detectInitialPortalMode();
+    if (detected === 'admin' || detected === 'staff' || detected === 'pos') {
       try {
-        // ဝန်ထမ်း သို့မဟုတ် POS အဖြစ် ဝင်ရောက်ပါက PWA Standalone ပြန်ဖွင့်ချိန်တွင် မှတ်မိစေရန် သိမ်းထားမည်
-        if (mode === 'staff' || mode === 'pos') {
-          localStorage.setItem(PREFERRED_MODE_KEY, mode);
+        if (detected === 'staff' || detected === 'pos') {
+          localStorage.setItem(PREFERRED_MODE_KEY, detected);
         }
       } catch {}
-      return mode;
+      return detected;
     }
-    if (mode === 'campaign') return 'campaign';
+    if (detected === 'campaign') return 'campaign';
 
     // အကယ်၍ ဖုန်း Home Screen မှ Standalone App အဖြစ် တိုက်ရိုက်ဖွင့်ချိန် URL တွင် ?mode မပါသော်လည်း ယခင်က Staff/POS အဖြစ် သွင်းထားပါက ၎င်း Mode သို့ တိုက်ရိုက်ပို့ပေးမည်
     const isStandaloneLaunch = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
-    if (isStandaloneLaunch && !mode) {
+    if (isStandaloneLaunch) {
       try {
         const savedMode = localStorage.getItem(PREFERRED_MODE_KEY);
         if (savedMode === 'staff' || savedMode === 'pos') {
@@ -116,14 +142,28 @@ function MainApp() {
   const { appData, setAppData } = useAppStore();
 
   const [isLoaderFinished, setIsLoaderFinished] = useState<boolean>(() => {
-    const isPos = window.location.search.includes('mode=pos');
+    const isPos = detectInitialPortalMode() === 'pos';
     return isPos || !navigator.onLine;
   });
   
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+
+  const isIOSDevice = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Notification Setup
   useEffect(() => {
@@ -208,10 +248,7 @@ function MainApp() {
     }
 
     const syncBrandingAndManifest = async () => {
-      const [icon192, icon512] = await Promise.all([
-        generatePwaIconFromUrl(activeLogoUrl, 192),
-        generatePwaIconFromUrl(activeLogoUrl, 512)
-      ]);
+      const icon192 = await generatePwaIconFromUrl(activeLogoUrl, 192);
 
       // 1. Browser Tab Favicon ပြောင်းလဲခြင်း
       const faviconEl = document.getElementById('app-favicon') as HTMLLinkElement | null;
@@ -238,61 +275,39 @@ function MainApp() {
         ogImageEl.content = activeLogoUrl;
       }
 
-      // 4. Dynamic PWA Manifest တည်ဆောက်ခြင်း (Xiaomi/Redmi Launcher များအတွက် 'any' purpose သီးသန့်သုံးမည်)
-      const startUrl = isStaffMode
-        ? `${window.location.origin}/?mode=staff`
+      // 4. Static Portal Manifest ချိတ်ဆက်ခြင်း (iOS Safari သည် blob: manifest ကို လက်မခံသဖြင့် Static JSON Manifest ကိုသာ အမြဲသုံးမည်)
+      const isAdminMode = appMode === 'admin';
+      const targetManifestHref = isStaffMode
+        ? '/manifest-staff.json'
         : isPosMode
-        ? `${window.location.origin}/?mode=pos`
-        : `${window.location.origin}/`;
+        ? '/manifest-pos.json'
+        : isAdminMode
+        ? '/manifest-admin.json'
+        : '/manifest.json';
 
-      const dynamicManifest = {
-        id: isStaffMode ? '/?mode=staff' : isPosMode ? '/?mode=pos' : '/',
-        short_name: isStaffMode ? 'SL Staff' : isPosMode ? 'SL POS' : 'Shangri-La',
-        name: isStaffMode
-          ? `${brandName} - Staff Portal`
-          : isPosMode
-          ? `${brandName} - POS System`
-          : `${brandName} Men's Retreat`,
-        description: "The Shangri-La Men's Retreat - Beyond Relaxation",
-        start_url: startUrl,
-        scope: `${window.location.origin}/`,
-        display: 'standalone',
-        orientation: 'portrait',
-        theme_color: '#123524',
-        background_color: '#123524',
-        icons: [
-          {
-            src: icon192,
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: icon512,
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
-          }
-        ]
-      };
-
-      try {
-        const manifestJson = JSON.stringify(dynamicManifest);
-        const blob = new Blob([manifestJson], { type: 'application/manifest+json' });
-        const manifestUrl = URL.createObjectURL(blob);
-        
-        const manifestEl = document.getElementById('app-manifest') as HTMLLinkElement | null;
-        if (manifestEl) {
-          manifestEl.href = manifestUrl;
-        } else {
-          const newManifest = document.createElement('link');
-          newManifest.id = 'app-manifest';
-          newManifest.rel = 'manifest';
-          newManifest.href = manifestUrl;
-          document.head.appendChild(newManifest);
+      const manifestEl = document.getElementById('app-manifest') as HTMLLinkElement | null;
+      if (manifestEl) {
+        if (manifestEl.getAttribute('href') !== targetManifestHref) {
+          manifestEl.setAttribute('href', targetManifestHref);
         }
-      } catch (e) {
-        console.warn('Dynamic manifest update warning:', e);
+      } else {
+        const newManifest = document.createElement('link');
+        newManifest.id = 'app-manifest';
+        newManifest.rel = 'manifest';
+        newManifest.href = targetManifestHref;
+        document.head.appendChild(newManifest);
+      }
+
+      // 5. iOS Safari Home Screen App Title Sync
+      const appleTitleEl = document.getElementById('app-apple-title') as HTMLMetaElement | null;
+      if (appleTitleEl) {
+        appleTitleEl.content = isStaffMode
+          ? 'SL Staff'
+          : isPosMode
+          ? 'SL POS'
+          : isAdminMode
+          ? 'SL Admin'
+          : 'Shangri-La';
       }
     };
 
@@ -376,17 +391,43 @@ function MainApp() {
       {!showLoadingOverlay && appMode === 'customer' && isGlobalPopupAllowed && safeAppData && <ThadingyutPopup appData={safeAppData} />}
 
       {showInstallModal && (
-        <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden animate-fade-in shadow-2xl">
-             <div className="p-4 bg-[#123524] flex justify-between items-center text-white"><h3 className="font-bold flex items-center"><Download className="w-4 h-4 mr-2"/> Install App</h3><button onClick={() => setShowInstallModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X className="w-5 h-5"/></button></div>
+        <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4" onClick={() => setShowInstallModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden animate-fade-in shadow-2xl" onClick={(e) => e.stopPropagation()}>
+             <div className="p-4 bg-[#123524] flex justify-between items-center text-white">
+               <h3 className="font-bold flex items-center">
+                 <Download className="w-4 h-4 mr-2 text-[#D4AF37]"/>
+                 {appMode === 'staff' ? 'Install Staff App' : appMode === 'pos' ? 'Install POS App' : 'Install App'}
+               </h3>
+               <button onClick={() => setShowInstallModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X className="w-5 h-5"/></button>
+             </div>
              <div className="p-5 max-h-[75vh] overflow-y-auto space-y-4">
-                <div className="text-center text-sm font-bold text-gray-700 mb-4">အောက်ပါ အဆင့်များအတိုင်း လုပ်ဆောင်ပေးပါ</div>
+                {isIOSDevice && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-left space-y-1.5">
+                    <div className="text-xs font-extrabold text-[#123524]">iPhone / iPad (Safari) အတွက် လမ်းညွှန်</div>
+                    <p className="text-[11px] text-gray-700 leading-relaxed">
+                      ၁။ ဤ Link ကို <strong>Safari Browser</strong> ဖြင့် တိုက်ရိုက်ဖွင့်ပါ (Viber / Telegram / Messenger အတွင်းမှ မသွင်းပါနှင့်)။<br/>
+                      ၂။ Safari အောက်ခြေရှိ <strong>Share (⬆️)</strong> ခလုတ်ကို နှိပ်ပါ။<br/>
+                      ၃။ <strong>"Add to Home Screen"</strong> ကို ရွေးပြီး အမည်တွင် <strong>"{appMode === 'staff' ? 'SL Staff' : appMode === 'pos' ? 'SL POS' : 'Shangri-La'}"</strong> ပေါ်နေကြောင်း စစ်ဆေးပြီး <strong>Add</strong> နှိပ်ပါ။
+                    </p>
+                  </div>
+                )}
+                <div className="text-center text-sm font-bold text-gray-700 mb-2">အောက်ပါ အဆင့်များအတိုင်း လုပ်ဆောင်ပေးပါ</div>
                 {stepsToShow.map((step, idx) => (
                    <div key={step.id || idx} className="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm"><p className="text-xs font-bold mb-2 leading-relaxed text-gray-800">{idx + 1}။ {step.text}</p>{step.imageUrl && <img src={step.imageUrl} alt={`Step ${idx + 1}`} className="w-full rounded border border-gray-200" />}</div>
                 ))}
                 <button onClick={() => setShowInstallModal(false)} className="w-full py-3 bg-[#D4AF37] text-white font-bold rounded-lg mt-4 hover:bg-yellow-600 transition shadow-md">နားလည်ပါပြီ</button>
              </div>
           </div>
+        </div>
+      )}
+
+      {!isOnline && (
+        <div
+          className="fixed bottom-4 left-4 z-[180] flex items-center gap-2 rounded-full bg-amber-600/95 text-white px-3.5 py-1.5 text-[11px] font-bold shadow-lg border border-amber-300/60 backdrop-blur-sm"
+          style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <WifiOff className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Offline Mode — Cached data</span>
         </div>
       )}
 

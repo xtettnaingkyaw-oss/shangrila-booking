@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "The Shangri-La Men's Retreat",
+  "short_name": "Shangri-La",
+  "description": "The Best Healthy Men Spa In Mandalay since 2018.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#123524",
+  "background_color": "#0a1f15",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

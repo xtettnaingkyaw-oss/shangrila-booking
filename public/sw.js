@@ -1,10 +1,13 @@
-const CACHE_NAME = 'shangrila-pos-cache-v12';
+const CACHE_NAME = 'shangrila-pos-cache-v13';
 const CORE_ASSETS = [
   '/',
   '/index.html',
   '/?mode=pos',
   '/?mode=staff',
-  '/manifest.json'
+  '/manifest.json',
+  '/manifest-staff.json',
+  '/manifest-pos.json',
+  '/logo.png'
 ];
 
 // Preview / Local Dev environments must NEVER be intercepted or cached by the Service Worker
@@ -29,6 +32,22 @@ const isCacheableHtml = async (response) => {
   } catch {
     return false;
   }
+};
+
+// Helper: Fetch with a fast timeout so iPhone PWA on slow mobile data falls back to instant cache instead of white-screen stalling
+const fetchWithTimeout = (urlOrReq, options, timeoutMs) => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Network timeout')), timeoutMs);
+    fetch(urlOrReq, options)
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
 };
 
 // 1. Install
@@ -94,7 +113,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Fetch: Online ဖြစ်နေပါက ကုဒ်အသစ်ကို အမြဲဦးစားပေးဆွဲပြီး Offline ဖြစ်မှသာ Cache ကို သုံးမည်
+// 3. Fetch
 self.addEventListener('fetch', (event) => {
   if (IS_PREVIEW_OR_DEV) return;
   if (event.request.method !== 'GET') return;
@@ -114,17 +133,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 🌟 Page Navigation (Use URL string with cache:'no-store' to avoid Fetch Spec TypeError on navigate Request) 🌟
+  // 🌟 Page Navigation: Fast Network-First (2.2s timeout) -> Instant Cache Fallback + Background Refresh 🌟
   if (event.request.mode === 'navigate') {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE_NAME);
 
         try {
-          const networkResponse = await fetch(event.request.url, {
-            cache: 'no-store',
-            credentials: 'same-origin'
-          });
+          const networkResponse = await fetchWithTimeout(
+            event.request.url,
+            { cache: 'no-store', credentials: 'same-origin' },
+            2200
+          );
           if (networkResponse && networkResponse.ok && (await isCacheableHtml(networkResponse))) {
             await cache.put(event.request, networkResponse.clone());
             await cache.put('/', networkResponse.clone());
@@ -135,7 +155,16 @@ self.addEventListener('fetch', (event) => {
             return networkResponse;
           }
         } catch (err) {
-          // Offline ဖြစ်နေပါက Cache ထဲမှ ရှာဖွေပေးမည်
+          // Slow network or offline: serve cached shell immediately while refreshing in background
+          fetch(event.request.url, { cache: 'no-store', credentials: 'same-origin' })
+            .then(async (bgRes) => {
+              if (bgRes && bgRes.ok && (await isCacheableHtml(bgRes))) {
+                await cache.put(event.request, bgRes.clone());
+                await cache.put('/', bgRes.clone());
+                await cache.put('/index.html', bgRes.clone());
+              }
+            })
+            .catch(() => {});
         }
 
         const cachedExact = await cache.match(event.request);
@@ -151,7 +180,7 @@ self.addEventListener('fetch', (event) => {
         if (cachedIndex) return cachedIndex;
 
         return new Response(
-          '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shangri-La</title></head><body style="background:#123524;color:#D4AF37;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:20px;"><div><h2>အင်တာနက် ခေတ္တဖွင့်ပြီး တစ်ကြိမ် အရင်ဝင်ပေးပါ</h2><p style="color:#fff;font-size:14px;">Offline စနစ်အတွက် ဖိုင်များသိမ်းဆည်းရန် ပထမဆုံးအကြိမ် အင်တာနက်ဖွင့်၍ Reload နှိပ်ပေးပါ။</p><button onclick="location.reload()" style="margin-top:15px;padding:12px 24px;background:#D4AF37;color:#123524;border:none;border-radius:8px;font-weight:bold;">Reload Now</button></div></body></html>',
+          '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shangri-La</title></head><body style="background:#0a1f15;color:#D4AF37;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:20px;"><div><h2>အင်တာနက် ခေတ္တဖွင့်ပြီး တစ်ကြိမ် အရင်ဝင်ပေးပါ</h2><p style="color:#fff;font-size:14px;">Offline စနစ်အတွက် ဖိုင်များသိမ်းဆည်းရန် ပထမဆုံးအကြိမ် အင်တာနက်ဖွင့်၍ Reload နှိပ်ပေးပါ။</p><button onclick="location.reload()" style="margin-top:15px;padding:12px 24px;background:#D4AF37;color:#123524;border:none;border-radius:8px;font-weight:bold;">Reload Now</button></div></body></html>',
           { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
         );
       })()
@@ -159,7 +188,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 🌟 JS, CSS, Images နှင့် အခြား Assets ဖိုင်များအတွက် (Network First -> Offline Cache Fallback) 🌟
+  // 🌟 Vite Hashed Static Assets (/assets/*): Cache-First for Instant (<5ms) iPhone Launch 🌟
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+
+        try {
+          const networkResponse = await fetch(event.request);
+          if (networkResponse && networkResponse.ok && networkResponse.type === 'basic') {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        } catch {
+          return new Response('', { status: 408 });
+        }
+      })()
+    );
+    return;
+  }
+
+  // 🌟 Other Same-Origin Files (Manifests, Logo, Icons): Network-First -> Cache Fallback 🌟
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
@@ -172,7 +223,7 @@ self.addEventListener('fetch', (event) => {
         }
         if (networkResponse) return networkResponse;
       } catch (err) {
-        // Offline ဖြစ်နေချိန်တွင် အောက်ပါ Cache မှ ပြန်ပေးမည်
+        // Offline fallback
       }
 
       const cachedResponse = await cache.match(event.request, { ignoreSearch: true });

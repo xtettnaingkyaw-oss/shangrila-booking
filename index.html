@@ -12,7 +12,15 @@
 
     <!-- 🌟 Tab တွင်ပေါ်မည့် လိုဂို (Favicon) - Admin Panel မှ အလိုအလျောက် ပြောင်းလဲနိုင်ရန် id ထည့်ထားသည် 🌟 -->
     <link id="app-favicon" rel="icon" type="image/png" href="/logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preload" as="image" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <style>
+      html, body {
+        background-color: #0a1f15;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
 
     <!-- 🌟 Google တွင် ပေါ်မည့် Title နှင့် Description (SEO) 🌟 -->
     <title>The Shangri-La Men's Retreat | Best Men Spa in Mandalay</title>
@@ -35,13 +43,13 @@
     <meta name="twitter:description" content="The Best Healthy Men Spa In Mandalay since 2018." />
     <meta name="twitter:image" content="https://www.shangrilamenretreat.online/logo.png" />
 
-    <!-- 🌟 Web App အဖြစ် Install လုပ်ရန်အတွက် လိုအပ်သော PWA Meta Tags 🌟 -->
-    <meta name="theme-color" content="#123524" />
+    <!-- 🌟 Web App အဖြစ် Install လုပ်ရန်အတွက် လိုအပ်သော PWA Meta Tags (iOS Safari Standalone Optimized) 🌟 -->
+    <meta name="theme-color" content="#0a1f15" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Shangri-La Spa" />
-    <link id="app-apple-icon" rel="apple-touch-icon" href="/logo.png" />
+    <meta id="app-apple-title" name="apple-mobile-web-app-title" content="Shangri-La" />
+    <link id="app-apple-icon" rel="apple-touch-icon" sizes="180x180" href="/logo.png" />
 
     <!-- 🌟 Non-Blocking Conditional Telegram Mini App SDK (VPN မလိုဘဲ မြန်မာနိုင်ငံတွင် ချက်ချင်းပွင့်စေရန် Telegram Context ရှိမှသာ Async ခေါ်မည်) 🌟 -->
     <script>
@@ -104,70 +112,71 @@
       })();
     </script>
 
-    <!-- 🌟 Dynamic PWA Manifest (Admin မှ Branding တွင်ပြောင်းသော Logo ကို PWA Icon အဖြစ် အလိုအလျောက် သုံးရန်) 🌟 -->
-    <link id="app-manifest" rel="manifest" href="/manifest.json" />
+    <!-- 🌟 Static Portal-Specific PWA Manifest (iOS Safari သည် blob: manifest ကို လက်မခံသဖြင့် Staff/POS/Admin/Customer အလိုက် Static JSON Manifest အစစ်ကို တိုက်ရိုက်ချိတ်ဆက်သည်) 🌟 -->
     <script>
       (function () {
         try {
-          var brandingData = localStorage.getItem('shangrila_branding');
-          var logoUrl = window.location.origin + '/logo.png';
+          var params = new URLSearchParams(window.location.search);
+          var path = (window.location.pathname || '').toLowerCase();
+          var modeParam = (params.get('mode') || params.get('portal') || '').toLowerCase();
 
+          var isStaff = modeParam === 'staff' || path.indexOf('/staff') === 0;
+          var isPos = modeParam === 'pos' || path.indexOf('/pos') === 0;
+          var isAdmin = modeParam === 'admin' || path.indexOf('/admin') === 0;
+
+          var manifestHref = isStaff
+            ? '/manifest-staff.json'
+            : isPos
+            ? '/manifest-pos.json'
+            : isAdmin
+            ? '/manifest-admin.json'
+            : '/manifest.json';
+
+          var manifestLink = document.createElement('link');
+          manifestLink.id = 'app-manifest';
+          manifestLink.rel = 'manifest';
+          manifestLink.href = manifestHref;
+          document.head.appendChild(manifestLink);
+
+          var appleTitleEl = document.getElementById('app-apple-title');
+          if (isStaff) {
+            document.title = 'Shangri-La Staff Portal';
+            if (appleTitleEl) appleTitleEl.setAttribute('content', 'SL Staff');
+          } else if (isPos) {
+            document.title = 'Shangri-La POS';
+            if (appleTitleEl) appleTitleEl.setAttribute('content', 'SL POS');
+          } else if (isAdmin) {
+            document.title = 'Shangri-La Admin';
+            if (appleTitleEl) appleTitleEl.setAttribute('content', 'SL Admin');
+          }
+
+          // Admin Branding မှ Logo Cache ရှိပါက Favicon နှင့် Apple Touch Icon ကို ချက်ချင်း Sync လုပ်ထားမည်
+          var brandingData = localStorage.getItem('shangrila_branding');
           if (brandingData) {
             try {
               var parsed = JSON.parse(brandingData);
               var candidateLogo = parsed.logoUrl || parsed.headerLogo || parsed.logo;
-              // imgbb link ပျက်များကို ပြန်မသုံးမိစေရန် စစ်ဆေးခြင်း
-              if (candidateLogo && candidateLogo.indexOf('ibb.co') === -1 && candidateLogo.indexOf('imgbb.com') === -1) {
-                logoUrl = candidateLogo;
+              if (
+                candidateLogo &&
+                candidateLogo.indexOf('ibb.co') === -1 &&
+                candidateLogo.indexOf('imgbb.com') === -1 &&
+                (candidateLogo.indexOf('https://') === 0 || candidateLogo.indexOf('/') === 0)
+              ) {
+                var favEl = document.getElementById('app-favicon');
+                var appleIconEl = document.getElementById('app-apple-icon');
+                if (favEl) favEl.setAttribute('href', candidateLogo);
+                if (appleIconEl) appleIconEl.setAttribute('href', candidateLogo);
               }
             } catch (err) {
               console.warn('Branding parse warning:', err);
             }
           }
-
-          var params = new URLSearchParams(window.location.search);
-          var path = window.location.pathname.toLowerCase();
-          var isStaff = params.get('portal') === 'staff' || params.get('mode') === 'staff' || path.indexOf('staff') !== -1;
-
-          if (isStaff) {
-            document.title = 'Shangri-La Staff Portal';
-          }
-
-          var manifestObj = {
-            "id": isStaff ? "/?mode=staff" : "/",
-            "name": isStaff ? "Shangri-La Staff Portal" : "The Shangri-La Men's Retreat",
-            "short_name": isStaff ? "SL Staff" : "Shangri-La",
-            "description": "The Shangri-La Men's Retreat - Beyond Relaxation",
-            "start_url": isStaff ? "/?mode=staff" : "/",
-            "scope": "/",
-            "display": "standalone",
-            "orientation": "portrait",
-            "background_color": "#0B2419",
-            "theme_color": "#0B2419",
-            "icons": [
-              {
-                "src": logoUrl,
-                "sizes": "192x192",
-                "type": "image/png",
-                "purpose": "any"
-              },
-              {
-                "src": logoUrl,
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any"
-              }
-            ]
-          };
-
-          var stringManifest = JSON.stringify(manifestObj);
-          var blob = new Blob([stringManifest], { type: 'application/json' });
-          var manifestLink = document.getElementById('app-manifest');
-          if (manifestLink) {
-            manifestLink.setAttribute('href', URL.createObjectURL(blob));
-          }
         } catch (e) {
-          console.warn('Dynamic manifest generation error:', e);
+          var fallbackLink = document.createElement('link');
+          fallbackLink.id = 'app-manifest';
+          fallbackLink.rel = 'manifest';
+          fallbackLink.href = '/manifest.json';
+          document.head.appendChild(fallbackLink);
         }
       })();
     </script>

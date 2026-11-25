@@ -1,0 +1,26 @@
+{
+  "id": "/?mode=admin",
+  "name": "Shangri-La Admin Portal",
+  "short_name": "SL Admin",
+  "description": "The Shangri-La Men's Retreat - Admin Management",
+  "start_url": "/?mode=admin",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#123524",
+  "background_color": "#0a1f15",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
