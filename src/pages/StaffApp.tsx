@@ -814,9 +814,10 @@ function StaffSessionManager({ appData, loggedInStaff, onLogout }: { appData: Ap
 
       // 🌟 ဝန်ထမ်းမှ ဝန်ဆောင်မှု ပြီးဆုံးကြောင်း (Complete) နှိပ်သည့်အခါ Telegram ပို့ခြင်း 🌟
       notifyBookingEvent('STATUS_UPDATE', {
-        id: activeSession.txId || activeSession.id,
+        id: activeSession.id,
         customerName: activeSession.name || 'Walk-in Guest',
         customerPhone: activeSession.phone || '-',
+        customerChatId: activeSession.customerChatId || activeSession.telegramChatId || undefined,
         serviceName: activeSession.service || 'Spa Service',
         duration: formatMinsToHrMinBurmese(durInfo.totalMins),
         price: Number(activeSession.totalPrice) || 0,

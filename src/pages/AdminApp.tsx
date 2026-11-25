@@ -14,9 +14,9 @@ import AdminSalesSummaryView from './AdminSalesSummaryView';
 import { AdminEmployeeHandbookManager } from './EmployeeHandbookSystem';
 import { AdminStaffPayrollManager, calculateBookingCommissionForStaff, getStaffSeniority, isSameStaffMember } from './StaffPayrollSystem';
 import { AdminExpenseManager, AdminExpenseReportDashboard, AdminRevenueProfitDashboard } from './ExpenseAndRevenueSystem';
-import { BookOpen, Wallet, PieChart, Send } from 'lucide-react';
+import { BookOpen, Wallet, PieChart, Send, Bell, BellOff, RefreshCw } from 'lucide-react';
 import { TelegramNotificationCenter } from '../components/TelegramNotificationCenter';
-import { notifyBookingEvent,notifyStaffUpdate,getTelegramConfig,saveTelegramConfig,pollAndProcessBusinessAutoReplies,DEFAULT_BUSINESS_AUTO_REPLY_RULES,BusinessAutoReplyRule,TelegramBotConfig} from '../telegramService';
+import { notifyBookingEvent,notifyStaffUpdate,getTelegramConfig,saveTelegramConfig,pollAndProcessBusinessAutoReplies,DEFAULT_BUSINESS_AUTO_REPLY_RULES,BusinessAutoReplyRule,TelegramBotConfig,getCustomerTelegramSubscribers,fetchRecentBotChats,matchTelegramSubscriberForRecord,CustomerTelegramSubscriber} from '../telegramService';
 import { playAdminAlertSound, unlockAudioContext } from '../utils/soundEffects';
 
 export interface InstallStep { id: string; text: string; imageUrl: string; }
@@ -29,6 +29,157 @@ const DEFAULT_INSTALL_STEPS: InstallStep[] = [
 const getLocalTodayStr = () => {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
+const formatShortNotiTime = (ms?: number) => {
+  if (!ms) return '';
+  try {
+    return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch {
+    return '';
+  }
+};
+
+// 🌟 Reusable Telegram Noti Status Badge & Delivery Log Component for Pending Bookings & Booking History 🌟
+const BookingTelegramNotiBadge: React.FC<{
+  booking: Booking;
+  subscribers: CustomerTelegramSubscriber[];
+  onResend?: (b: Booking) => Promise<void>;
+  resendingId?: string | null;
+  compact?: boolean;
+}> = ({ booking, subscribers, onResend, resendingId, compact = false }) => {
+  const tgMatch = matchTelegramSubscriberForRecord(
+    {
+      phone: booking.phone,
+      name: booking.name,
+      customerChatId: booking.customerChatId,
+      telegramChatId: booking.telegramChatId,
+      bookingId: booking.id,
+    },
+    subscribers
+  );
+
+  const rawHistory = Array.isArray(booking.telegramNotiHistory) ? booking.telegramNotiHistory : [];
+  // Keep latest entry per statusKey in chronological order so each sent stage is clearly visible
+  const stageMap = new Map<string, typeof rawHistory[number]>();
+  rawHistory.forEach((entry) => {
+    const key = entry.statusKey || entry.statusLabel || String(entry.sentAt);
+    const prev = stageMap.get(key);
+    if (!prev || (entry.sentAt || 0) >= (prev.sentAt || 0)) {
+      stageMap.set(key, entry);
+    }
+  });
+  const stageLogs = Array.from(stageMap.values()).sort((a, b) => (a.sentAt || 0) - (b.sentAt || 0));
+
+  const isResending = Boolean(resendingId && booking.id && resendingId === booking.id);
+  const isWalkInNoPhone = !booking.phone || booking.phone === '-' || booking.phone.trim() === '';
+
+  const getStagePillStyle = (log: typeof rawHistory[number]) => {
+    if (log.customerSent) {
+      if (log.statusKey === 'cancelled') return 'bg-red-50 text-red-700 border-red-200';
+      if (log.statusKey === 'completed') return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      if (log.statusKey === 'in-service') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      if (log.statusKey === 'confirmed') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      return 'bg-sky-50 text-sky-700 border-sky-200';
+    }
+    if (!log.chatId) {
+      return 'bg-amber-50 text-amber-800 border-amber-200';
+    }
+    return 'bg-rose-50 text-rose-700 border-rose-200';
+  };
+
+  return (
+    <div className={`flex flex-col gap-1.5 ${compact ? 'min-w-[165px] max-w-[220px]' : 'min-w-[175px] max-w-[235px]'}`}>
+      {/* Customer Link Status Header */}
+      <div className="flex items-center justify-between gap-1.5">
+        {tgMatch.isConnected ? (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-sky-50 text-sky-700 border border-sky-200"
+            title={tgMatch.username ? `@${tgMatch.username} (ID: ${tgMatch.chatId})` : `Chat ID: ${tgMatch.chatId}`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            TG ON {tgMatch.username ? `(@${tgMatch.username})` : ''}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-gray-100 text-gray-500 border border-gray-200">
+            <BellOff className="w-2.5 h-2.5" />
+            {isWalkInNoPhone ? 'Walk-in (No TG)' : 'TG Not Linked'}
+          </span>
+        )}
+
+        {onResend && booking.id && !isWalkInNoPhone && (
+          <button
+            type="button"
+            disabled={isResending}
+            onClick={() => onResend(booking)}
+            title="လက်ရှိ Booking Status ကို Telegram Noti ပြန်ပို့ရန်"
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black border transition ${
+              isResending
+                ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait'
+                : 'bg-[#123524]/5 text-[#123524] border-[#123524]/20 hover:bg-[#123524] hover:text-[#D4AF37]'
+            }`}
+          >
+            <Send className={`w-2.5 h-2.5 ${isResending ? 'animate-pulse' : ''}`} />
+            {isResending ? 'Sending...' : 'Send'}
+          </button>
+        )}
+      </div>
+
+      {/* Sent Notifications List */}
+      {stageLogs.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {stageLogs.map((log, i) => (
+            <span
+              key={`${log.statusKey}-${i}`}
+              title={`${log.statusLabel} • ${
+                log.customerSent
+                  ? 'Customer DM Sent ✓'
+                  : !log.chatId
+                  ? 'Customer Not Linked (Admin Group Only)'
+                  : `Failed: ${log.error || 'Error'}`
+              }${log.sentAt ? ` • ${formatShortNotiTime(log.sentAt)}` : ''}`}
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black border leading-tight ${getStagePillStyle(log)}`}
+            >
+              <span>{log.customerSent ? '✓' : !log.chatId ? '•' : '✕'}</span>
+              <span>{log.statusLabel}</span>
+            </span>
+          ))}
+        </div>
+      ) : booking.telegramLastNotiLabel ? (
+        <div className="flex flex-wrap gap-1">
+          <span
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black border ${
+              booking.telegramLastNotiSent
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-800 border-amber-200'
+            }`}
+          >
+            {booking.telegramLastNotiSent ? '✓' : '•'} {booking.telegramLastNotiLabel}
+          </span>
+        </div>
+      ) : (
+        <span className="text-[9px] text-gray-400 font-semibold italic">
+          {tgMatch.isConnected ? 'Noti မပို့ရသေးပါ (Send နှိပ်နိုင်)' : 'Noti မှတ်တမ်းမရှိသေးပါ'}
+        </span>
+      )}
+
+      {/* Last Sent Meta Line */}
+      {booking.telegramLastNotiAt && (
+        <div className="text-[9px] text-gray-400 font-semibold flex items-center gap-1">
+          <span>
+            {booking.telegramNotiStatus === 'sent_customer'
+              ? 'Customer ထံပို့ပြီး'
+              : booking.telegramNotiStatus === 'admin_only_unlinked'
+              ? 'Admin Group သာပို့ပြီး (Customer မချိတ်သေး)'
+              : booking.telegramNotiStatus === 'failed'
+              ? 'ပို့ရာတွင်အမှားရှိ'
+              : 'Updated'}
+          </span>
+          <span>• {formatShortNotiTime(booking.telegramLastNotiAt)}</span>
+        </div>
+      )}
+    </div>
+  );
 };
 
 interface LocalAdminProfile extends Omit<AdminProfile, 'username'> { docId?: string; username?: string; password?: string; role?: 'super_admin' | 'custom'; permissions?: string[]; }
@@ -193,6 +344,44 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
     });
     return () => unsubUsers();
   }, []);
+
+  // 🌟 Real-time Customer Telegram Subscribers state shared across Pending Bookings, Booking History & User List 🌟
+  const [telegramSubscribers, setTelegramSubscribers] = useState<CustomerTelegramSubscriber[]>([]);
+  const [syncingTelegram, setSyncingTelegram] = useState(false);
+
+  const refreshTelegramSubscribers = useCallback(async () => {
+    try {
+      const list = await getCustomerTelegramSubscribers();
+      setTelegramSubscribers(list);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    refreshTelegramSubscribers();
+    const unsubTg = onSnapshot(
+      collection(db, 'telegramSubscribers'),
+      () => {
+        refreshTelegramSubscribers();
+      },
+      () => {}
+    );
+    return () => unsubTg();
+  }, [refreshTelegramSubscribers]);
+
+  const handleSyncTelegramSubscribers = useCallback(async () => {
+    setSyncingTelegram(true);
+    try {
+      const cfg = await getTelegramConfig();
+      if (cfg.botToken) {
+        await fetchRecentBotChats(cfg.botToken, true);
+      }
+      await refreshTelegramSubscribers();
+    } catch (e) {
+      console.warn('Telegram sync error:', e);
+    } finally {
+      setSyncingTelegram(false);
+    }
+  }, [refreshTelegramSubscribers]);
 
   useEffect(() => {
     const q = query(collection(db, 'therapists'), where('updateRequested', '==', true));
@@ -765,8 +954,8 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         {/* Scrollable Full-Width Content Area */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6">
           <div className="w-full max-w-[1600px] mx-auto pb-12">
-            {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={bookings} adminRole={adminRole} />}
-            {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} allBookings={bookings} adminRole={adminRole} therapists={appData.therapists} />}
+            {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={bookings} adminRole={adminRole} telegramSubscribers={telegramSubscribers} syncingTelegram={syncingTelegram} onSyncTelegram={handleSyncTelegramSubscribers} />}
+            {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} allBookings={bookings} adminRole={adminRole} therapists={appData.therapists} telegramSubscribers={telegramSubscribers} syncingTelegram={syncingTelegram} onSyncTelegram={handleSyncTelegramSubscribers} />}
             {tab === 'staff_performance' && hasAccess('reports') && (
               <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 animate-fade-in">
                 <div className="border-b border-gray-100 pb-4 mb-2">
@@ -780,7 +969,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
                 <AdminStaffPerformanceView therapists={appData.therapists} bookings={bookings} />
               </div>
             )}
-            {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} />}
+            {tab === 'users' && hasAccess('users') && <AdminUsersList adminRole={adminRole} appData={appData} telegramSubscribers={telegramSubscribers} syncingTelegram={syncingTelegram} onSyncTelegram={handleSyncTelegramSubscribers} />}
             {tab === 'points' && hasAccess('points') && <AdminPointManagement adminRole={adminRole} appData={appData} />}
             {tab === 'admins' && hasAccess('admins') && <AdminManagementList />}
             {tab === 'payroll' && (hasAccess('reports') || hasAccess('penalties')) && (<AdminStaffPayrollManager bookings={bookings} therapists={appData.therapists} adminRole={adminRole} />)}
@@ -806,12 +995,25 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
   );
 });
 
-function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], adminRole: string }) {
+function AdminBookingsList({
+  bookings,
+  adminRole,
+  telegramSubscribers = [],
+  syncingTelegram = false,
+  onSyncTelegram,
+}: {
+  bookings: Booking[];
+  adminRole: string;
+  telegramSubscribers?: CustomerTelegramSubscriber[];
+  syncingTelegram?: boolean;
+  onSyncTelegram?: () => Promise<void>;
+}) {
   const [filterPayMode, setFilterPayMode] = useState<'all' | 'pending_action' | 'deposit_only' | 'paid_in_full' | 'cancelled'>('all');
   const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'this_month' | 'last_month' | 'upcoming' | 'custom_range'>('all');
   const [fromDate, setFromDate] = useState<string>(getLocalTodayStr());
   const [toDate, setToDate] = useState<string>(getLocalTodayStr());
   const [searchQuery, setSearchQuery] = useState('');
+  const [resendingBookingId, setResendingBookingId] = useState<string | null>(null);
 
   // 🌟 Campaign Winners စာရင်းကို အလိုအလျောက် ဆွဲယူထားမည် 🌟
   const [campaignWinnersList, setCampaignWinnersList] = useState<any[]>([]);
@@ -1099,6 +1301,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         id: b.id || 'ONLINE',
         customerName: b.name || 'Online Guest',
         customerPhone: b.phone || '-',
+        customerChatId: b.customerChatId || b.telegramChatId || undefined,
         serviceName: b.service || 'Spa Service',
         price: Number(b.totalPrice) || 0,
         date: b.date || getLocalTodayStr(),
@@ -1236,6 +1439,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
         id: cancellingBooking.id || 'CANCELLED',
         customerName: cancellingBooking.name || 'Online Guest',
         customerPhone: cancellingBooking.phone || '-',
+        customerChatId: cancellingBooking.customerChatId || cancellingBooking.telegramChatId || undefined,
         serviceName: cancellingBooking.service || '-',
         price: Number(cancellingBooking.totalPrice) || 0,
         date: cancellingBooking.date || getLocalTodayStr(),
@@ -1253,6 +1457,60 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
       alert('Booking ပယ်ဖျက်ရာတွင် အမှားအယွင်းရှိနေပါသည်။');
     } finally {
       setIsSubmittingCancel(false);
+    }
+  };
+
+  // 🌟 1-Click Send / Resend Telegram Status Noti from Pending Bookings Row 🌟
+  const handleResendBookingTelegramNoti = async (b: Booking) => {
+    if (!b.id) return;
+    setResendingBookingId(b.id);
+    try {
+      const mappedStatus =
+        b.status === 'approved'
+          ? 'confirmed'
+          : b.status === 'in_progress'
+          ? 'in-service'
+          : b.status === 'payment_checking'
+          ? 'pending'
+          : b.status;
+
+      const matched = matchTelegramSubscriberForRecord(
+        {
+          phone: b.phone,
+          name: b.name,
+          customerChatId: b.customerChatId,
+          telegramChatId: b.telegramChatId,
+          bookingId: b.id,
+        },
+        telegramSubscribers
+      );
+
+      const res = await notifyBookingEvent('STATUS_UPDATE', {
+        id: b.id,
+        customerName: b.name || 'Online Guest',
+        customerPhone: b.phone || '-',
+        customerChatId: matched.chatId || b.customerChatId || b.telegramChatId || undefined,
+        serviceName: b.service || 'Spa Service',
+        price: Number(b.totalPrice) || 0,
+        date: b.date || getLocalTodayStr(),
+        time: b.time || '-',
+        therapistId: b.therapist || '',
+        therapistName: b.therapist || 'Any Available',
+        vipTier: b.vipTierName,
+        status: mappedStatus,
+        notes: b.cancelReason ? `🚫 Cancel Reason: ${b.cancelReason}` : (b.specialRequest || ''),
+        updatedBy: `Admin Manual Send (${adminRole === 'super_admin' ? 'Super Admin' : 'Staff Admin'})`,
+      });
+
+      if (res.customerSent) {
+        alert(`✅ Customer ထံသို့ "${res.statusLabel || mappedStatus}" Telegram Noti ပေးပို့ပြီးပါပြီ။`);
+      } else {
+        alert(`ℹ️ Admin Group သို့ ပို့ပြီးပါပြီ — Customer ဘက်မှ Telegram Bot ကို START မနှိပ်ရသေးပါ (${res.errors.join(' / ') || 'Not Linked'})။`);
+      }
+    } catch (e: any) {
+      alert('Telegram Noti ပို့ရာတွင် အမှားရှိနေပါသည်: ' + (e?.message || 'Error'));
+    } finally {
+      setResendingBookingId(null);
     }
   };
 
@@ -1882,24 +2140,38 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
             </button>
           </div>
 
-          <div className="relative w-full lg:w-72">
-            <input
-              type="text"
-              placeholder="အမည်၊ ဖုန်း သို့မဟုတ် TxID ရှာရန်..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold shadow-2xs"
-            />
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
-            {searchQuery && (
+          <div className="flex items-center gap-2 w-full lg:w-auto">
+            {onSyncTelegram && (
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                onClick={onSyncTelegram}
+                disabled={syncingTelegram}
+                title="Customer များ Telegram Bot ချိတ်ဆက်ထားမှုကို ချက်ချင်း Sync လုပ်ရန်"
+                className="px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-black flex items-center gap-1.5 whitespace-nowrap transition shadow-2xs disabled:opacity-60"
               >
-                <X className="w-3.5 h-3.5" />
+                <RefreshCw className={`w-3.5 h-3.5 ${syncingTelegram ? 'animate-spin' : ''}`} />
+                {syncingTelegram ? 'Syncing TG...' : 'Sync TG Noti'}
               </button>
             )}
+            <div className="relative flex-1 lg:w-72">
+              <input
+                type="text"
+                placeholder="အမည်၊ ဖုန်း သို့မဟုတ် TxID ရှာရန်..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:border-[#D4AF37] text-xs font-bold shadow-2xs"
+              />
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1970,7 +2242,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
 
               {/* Bookings Table inside Date Group */}
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[980px]">
+                <table className="w-full text-left border-collapse min-w-[1140px]">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
                       <th className="p-3">Customer</th>
@@ -1978,6 +2250,7 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                       <th className="p-3">Appointment Time</th>
                       <th className="p-3">TxID, Deposit & Total</th>
                       <th className="p-3">Booking Status</th>
+                      <th className="p-3">Telegram Noti Status</th>
                       <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -2251,6 +2524,16 @@ function AdminBookingsList({ bookings, adminRole }: { bookings: Booking[], admin
                             )}
                           </td>
 
+                          {/* 5.5 Telegram Noti Delivery Status */}
+                          <td className="p-3 align-top">
+                            <BookingTelegramNotiBadge
+                              booking={b}
+                              subscribers={telegramSubscribers}
+                              onResend={handleResendBookingTelegramNoti}
+                              resendingId={resendingBookingId}
+                            />
+                          </td>
+
                           {/* 6. Actions (View Slip, Telegram, Cancel, Delete) */}
                           <td className="p-3 text-right">
                             <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-1.5">
@@ -2521,9 +2804,26 @@ function AdminPointManagement({ adminRole, appData }: { adminRole: string, appDa
   );
 }
 
-function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }: { bookings: Booking[], allBookings?: Booking[], adminRole: string, therapists: TherapistProfile[] }) {
+function AdminStaffHistoryList({
+  bookings,
+  allBookings,
+  adminRole,
+  therapists,
+  telegramSubscribers = [],
+  syncingTelegram = false,
+  onSyncTelegram,
+}: {
+  bookings: Booking[];
+  allBookings?: Booking[];
+  adminRole: string;
+  therapists: TherapistProfile[];
+  telegramSubscribers?: CustomerTelegramSubscriber[];
+  syncingTelegram?: boolean;
+  onSyncTelegram?: () => Promise<void>;
+}) {
   const [view, setView] = useState<'dashboard' | 'service' | 'outpass' | 'performance'>('dashboard');
   const [outpasses, setOutpasses] = useState<OutPass[]>([]);
+  const [resendingHistoryId, setResendingHistoryId] = useState<string | null>(null);
 
    // 🌟 Outcall 4-Stage Live Helper & Badge Component for Admin 🌟
   const isHotelOrHomeService = (b: any) => {
@@ -2944,6 +3244,7 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
         id: b.id,
         customerName: b.name || 'Guest',
         customerPhone: b.phone || '-',
+        customerChatId: b.customerChatId || b.telegramChatId || undefined,
         serviceName: b.service || '-',
         price: Number(b.totalPrice) || 0,
         date: b.date || todayStr,
@@ -2954,6 +3255,51 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
         notes: overtimeSecs > 60 ? `⚠️ အချိန်ပို (Overtime): +${formatSecondsToBurmeseWords(overtimeSecs)}` : '✅ အချိန်မှန် ပြီးဆုံးပါသည်',
         updatedBy: 'Admin Live Monitor'
       }).catch((err) => console.warn('Telegram complete alert error:', err));
+    }
+  };
+
+  // 🌟 1-Click Send / Resend Telegram Status Noti from Booking History Row 🌟
+  const handleResendHistoryTelegramNoti = async (b: Booking) => {
+    if (!b.id) return;
+    setResendingHistoryId(b.id);
+    try {
+      const mappedStatus = b.status === 'in_progress' ? 'in-service' : b.status;
+      const matched = matchTelegramSubscriberForRecord(
+        {
+          phone: b.phone,
+          name: b.name,
+          customerChatId: b.customerChatId,
+          telegramChatId: b.telegramChatId,
+          bookingId: b.id,
+        },
+        telegramSubscribers
+      );
+
+      const res = await notifyBookingEvent('STATUS_UPDATE', {
+        id: b.id,
+        customerName: b.name || 'Guest',
+        customerPhone: b.phone || '-',
+        customerChatId: matched.chatId || b.customerChatId || b.telegramChatId || undefined,
+        serviceName: b.service || '-',
+        price: Number(b.totalPrice) || 0,
+        date: b.date || todayStr,
+        time: b.time || '-',
+        therapistId: b.therapist || '',
+        therapistName: b.therapist || '-',
+        status: mappedStatus,
+        notes: b.specialRequest || '',
+        updatedBy: 'Admin Booking History',
+      });
+
+      if (res.customerSent) {
+        alert(`✅ Customer ထံသို့ "${res.statusLabel || mappedStatus}" Telegram Noti ပေးပို့ပြီးပါပြီ။`);
+      } else {
+        alert(`ℹ️ Admin Group သို့ ပို့ပြီးပါပြီ — Customer ဘက်မှ Telegram Bot မချိတ်ဆက်ရသေးပါ (${res.errors.join(' / ') || 'Not Linked'})။`);
+      }
+    } catch (err: any) {
+      alert('Telegram Noti ပို့ရာတွင် အမှားရှိနေပါသည်: ' + (err?.message || 'Error'));
+    } finally {
+      setResendingHistoryId(null);
     }
   };
 
@@ -3850,6 +4196,18 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
                 )}
               </div>
 
+              {onSyncTelegram && (
+                <button
+                  type="button"
+                  onClick={onSyncTelegram}
+                  disabled={syncingTelegram}
+                  className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl text-xs font-black flex items-center gap-1.5 transition disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncingTelegram ? 'animate-spin' : ''}`} />
+                  {syncingTelegram ? 'Syncing TG...' : 'Sync TG'}
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={handleExportServiceHistoryCSV}
@@ -3861,7 +4219,7 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
           </div>
 
           <div className="overflow-x-auto rounded-2xl border border-gray-200">
-            <table className="w-full text-left border-collapse min-w-[950px]">
+            <table className="w-full text-left border-collapse min-w-[1140px]">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 text-[11px] text-gray-500 uppercase tracking-wider">
                   <th className="p-3.5">Staff (Therapist)</th>
@@ -3870,13 +4228,14 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
                   <th className="p-3.5">စတင်ချိန် (Start)</th>
                   <th className="p-3.5">ပြီးဆုံးရမည့်ချိန် (Expected)</th>
                   <th className="p-3.5">ပြီးဆုံးချိန် (Actual End)</th>
+                  <th className="p-3.5">Telegram Noti Status</th>
                   <th className="p-3.5 text-right">အချိန်ပို (Overtime) / Action</th>
                 </tr>
               </thead>
               <tbody>
                 {displayedServiceHistory.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-10 text-center text-gray-400 font-bold text-xs">
+                    <td colSpan={8} className="p-10 text-center text-gray-400 font-bold text-xs">
                       ရွေးချယ်ထားသော ရက်စွဲအတွက် ဝန်ဆောင်မှုမှတ်တမ်း မရှိပါ။
                     </td>
                   </tr>
@@ -3941,6 +4300,16 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
                             {formatTimeAMPM(b.actualEndTimeMillis || expectedEndMs)}
                           </span>
                         )}
+                      </td>
+
+                      <td className="p-3.5 align-top">
+                        <BookingTelegramNotiBadge
+                          booking={b}
+                          subscribers={telegramSubscribers}
+                          onResend={handleResendHistoryTelegramNoti}
+                          resendingId={resendingHistoryId}
+                          compact
+                        />
                       </td>
 
                       <td className="p-3.5 text-right">
@@ -4124,7 +4493,19 @@ function AdminStaffHistoryList({ bookings, allBookings, adminRole, therapists }:
   );
 }
 
-function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: AppData }) {
+function AdminUsersList({
+  adminRole,
+  appData,
+  telegramSubscribers = [],
+  syncingTelegram = false,
+  onSyncTelegram,
+}: {
+  adminRole: string;
+  appData: AppData;
+  telegramSubscribers?: CustomerTelegramSubscriber[];
+  syncingTelegram?: boolean;
+  onSyncTelegram?: () => Promise<void>;
+}) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<any>(null);
@@ -4133,6 +4514,7 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
   const [createForm, setCreateForm] = useState({ name: '', phone: '', password: '', dob: '' });
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [tgFilter, setTgFilter] = useState<'all' | 'on' | 'off'>('all');
 
   const fetchUsers = async () => {
     try {
@@ -4218,9 +4600,39 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
       } catch(e) { alert('Error approving OTP'); }
   };
 
+  const getUserTelegramInfo = useCallback(
+    (u: any) =>
+      matchTelegramSubscriberForRecord(
+        {
+          phone: u.phone,
+          name: u.name,
+          telegramChatId: u.telegramChatId,
+          telegramSubscribed: u.telegramSubscribed,
+          telegramUsername: u.telegramUsername,
+        },
+        telegramSubscribers
+      ),
+    [telegramSubscribers]
+  );
+
   const handleExportUsers = () => {
-      const headers = ['User ID', 'Phone (Login ID)', 'Name', 'DOB', 'Total Points', 'VIP Tier', 'Joined Date'];
-      const rows = users.map(u => { const tier = getTier(u.points); return [ u.docId || '', `"${u.phone || ''}"`, `"${u.name || ''}"`, `"${u.dob || ''}"`, u.points || 0, tier ? `"${tier.name}"` : 'None', u.createdAt ? `"${new Date(u.createdAt).toLocaleString()}"` : '' ]; });
+      const headers = ['User ID', 'Phone (Login ID)', 'Name', 'DOB', 'Total Points', 'VIP Tier', 'Telegram Noti', 'Telegram Username', 'Telegram Chat ID', 'Joined Date'];
+      const rows = users.map(u => {
+        const tier = getTier(u.points);
+        const tg = getUserTelegramInfo(u);
+        return [
+          u.docId || '',
+          `"${u.phone || ''}"`,
+          `"${u.name || ''}"`,
+          `"${u.dob || ''}"`,
+          u.points || 0,
+          tier ? `"${tier.name}"` : 'None',
+          tg.isConnected ? 'ON' : 'OFF',
+          `"${tg.username ? '@' + tg.username : ''}"`,
+          `"${tg.chatId || ''}"`,
+          u.createdAt ? `"${new Date(u.createdAt).toLocaleString()}"` : ''
+        ];
+      });
       const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement('a'); const url = URL.createObjectURL(blob);
       link.setAttribute('href', url); link.setAttribute('download', `Users_Report_${getLocalTodayStr()}.csv`); link.style.visibility = 'hidden';
@@ -4229,10 +4641,18 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
 
   const getTier = (points: number) => { if(!appData.vipSettings?.isActive || !appData.vipSettings?.tiers) return null; const sortedTiers = [...appData.vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
 
-  const filteredUsers = users.filter(u => 
-      u.phone.includes(searchQuery) || 
-      (u.name && u.name.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const tgOnCount = useMemo(() => users.filter(u => getUserTelegramInfo(u).isConnected).length, [users, getUserTelegramInfo]);
+  const tgOffCount = users.length - tgOnCount;
+
+  const filteredUsers = users.filter(u => {
+      const matchesSearch =
+        u.phone.includes(searchQuery) ||
+        (u.name && u.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (!matchesSearch) return false;
+      if (tgFilter === 'on') return getUserTelegramInfo(u).isConnected;
+      if (tgFilter === 'off') return !getUserTelegramInfo(u).isConnected;
+      return true;
+  });
 
   if (loading) return <div className="text-center py-20 text-gray-500 font-bold">Loading Users...</div>;
 
@@ -4267,8 +4687,13 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
           </div>
       )}
 
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-gray-100 pb-4 gap-4">
-          <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 border-b border-gray-100 pb-4 gap-4">
+          <div>
+            <h2 className="text-xl font-bold flex items-center" style={{ color: THEME.primary }}><UserCircle className="mr-2 text-[#D4AF37]" /> Auto-Created Profiles & VIP</h2>
+            <p className="text-xs text-gray-500 mt-0.5 font-semibold">
+              စုစုပေါင်း {users.length} ဦး • Telegram Noti ON: <span className="text-emerald-700 font-black">{tgOnCount}</span> • OFF: <span className="text-gray-600 font-black">{tgOffCount}</span>
+            </p>
+          </div>
           
           <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 items-center w-full md:w-auto">
               <div className="relative w-full sm:w-60">
@@ -4276,19 +4701,80 @@ function AdminUsersList({ adminRole, appData }: { adminRole: string, appData: Ap
                   <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
               </div>
               <div className="flex space-x-2 w-full sm:w-auto">
+                  {onSyncTelegram && (
+                    <button
+                      type="button"
+                      onClick={async () => { await onSyncTelegram(); await fetchUsers(); }}
+                      disabled={syncingTelegram}
+                      className="flex-1 sm:flex-none justify-center items-center flex px-3 py-2 bg-sky-50 text-sky-700 border border-sky-200 rounded-lg text-sm font-bold hover:bg-sky-100 transition shadow-sm whitespace-nowrap disabled:opacity-60"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-1.5 ${syncingTelegram ? 'animate-spin' : ''}`} />
+                      {syncingTelegram ? 'Syncing...' : 'Sync TG'}
+                    </button>
+                  )}
                   <button onClick={handleExportUsers} className="flex-1 sm:flex-none justify-center items-center flex px-3 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg text-sm font-bold hover:bg-green-100 transition shadow-sm"><Download className="w-4 h-4 mr-1.5" /> Export</button>
                   <button onClick={() => setCreatingUser(true)} className="flex-1 sm:flex-none flex items-center justify-center text-sm bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-200 font-bold whitespace-nowrap shadow-sm"><PlusCircle className="w-4 h-4 mr-1.5" /> Add New</button>
               </div>
           </div>
       </div>
+
+      {/* Telegram Noti Filter Bar */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <button
+          type="button"
+          onClick={() => setTgFilter('all')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+            tgFilter === 'all' ? 'bg-[#123524] text-[#D4AF37] border-[#123524]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+          }`}
+        >
+          အားလုံး ({users.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setTgFilter('on')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 ${
+            tgFilter === 'on' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+          }`}
+        >
+          <Bell className="w-3.5 h-3.5" /> Telegram Noti ON ({tgOnCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setTgFilter('off')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 ${
+            tgFilter === 'off' ? 'bg-gray-700 text-white border-gray-700' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+          }`}
+        >
+          <BellOff className="w-3.5 h-3.5" /> Telegram Noti OFF ({tgOffCount})
+        </button>
+      </div>
       
-      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[800px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name & DOB</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Security / OTP Request</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{filteredUsers.length === 0 && (<tr><td colSpan={5} className="p-10 text-center text-gray-400">User မတွေ့ပါ။</td></tr>)}{filteredUsers.map((u, idx) => {
+      <div className="overflow-x-auto"><table className="w-full text-left border-collapse min-w-[940px]"><thead><tr className="border-b-2 border-gray-100 text-xs text-gray-500 uppercase tracking-wider"><th className="p-3 pb-4">Phone (Login ID)</th><th className="p-3 pb-4">Name & DOB</th><th className="p-3 pb-4">VIP Tier & Points</th><th className="p-3 pb-4">Telegram Noti</th><th className="p-3 pb-4">Security / OTP Request</th><th className="p-3 pb-4 text-right">Action</th></tr></thead><tbody>{filteredUsers.length === 0 && (<tr><td colSpan={6} className="p-10 text-center text-gray-400">User မတွေ့ပါ။</td></tr>)}{filteredUsers.map((u, idx) => {
          const userTier = getTier(u.points);
+         const tgInfo = getUserTelegramInfo(u);
          return (
          <tr key={idx} className={`border-b hover:bg-gray-50 transition ${u.resetRequested && !u.otpApproved ? 'bg-red-50/30 border-red-100' : 'border-gray-50'}`}>
              <td className="p-3 font-mono font-bold tracking-wider text-[#123524]">{u.phone}</td>
              <td className="p-3"><div className="font-bold text-gray-800">{u.name || '-'}</div>{u.dob && <div className="text-[10px] text-gray-500 mt-0.5 flex items-center"><Gift className="w-3 h-3 mr-1"/> {u.dob}</div>}</td>
              <td className="p-3"><div className="flex items-center space-x-2"><span className="font-bold text-gray-800 text-lg">{u.points || 0} Pts</span>{userTier && <span className="text-[10px] px-2 py-0.5 rounded font-bold text-white shadow-sm flex items-center" style={{ backgroundColor: userTier.colorTheme }}><Award className="w-3 h-3 mr-1"/> {userTier.name} ({userTier.discountPercent}%)</span>}</div></td>
+             <td className="p-3">
+               {tgInfo.isConnected ? (
+                 <div className="flex flex-col gap-1">
+                   <span className="inline-flex items-center gap-1.5 w-fit px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                     Telegram ON
+                   </span>
+                   <span className="text-[10px] text-gray-500 font-mono truncate max-w-[150px]" title={`Chat ID: ${tgInfo.chatId}`}>
+                     {tgInfo.username ? `@${tgInfo.username}` : `ID: ${tgInfo.chatId}`}
+                   </span>
+                 </div>
+               ) : (
+                 <span className="inline-flex items-center gap-1 w-fit px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500 border border-gray-200">
+                   <BellOff className="w-3 h-3" />
+                   Noti OFF
+                 </span>
+               )}
+             </td>
              <td className="p-3">
                {u.resetRequested ? (
                    <div className="flex flex-col gap-1">

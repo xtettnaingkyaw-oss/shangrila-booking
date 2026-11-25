@@ -4,7 +4,7 @@ import { collection, addDoc, getDocs, getDoc, updateDoc, doc, query, onSnapshot,
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert, PartyPopper} from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert, PartyPopper, Bell, Send} from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 import { useAppStore } from '../AppDataContext';
@@ -192,6 +192,26 @@ const openTelegramBotInstantly = (phoneStr?: string, bookingId?: string) => {
     const w = window.open(httpsUrl, '_blank', 'noopener,noreferrer');
     if (!w) window.location.href = httpsUrl;
   }
+};
+
+// 🌟 Safe helper to read Customer's active Telegram Chat ID (fixes operator-precedence bug) 🌟
+const getActiveCustomerTelegramChatId = (): string => {
+  try {
+    const webAppUserId = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    if (webAppUserId) return String(webAppUserId).trim();
+  } catch {}
+  try {
+    const direct = localStorage.getItem('shangrila_customer_chat_id');
+    if (direct && direct.trim()) return direct.trim();
+  } catch {}
+  try {
+    const rawUser = localStorage.getItem('shangrila_tg_user');
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser);
+      if (parsed?.chatId) return String(parsed.chatId).trim();
+    }
+  } catch {}
+  return '';
 };
 
 
@@ -1876,6 +1896,18 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
       setLoadingGalleryId(null);
   };
   const [successMsg, setSuccessMsg] = useState('');
+  const [lastSubmittedBooking, setLastSubmittedBooking] = useState<{
+    id: string;
+    service: string;
+    therapist: string;
+    date: string;
+    time: string;
+    phone: string;
+    totalPrice: number;
+    chatId: string;
+    customerNotiSent: boolean;
+  } | null>(null);
+  const [tgBotTapped, setTgBotTapped] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   
   // 🌟 Auth Modal States (For duplicate phone check)
@@ -2248,7 +2280,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const processBooking = async (phoneToUse: string) => {
       setLoading(true);
       try {
-          const activeTgChatId = localStorage.getItem('shangrila_customer_chat_id') || localStorage.getItem('shangrila_tg_user') ? JSON.parse(localStorage.getItem('shangrila_tg_user') || '{}').chatId || '' : '';
+          const activeTgChatId = getActiveCustomerTelegramChatId();
           const freshSnap = await getDocs(query(collection(db, 'bookings'), where('date', '>=', todayStr)));
           const freshBookings: Booking[] = [];
           freshSnap.forEach(d => { const raw = d.data(); freshBookings.push({ id: d.id, ...raw, name: decryptText(raw.name), phone: decryptText(raw.phone), txId: decryptText(raw.txId), specialRequest: decryptText(raw.specialRequest) } as Booking); });
@@ -2362,11 +2394,25 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 
           const bookingStatusForNoti = isStaffImmediate ? 'in-service' : (isStaffMode ? 'confirmed' : 'pending');
 
-          // 1. Admin Group နှင့် Primary Therapist ထံသို့ ပေးပို့ခြင်း
+          setTgBotTapped(false);
+          setLastSubmittedBooking({
+              id: bookingDocRef.id,
+              service: plainServiceTitle,
+              therapist: combinedTherapistName,
+              date: formData.date || todayStr,
+              time: finalTimeStr || '00:00',
+              phone: phoneToUse,
+              totalPrice: Number(calculateTotal()) || 0,
+              chatId: activeTgChatId,
+              customerNotiSent: false
+          });
+
+          // 1. Admin Group နှင့် Primary Therapist ထံသို့ ပေးပို့ခြင်း (+ Customer Direct Telegram Noti)
           notifyBookingEvent(isStaffImmediate ? 'STATUS_UPDATE' : 'NEW_BOOKING', {
               id: bookingDocRef.id,
               customerName: plainCustomerName,
               customerPhone: phoneToUse || '-',
+              customerChatId: activeTgChatId || undefined,
               serviceName: plainServiceTitle,
               duration: formData.selectedItem?.duration || '',
               price: Number(calculateTotal()) || 0,
@@ -2379,7 +2425,21 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
               status: bookingStatusForNoti,
               notes: combinedNotes,
               updatedBy: isStaffMode ? (staffClockIn ? 'Staff Clock-In' : 'Staff Walk-In') : 'Customer Online App'
-          }).catch(err => console.warn('Telegram booking notification error:', err));
+          })
+            .then((res) => {
+              if (res?.customerSent || res?.chatId) {
+                setLastSubmittedBooking((prev) =>
+                  prev && prev.id === bookingDocRef.id
+                    ? {
+                        ...prev,
+                        chatId: res.chatId || prev.chatId,
+                        customerNotiSent: Boolean(res.customerSent),
+                      }
+                    : prev
+                );
+              }
+            })
+            .catch(err => console.warn('Telegram booking notification error:', err));
 
           // 2. Four Hands ဖြစ်၍ ဒုတိယ Therapist ပါဝင်ပါက ဒုတိယ Therapist ထံသို့လည်း သီးသန့် ထပ်ပို့ပေးခြင်း
           if (isFourHands && formData.therapist2) {
@@ -2387,6 +2447,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
                   id: bookingDocRef.id,
                   customerName: plainCustomerName,
                   customerPhone: phoneToUse || '-',
+                  customerChatId: activeTgChatId || undefined,
                   serviceName: `${plainServiceTitle} (Four Hands Partner: ${formData.therapist?.name || '-'})`,
                   duration: formData.selectedItem?.duration || '',
                   price: Number(calculateTotal()) || 0,
@@ -2427,6 +2488,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
 
     setLoading(true);
     try {
+      const activeTgChatId = getActiveCustomerTelegramChatId();
       if (formData.phone && formData.phone.trim() !== '') {
         const usersSnap = await getDocs(collection(db, 'users'));
         let userRefId: string | null = null; let hasName = false; let maxPts = -1; let exactPhoneMatch = false; let userHasPassword = false;
@@ -2446,26 +2508,153 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
         }
 
         if (!userRefId) {
-          await addDoc(collection(db, 'users'), { phone: encryptText(formData.phone.trim()), name: encryptText(formData.name || ''), password: encryptText(''), points: encryptText('0'), dob: encryptText(''), createdAt: Date.now() });
-        } else if (!hasName) { await updateDoc(doc(db, 'users', userRefId), { name: encryptText(formData.name || '') }); }
+          await addDoc(collection(db, 'users'), {
+            phone: encryptText(formData.phone.trim()),
+            name: encryptText(formData.name || ''),
+            password: encryptText(''),
+            points: encryptText('0'),
+            dob: encryptText(''),
+            createdAt: Date.now(),
+            ...(activeTgChatId ? { telegramChatId: activeTgChatId, telegramSubscribed: true, telegramLinkedAt: Date.now() } : {})
+          });
+        } else {
+          const userPatch: Record<string, any> = {};
+          if (!hasName && formData.name) userPatch.name = encryptText(formData.name);
+          if (activeTgChatId) {
+            userPatch.telegramChatId = activeTgChatId;
+            userPatch.telegramSubscribed = true;
+            userPatch.telegramLinkedAt = Date.now();
+          }
+          if (Object.keys(userPatch).length > 0) {
+            await updateDoc(doc(db, 'users', userRefId), userPatch);
+          }
+        }
       }
       processBooking(formData.phone.trim());
     } catch (error: any) { console.error(error); setAlertMessage("Error checking database."); setLoading(false); }
   };
 
   if (successMsg) {
+    const confirmedPhone = lastSubmittedBooking?.phone || formData.phone || userPhone;
+    const confirmedBookingId = lastSubmittedBooking?.id || '';
+    const isTgLinked = Boolean(lastSubmittedBooking?.chatId);
+    const tgLinkInfo = getInstantTelegramLink(confirmedPhone, confirmedBookingId);
+
     return (
-      <div className="bg-white p-10 rounded-2xl shadow-lg text-center border border-gray-100 max-w-lg mx-auto mt-10 animate-fade-in">
-        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="w-10 h-10 text-green-600" /></div>
-        <h2 className="text-2xl font-bold mb-3" style={{ color: THEME.primary }}>Booking Confirmed!</h2>
-        <p className="text-gray-600 mb-8 leading-relaxed font-semibold">{successMsg}</p>
-        <button onClick={() => { 
-           if (staffClockInSuccess) { staffClockInSuccess(); return; }
-           if (isStaffMode) { setStep(1); setFormData({ name: 'Walk-in Guest', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: initialTherapist, therapist2: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' }); setSuccessMsg(''); window.scrollTo({ top: 0, behavior: 'smooth' }); } 
-           else { setSuccessMsg(''); if (onBooked) onBooked(formData.phone); }
-        }} className="px-8 py-3 font-bold rounded-lg transition text-white w-full shadow-md hover:opacity-90" style={{ backgroundColor: THEME.primary }}>
-           {staffClockIn ? 'Finish' : (isStaffMode ? 'နောက်ထပ် ဘိုကင်တင်မည် (Add Another)' : 'မှတ်တမ်းကြည့်ရန် (View History)')}
-        </button>
+      <div className="max-w-lg mx-auto mt-6 sm:mt-10 space-y-4 animate-fade-in">
+        {/* Main Booking Confirmed Card */}
+        <div className="bg-white p-7 sm:p-9 rounded-2xl shadow-lg text-center border border-gray-100">
+          <div className="w-18 h-18 sm:w-20 sm:h-20 bg-emerald-50 border-2 border-emerald-200 rounded-full flex items-center justify-center mx-auto mb-5 shadow-sm">
+            <CheckCircle className="w-10 h-10 text-emerald-600" />
+          </div>
+          <h2 className="text-2xl font-bold mb-2" style={{ color: THEME.primary }}>Booking Confirmed!</h2>
+          <p className="text-gray-600 text-sm mb-5 leading-relaxed font-semibold">{successMsg}</p>
+
+          {/* Compact Booking Receipt Summary */}
+          {lastSubmittedBooking && !staffClockIn && (
+            <div className="bg-[#F8FAF9] border border-[#123524]/15 rounded-xl p-3.5 mb-6 text-left text-xs space-y-1.5">
+              <div className="flex items-center justify-between border-b border-gray-200/80 pb-1.5">
+                <span className="text-gray-500 font-semibold">Booking ID</span>
+                <span className="font-mono font-black text-[#123524] bg-[#D4AF37]/20 px-2 py-0.5 rounded">
+                  #{lastSubmittedBooking.id.slice(-6).toUpperCase()}
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-gray-500 font-semibold flex-shrink-0">ဝန်ဆောင်မှု</span>
+                <span className="font-bold text-gray-800 text-right">{lastSubmittedBooking.service}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-500 font-semibold">Therapist</span>
+                <span className="font-bold text-[#123524]">{lastSubmittedBooking.therapist}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-500 font-semibold">ရက်စွဲ / အချိန်</span>
+                <span className="font-bold text-gray-800">{lastSubmittedBooking.date} • {lastSubmittedBooking.time}</span>
+              </div>
+            </div>
+          )}
+
+          <button onClick={() => { 
+             if (staffClockInSuccess) { staffClockInSuccess(); return; }
+             if (isStaffMode) { setStep(1); setFormData({ name: 'Walk-in Guest', phone: '', selectedItem: null, isVvipUpgrade: false, therapist: initialTherapist, therapist2: null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' }); setSuccessMsg(''); setLastSubmittedBooking(null); window.scrollTo({ top: 0, behavior: 'smooth' }); } 
+             else { setSuccessMsg(''); setLastSubmittedBooking(null); if (onBooked) onBooked(confirmedPhone); }
+          }} className="px-8 py-3.5 font-bold rounded-xl transition text-white w-full shadow-md hover:opacity-95 active:scale-[0.99]" style={{ backgroundColor: THEME.primary }}>
+             {staffClockIn ? 'Finish' : (isStaffMode ? 'နောက်ထပ် ဘိုကင်တင်မည် (Add Another)' : 'မှတ်တမ်းကြည့်ရန် (View History)')}
+          </button>
+        </div>
+
+        {/* 🌟 Telegram Booking Status Update Noti Opt-In Card (Right Below Confirmation) 🌟 */}
+        {!isStaffMode && !staffClockIn && (
+          <div className="bg-gradient-to-br from-[#0e2a1c] via-[#123524] to-[#0b2317] text-white p-5 sm:p-6 rounded-2xl shadow-xl border border-[#D4AF37]/45 relative overflow-hidden">
+            <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-[#229ED9]/15 blur-2xl pointer-events-none" />
+            <div className="relative z-10">
+              <div className="flex items-start gap-3 mb-3.5">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 border shadow-md ${isTgLinked ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300' : 'bg-[#229ED9]/25 border-[#229ED9]/50 text-[#5bc0f8]'}`}>
+                  <Bell className="w-5 h-5" />
+                </div>
+                <div className="text-left flex-1 min-w-0">
+                  <div className="flex items-center flex-wrap gap-2 mb-1">
+                    <h3 className="font-bold text-sm sm:text-base text-[#F5DC82] leading-snug">
+                      Telegram မှ Booking Status Update Noti ရယူရန်
+                    </h3>
+                    {isTgLinked && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-200 border border-emerald-400/40">
+                        <Check className="w-3 h-3" /> Noti ON
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-emerald-100/85 leading-relaxed">
+                    {isTgLinked
+                      ? 'သင်၏ Telegram အကောင့်နှင့် ချိတ်ဆက်ပြီးဖြစ်ပါသည်။ Admin မှ ဘိုကင် Approved, ဝန်ဆောင်မှုစတင်ချိန် နှင့် ပြီးဆုံးချိန် Update များကို Bot မှ အလိုအလျောက် ပေးပို့ပေးပါမည်။'
+                      : 'Admin မှ ဘိုကင် အတည်ပြု (Approved)၊ ဝန်ဆောင်မှုစတင် (In-Service) နှင့် ပြီးဆုံးချိန် Update များကို Telegram Bot မှ ချက်ချင်း သိရှိနိုင်ရန် အခုပဲ ချိတ်ဆက်ထားလိုက်ပါ။'}
+                  </p>
+                </div>
+              </div>
+
+              {isTgLinked && lastSubmittedBooking?.customerNotiSent && (
+                <div className="mb-3.5 px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-400/35 text-[11px] font-bold text-emerald-200 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-300 flex-shrink-0" />
+                  <span>ဘိုကင်တင်ပြီးကြောင်း (Booking Pending) Noti ကို သင်၏ Telegram သို့ ပေးပို့ပြီးပါပြီ။</span>
+                </div>
+              )}
+
+              <a
+                href={tgLinkInfo.httpsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setTgBotTapped(true);
+                  openTelegramBotInstantly(confirmedPhone, confirmedBookingId);
+                }}
+                className={`w-full py-3.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98] ${
+                  isTgLinked
+                    ? 'bg-white/10 hover:bg-white/15 text-[#F5DC82] border border-[#D4AF37]/50'
+                    : 'bg-gradient-to-r from-[#229ED9] to-[#1b86ba] hover:brightness-110 text-white border border-sky-300/40'
+                }`}
+              >
+                <Send className="w-4 h-4" />
+                <span>
+                  {isTgLinked
+                    ? 'Telegram Bot Chat ဖွင့်ကြည့်ရန် (Open Bot)'
+                    : 'Telegram Bot နှင့် ချိတ်ဆက်ပြီး Noti ရယူမည်'}
+                </span>
+              </a>
+
+              {!isTgLinked && (
+                <p className="mt-2.5 text-[11px] text-center text-amber-200/90 font-medium">
+                  * Telegram ပွင့်လာပါက အောက်ဆုံးရှိ <strong className="text-white">START</strong> ခလုတ်ကို တစ်ချက်နှိပ်ပေးရုံဖြင့် ဤဘိုကင်နှင့် အလိုအလျောက် ချိတ်ဆက်ပြီးဖြစ်ပါသည်။
+                </p>
+              )}
+
+              {tgBotTapped && !isTgLinked && (
+                <div className="mt-3 px-3 py-2 rounded-xl bg-[#D4AF37]/20 border border-[#D4AF37]/50 text-[11px] text-amber-100 font-semibold text-center">
+                  Telegram Bot သို့ ဖွင့်လိုက်ပါပြီ — Bot ထဲတွင် <strong>START</strong> နှိပ်ပြီးပါက Status Update Noti များ စတင်ရရှိပါမည်။
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

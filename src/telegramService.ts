@@ -8,9 +8,13 @@ import {
   collection,
   addDoc,
   serverTimestamp,
+  arrayUnion,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { decryptText } from './security';
+import type { BookingTelegramNotiLog } from './shared';
+
+export type { BookingTelegramNotiLog };
 
 // ==========================================
 // 1. TYPES & INTERFACES
@@ -1092,7 +1096,125 @@ export const saveCustomerTelegramSubscription = async (
     localStorage.setItem('shangrila_cached_subscribers', JSON.stringify(localList));
   } catch {}
 
+  // 🌟 Best-effort sync Telegram status onto matching Firestore `users` profile(s) & booking 🌟
+  if (nextPhone && nextPhone.length >= 7) {
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const targetLast8 = nextPhone.slice(-8);
+      const userUpdates: Promise<any>[] = [];
+      usersSnap.forEach((uDoc) => {
+        const uData = uDoc.data();
+        const uPhone = normalizePhone(safeDecryptValue(uData.phone) || uDoc.id);
+        if (uPhone && (uPhone === nextPhone || (targetLast8.length === 8 && uPhone.slice(-8) === targetLast8))) {
+          userUpdates.push(
+            updateDoc(doc(db, 'users', uDoc.id), {
+              telegramChatId: cleanChatId,
+              telegramUsername: nextUsername || '',
+              telegramSubscribed: nextSubscribed,
+              telegramLinkedAt: Date.now(),
+            }).catch(() => {})
+          );
+        }
+      });
+      if (userUpdates.length > 0) {
+        await Promise.all(userUpdates);
+      }
+    } catch {}
+  }
+
+  if (nextBookingId && nextBookingId.length >= 6 && nextBookingId !== 'TEST-9988') {
+    try {
+      await updateDoc(doc(db, 'bookings', nextBookingId), {
+        customerChatId: cleanChatId,
+        telegramChatId: cleanChatId,
+      });
+    } catch {}
+  }
+
   return savedAnywhere;
+};
+
+/**
+ * Match a User or Booking record against active Telegram subscribers
+ * (Checks explicit chatId first, then normalized Myanmar phone / last 8 digits, then bookingId)
+ */
+export const matchTelegramSubscriberForRecord = (
+  record: {
+    phone?: string;
+    name?: string;
+    telegramChatId?: string;
+    customerChatId?: string;
+    telegramSubscribed?: boolean;
+    telegramUsername?: string;
+    bookingId?: string;
+  },
+  subscribers: CustomerTelegramSubscriber[]
+): {
+  isConnected: boolean;
+  chatId: string;
+  username: string;
+  source?: string;
+  subscriber?: CustomerTelegramSubscriber;
+} => {
+  const activeSubs = subscribers.filter((s) => s.subscribed !== false && isPrivateUserChatId(s.chatId));
+  const explicitChatId = String(record.customerChatId || record.telegramChatId || '').trim();
+
+  if (explicitChatId && isPrivateUserChatId(explicitChatId)) {
+    const exactSub = subscribers.find((s) => String(s.chatId) === explicitChatId);
+    if (exactSub) {
+      return {
+        isConnected: exactSub.subscribed !== false,
+        chatId: explicitChatId,
+        username: exactSub.username || record.telegramUsername || '',
+        source: exactSub.source || 'linked',
+        subscriber: exactSub,
+      };
+    }
+    return {
+      isConnected: record.telegramSubscribed !== false,
+      chatId: explicitChatId,
+      username: record.telegramUsername || '',
+      source: 'profile_linked',
+    };
+  }
+
+  if (record.bookingId) {
+    const cleanId = String(record.bookingId).trim();
+    const byBooking = activeSubs.find(
+      (s) =>
+        s.lastBookingId &&
+        (s.lastBookingId === cleanId || cleanId.endsWith(s.lastBookingId) || s.lastBookingId.endsWith(cleanId))
+    );
+    if (byBooking) {
+      return {
+        isConnected: true,
+        chatId: byBooking.chatId,
+        username: byBooking.username || '',
+        source: byBooking.source || 'booking_deeplink',
+        subscriber: byBooking,
+      };
+    }
+  }
+
+  const normPhone = normalizePhone(record.phone);
+  if (normPhone && normPhone.length >= 7) {
+    const last8 = normPhone.slice(-8);
+    const byPhone = activeSubs.find((s) => {
+      const subPhone = normalizePhone(s.customerPhone);
+      return subPhone && (subPhone === normPhone || (last8.length === 8 && subPhone.slice(-8) === last8));
+    });
+    if (byPhone) {
+      return {
+        isConnected: true,
+        chatId: byPhone.chatId,
+        username: byPhone.username || '',
+        source: byPhone.source || 'bot_command',
+        subscriber: byPhone,
+      };
+    }
+  }
+
+  return { isConnected: false, chatId: '', username: '' };
 };
 
 export const removeCustomerTelegramSubscriber = async (
@@ -1389,14 +1511,43 @@ const getStatusBadge = (status: string): string => {
   }
 };
 
+export const getBookingNotiStatusLabel = (
+  eventType: 'NEW_BOOKING' | 'STATUS_UPDATE' | 'STAFF_ASSIGNED' | 'MANUAL_RESEND',
+  status: string
+): { statusKey: string; statusLabel: string } => {
+  const s = String(status || '').toLowerCase().trim();
+  if (s === 'cancelled' || s === 'rejected') {
+    return { statusKey: 'cancelled', statusLabel: 'Cancelled' };
+  }
+  if (s === 'completed') {
+    return { statusKey: 'completed', statusLabel: 'Completed' };
+  }
+  if (s === 'in-service' || s === 'in_service' || s === 'in_progress') {
+    return { statusKey: 'in-service', statusLabel: 'In-Service' };
+  }
+  if (s === 'approved' || s === 'confirmed') {
+    return { statusKey: 'confirmed', statusLabel: 'Approved' };
+  }
+  if (eventType === 'STAFF_ASSIGNED') {
+    return { statusKey: 'staff_assigned', statusLabel: 'Therapist Assigned' };
+  }
+  if (s === 'payment_checking') {
+    return { statusKey: 'payment_checking', statusLabel: 'Payment Checking' };
+  }
+  if (eventType === 'NEW_BOOKING' || s === 'pending') {
+    return { statusKey: 'pending', statusLabel: 'Booking Pending' };
+  }
+  return { statusKey: s || 'update', statusLabel: status ? status.toUpperCase() : 'Status Update' };
+};
+
 export const notifyCustomerBookingStatus = async (
   eventType: 'NEW_BOOKING' | 'STATUS_UPDATE' | 'STAFF_ASSIGNED',
   booking: BookingNotificationPayload,
   existingConfig?: TelegramBotConfig
-): Promise<{ customerSent: boolean; error?: string }> => {
+): Promise<{ customerSent: boolean; chatId?: string; error?: string }> => {
   const config = existingConfig || (await getTelegramConfig());
   if (!config.enabled || !config.botToken || config.triggers.customerDirectNoti === false) {
-    return { customerSent: false };
+    return { customerSent: false, error: 'Customer Telegram Noti disabled' };
   }
 
   const decryptedCustomerName = safeDecryptValue(booking.customerName);
@@ -1520,13 +1671,13 @@ export const notifyCustomerBookingStatus = async (
     `CUSTOMER_BOOKING_${eventType}`
   );
 
-  return { customerSent: res.ok, error: res.error };
+  return { customerSent: res.ok, chatId: targetChatId, error: res.error };
 };
 
 export const notifyBookingEvent = async (
   eventType: 'NEW_BOOKING' | 'STATUS_UPDATE' | 'STAFF_ASSIGNED',
   booking: BookingNotificationPayload
-): Promise<{ adminSent: boolean; staffSent: boolean; customerSent?: boolean; errors: string[] }> => {
+): Promise<{ adminSent: boolean; staffSent: boolean; customerSent?: boolean; chatId?: string; statusLabel?: string; errors: string[] }> => {
   const config = await getTelegramConfig();
   const errors: string[] = [];
 
@@ -1661,8 +1812,69 @@ export const notifyBookingEvent = async (
   }
 
   const customerResult = await notifyCustomerBookingStatus(eventType, booking, config);
+  if (!customerResult.customerSent && customerResult.error) {
+    errors.push(`Customer DM: ${customerResult.error}`);
+  }
 
-  return { adminSent, staffSent, customerSent: customerResult.customerSent, errors };
+  const { statusKey, statusLabel } = getBookingNotiStatusLabel(eventType, booking.status);
+  const resolvedChatId = customerResult.chatId || booking.customerChatId || '';
+
+  // 🌟 Persist structured Telegram Notification delivery status & history onto bookings/{id} 🌟
+  const canPersistBookingLog =
+    Boolean(booking.id) &&
+    booking.id !== 'TEST-9988' &&
+    booking.id !== 'ONLINE' &&
+    booking.id !== 'CANCELLED' &&
+    !String(booking.id).startsWith('TEST');
+
+  if (canPersistBookingLog) {
+    const nowMs = Date.now();
+    const deliveryStatus: 'sent_customer' | 'admin_only_unlinked' | 'failed' = customerResult.customerSent
+      ? 'sent_customer'
+      : !resolvedChatId
+      ? 'admin_only_unlinked'
+      : 'failed';
+
+    const logEntry: BookingTelegramNotiLog = {
+      eventType,
+      statusKey,
+      statusLabel,
+      customerSent: Boolean(customerResult.customerSent),
+      adminSent: Boolean(adminSent),
+      staffSent: Boolean(staffSent),
+      chatId: resolvedChatId || '',
+      error: customerResult.customerSent ? '' : (customerResult.error || ''),
+      updatedBy: booking.updatedBy || '',
+      sentAt: nowMs,
+    };
+
+    try {
+      const bookingUpdatePayload: Record<string, any> = {
+        telegramNotiStatus: deliveryStatus,
+        telegramLastNotiLabel: statusLabel,
+        telegramLastNotiAt: nowMs,
+        telegramLastNotiSent: Boolean(customerResult.customerSent),
+        telegramLastNotiError: customerResult.customerSent ? '' : (customerResult.error || ''),
+        telegramNotiHistory: arrayUnion(logEntry),
+      };
+      if (resolvedChatId) {
+        bookingUpdatePayload.customerChatId = resolvedChatId;
+        bookingUpdatePayload.telegramChatId = resolvedChatId;
+      }
+      await updateDoc(doc(db, 'bookings', booking.id), bookingUpdatePayload);
+    } catch (persistErr) {
+      console.warn('Could not persist telegramNotiHistory on booking:', persistErr);
+    }
+  }
+
+  return {
+    adminSent,
+    staffSent,
+    customerSent: customerResult.customerSent,
+    chatId: resolvedChatId || undefined,
+    statusLabel,
+    errors,
+  };
 };
 
 // ==========================================

@@ -181,6 +181,19 @@ export interface AppData {
   savedCampaignCards?: any[];
 }
 
+export interface BookingTelegramNotiLog {
+  eventType: 'NEW_BOOKING' | 'STATUS_UPDATE' | 'STAFF_ASSIGNED' | 'MANUAL_RESEND';
+  statusKey: string;
+  statusLabel: string;
+  customerSent: boolean;
+  adminSent: boolean;
+  staffSent: boolean;
+  chatId?: string;
+  error?: string;
+  updatedBy?: string;
+  sentAt: number;
+}
+
 export interface Booking extends OutcallTrackingFields {
   id?: string;
   name: string;
@@ -222,6 +235,13 @@ export interface Booking extends OutcallTrackingFields {
   voucherIssued?: boolean;
   customerChatId?: string;
   telegramChatId?: string;
+  // 🌟 Telegram Notification Delivery Tracking Fields 🌟
+  telegramNotiStatus?: 'sent_customer' | 'admin_only_unlinked' | 'failed' | 'not_sent';
+  telegramLastNotiLabel?: string;
+  telegramLastNotiAt?: number;
+  telegramLastNotiSent?: boolean;
+  telegramLastNotiError?: string;
+  telegramNotiHistory?: BookingTelegramNotiLog[];
 }
 
 export interface OutPass {
@@ -244,6 +264,10 @@ export interface UserProfile {
   points: number;
   dob?: string;
   createdAt: number;
+  telegramChatId?: string;
+  telegramUsername?: string;
+  telegramSubscribed?: boolean;
+  telegramLinkedAt?: number;
 }
 
 export interface AdminProfile {

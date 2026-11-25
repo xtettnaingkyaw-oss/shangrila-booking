@@ -1021,9 +1021,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
 
               const { notifyBookingEvent } = await import('../telegramService');
               await notifyBookingEvent('STATUS_UPDATE', {
-                id: b.invoiceNo || b.txId || b.id,
+                id: b.id,
                 customerName: b.name || 'Outcall Guest',
                 customerPhone: b.phone || '-',
+                customerChatId: b.customerChatId || b.telegramChatId || undefined,
                 serviceName: b.service || 'Hotel & Home Service',
                 durationMins: Number(b.durationMins) || 100,
                 price: Number(b.totalPrice) || 0,
@@ -1273,9 +1274,10 @@ export default function POSScreen({ appData }: { appData: AppData }) {
       if (isOutcall) {
         const { notifyBookingEvent } = await import('../telegramService');
         await notifyBookingEvent('STATUS_UPDATE', {
-          id: officialReceiptNo,
+          id: booking.id || officialReceiptNo,
           customerName: booking.name || 'Outcall Guest',
           customerPhone: booking.phone || '',
+          customerChatId: booking.customerChatId || booking.telegramChatId || undefined,
           serviceName: booking.service,
           durationMins,
           price: Number(booking.totalPrice) || 0,
@@ -1417,9 +1419,10 @@ const handleCancelPosSaleFromHistory = async (sale: OfflineSaleRecord) => {
 
       const { notifyBookingEvent } = await import('../telegramService');
       await notifyBookingEvent('STATUS_UPDATE', {
-        id: booking.invoiceNo || booking.txId || booking.id,
+        id: booking.id,
         customerName: booking.name || 'Walk-in Guest',
         customerPhone: booking.phone || '-',
+        customerChatId: booking.customerChatId || booking.telegramChatId || undefined,
         serviceName: booking.service || 'Spa Service',
         durationMins: booking.durationMins || 60,
         price: Number(booking.totalPrice) || 0,
