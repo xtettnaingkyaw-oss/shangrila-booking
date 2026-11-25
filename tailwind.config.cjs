@@ -31,8 +31,8 @@ module.exports = {
         },
       },
       animation: {
-        'fade-in': 'fadeIn 0.25s ease-out both',
-        'slide-up': 'slideUp 0.3s ease-out both',
+        'fade-in': 'fadeIn 0.25s ease-out',
+        'slide-up': 'slideUp 0.3s ease-out',
         'shimmer': 'shimmer 3s infinite ease-in-out',
       },
     },

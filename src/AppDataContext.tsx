@@ -14,7 +14,7 @@ import {
 export const CACHED_APPDATA_KEY = 'shangrila_pos_cached_appdata_lite_v2';
 
 export const DEFAULT_BRANDING: AppBranding = {
-  logoUrl: '',
+  logoUrl: '/logo.png',
   name: "The Shangri-La",
   address: "33th(B) St, Between 65th & 65th(A) Sts, Mandalay",
   phone1: "09-458884517",
@@ -52,6 +52,20 @@ export const DEFAULT_CATEGORIES: MenuCategory[] = [
       { id: 'm2', name: 'Aroma Oil Massage', price: 35000, duration: '60 Mins' },
       { id: 'm3', name: 'Deep Tissue Sport Massage', price: 40000, duration: '90 Mins' },
       { id: 'm4', name: 'Special VIP Package', price: 60000, duration: '120 Mins' }
+    ]
+  },
+  {
+    id: 'body_scrub',
+    title: 'Body Scrub',
+    items: [
+      { id: 'bs1', name: 'Signature Body Scrub', price: 35000, duration: '60 Mins' }
+    ]
+  },
+  {
+    id: 'waxing',
+    title: 'Waxing',
+    items: [
+      { id: 'w1', name: 'Professional Waxing Service', price: 25000, duration: '45 Mins' }
     ]
   },
   {
@@ -139,24 +153,70 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
 
     setLoading(true);
     try {
-      // Single consolidated startup fetch (prevents duplicate reads across App.tsx and AppDataContext)
-      const [settingsSnap, therapistsSnap, categoriesSnap] = await Promise.all([
-        getDoc(doc(db, 'settings', 'appData')).catch((err) => {
-          console.warn('Settings fetch warning:', err);
-          return null;
-        }),
-        getDocs(collection(db, 'therapists')).catch((err) => {
-          console.warn('Therapists fetch warning:', err);
-          return null;
-        }),
-        getDocs(collection(db, 'categories')).catch((err) => {
-          console.warn('Categories fetch warning:', err);
-          return null;
-        })
-      ]);
+      // Kick off all three Firestore reads in parallel, but resolve lightweight settings + categories FIRST
+      // so Telegram Mini App and slow mobile networks immediately show all real service categories & logo
+      // without being blocked by the heavier therapists image documents.
+      const settingsPromise = getDoc(doc(db, 'settings', 'appData')).catch((err) => {
+        console.warn('Settings fetch warning:', err);
+        return null;
+      });
+      const categoriesPromise = getDocs(collection(db, 'categories')).catch((err) => {
+        console.warn('Categories fetch warning:', err);
+        return null;
+      });
+      const therapistsPromise = getDocs(collection(db, 'therapists')).catch((err) => {
+        console.warn('Therapists fetch warning:', err);
+        return null;
+      });
 
+      const [settingsSnap, categoriesSnap] = await Promise.all([settingsPromise, categoriesPromise]);
       const settingsData = settingsSnap && settingsSnap.exists() ? settingsSnap.data() : {};
 
+      const categoriesList: MenuCategory[] = [];
+      if (categoriesSnap && !categoriesSnap.empty) {
+        categoriesSnap.forEach((docSnap) => categoriesList.push(docSnap.data() as MenuCategory));
+        categoriesList.sort((a, b) => (a.order || 0) - (b.order || 0));
+      }
+
+      const resolvedCategories =
+        categoriesList.length > 0
+          ? categoriesList
+          : Array.isArray(settingsData.categories) && settingsData.categories.length > 0
+          ? settingsData.categories
+          : DEFAULT_CATEGORIES;
+
+      const hasCoreRemoteData =
+        Boolean(settingsSnap && settingsSnap.exists()) || categoriesList.length > 0;
+
+      const baseMergedData: Omit<AppData, 'therapists' | 'archivedTherapists'> = {
+        vipSettings: settingsData.vipSettings || DEFAULT_VIP_SETTINGS,
+        branding: { ...DEFAULT_BRANDING, ...(settingsData.branding || {}) },
+        promotion: { ...DEFAULT_PROMOTION, ...(settingsData.promotion || {}) },
+        signUpBonus: settingsData.signUpBonus || undefined,
+        paymentMethods:
+          Array.isArray(settingsData.paymentMethods) && settingsData.paymentMethods.length > 0
+            ? settingsData.paymentMethods
+            : DEFAULT_PAYMENT_METHODS,
+        installSteps:
+          Array.isArray(settingsData.installSteps) && settingsData.installSteps.length > 0
+            ? settingsData.installSteps
+            : DEFAULT_INSTALL_STEPS,
+        spaOperations: settingsData.spaOperations || undefined,
+        savedCampaignCards: settingsData.savedCampaignCards || [],
+        categories: resolvedCategories,
+      };
+
+      // Immediately publish all real categories + settings so the UI opens with all 4 categories ready
+      if (hasCoreRemoteData) {
+        setAppData((prev) => ({
+          ...baseMergedData,
+          therapists: prev?.therapists?.length ? prev.therapists : DEFAULT_THERAPISTS,
+          archivedTherapists: prev?.archivedTherapists || [],
+        }));
+      }
+
+      // Now finish resolving therapists in parallel and merge cleanly
+      const therapistsSnap = await therapistsPromise;
       const activeTherapistsList: TherapistProfile[] = [];
       const archivedTherapistsList: TherapistProfile[] = [];
 
@@ -178,55 +238,25 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       activeTherapistsList.sort((a, b) => (a.order || 0) - (b.order || 0));
       archivedTherapistsList.sort((a, b) => (b.archivedAtMillis || 0) - (a.archivedAtMillis || 0));
 
-      const categoriesList: MenuCategory[] = [];
-      if (categoriesSnap && !categoriesSnap.empty) {
-        categoriesSnap.forEach((docSnap) => categoriesList.push(docSnap.data() as MenuCategory));
-        categoriesList.sort((a, b) => (a.order || 0) - (b.order || 0));
-      }
-
-      const resolvedCategories =
-        categoriesList.length > 0
-          ? categoriesList
-          : Array.isArray(settingsData.categories) && settingsData.categories.length > 0
-          ? settingsData.categories
-          : DEFAULT_CATEGORIES;
-
       const resolvedTherapists =
         activeTherapistsList.length > 0 ? activeTherapistsList : DEFAULT_THERAPISTS;
 
-      const hasRemoteData =
-        Boolean(settingsSnap && settingsSnap.exists()) ||
-        activeTherapistsList.length > 0 ||
-        categoriesList.length > 0;
+      const hasRemoteData = hasCoreRemoteData || activeTherapistsList.length > 0;
 
       if (hasRemoteData) {
-        const mergedData: AppData = {
-          vipSettings: settingsData.vipSettings || DEFAULT_VIP_SETTINGS,
-          branding: { ...DEFAULT_BRANDING, ...(settingsData.branding || {}) },
-          promotion: { ...DEFAULT_PROMOTION, ...(settingsData.promotion || {}) },
-          signUpBonus: settingsData.signUpBonus || undefined,
-          paymentMethods:
-            Array.isArray(settingsData.paymentMethods) && settingsData.paymentMethods.length > 0
-              ? settingsData.paymentMethods
-              : DEFAULT_PAYMENT_METHODS,
-          installSteps:
-            Array.isArray(settingsData.installSteps) && settingsData.installSteps.length > 0
-              ? settingsData.installSteps
-              : DEFAULT_INSTALL_STEPS,
-          spaOperations: settingsData.spaOperations || undefined,
-          savedCampaignCards: settingsData.savedCampaignCards || [],
+        const fullMergedData: AppData = {
+          ...baseMergedData,
           therapists: resolvedTherapists,
           archivedTherapists: archivedTherapistsList,
-          categories: resolvedCategories,
         };
 
-        setAppData(mergedData);
+        setAppData(fullMergedData);
 
         // Save lightweight offline cache (strip heavy base64 images to avoid QuotaExceededError)
         try {
           const liteCache = {
-            ...mergedData,
-            therapists: mergedData.therapists.map((t) => ({ ...t, images: t.images?.slice(0, 1) || [] })),
+            ...fullMergedData,
+            therapists: fullMergedData.therapists.map((t) => ({ ...t, images: t.images?.slice(0, 1) || [] })),
             archivedTherapists: []
           };
           localStorage.setItem(CACHED_APPDATA_KEY, JSON.stringify(liteCache));

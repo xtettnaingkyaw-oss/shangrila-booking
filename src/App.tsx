@@ -319,12 +319,13 @@ function MainApp() {
   }, [appData?.promotion, appMode]);
 
   useEffect(() => {
+    // Give Firestore enough time on Telegram Mini App / mobile networks before falling back to offline defaults
     const dataSafetyTimer = setTimeout(() => {
       setAppData((prev) => prev || getCachedAppData() || FALLBACK_APPDATA);
-    }, 2500);
+    }, 7500);
     const loaderSafetyTimer = setTimeout(() => {
       setIsLoaderFinished(true);
-    }, 4500);
+    }, 9000);
 
     if (navigator.onLine) {
       signInAnonymously(auth).catch((error) => { console.warn("Firebase Auth Warning:", error); });

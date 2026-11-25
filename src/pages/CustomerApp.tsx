@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { collection, addDoc, getDocs, getDoc, updateDoc, doc, query, onSnapshot, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
@@ -27,6 +28,150 @@ const getInstantTelegramLink = (phoneStr?: string, bookingId?: string) => {
     httpsUrl: `https://t.me/${botUser}?start=${startParam}`,
     tgAppUrl: `tg://resolve?domain=${botUser}&start=${startParam}`,
   };
+};
+
+// 🌟 Fullscreen Portal Lightbox for Therapist Photos (Header, Tab Bar, Stepper, Telegram Button တို့ လုံးဝမဖုံးစေရန် document.body သို့ Portal ဖြင့် Render လုပ်သည်) 🌟
+const TherapistPhotoLightbox = ({
+  gallery,
+  onChangeIndex,
+  onClose,
+}: {
+  gallery: { images: string[]; index: number; name?: string } | null;
+  onChangeIndex: (nextIndex: number) => void;
+  onClose: () => void;
+}) => {
+  const touchStartXRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!gallery) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowLeft' && gallery.images.length > 1) {
+        onChangeIndex((gallery.index - 1 + gallery.images.length) % gallery.images.length);
+      } else if (e.key === 'ArrowRight' && gallery.images.length > 1) {
+        onChangeIndex((gallery.index + 1) % gallery.images.length);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [gallery, onChangeIndex, onClose]);
+
+  if (!gallery || typeof document === 'undefined') return null;
+
+  const total = gallery.images.length;
+  const goPrev = () => onChangeIndex((gallery.index - 1 + total) % total);
+  const goNext = () => onChangeIndex((gallery.index + 1) % total);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[99999] bg-black/95 backdrop-blur-md flex flex-col justify-between select-none"
+      style={{
+        paddingTop: 'max(0.875rem, env(safe-area-inset-top))',
+        paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))',
+      }}
+      onClick={onClose}
+      onTouchStart={(e) => {
+        touchStartXRef.current = e.touches[0]?.clientX ?? null;
+      }}
+      onTouchEnd={(e) => {
+        if (touchStartXRef.current === null || total <= 1) return;
+        const endX = e.changedTouches[0]?.clientX ?? touchStartXRef.current;
+        const delta = endX - touchStartXRef.current;
+        touchStartXRef.current = null;
+        if (delta > 45) goPrev();
+        else if (delta < -45) goNext();
+      }}
+    >
+      {/* Top Bar: Therapist Name + Counter + Close Button */}
+      <div
+        className="w-full flex items-center justify-between px-4 sm:px-6 z-20 flex-shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          {gallery.name && (
+            <span className="text-white/95 font-bold text-sm sm:text-base truncate tracking-wide">
+              {gallery.name}
+            </span>
+          )}
+          {total > 1 && (
+            <span className="text-[#D4AF37] text-xs font-bold bg-white/10 px-3 py-1 rounded-full border border-[#D4AF37]/35 tracking-widest flex-shrink-0">
+              {gallery.index + 1} / {total}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close gallery"
+          className="w-10 h-10 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white border border-white/20 shadow-lg transition flex-shrink-0"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Main Photo Area: Large, Phone-Screen Fitted & Centered */}
+      <div
+        className="relative flex-1 w-full flex items-center justify-center px-2.5 sm:px-10 py-3 min-h-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img
+          src={gallery.images[gallery.index]}
+          alt={gallery.name ? `${gallery.name} photo ${gallery.index + 1}` : 'Therapist Photo'}
+          className="w-full sm:w-auto max-w-[95vw] sm:max-w-2xl max-h-[80dvh] object-contain rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.85)] border border-white/10"
+        />
+
+        {total > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={goPrev}
+              aria-label="Previous photo"
+              className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center bg-black/55 hover:bg-black/80 active:scale-95 text-white rounded-full border border-white/25 backdrop-blur-sm shadow-xl transition"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button
+              type="button"
+              onClick={goNext}
+              aria-label="Next photo"
+              className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center bg-black/55 hover:bg-black/80 active:scale-95 text-white rounded-full border border-white/25 backdrop-blur-sm shadow-xl transition"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Bottom Indicator Dots */}
+      <div
+        className="w-full flex items-center justify-center gap-2 px-4 z-20 flex-shrink-0 min-h-[24px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {total > 1 &&
+          gallery.images.map((_, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onChangeIndex(idx)}
+              aria-label={`Photo ${idx + 1}`}
+              className={`h-2 rounded-full transition-all duration-200 ${
+                idx === gallery.index
+                  ? 'w-7 bg-[#D4AF37] shadow-[0_0_8px_rgba(212,175,55,0.75)]'
+                  : 'w-2 bg-white/35 hover:bg-white/60'
+              }`}
+            />
+          ))}
+      </div>
+    </div>,
+    document.body
+  );
 };
 
 const openTelegramBotInstantly = (phoneStr?: string, bookingId?: string) => {
@@ -817,7 +962,7 @@ export function VipProgramView({ appData, onGoToProfile }: { appData: AppData, o
 }
 
 export function TherapistsGallery({ appData }: { appData: AppData }) {
-    const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
+    const [viewGallery, setViewGallery] = useState<{ images: string[], index: number, name?: string } | null>(null);
     const [loadingGalleryId, setLoadingGalleryId] = useState<string | null>(null);
 
     const openGallery = async (t: TherapistProfile) => {
@@ -825,12 +970,12 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
         try {
             const docSnap = await getDoc(doc(db, 'therapists', t.id));
             if (docSnap.exists() && docSnap.data().images && docSnap.data().images.length > 0) {
-                setViewGallery({ images: docSnap.data().images, index: 0 });
+                setViewGallery({ images: docSnap.data().images, index: 0, name: t.name });
             } else if (t.images && t.images.length > 0) {
-                setViewGallery({ images: t.images, index: 0 });
+                setViewGallery({ images: t.images, index: 0, name: t.name });
             }
         } catch (e) {
-            if (t.images && t.images.length > 0) setViewGallery({ images: t.images, index: 0 });
+            if (t.images && t.images.length > 0) setViewGallery({ images: t.images, index: 0, name: t.name });
         }
         setLoadingGalleryId(null);
     };
@@ -838,31 +983,12 @@ export function TherapistsGallery({ appData }: { appData: AppData }) {
     return (
         <div className="max-w-4xl mx-auto px-4 pb-20 animate-fade-in relative">
           
-          {/* 🌟 Image Gallery Popup 🌟 */}
-      {viewGallery && (
-          <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center animate-fade-in backdrop-blur-sm" onClick={() => setViewGallery(null)}>
-              <button onClick={() => setViewGallery(null)} className="absolute top-4 right-4 sm:top-8 sm:right-8 text-white bg-white/10 p-2 rounded-full hover:bg-white/20 transition z-50">
-                  <X className="w-6 h-6"/>
-              </button>
-              <div className="relative w-full max-w-sm sm:max-w-md flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
-                  <img src={viewGallery.images[viewGallery.index]} alt="Gallery" className="w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" />
-                  
-                  {viewGallery.images.length > 1 && (
-                      <>
-                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }); }} className="absolute left-2 sm:-left-4 top-1/2 -translate-y-1/2 bg-black/60 text-white p-2 rounded-full hover:bg-black/80 transition border border-white/20 shadow-lg">
-                              <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6"/>
-                          </button>
-                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }); }} className="absolute right-2 sm:-right-4 top-1/2 -translate-y-1/2 bg-black/60 text-white p-2 rounded-full hover:bg-black/80 transition border border-white/20 shadow-lg">
-                              <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6"/>
-                          </button>
-                          <div className="absolute -bottom-10 left-0 right-0 text-center text-white text-xs font-bold bg-white/10 py-1.5 px-4 w-fit mx-auto rounded-full border border-white/20 tracking-widest shadow-lg">
-                              {viewGallery.index + 1} / {viewGallery.images.length}
-                          </div>
-                      </>
-                  )}
-              </div>
-          </div>
-      )}
+          {/* 🌟 Fullscreen Portal Image Gallery Popup 🌟 */}
+          <TherapistPhotoLightbox
+            gallery={viewGallery}
+            onChangeIndex={(nextIdx) => setViewGallery((prev) => (prev ? { ...prev, index: nextIdx } : null))}
+            onClose={() => setViewGallery(null)}
+          />
 
           <div className="text-center mb-10">
             <h2 className="text-2xl font-bold text-[#123524] mb-2 font-serif">Our Professionals</h2>
@@ -1731,7 +1857,7 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const [formData, setFormData] = useState({ name: isStaffMode ? 'Walk-in Guest' : '', phone: userPhone, selectedItem: null as MenuItem | null, isVvipUpgrade: false, therapist: initialTherapist, therapist2: null as TherapistProfile | null, date: '', time: '', paymentMethod: '', txId: '', specialRequest: '' });
   const [loading, setLoading] = useState(false);
   const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
-  const [viewGallery, setViewGallery] = useState<{ images: string[], index: number } | null>(null);
+  const [viewGallery, setViewGallery] = useState<{ images: string[], index: number, name?: string } | null>(null);
   const [loadingGalleryId, setLoadingGalleryId] = useState<string | null>(null);
   const [viewDesc, setViewDesc] = useState<{title: string, desc: string} | null>(null);
 
@@ -1740,12 +1866,12 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
       try {
           const docSnap = await getDoc(doc(db, 'therapists', t.id));
           if (docSnap.exists() && docSnap.data().images && docSnap.data().images.length > 0) {
-              setViewGallery({ images: docSnap.data().images, index: 0 });
+              setViewGallery({ images: docSnap.data().images, index: 0, name: t.name });
           } else if (t.images && t.images.length > 0) {
-              setViewGallery({ images: t.images, index: 0 });
+              setViewGallery({ images: t.images, index: 0, name: t.name });
           }
       } catch (e) {
-          if (t.images && t.images.length > 0) setViewGallery({ images: t.images, index: 0 });
+          if (t.images && t.images.length > 0) setViewGallery({ images: t.images, index: 0, name: t.name });
       }
       setLoadingGalleryId(null);
   };
@@ -2595,31 +2721,12 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
     return (
     <div className="animate-fade-in px-4 sm:px-0">
       
-      {/* 🌟 1. Image Gallery Popup (Modal) အပိုင်း 🌟 */}
-      {viewGallery && (
-          <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center animate-fade-in backdrop-blur-sm" onClick={() => setViewGallery(null)}>
-              <button type="button" onClick={() => setViewGallery(null)} className="absolute top-4 right-4 sm:top-8 sm:right-8 text-white bg-white/10 p-2 rounded-full hover:bg-white/20 transition z-50">
-                  <X className="w-6 h-6"/>
-              </button>
-              <div className="relative w-full max-w-sm sm:max-w-md flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
-                  <img src={viewGallery.images[viewGallery.index]} alt="Gallery" className="w-full max-h-[80vh] object-contain rounded-xl shadow-2xl" />
-                  
-                  {viewGallery.images.length > 1 && (
-                      <>
-                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index - 1 + viewGallery.images.length) % viewGallery.images.length }); }} className="absolute left-2 sm:-left-4 top-1/2 -translate-y-1/2 bg-black/60 text-white p-2 rounded-full hover:bg-black/80 transition border border-white/20 shadow-lg">
-                              <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6"/>
-                          </button>
-                          <button type="button" onClick={(e) => { e.stopPropagation(); setViewGallery({ ...viewGallery, index: (viewGallery.index + 1) % viewGallery.images.length }); }} className="absolute right-2 sm:-right-4 top-1/2 -translate-y-1/2 bg-black/60 text-white p-2 rounded-full hover:bg-black/80 transition border border-white/20 shadow-lg">
-                              <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6"/>
-                          </button>
-                          <div className="absolute -bottom-10 left-0 right-0 text-center text-white text-xs font-bold bg-white/10 py-1.5 px-4 w-fit mx-auto rounded-full border border-white/20 tracking-widest shadow-lg">
-                              {viewGallery.index + 1} / {viewGallery.images.length}
-                          </div>
-                      </>
-                  )}
-              </div>
-          </div>
-      )}
+      {/* 🌟 1. Fullscreen Portal Image Gallery Popup (Modal) အပိုင်း 🌟 */}
+      <TherapistPhotoLightbox
+        gallery={viewGallery}
+        onChangeIndex={(nextIdx) => setViewGallery((prev) => (prev ? { ...prev, index: nextIdx } : null))}
+        onClose={() => setViewGallery(null)}
+      />
 
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold" style={{ color: THEME.primary }}>Choose Your Therapist</h2>
