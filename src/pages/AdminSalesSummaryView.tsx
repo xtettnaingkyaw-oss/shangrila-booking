@@ -1153,7 +1153,7 @@ export default function AdminSalesSummaryView({
                 <div>
                   <h3 className="text-sm font-extrabold text-[#123524]">{activeMetricTitle}</h3>
                   <p className="text-[10px] text-gray-400 font-semibold">
-                    {startDateStr} မှ {endDateStr} အတွင်း အရောင်း차트
+                    {startDateStr} မှ {endDateStr} အတွင်း အရောင်းဂရပ် (Chart)
                   </p>
                 </div>
 

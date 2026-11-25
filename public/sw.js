@@ -1,9 +1,10 @@
-const CACHE_NAME = 'shangrila-pos-cache-v13';
+const CACHE_NAME = 'shangrila-pos-cache-v14';
 const CORE_ASSETS = [
   '/',
   '/index.html',
   '/?mode=pos',
   '/?mode=staff',
+  '/?mode=admin',
   '/manifest.json',
   '/manifest-staff.json',
   '/manifest-pos.json',

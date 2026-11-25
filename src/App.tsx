@@ -309,10 +309,15 @@ function MainApp() {
           ? 'SL Admin'
           : 'Shangri-La';
       }
+      // 6. Sync browser/iOS theme-color with active portal header so status bar stays crisp
+      const themeMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+      if (themeMeta && isLoaderFinished) {
+        themeMeta.content = isPosMode ? '#123524' : '#ffffff';
+      }
     };
 
     syncBrandingAndManifest();
-  }, [appData?.branding, appMode]);
+  }, [appData?.branding, appMode, isLoaderFinished]);
 
   // 🌟 REAL-TIME CAMPAIGN & POPUP LOCKOUT GUARD (Admin မှ ပိတ်ထားလျှင် customer mode သို့ အလိုအလျောက် ပြန်ပို့မည်) 🌟
   useEffect(() => {
@@ -364,7 +369,7 @@ function MainApp() {
   const safeAppData = appData || FALLBACK_APPDATA;
   const stepsToShow = safeAppData.installSteps && safeAppData.installSteps.length > 0 ? safeAppData.installSteps : DEFAULT_INSTALL_STEPS;
 
-  const isFullScreenMode = appMode === 'pos' || appMode === 'campaign';
+  const isFullScreenMode = appMode === 'pos' || appMode === 'campaign' || (appMode === 'admin' && Boolean(loggedInAdmin));
 
   // 🌟 Admin မှ All OFF သို့မဟုတ် Popup ပိတ်ထားခြင်း ရှိမရှိ စစ်ဆေးခြင်း 🌟
   const promoSettings: any = safeAppData?.promotion;

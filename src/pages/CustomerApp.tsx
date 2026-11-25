@@ -4,12 +4,21 @@ import { collection, addDoc, getDocs, getDoc, updateDoc, doc, query, onSnapshot,
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security'; 
 
-import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert, PartyPopper, Bell, Send} from 'lucide-react';
+import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert, PartyPopper, Bell, Send, RefreshCw} from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
 
 import { useAppStore } from '../AppDataContext';
 import ThadingyutCampaign from './ThadingyutCampaign';
-import { notifyBookingEvent, notifyStaffUpdate, fetchBotUsername, normalizePhone } from '../telegramService';
+import {
+  notifyBookingEvent,
+  notifyStaffUpdate,
+  fetchBotUsername,
+  normalizePhone,
+  generateSecureOtpCode,
+  generateOtpRequestToken,
+  requestCustomerPasswordOtp,
+  pollAndDeliverPendingOtpForUser
+} from '../telegramService';
 import { playCustomerChime, unlockAudioContext } from '../utils/soundEffects';
 
 // 🌟 iOS PWA / Safari / Browser အားလုံးတွင် Popup မပိတ်စေဘဲ ချက်ချင်း Telegram ပွင့်စေမည့် Synchronous Helper 🌟
@@ -188,6 +197,42 @@ const openTelegramBotInstantly = (phoneStr?: string, bookingId?: string) => {
     setTimeout(() => {
       window.location.href = httpsUrl;
     }, 300);
+  } else {
+    const w = window.open(httpsUrl, '_blank', 'noopener,noreferrer');
+    if (!w) window.location.href = httpsUrl;
+  }
+};
+
+// 🌟 Open Telegram Bot with custom start payload (used for Password Reset OTP auto-delivery) 🌟
+const getTelegramBotStartUrls = (startParam: string) => {
+  const botUser = (
+    localStorage.getItem('shangrila_bot_username') ||
+    import.meta.env.VITE_TELEGRAM_BOT_USERNAME ||
+    'theshangrilamenretreat'
+  )
+    .replace(/^@/, '')
+    .trim();
+  return {
+    httpsUrl: `https://t.me/${botUser}?start=${encodeURIComponent(startParam)}`,
+    tgAppUrl: `tg://resolve?domain=${botUser}&start=${encodeURIComponent(startParam)}`,
+  };
+};
+
+const openTelegramBotWithStartParam = (startParam: string, overrideHttpsUrl?: string, overrideTgUrl?: string) => {
+  const fallback = getTelegramBotStartUrls(startParam);
+  const httpsUrl = overrideHttpsUrl || fallback.httpsUrl;
+  const tgAppUrl = overrideTgUrl || fallback.tgAppUrl;
+  const isIOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isPWA =
+    window.matchMedia?.('(display-mode: standalone)').matches || (window.navigator as any)?.standalone === true;
+
+  if (isIOS || isPWA) {
+    window.location.href = tgAppUrl;
+    setTimeout(() => {
+      window.location.href = httpsUrl;
+    }, 350);
   } else {
     const w = window.open(httpsUrl, '_blank', 'noopener,noreferrer');
     if (!w) window.location.href = httpsUrl;
@@ -412,44 +457,125 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
   // Registration Form State
   const [regForm, setRegForm] = useState({ name: '', dob: '', password: '' });
 
-  // Reset Password State (OTP System)
+  // Reset Password State (Telegram Bot Auto-OTP System)
   const [userId, setUserId] = useState<string | null>(null);
-  const [otpState, setOtpState] = useState<'none' | 'waiting' | 'approved'>('none');
+  const [otpState, setOtpState] = useState<'none' | 'verify'>('none');
   const [generatedOtp, setGeneratedOtp] = useState('');
+  const [otpToken, setOtpToken] = useState('');
+  const [otpExpiresAt, setOtpExpiresAt] = useState<number>(0);
+  const [otpSentToTelegram, setOtpSentToTelegram] = useState(false);
+  const [otpBotUrls, setOtpBotUrls] = useState<{ httpsUrl: string; tgAppUrl: string } | null>(null);
+  const [otpInput, setOtpInput] = useState('');
+  const [otpAttempts, setOtpAttempts] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [otpRemainingSecs, setOtpRemainingSecs] = useState(0);
+  const [checkingBotDelivery, setCheckingBotDelivery] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
   // 🌟 App Data for OTP Contacts & Welcome Bonus
   const [appDataState, setAppDataState] = useState<any>(null);
 
-  // Steps: 1=Phone, 2=Login, 3=Reset Request, 4=Register, 5=Set New Password
+  // Steps: 1=Phone, 2=Login, 3=Reset Request & Bot OTP Verify, 4=Register, 5=Set New Password
   const [step, setStep] = useState(skipToPassword ? 2 : 1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // 🌟 Fetch AppData on Mount (For Bonus checking & Contacts)
+  // 🌟 Fetch AppData on Mount & Resolve userId when prefilledPhone is provided (e.g. Booking Auth Modal)
   useEffect(() => {
       getDoc(doc(db, 'settings', 'appData')).then(snap => {
           if(snap.exists()) setAppDataState(snap.data());
       });
+      fetchBotUsername().catch(() => {});
   }, []);
 
-  // Real-time listener for Admin's OTP Approval
   useEffect(() => {
-      if (step === 3 && otpState === 'waiting' && userId) {
+      if (!prefilledPhone || userId) return;
+      const cleanPrefill = prefilledPhone.trim();
+      if (!cleanPrefill) return;
+      getDocs(collection(db, 'users')).then((snap) => {
+          snap.forEach((d) => {
+              try {
+                  const data = d.data();
+                  const decPhone = decryptText(data.phone) || d.id;
+                  if (decPhone === cleanPrefill || d.id === cleanPrefill) {
+                      setUserId(d.id);
+                  }
+              } catch {}
+          });
+      }).catch(() => {});
+  }, [prefilledPhone, userId]);
+
+  // Real-time listener on users/{userId} so when Telegram Bot delivers OTP, UI immediately turns green
+  useEffect(() => {
+      if (step === 3 && otpState === 'verify' && userId) {
           const unsub = onSnapshot(doc(db, 'users', userId), (docSnap) => {
               if (docSnap.exists()) {
                   const data = docSnap.data();
-                  if (data.resetRequested && data.otpApproved) {
+                  if (data.otpSentToTelegram === true && (!otpToken || data.otpToken === otpToken)) {
+                      setOtpSentToTelegram(true);
+                  }
+                  if (data.resetOtp && !generatedOtp) {
                       setGeneratedOtp(decryptText(data.resetOtp) || '');
-                      setOtpState('approved');
                   }
               }
           });
           return () => unsub();
       }
-  }, [step, otpState, userId]);
+  }, [step, otpState, userId, otpToken, generatedOtp]);
+
+  // Background Telegram Bot delivery poller (works even when Admin Panel is closed!)
+  useEffect(() => {
+      if (step !== 3 || otpState !== 'verify' || otpSentToTelegram || !userId || !generatedOtp || !otpToken) return;
+      let cancelled = false;
+
+      const runCheck = async () => {
+          if (cancelled) return;
+          const res = await pollAndDeliverPendingOtpForUser({
+              userId,
+              phone: phone.trim(),
+              otp: generatedOtp,
+              otpToken,
+          });
+          if (!cancelled && res.delivered) {
+              setOtpSentToTelegram(true);
+          }
+      };
+
+      runCheck();
+      const interval = setInterval(runCheck, 3000);
+      const handleVisibility = () => {
+          if (document.visibilityState === 'visible') runCheck();
+      };
+      window.addEventListener('focus', runCheck);
+      document.addEventListener('visibilitychange', handleVisibility);
+
+      return () => {
+          cancelled = true;
+          clearInterval(interval);
+          window.removeEventListener('focus', runCheck);
+          document.removeEventListener('visibilitychange', handleVisibility);
+      };
+  }, [step, otpState, otpSentToTelegram, userId, phone, generatedOtp, otpToken]);
+
+  // Countdown timers (Resend cooldown + 10-minute OTP expiry)
+  useEffect(() => {
+      if (resendCooldown <= 0) return;
+      const t = setInterval(() => setResendCooldown((c) => Math.max(0, c - 1)), 1000);
+      return () => clearInterval(t);
+  }, [resendCooldown]);
+
+  useEffect(() => {
+      if (step !== 3 || otpState !== 'verify' || !otpExpiresAt) return;
+      const updateRemain = () => {
+          const left = Math.max(0, Math.floor((otpExpiresAt - Date.now()) / 1000));
+          setOtpRemainingSecs(left);
+      };
+      updateRemain();
+      const t = setInterval(updateRemain, 1000);
+      return () => clearInterval(t);
+  }, [step, otpState, otpExpiresAt]);
 
   const handleNext = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true);
@@ -461,11 +587,17 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
              const data = d.data(); const decPhone = decryptText(data.phone) || d.id;
              if (decPhone === phone.trim() || d.id === phone.trim()) { 
                  found = true; userPass = decryptText(data.password); foundId = d.id;
-                 if (data.resetRequested) {
-                     if (data.otpApproved) {
-                         setOtpState('approved'); setGeneratedOtp(decryptText(data.resetOtp) || '');
-                     } else { setOtpState('waiting'); }
-                 } else { setOtpState('none'); }
+                 const expAt = Number(data.otpExpiresAt || 0);
+                 if (data.resetRequested && data.resetOtp && expAt > Date.now()) {
+                     setOtpState('verify');
+                     setGeneratedOtp(decryptText(data.resetOtp) || '');
+                     setOtpToken(String(data.otpToken || ''));
+                     setOtpExpiresAt(expAt);
+                     setOtpSentToTelegram(Boolean(data.otpSentToTelegram));
+                     setOtpAttempts(Number(data.otpAttempts || 0));
+                 } else {
+                     setOtpState('none');
+                 }
              }
          } catch(err) {}
       });
@@ -500,31 +632,163 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
     finally { setLoading(false); }
   };
 
-  const handleRequestOTP = async () => {
-      if (!userId) return;
-      setLoading(true); setError('');
+  // 🌟 Self-Service Telegram Bot Auto-OTP Request (Zero Admin Wait!) 🌟
+  const handleRequestOTP = async (autoOpenBot: boolean = true) => {
+      setLoading(true); setError(''); setSuccessMsg('');
       try {
-          const otp = Math.floor(100000 + Math.random() * 900000).toString();
-          await updateDoc(doc(db, 'users', userId), {
+          let targetUserId = userId;
+          const cleanPhoneInput = phone.trim();
+          if (!targetUserId && cleanPhoneInput) {
+              const snap = await getDocs(collection(db, 'users'));
+              snap.forEach((d) => {
+                  try {
+                      const data = d.data();
+                      const decPhone = decryptText(data.phone) || d.id;
+                      if (decPhone === cleanPhoneInput || d.id === cleanPhoneInput) {
+                          targetUserId = d.id;
+                      }
+                  } catch {}
+              });
+              if (targetUserId) setUserId(targetUserId);
+          }
+
+          if (!targetUserId) {
+              setError('အကောင့်ရှာမတွေ့ပါ။ ဖုန်းနံပါတ် ပြန်လည်စစ်ဆေးပေးပါ။');
+              setLoading(false);
+              return;
+          }
+
+          const otp = generateSecureOtpCode();
+          const token = generateOtpRequestToken();
+          const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
+          const activeChatId = getActiveCustomerTelegramChatId();
+
+          await updateDoc(doc(db, 'users', targetUserId), {
               resetRequested: true,
               resetOtp: encryptText(otp),
-              otpApproved: false
+              otpToken: token,
+              otpExpiresAt: expiresAt,
+              otpAttempts: 0,
+              otpSentToTelegram: false,
+              otpApproved: true,
+              otpRequestedAt: Date.now()
           });
+
           setGeneratedOtp(otp);
-          setOtpState('waiting');
+          setOtpToken(token);
+          setOtpExpiresAt(expiresAt);
+          setOtpAttempts(0);
+          setOtpInput('');
+          setOtpSentToTelegram(false);
+          setResendCooldown(45);
 
-          // 🌟 Admin Telegram Group သို့ OTP တောင်းခံမှု ချက်ချင်းပေးပို့ခြင်း 🌟
-          notifyStaffUpdate({
-              type: 'GENERAL_ANNOUNCEMENT',
-              staffName: `Customer (${phone.trim()})`,
-              title: '🔐 Password Reset (OTP) တောင်းခံမှု ဝင်ရောက်လာပါသည်',
-              details: `ဖုန်းနံပါတ်: ${phone.trim()}\nGenerated OTP: ${otp}\n\nAdmin Panel > Users စာရင်းထဲတွင် Approve နှိပ်ပေးပါရန်။`,
-              effectiveDate: getLocalTodayStr(),
-              issuedBy: 'Customer App (OTP System)'
-          }).catch(err => console.warn('Telegram OTP alert error:', err));
+          const dispatchRes = await requestCustomerPasswordOtp({
+              userId: targetUserId,
+              phone: cleanPhoneInput,
+              otp,
+              otpToken: token,
+              explicitChatId: activeChatId || undefined,
+          });
 
-      } catch (e) { setError('Error requesting OTP.'); }
-      setLoading(false);
+          setOtpBotUrls({ httpsUrl: dispatchRes.httpsUrl, tgAppUrl: dispatchRes.tgAppUrl });
+          if (dispatchRes.sentDirectly) {
+              setOtpSentToTelegram(true);
+          }
+
+          // Immediately transition to Enter 6-Digit OTP verification step
+          setOtpState('verify');
+
+          // Auto-open Telegram Bot so user lands straight on the Bot chat to receive/copy their OTP
+          if (autoOpenBot) {
+              const cleanNormPhone = normalizePhone(cleanPhoneInput) || cleanPhoneInput.replace(/[^0-9]/g, '') || 'user';
+              openTelegramBotWithStartParam(
+                  `otp_${cleanNormPhone}_${token}`,
+                  dispatchRes.httpsUrl,
+                  dispatchRes.tgAppUrl
+              );
+          }
+      } catch (e) {
+          setError('OTP တောင်းခံရာတွင် အခက်အခဲရှိနေပါသည်။ ထပ်မံကြိုးစားပေးပါ။');
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleManualCheckBotOtp = async () => {
+      if (!userId || !generatedOtp || !otpToken) return;
+      setCheckingBotDelivery(true);
+      setError('');
+      try {
+          const res = await pollAndDeliverPendingOtpForUser({
+              userId,
+              phone: phone.trim(),
+              otp: generatedOtp,
+              otpToken,
+          });
+          if (res.delivered) {
+              setOtpSentToTelegram(true);
+          } else {
+              setError('Telegram Bot ထဲတွင် START ခလုတ်ကို နှိပ်ပြီးပြီလား စစ်ဆေးပေးပါ (နှိပ်ပြီးပါက စက္ကန့်အနည်းငယ်အတွင်း OTP ရောက်လာပါမည်)။');
+          }
+      } finally {
+          setCheckingBotDelivery(false);
+      }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
+      const entered = otpInput.replace(/\D/g, '').trim();
+      if (entered.length !== 6) {
+          setError('Telegram Bot မှ ရရှိသော ဂဏန်း ၆ လုံး (OTP) ကို ပြည့်စုံစွာ ရိုက်ထည့်ပေးပါ။');
+          return;
+      }
+      if (otpExpiresAt && Date.now() > otpExpiresAt) {
+          setError('OTP သက်တမ်း (၁၀ မိနစ်) ကုန်ဆုံးသွားပါပြီ။ "OTP အသစ် ပြန်တောင်းရန်" ကို နှိပ်ပေးပါ။');
+          return;
+      }
+      if (otpAttempts >= 5) {
+          setError('OTP မှားယွင်းရိုက်ထည့်မှု အကြိမ်ရေ ပြည့်သွားပါပြီ။ ကျေးဇူးပြု၍ OTP အသစ် ပြန်တောင်းပေးပါ။');
+          return;
+      }
+
+      // Verify against freshest Firestore doc (prevents stale state mismatch)
+      setLoading(true);
+      try {
+          let expectedOtp = generatedOtp;
+          if (userId) {
+              const uSnap = await getDoc(doc(db, 'users', userId));
+              if (uSnap.exists()) {
+                  const uData = uSnap.data();
+                  if (uData.otpExpiresAt && Date.now() > Number(uData.otpExpiresAt)) {
+                      setError('OTP သက်တမ်း ကုန်ဆုံးသွားပါပြီ။ OTP အသစ် ပြန်တောင်းပေးပါ။');
+                      setLoading(false);
+                      return;
+                  }
+                  const freshOtp = decryptText(uData.resetOtp) || '';
+                  if (freshOtp) expectedOtp = freshOtp;
+              }
+          }
+
+          if (entered !== expectedOtp) {
+              const nextAttempts = otpAttempts + 1;
+              setOtpAttempts(nextAttempts);
+              if (userId) {
+                  updateDoc(doc(db, 'users', userId), { otpAttempts: nextAttempts }).catch(() => {});
+              }
+              setError(`OTP ကုဒ် မှားယွင်းနေပါသည်။ (${5 - nextAttempts} ကြိမ်သာ ကျန်ရှိတော့သည်)`);
+              setLoading(false);
+              return;
+          }
+
+          // OTP Verified! Proceed directly to Set New Password (Step 5)
+          setError('');
+          setStep(5);
+      } catch {
+          setError('OTP စစ်ဆေးရာတွင် အခက်အခဲရှိနေပါသည်။');
+      } finally {
+          setLoading(false);
+      }
   };
 
   const handleSetNewPassword = async (e: React.FormEvent) => {
@@ -539,6 +803,10 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
               password: encryptText(newPassword),
               resetRequested: false,
               resetOtp: '',
+              otpToken: '',
+              otpExpiresAt: 0,
+              otpAttempts: 0,
+              otpSentToTelegram: false,
               otpApproved: false
           });
           setSuccessMsg('စကားဝှက်အသစ် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။');
@@ -679,68 +947,172 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
       )}
 
       {step === 3 && (
-        <div className="relative z-10 space-y-5 flex flex-col animate-slide-up">
+        <div className="relative z-10 space-y-4 flex flex-col animate-slide-up">
            {otpState === 'none' && (
               <>
-                <div className="text-left bg-yellow-50 border border-[#D4AF37]/30 p-4 rounded-xl shadow-inner">
-                   <p className="text-xs font-bold text-[#123524] mb-2 leading-relaxed text-center">စကားဝှက်အသစ် ပြန်လည်သတ်မှတ်ရန်အတွက် Admin ထံမှ တစ်ခါသုံးကုဒ် (OTP) တောင်းခံရန် လိုအပ်ပါသည်။</p>
+                <div className="text-left bg-gradient-to-br from-[#F4F9F6] to-amber-50/60 border border-[#D4AF37]/35 p-4 rounded-xl shadow-inner space-y-2">
+                   <p className="text-xs font-bold text-[#123524] leading-relaxed text-center">
+                     စကားဝှက်အသစ် ပြန်လည်သတ်မှတ်ရန်အတွက် အောက်ပါခလုတ်ကို နှိပ်ပါ။ Telegram Bot မှ တစ်ခါသုံးကုဒ် (၆ လုံး OTP) ကို အလိုအလျောက် ပေးပို့ပေးပါမည်။
+                   </p>
+                   <p className="text-[11px] text-gray-500 font-semibold text-center leading-relaxed">
+                     Admin Approve စောင့်စရာမလိုဘဲ Bot မှ ရရှိသော OTP ကို ရိုက်ထည့်၍ ချက်ချင်း Password အသစ် သတ်မှတ်နိုင်ပါသည်။
+                   </p>
                 </div>
-                <button type="button" onClick={handleRequestOTP} disabled={loading} className="w-full py-4 bg-red-600/90 text-white rounded-xl font-bold shadow-md hover:bg-red-700 transition flex justify-center items-center uppercase tracking-widest text-xs">
-                    {loading ? 'Requesting...' : 'Admin ထံမှ OTP တောင်းခံရန်'}
+                <button
+                  type="button"
+                  onClick={() => handleRequestOTP(true)}
+                  disabled={loading}
+                  className="w-full py-4 bg-gradient-to-r from-[#229ED9] to-[#1a82b5] text-white rounded-xl font-bold shadow-md hover:brightness-110 active:scale-[0.98] transition flex justify-center items-center gap-2 tracking-wide text-xs sm:text-sm"
+                >
+                    <Send className="w-4 h-4" />
+                    <span>{loading ? 'OTP ပြင်ဆင်နေပါသည်...' : 'Telegram Bot မှ OTP တောင်းခံရန်'}</span>
                 </button>
               </>
            )}
            
-           {/* 🌟 OTP Waiting State with Shop Contacts (Always Visible Background) */}
-           {otpState === 'waiting' && (
-              <div className="bg-blue-50 border border-blue-200 p-6 rounded-xl text-center shadow-sm">
-                  <div className="animate-spin text-blue-500 w-8 h-8 mx-auto mb-3"><ShieldAlert className="w-8 h-8" /></div>
-                  <p className="text-xs font-bold text-blue-800 mb-1">OTP တောင်းဆိုထားပါသည်</p>
-                  <p className="text-[10px] text-blue-600 font-semibold">Admin မှ အတည်ပြုပေးရန် စောင့်ဆိုင်းနေပါသည်...</p>
-                  
-                  <div className="mt-5 pt-5 border-t border-blue-200/50">
-                      <p className="text-[10px] text-blue-800 font-bold mb-3 leading-relaxed">
-                          စောင့်ဆိုင်းရချိန်ကြာမြင့်နေပါက<br />
-                          Admin အား အမြန်ဆုံးဆက်သွယ်ရန်
-                      </p>
-                      <div className="flex flex-col gap-2.5">
-                          <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#123524] bg-white p-2.5 rounded-lg border border-blue-100 shadow-sm">
-                              <Phone className="w-4 h-4 text-[#D4AF37]" /> 
-                              {appDataState?.branding?.phone1 || '09-xxxxxxxxx'} {appDataState?.branding?.phone2 ? ` | ${appDataState.branding.phone2}` : ''}
-                          </div>
-                          
-                          {(appDataState?.branding?.telegram || appDataState?.branding?.viber) && (
-                              <div className="flex justify-center gap-2">
-                                  {appDataState?.branding?.telegram && (
-                                      <a href={appDataState.branding.telegram} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-1.5 bg-[#0088cc] text-white py-2 px-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#0077b5] transition">
-                                          <MessageCircle className="w-3.5 h-3.5" /> Telegram
-                                      </a>
-                                  )}
-                                  {appDataState?.branding?.viber && (
-                                      <a href={appDataState.branding.viber} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-1.5 bg-[#7360f2] text-white py-2 px-2 rounded-lg text-[10px] font-bold shadow-sm hover:bg-[#6650db] transition">
-                                          <MessageCircle className="w-3.5 h-3.5" /> Viber
-                                      </a>
-                                  )}
-                              </div>
-                          )}
+           {/* 🌟 Self-Service Telegram Bot OTP Verification Step 🌟 */}
+           {otpState === 'verify' && (
+              <form onSubmit={handleVerifyOtp} className="space-y-4 text-left">
+                  {/* Delivery Status Banner */}
+                  {otpSentToTelegram ? (
+                    <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl flex items-start gap-2.5 shadow-xs">
+                      <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-xs leading-relaxed">
+                        <div className="font-black text-emerald-800">OTP ကုဒ်ကို Telegram Bot သို့ ပေးပို့ပြီးပါပြီ!</div>
+                        <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">
+                          Telegram Bot မှ ရရှိသော ဂဏန်း ၆ လုံးကို အောက်တွင် ရိုက်ထည့်ပေးပါ။
+                        </div>
                       </div>
+                    </div>
+                  ) : (
+                    <div className="bg-sky-50 border border-sky-200 p-3.5 rounded-xl space-y-2.5 shadow-xs">
+                      <div className="flex items-start gap-2.5">
+                        <Send className="w-4 h-4 text-[#229ED9] flex-shrink-0 mt-0.5 animate-pulse" />
+                        <div className="text-xs leading-relaxed">
+                          <div className="font-black text-sky-900">Telegram Bot ထဲတွင် START နှိပ်၍ OTP ရယူပါ</div>
+                          <div className="text-[11px] text-sky-700 font-semibold mt-0.5">
+                            Bot ပွင့်လာပါက အောက်ဆုံးရှိ <strong>START</strong> ကို နှိပ်လိုက်ရုံဖြင့် ဂဏန်း ၆ လုံး OTP ကို အလိုအလျောက် ပို့ပေးပါမည်။
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <a
+                          href={
+                            otpBotUrls?.httpsUrl ||
+                            getTelegramBotStartUrls(
+                              `otp_${normalizePhone(phone) || 'user'}_${otpToken}`
+                            ).httpsUrl
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            const cleanP = normalizePhone(phone) || phone.replace(/[^0-9]/g, '') || 'user';
+                            openTelegramBotWithStartParam(
+                              `otp_${cleanP}_${otpToken}`,
+                              otpBotUrls?.httpsUrl,
+                              otpBotUrls?.tgAppUrl
+                            );
+                          }}
+                          className="flex-1 py-2 px-3 rounded-lg bg-[#229ED9] hover:bg-[#1b86ba] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-sm transition"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Telegram Bot ဖွင့်ရန်
+                        </a>
+                        <button
+                          type="button"
+                          onClick={handleManualCheckBotOtp}
+                          disabled={checkingBotDelivery}
+                          className="py-2 px-3 rounded-lg bg-white hover:bg-sky-100 text-sky-800 border border-sky-200 text-[11px] font-bold flex items-center justify-center gap-1 transition disabled:opacity-60"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${checkingBotDelivery ? 'animate-spin' : ''}`} />
+                          {checkingBotDelivery ? 'စစ်နေ...' : 'OTP စစ်ရန်'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 6-Digit OTP Input */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        Enter 6-Digit OTP Code
+                      </label>
+                      {otpRemainingSecs > 0 ? (
+                        <span className="text-[10px] font-mono font-bold text-[#123524] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          ⏱ {Math.floor(otpRemainingSecs / 60)}:{String(otpRemainingSecs % 60).padStart(2, '0')}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-red-600">Expired</span>
+                      )}
+                    </div>
+                    <input
+                      required
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      placeholder="• • • • • •"
+                      value={otpInput}
+                      onChange={(e) => {
+                        setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6));
+                        if (error) setError('');
+                      }}
+                      className="w-full p-4 bg-gray-50 border-2 border-[#D4AF37]/40 rounded-xl outline-none focus:border-[#123524] focus:ring-2 focus:ring-[#D4AF37]/25 transition-all font-mono font-black text-2xl text-center tracking-[0.5em] text-[#123524] shadow-inner"
+                    />
                   </div>
-              </div>
-           )}
 
-           {otpState === 'approved' && (
-              <div className="bg-green-50 border border-green-200 p-6 rounded-xl text-center shadow-sm">
-                  <p className="text-[10px] font-bold text-green-700 uppercase mb-2">Admin မှ အတည်ပြုပြီးပါပြီ</p>
-                  <p className="text-xs text-green-800 font-semibold mb-3">သင့်၏ တစ်ခါသုံးစကားဝှက် (OTP) မှာ</p>
-                  <div className="text-4xl font-black tracking-widest text-[#123524] mb-5">{generatedOtp}</div>
-                  <button type="button" onClick={() => setStep(5)} className="w-full py-3 bg-[#123524] text-[#D4AF37] rounded-xl font-bold shadow-md hover:bg-[#1a4a32] transition flex justify-center items-center text-xs uppercase tracking-wider">
-                      Login ဝင်ပြီး စကားဝှက်အသစ်လုပ်ရန်
+                  <button
+                    type="submit"
+                    disabled={loading || otpInput.length !== 6}
+                    className="w-full py-4 bg-gradient-to-r from-[#123524] to-[#1a4a32] text-[#D4AF37] rounded-xl font-bold shadow-[0_4px_15px_rgba(18,53,36,0.3)] hover:brightness-110 active:scale-[0.98] transition-all flex justify-center items-center gap-2 uppercase tracking-widest text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>{loading ? 'စစ်ဆေးနေပါသည်...' : 'OTP အတည်ပြုပြီး Password အသစ်လုပ်မည်'}</span>
                   </button>
-              </div>
+
+                  {/* Open Telegram Bot + Resend OTP Actions */}
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    {otpSentToTelegram && (
+                      <a
+                        href={
+                          otpBotUrls?.httpsUrl ||
+                          getTelegramBotStartUrls(
+                            `otp_${normalizePhone(phone) || 'user'}_${otpToken}`
+                          ).httpsUrl
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const cleanP = normalizePhone(phone) || phone.replace(/[^0-9]/g, '') || 'user';
+                          openTelegramBotWithStartParam(
+                            `otp_${cleanP}_${otpToken}`,
+                            otpBotUrls?.httpsUrl,
+                            otpBotUrls?.tgAppUrl
+                          );
+                        }}
+                        className="text-[11px] font-bold text-[#229ED9] hover:underline flex items-center gap-1"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" /> Telegram Bot ဖွင့်ရန်
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      disabled={loading || resendCooldown > 0}
+                      onClick={() => handleRequestOTP(true)}
+                      className="text-[11px] font-bold text-[#123524] hover:text-[#D4AF37] disabled:text-gray-400 transition ml-auto flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      {resendCooldown > 0
+                        ? `OTP ပြန်တောင်းရန် (${resendCooldown}s)`
+                        : 'OTP အသစ် ပြန်တောင်းရန်'}
+                    </button>
+                  </div>
+              </form>
            )}
 
-           {error && <div className="text-xs font-bold text-red-500 bg-red-50 p-3 rounded-xl border border-red-100">{error}</div>}
-           <button type="button" onClick={() => setStep(2)} disabled={loading} className="text-xs text-gray-500 font-bold mt-2 hover:text-[#123524] transition-colors">Cancel & Go Back</button>
+           {error && <div className="text-xs font-bold text-red-500 bg-red-50 p-3 rounded-xl border border-red-100 leading-relaxed">{error}</div>}
+           <button type="button" onClick={() => { setStep(2); setError(''); }} disabled={loading} className="text-xs text-gray-500 font-bold mt-1 hover:text-[#123524] transition-colors">Cancel & Go Back</button>
         </div>
       )}
 
@@ -3559,7 +3931,10 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
      <div className="w-full relative" onClick={handleInteraction}>
 
        {/* 🌟 ညာဘက်အောက်နားတွင် အမြဲပေါ်နေမည့် Floating Telegram Direct Link Button (100% Mobile & iOS PWA Ready) 🌟 */}
-       <div className="fixed bottom-6 right-5 z-[999] flex items-center gap-2">
+       <div
+         className="fixed right-5 z-[999] flex items-center gap-2"
+         style={{ bottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+       >
            {tgUser ? (
                <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[#123524] text-[#D4AF37] border border-[#D4AF37]/40 text-xs font-bold shadow-2xl animate-fade-in backdrop-blur-md">
                    <span className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse"></span>

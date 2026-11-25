@@ -689,7 +689,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] bg-[#F4F6F5] flex overflow-hidden font-sans text-gray-800"
+      className="fixed inset-0 z-[120] bg-[#F4F6F5] flex overflow-hidden font-sans text-gray-800"
       onClick={handleInteraction}
     >
       {/* Local Web Audio API alert chime (no external actions.google.com dependency) */}
@@ -700,7 +700,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
       {isMobileSidebarOpen && (
         <div
           onClick={() => setIsMobileSidebarOpen(false)}
-          className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-xs lg:hidden transition-opacity"
+          className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-xs lg:hidden transition-opacity"
         />
       )}
 
@@ -708,12 +708,19 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           LUXURY SIDE NAVIGATION BAR (Desktop Fixed + Mobile Slide-Out Drawer)
          ========================================== */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-[120] bg-[#0B2419] text-white flex flex-col justify-between border-r border-[#C8A951]/25 shadow-2xl transition-all duration-300 ease-in-out ${
+        className={`fixed lg:static inset-y-0 left-0 z-[140] bg-[#0B2419] text-white flex flex-col justify-between border-r border-[#C8A951]/25 shadow-2xl transition-all duration-300 ease-in-out ${
           isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'
         } ${isDesktopSidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}`}
       >
-        {/* 1. Brand Header inside Sidebar */}
-        <div className="h-16 px-4 bg-gradient-to-r from-[#123524] to-[#0B2419] border-b border-[#C8A951]/25 flex items-center justify-between flex-shrink-0">
+        {/* 1. Brand Header inside Sidebar (iOS Safe-Area Top Protected) */}
+        <div
+          className="px-4 bg-gradient-to-r from-[#123524] to-[#0B2419] border-b border-[#C8A951]/25 flex items-center justify-between flex-shrink-0"
+          style={{
+            paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+            paddingBottom: '0.75rem',
+            minHeight: 'calc(4rem + env(safe-area-inset-top))',
+          }}
+        >
           <div className="flex items-center gap-3 min-w-0">
             {activeLogoUrl ? (
               <img
@@ -821,7 +828,10 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         </div>
 
         {/* 3. Sidebar Footer Actions (POS Quick Launch, Collapse, Update & Logout) */}
-        <div className="p-3 border-t border-white/10 bg-black/25 space-y-2 flex-shrink-0">
+        <div
+          className="px-3 pt-3 border-t border-white/10 bg-black/25 space-y-2 flex-shrink-0"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
           {/* Open Walk-in POS Terminal Button */}
           <button
             type="button"
@@ -870,15 +880,23 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           MAIN FULL-SCREEN WORKSPACE (100% Width on Desktop & Responsive on Mobile/Tablet)
          ========================================== */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-        {/* Top Executive Header Bar */}
-        <header className="h-16 bg-white border-b border-gray-200 px-4 sm:px-6 flex items-center justify-between gap-3 flex-shrink-0 shadow-2xs z-20">
+        {/* Top Executive Header Bar (iOS Dynamic Island / Notch Safe-Area Protected) */}
+        <header
+          className="bg-white border-b border-gray-200 px-4 sm:px-6 flex items-center justify-between gap-3 flex-shrink-0 shadow-2xs z-30 relative"
+          style={{
+            paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+            paddingBottom: '0.75rem',
+            minHeight: 'calc(4rem + env(safe-area-inset-top))',
+          }}
+        >
           <div className="flex items-center gap-3 min-w-0">
             {/* Hamburger Menu Button for Mobile & Tablet */}
             <button
               type="button"
               onClick={() => setIsMobileSidebarOpen(true)}
-              className="lg:hidden p-2.5 rounded-xl bg-[#123524] text-[#D4AF37] shadow-sm active:scale-95 transition relative"
+              className="lg:hidden min-w-[42px] min-h-[42px] p-2.5 rounded-xl bg-[#123524] text-[#D4AF37] shadow-sm active:scale-95 transition relative flex items-center justify-center flex-shrink-0"
               title="Open Admin Menu"
+              aria-label="Open Admin Menu"
             >
               <div className="space-y-1">
                 <span className="block w-4 h-0.5 bg-[#D4AF37]" />
@@ -952,7 +970,10 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
         </header>
 
         {/* Scrollable Full-Width Content Area */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6">
+        <main
+          className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6"
+          style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+        >
           <div className="w-full max-w-[1600px] mx-auto pb-12">
             {tab === 'bookings' && hasAccess('bookings') && <AdminBookingsList bookings={bookings} adminRole={adminRole} telegramSubscribers={telegramSubscribers} syncingTelegram={syncingTelegram} onSyncTelegram={handleSyncTelegramSubscribers} />}
             {tab === 'reports' && hasAccess('reports') && <AdminStaffHistoryList bookings={historyBookings} allBookings={bookings} adminRole={adminRole} therapists={appData.therapists} telegramSubscribers={telegramSubscribers} syncingTelegram={syncingTelegram} onSyncTelegram={handleSyncTelegramSubscribers} />}
@@ -4778,12 +4799,17 @@ function AdminUsersList({
              <td className="p-3">
                {u.resetRequested ? (
                    <div className="flex flex-col gap-1">
-                       <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-1 rounded flex w-fit items-center border border-red-200 animate-pulse"><AlertCircle className="w-3 h-3 mr-1" /> Password Reset Req</span>
-                       {u.resetOtp && <span className="text-[10px] font-mono bg-yellow-50 text-yellow-800 font-bold px-2 py-1 rounded border border-yellow-200">OTP: {u.resetOtp}</span>}
-                       {!u.otpApproved ? (
-                           <button onClick={() => handleApproveOTP(u.docId)} disabled={adminRole !== 'super_admin'} className={`text-[9px] text-white font-bold px-3 py-1.5 rounded mt-1 w-fit transition shadow-md ${adminRole === 'super_admin' ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}`}>Approve OTP</button>
+                       {u.otpSentToTelegram ? (
+                           <span className="text-[10px] bg-sky-50 text-sky-700 font-bold px-2 py-1 rounded flex w-fit items-center border border-sky-200">
+                             <Send className="w-3 h-3 mr-1" /> Bot OTP Sent ✓
+                           </span>
                        ) : (
-                           <span className="text-[9px] text-green-600 font-bold mt-1">✓ OTP Approved</span>
+                           <span className="text-[10px] bg-amber-50 text-amber-800 font-bold px-2 py-1 rounded flex w-fit items-center border border-amber-200">
+                             <AlertCircle className="w-3 h-3 mr-1" /> Bot OTP Pending
+                           </span>
+                       )}
+                       {!u.otpApproved && (
+                           <button onClick={() => handleApproveOTP(u.docId)} disabled={adminRole !== 'super_admin'} className={`text-[9px] text-white font-bold px-3 py-1.5 rounded mt-1 w-fit transition shadow-md ${adminRole === 'super_admin' ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}`}>Manual Approve</button>
                        )}
                    </div>
                ) : u.password ? (<span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded flex w-fit items-center"><KeyRound className="w-3 h-3 mr-1" /> Set</span>) : (<span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded flex w-fit items-center"><AlertCircle className="w-3 h-3 mr-1" /> None</span>)}

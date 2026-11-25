@@ -847,6 +847,29 @@ export async function pollAndProcessBusinessAutoReplies(
         if (savedSub) {
           newlySubscribedCount++;
         }
+
+        // 🌟 1.5 Password Reset OTP Deep-Link Auto Delivery (/start otp_<phone>_<token>) 🌟
+        if (incomingText.startsWith('/start')) {
+          const spParts = incomingText.trim().split(/\s+/);
+          const spArg = spParts[1] || '';
+          if (spArg.startsWith('otp_')) {
+            const otpDelivered = await handleStartOtpPayload(
+              spArg,
+              chatIdStr,
+              {
+                firstName: senderFirstName,
+                lastName: senderLastName,
+                username: senderUsername,
+                fullDisplayName,
+              },
+              config
+            );
+            if (otpDelivered) {
+              processedCount++;
+              continue;
+            }
+          }
+        }
       }
 
       // 🌟 2. Keyword Auto-Reply စစ်ဆေးပြီး သက်ဆိုင်ရာ စာသားနှင့် Bot Menu ခလုတ် ပြန်ပို့ခြင်း 🌟
@@ -2241,6 +2264,23 @@ export const fetchRecentBotChats = async (
             text.startsWith('/vip'))
         ) {
           welcomedUpdateIds.add(updateKey);
+          if (startPayload.startsWith('otp_')) {
+            const otpHandled = await handleStartOtpPayload(
+              startPayload,
+              chatIdStr,
+              {
+                firstName: chat.first_name || '',
+                lastName: chat.last_name || '',
+                username: chat.username || '',
+                fullDisplayName: titleOrName,
+              },
+              config
+            );
+            if (otpHandled) {
+              continue;
+            }
+          }
+
           let extractedPhone = '';
           let extractedBookingId = '';
           if (startPayload.startsWith('book_')) {
@@ -2477,6 +2517,365 @@ export const sendInteractiveMiniAppMenu = async (
     'CUSTOMER_MENU_WELCOME',
     businessConnectionId ? { businessConnectionId } : undefined
   );
+};
+
+// ==========================================
+// 9.5 SELF-SERVICE PASSWORD RESET AUTO-OTP VIA TELEGRAM BOT
+// ==========================================
+
+export const generateSecureOtpCode = (): string => {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const buf = new Uint32Array(1);
+      crypto.getRandomValues(buf);
+      return String(100000 + (buf[0] % 900000));
+    }
+  } catch {}
+  return String(Math.floor(100000 + Math.random() * 900000));
+};
+
+export const generateOtpRequestToken = (): string => {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = new Uint8Array(4);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch {}
+  return Math.random().toString(36).slice(2, 10);
+};
+
+export const sendPasswordResetOtpToChat = async (
+  chatId: string,
+  otp: string,
+  phone: string,
+  existingConfig?: TelegramBotConfig
+): Promise<{ ok: boolean; error?: string }> => {
+  const config = existingConfig || (await getTelegramConfig());
+  if (!config.enabled || !config.botToken || !chatId) {
+    return { ok: false, error: 'Telegram Bot is not configured or missing chatId' };
+  }
+
+  const cleanPhone = normalizePhone(phone) || phone || '-';
+  const cleanUrl = (config.webAppUrl || 'https://www.shangrilamenretreat.online').replace(/\/$/, '');
+
+  const html = [
+    `🔐 <b>PASSWORD RESET OTP CODE</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `🌿 <b>THE SHANGRI-LA MEN'S RETREAT</b>`,
+    ``,
+    `လူကြီးမင်း၏ အကောင့် (<code>${escapeHtml(cleanPhone)}</code>) စကားဝှက်အသစ် ပြန်လည်သတ်မှတ်ရန် တစ်ခါသုံးကုဒ် (OTP) မှာ —`,
+    ``,
+    `🔑 <b>OTP Code:</b>  <code>${escapeHtml(otp)}</code>`,
+    `<i>(ကုဒ်ကို တစ်ချက်နှိပ်၍ Copy ကူးနိုင်ပါသည်)</i>`,
+    ``,
+    `⏱ <b>သက်တမ်း:</b> ၁၀ မိနစ်အတွင်းသာ အသုံးပြုနိုင်ပါသည်။`,
+    `📌 Web App သို့ ပြန်သွား၍ အထက်ပါ ဂဏန်း ၆ လုံးကို ရိုက်ထည့်ပြီး စကားဝှက်အသစ် သတ်မှတ်နိုင်ပါသည်။`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `⚠️ <i>မိမိကိုယ်တိုင် မတောင်းဆိုထားပါက ဤမက်ဆေ့ချ်ကို လျစ်လျူရှုထားပြီး မည်သူ့ကိုမျှ မမျှဝေပါနှင့်။</i>`,
+  ].join('\n');
+
+  const keyboard = cleanUrl
+    ? {
+        inline_keyboard: [
+          [
+            {
+              text: '🔑 Web App သို့ပြန်သွားရန်',
+              url: cleanUrl,
+            },
+          ],
+        ],
+      }
+    : undefined;
+
+  return sendRawTelegramMessage(config.botToken, chatId, html, keyboard, 'CUSTOMER_PASSWORD_RESET_OTP');
+};
+
+export const handleStartOtpPayload = async (
+  startPayload: string,
+  chatIdStr: string,
+  senderMeta: {
+    firstName?: string;
+    lastName?: string;
+    username?: string;
+    fullDisplayName?: string;
+  },
+  existingConfig?: TelegramBotConfig
+): Promise<boolean> => {
+  if (!startPayload || !startPayload.startsWith('otp_') || !isPrivateUserChatId(chatIdStr)) {
+    return false;
+  }
+
+  try {
+    const config = existingConfig || (await getTelegramConfig());
+    if (!config.enabled || !config.botToken) return false;
+
+    const parts = startPayload.split('_');
+    const payloadPhone = normalizePhone(parts[1] || '');
+    const payloadToken = (parts[2] || '').trim();
+
+    const usersSnap = await getDocs(collection(db, 'users'));
+    let matchedDocId = '';
+    let matchedData: any = null;
+    let matchedPhone = payloadPhone;
+
+    usersSnap.forEach((d) => {
+      if (matchedDocId) return;
+      const raw = d.data();
+      if (!raw?.resetRequested) return;
+      const decPhone = normalizePhone(safeDecryptValue(raw.phone) || d.id);
+      const tokenMatches = Boolean(payloadToken && raw.otpToken && String(raw.otpToken) === payloadToken);
+      const phoneMatches = Boolean(
+        payloadPhone &&
+          decPhone &&
+          (decPhone === payloadPhone ||
+            (payloadPhone.length >= 8 && decPhone.slice(-8) === payloadPhone.slice(-8)))
+      );
+      if (tokenMatches || phoneMatches) {
+        matchedDocId = d.id;
+        matchedData = raw;
+        matchedPhone = decPhone || payloadPhone;
+      }
+    });
+
+    if (!matchedDocId || !matchedData) {
+      return false;
+    }
+
+    const nowMs = Date.now();
+    const expiresAt = Number(matchedData.otpExpiresAt || 0);
+    if (expiresAt > 0 && nowMs > expiresAt) {
+      await sendRawTelegramMessage(
+        config.botToken,
+        chatIdStr,
+        `⏱ <b>OTP သက်တမ်းကုန်ဆုံးသွားပါပြီ</b>\n\nကျေးဇူးပြု၍ Web App မှ <b>"OTP အသစ် ပြန်တောင်းရန်"</b> ခလုတ်ကို နှိပ်၍ ကုဒ်အသစ် ပြန်လည်ရယူပေးပါ။`,
+        undefined,
+        'CUSTOMER_OTP_EXPIRED'
+      );
+      return true;
+    }
+
+    const decryptedOtp = safeDecryptValue(matchedData.resetOtp || '');
+    if (!decryptedOtp) return false;
+
+    // Idempotent guard so repeated polls never send duplicate OTP messages for the same token
+    const sentCacheKey = `shangrila_otp_sent_${matchedData.otpToken || matchedDocId}`;
+    if (matchedData.otpSentToTelegram === true && localStorage.getItem(sentCacheKey) === '1') {
+      return true;
+    }
+
+    const sendRes = await sendPasswordResetOtpToChat(chatIdStr, decryptedOtp, matchedPhone, config);
+    if (sendRes.ok) {
+      try {
+        localStorage.setItem(sentCacheKey, '1');
+      } catch {}
+
+      try {
+        await updateDoc(doc(db, 'users', matchedDocId), {
+          otpSentToTelegram: true,
+          otpSentAt: nowMs,
+          telegramChatId: chatIdStr,
+          telegramUsername: senderMeta.username || matchedData.telegramUsername || '',
+          telegramSubscribed: true,
+          telegramLinkedAt: nowMs,
+        });
+      } catch {}
+
+      await saveCustomerTelegramSubscription({
+        chatId: chatIdStr,
+        customerName:
+          safeDecryptValue(matchedData.name || '') ||
+          senderMeta.fullDisplayName ||
+          [senderMeta.firstName, senderMeta.lastName].filter(Boolean).join(' ') ||
+          'Shangri-La Member',
+        customerPhone: matchedPhone,
+        username: senderMeta.username || '',
+        firstName: senderMeta.firstName || '',
+        lastName: senderMeta.lastName || '',
+        subscribed: true,
+        source: 'bot_command',
+      });
+
+      return true;
+    }
+  } catch (err) {
+    console.warn('handleStartOtpPayload error:', err);
+  }
+  return false;
+};
+
+export const requestCustomerPasswordOtp = async (params: {
+  userId: string;
+  phone: string;
+  otp: string;
+  otpToken: string;
+  explicitChatId?: string;
+}): Promise<{
+  ok: boolean;
+  sentDirectly: boolean;
+  chatId: string;
+  httpsUrl: string;
+  tgAppUrl: string;
+  error?: string;
+}> => {
+  const config = await getTelegramConfig();
+  const botUsername = (await fetchBotUsername(config.botToken)).replace(/^@/, '').trim() || 'theshangrilamenretreat';
+  const cleanPhone = normalizePhone(params.phone) || params.phone.replace(/[^0-9]/g, '') || 'user';
+  const startParam = `otp_${cleanPhone}_${params.otpToken}`;
+  const httpsUrl = `https://t.me/${botUsername}?start=${startParam}`;
+  const tgAppUrl = `tg://resolve?domain=${botUsername}&start=${startParam}`;
+
+  if (!config.enabled || !config.botToken) {
+    return {
+      ok: false,
+      sentDirectly: false,
+      chatId: '',
+      httpsUrl,
+      tgAppUrl,
+      error: 'Telegram Bot is currently disabled.',
+    };
+  }
+
+  let targetChatId = '';
+  if (params.explicitChatId && isPrivateUserChatId(params.explicitChatId)) {
+    targetChatId = String(params.explicitChatId).trim();
+  }
+
+  if (!targetChatId && params.userId) {
+    try {
+      const uSnap = await getDoc(doc(db, 'users', params.userId));
+      if (uSnap.exists()) {
+        const uData = uSnap.data();
+        const savedId = String(uData?.telegramChatId || '').trim();
+        if (savedId && isPrivateUserChatId(savedId)) {
+          targetChatId = savedId;
+        }
+      }
+    } catch {}
+  }
+
+  if (!targetChatId) {
+    const found = await findCustomerChatId(cleanPhone);
+    if (found && isPrivateUserChatId(found)) {
+      targetChatId = found;
+    }
+  }
+
+  if (targetChatId) {
+    const res = await sendPasswordResetOtpToChat(targetChatId, params.otp, cleanPhone, config);
+    if (res.ok) {
+      try {
+        localStorage.setItem(`shangrila_otp_sent_${params.otpToken}`, '1');
+      } catch {}
+      try {
+        await updateDoc(doc(db, 'users', params.userId), {
+          otpSentToTelegram: true,
+          otpSentAt: Date.now(),
+          telegramChatId: targetChatId,
+          telegramSubscribed: true,
+        });
+      } catch {}
+      return { ok: true, sentDirectly: true, chatId: targetChatId, httpsUrl, tgAppUrl };
+    }
+  }
+
+  return { ok: true, sentDirectly: false, chatId: '', httpsUrl, tgAppUrl };
+};
+
+export const pollAndDeliverPendingOtpForUser = async (params: {
+  userId: string;
+  phone: string;
+  otp: string;
+  otpToken: string;
+}): Promise<{ delivered: boolean; chatId?: string; error?: string }> => {
+  try {
+    // 1. Check Firestore first — if Admin background poller already sent it, return immediately!
+    if (params.userId) {
+      try {
+        const uSnap = await getDoc(doc(db, 'users', params.userId));
+        if (uSnap.exists()) {
+          const uData = uSnap.data();
+          if (uData?.otpSentToTelegram === true && uData?.otpToken === params.otpToken) {
+            return { delivered: true, chatId: String(uData.telegramChatId || '') };
+          }
+        }
+      } catch {}
+    }
+
+    const config = await getTelegramConfig();
+    if (!config.enabled || !config.botToken) {
+      return { delivered: false, error: 'Bot disabled' };
+    }
+
+    const cleanPhone = normalizePhone(params.phone);
+    const targetPrefix = `otp_${cleanPhone}_${params.otpToken}`.toLowerCase();
+    const fallbackPrefix = `otp_${cleanPhone}`.toLowerCase();
+
+    const res = await fetch(
+      `https://api.telegram.org/bot${config.botToken.trim()}/getUpdates?limit=30&allowed_updates=${encodeURIComponent(
+        JSON.stringify(['message'])
+      )}`
+    );
+    const data = await res.json();
+    if (!data?.ok || !Array.isArray(data.result)) {
+      return { delivered: false };
+    }
+
+    // Search newest updates first for this user's /start otp_... tap
+    const reversed = [...data.result].reverse();
+    for (const upd of reversed) {
+      const msg = upd.message;
+      if (!msg || !msg.chat?.id || msg.chat.type !== 'private') continue;
+      const text = String(msg.text || '').trim();
+      if (!text.toLowerCase().startsWith('/start')) continue;
+
+      const arg = (text.split(/\s+/)[1] || '').toLowerCase();
+      if (!arg) continue;
+
+      if (arg === targetPrefix || (cleanPhone && arg.startsWith(fallbackPrefix))) {
+        const chatIdStr = String(msg.chat.id).trim();
+        const sendRes = await sendPasswordResetOtpToChat(chatIdStr, params.otp, cleanPhone || params.phone, config);
+        if (sendRes.ok) {
+          const nowMs = Date.now();
+          try {
+            localStorage.setItem(`shangrila_otp_sent_${params.otpToken}`, '1');
+            localStorage.setItem('shangrila_customer_chat_id', chatIdStr);
+          } catch {}
+
+          try {
+            await updateDoc(doc(db, 'users', params.userId), {
+              otpSentToTelegram: true,
+              otpSentAt: nowMs,
+              telegramChatId: chatIdStr,
+              telegramUsername: msg.from?.username || '',
+              telegramSubscribed: true,
+              telegramLinkedAt: nowMs,
+            });
+          } catch {}
+
+          await saveCustomerTelegramSubscription({
+            chatId: chatIdStr,
+            customerName:
+              [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') ||
+              msg.from?.username ||
+              'Shangri-La Member',
+            customerPhone: cleanPhone || params.phone,
+            username: msg.from?.username || '',
+            firstName: msg.from?.first_name || '',
+            lastName: msg.from?.last_name || '',
+            subscribed: true,
+            source: 'bot_command',
+          });
+
+          return { delivered: true, chatId: chatIdStr };
+        }
+      }
+    }
+
+    return { delivered: false };
+  } catch (err: any) {
+    return { delivered: false, error: err?.message || 'Poll error' };
+  }
 };
 
 export const syncBotCommandsAndMenu = async (config: TelegramBotConfig): Promise<{ ok: boolean; message: string }> => {
