@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { collection, addDoc, getDocs, getDoc, updateDoc, doc, query, onSnapshot, where, orderBy, limit } from 'firebase/firestore';
-import { db } from '../firebase';
-import { encryptText, decryptText } from '../security'; 
+import { db, patchFirestoreDocumentFast, reconnectFirestoreNetwork } from '../firebase';
+import { encryptText, decryptText } from '../security';
 
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert, PartyPopper, Bell, Send, RefreshCw} from 'lucide-react';
 import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
@@ -183,9 +183,8 @@ const TherapistPhotoLightbox = ({
   );
 };
 
-const openTelegramBotInstantly = (phoneStr?: string, bookingId?: string) => {
-  const { httpsUrl, tgAppUrl } = getInstantTelegramLink(phoneStr, bookingId);
-  fetchBotUsername().catch(() => {});
+// 🌟 Safe iOS/PWA external Telegram launch: cancels fallback redirect as soon as Telegram opens so returning never triggers a second navigation abort 🌟
+const launchTelegramExternalUrl = (tgAppUrl: string, httpsUrl: string) => {
   const isIOS =
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -193,14 +192,45 @@ const openTelegramBotInstantly = (phoneStr?: string, bookingId?: string) => {
     window.matchMedia?.('(display-mode: standalone)').matches || (window.navigator as any)?.standalone === true;
 
   if (isIOS || isPWA) {
+    let settled = false;
+    const cleanup = () => {
+      settled = true;
+      clearTimeout(fallbackTimer);
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onHide);
+      window.removeEventListener('blur', onHide);
+    };
+    const onHide = () => {
+      if (document.visibilityState === 'hidden' || document.hidden) {
+        cleanup();
+      } else {
+        cleanup();
+      }
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onHide);
+    window.addEventListener('blur', onHide);
+
+    const fallbackTimer = setTimeout(() => {
+      if (!settled && document.visibilityState === 'visible') {
+        cleanup();
+        window.location.href = httpsUrl;
+      } else {
+        cleanup();
+      }
+    }, 650);
+
     window.location.href = tgAppUrl;
-    setTimeout(() => {
-      window.location.href = httpsUrl;
-    }, 300);
   } else {
     const w = window.open(httpsUrl, '_blank', 'noopener,noreferrer');
     if (!w) window.location.href = httpsUrl;
   }
+};
+
+const openTelegramBotInstantly = (phoneStr?: string, bookingId?: string) => {
+  const { httpsUrl, tgAppUrl } = getInstantTelegramLink(phoneStr, bookingId);
+  fetchBotUsername().catch(() => {});
+  launchTelegramExternalUrl(tgAppUrl, httpsUrl);
 };
 
 // 🌟 Open Telegram Bot with custom start payload (used for Password Reset OTP auto-delivery) 🌟
@@ -222,20 +252,62 @@ const openTelegramBotWithStartParam = (startParam: string, overrideHttpsUrl?: st
   const fallback = getTelegramBotStartUrls(startParam);
   const httpsUrl = overrideHttpsUrl || fallback.httpsUrl;
   const tgAppUrl = overrideTgUrl || fallback.tgAppUrl;
-  const isIOS =
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isPWA =
-    window.matchMedia?.('(display-mode: standalone)').matches || (window.navigator as any)?.standalone === true;
+  launchTelegramExternalUrl(tgAppUrl, httpsUrl);
+};
 
-  if (isIOS || isPWA) {
-    window.location.href = tgAppUrl;
-    setTimeout(() => {
-      window.location.href = httpsUrl;
-    }, 350);
-  } else {
-    const w = window.open(httpsUrl, '_blank', 'noopener,noreferrer');
-    if (!w) window.location.href = httpsUrl;
+// 🌟 Resilient User Doc Update (SDK + Stateless HTTPS REST race — saves in <500ms even if iOS froze Firestore WebChannel!) 🌟
+const resilientUpdateUserDoc = async (
+  targetUserId: string,
+  payload: Record<string, string | number | boolean | null>,
+  timeoutMs: number = 8000
+): Promise<void> => {
+  let sdkResolved = false;
+
+  const sdkPromise = updateDoc(doc(db, 'users', targetUserId), payload).then(() => {
+    sdkResolved = true;
+    return 'sdk' as const;
+  });
+
+  const restPromise = patchFirestoreDocumentFast('users', targetUserId, payload, Math.max(4000, timeoutMs - 500)).then((ok) => {
+    if (!ok) throw new Error('rest_failed');
+    return 'rest' as const;
+  });
+
+  const winner = await new Promise<'sdk' | 'rest'>((resolve, reject) => {
+    let finished = false;
+    let failureCount = 0;
+
+    const timer = setTimeout(() => {
+      if (!finished) {
+        finished = true;
+        reject(new Error('timeout'));
+      }
+    }, timeoutMs);
+
+    const onSuccess = (source: 'sdk' | 'rest') => {
+      if (!finished) {
+        finished = true;
+        clearTimeout(timer);
+        resolve(source);
+      }
+    };
+
+    const onFailure = () => {
+      failureCount += 1;
+      if (failureCount >= 2 && !finished) {
+        finished = true;
+        clearTimeout(timer);
+        reject(new Error('write_failed'));
+      }
+    };
+
+    sdkPromise.then(onSuccess, onFailure);
+    restPromise.then(onSuccess, onFailure);
+  });
+
+  // If stateless REST won while Firestore SDK socket was still stalled on iOS resume, cycle SDK network in background
+  if (winner === 'rest' && !sdkResolved) {
+    reconnectFirestoreNetwork(true).catch(() => {});
   }
 };
 
@@ -672,7 +744,7 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
           const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
           const activeChatId = getActiveCustomerTelegramChatId();
 
-          await updateDoc(doc(db, 'users', targetUserId), {
+          await resilientUpdateUserDoc(targetUserId, {
               resetRequested: true,
               resetOtp: encryptText(otp),
               otpToken: token,
@@ -904,34 +976,54 @@ export function AuthRequest({ onLoginSuccess, title, prefilledPhone = '', skipTo
 
   const handleSetNewPassword = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!userId) return;
       if (newPassword.length < 6) { setError('စကားဝှက် အနည်းဆုံး ၆ လုံး ထည့်ပါ။'); return; }
       if (newPassword !== confirmPassword) { setError('စကားဝှက်များ တူညီမှုမရှိပါ။ ပြန်စစ်ဆေးပေးပါ။'); return; }
-      
+
       setLoading(true); setError('');
       try {
-          const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('timeout')), 10000)
-          );
-          await Promise.race([
-              updateDoc(doc(db, 'users', userId), {
-                  password: encryptText(newPassword),
-                  resetRequested: false,
-                  resetOtp: '',
-                  otpToken: '',
-                  otpExpiresAt: 0,
-                  otpAttempts: 0,
-                  otpSentToTelegram: false,
-                  otpApproved: false
-              }),
-              timeoutPromise
-          ]);
+          let targetUserId = userId;
+          const cleanPhoneInput = phone.trim();
+          if (!targetUserId && cleanPhoneInput) {
+              const snap = await Promise.race([
+                  getDocs(collection(db, 'users')),
+                  new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000))
+              ]);
+              if (snap) {
+                  snap.forEach((d) => {
+                      try {
+                          const data = d.data();
+                          const decPhone = decryptText(data.phone) || d.id;
+                          if (decPhone === cleanPhoneInput || d.id === cleanPhoneInput) {
+                              targetUserId = d.id;
+                          }
+                      } catch {}
+                  });
+              }
+              if (targetUserId) setUserId(targetUserId);
+          }
+
+          if (!targetUserId) {
+              setError('အကောင့်အချက်အလက် ရှာမတွေ့ပါ။ ပြန်လည်ဝင်ရောက်ကြိုးစားပေးပါ။');
+              return;
+          }
+
+          await resilientUpdateUserDoc(targetUserId, {
+              password: encryptText(newPassword),
+              resetRequested: false,
+              resetOtp: '',
+              otpToken: '',
+              otpExpiresAt: 0,
+              otpAttempts: 0,
+              otpSentToTelegram: false,
+              otpApproved: false
+          }, 8000);
+
           setSuccessMsg('စကားဝှက်အသစ် အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။');
-          setTimeout(() => { onLoginSuccess(phone.trim()); }, 1500);
+          setTimeout(() => { onLoginSuccess(phone.trim()); }, 1200);
       } catch (err: any) {
           setError(
               err?.message === 'timeout'
-                  ? 'အင်တာနက်ချိတ်ဆက်မှု နှေးကွေးနေပါသည်။ ထပ်မံနှိပ်ပေးပါ။'
+                  ? 'အင်တာနက်ချိတ်ဆက်မှု နှေးကွေးနေပါသည်။ ခေတ္တစောင့်ပြီး ထပ်မံနှိပ်ပေးပါ။'
                   : 'စကားဝှက်ပြောင်းလဲရာတွင် အခက်အခဲရှိနေပါသည်။ ထပ်မံကြိုးစားပေးပါ။'
           );
       } finally {

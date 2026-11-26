@@ -4,6 +4,8 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  disableNetwork,
+  enableNetwork,
   Firestore
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -45,6 +47,119 @@ export const db = firestoreInstance;
 export const auth = getAuth(app);
 export const secondaryAuth = getAuth(secondaryApp);
 export const storage = getStorage(app);
+
+// 🌟 iOS Safari / PWA Resume Recovery: drops half-open/zombied WebChannel streams after app-switching (e.g. Telegram <-> Safari) 🌟
+let reconnectInFlight: Promise<void> | null = null;
+let lastReconnectAt = 0;
+
+export const reconnectFirestoreNetwork = async (force: boolean = false): Promise<void> => {
+  const now = Date.now();
+  if (!force && now - lastReconnectAt < 2500) return;
+  if (reconnectInFlight) return reconnectInFlight;
+
+  lastReconnectAt = now;
+  reconnectInFlight = (async () => {
+    try {
+      await Promise.race([
+        disableNetwork(db),
+        new Promise<void>((r) => setTimeout(r, 1200))
+      ]);
+      await Promise.race([
+        enableNetwork(db),
+        new Promise<void>((r) => setTimeout(r, 1500))
+      ]);
+    } catch {
+      try {
+        await enableNetwork(db);
+      } catch {}
+    } finally {
+      reconnectInFlight = null;
+    }
+  })();
+
+  return reconnectInFlight;
+};
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+    } else if (document.visibilityState === 'visible') {
+      const awayMs = hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = 0;
+      if (awayMs >= 1500) {
+        reconnectFirestoreNetwork().catch(() => {});
+      }
+    }
+  });
+  window.addEventListener('pageshow', (evt: PageTransitionEvent) => {
+    if (evt.persisted) {
+      reconnectFirestoreNetwork(true).catch(() => {});
+    }
+  });
+  window.addEventListener('online', () => {
+    reconnectFirestoreNetwork(true).catch(() => {});
+  });
+}
+
+// 🌟 Stateless HTTPS Firestore REST PATCH Fallback (100% immune to iOS WebKit suspended WebChannel sockets) 🌟
+const toFirestoreRestValue = (val: unknown): Record<string, unknown> => {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === 'boolean') return { booleanValue: val };
+  if (typeof val === 'number') {
+    return Number.isInteger(val) ? { integerValue: String(val) } : { doubleValue: val };
+  }
+  return { stringValue: String(val) };
+};
+
+export const patchFirestoreDocumentFast = async (
+  collectionPath: string,
+  docId: string,
+  data: Record<string, string | number | boolean | null>,
+  timeoutMs: number = 6000
+): Promise<boolean> => {
+  const keys = Object.keys(data);
+  if (!docId || keys.length === 0) return false;
+
+  const projectId = firebaseConfig.projectId;
+  const apiKey = firebaseConfig.apiKey;
+  const maskQuery = keys
+    .map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`)
+    .join('&');
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
+    projectId
+  )}/databases/(default)/documents/${collectionPath}/${encodeURIComponent(
+    docId
+  )}?${maskQuery}&key=${encodeURIComponent(apiKey)}`;
+
+  const fields: Record<string, unknown> = {};
+  for (const k of keys) {
+    fields[k] = toFirestoreRestValue(data[k]);
+  }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const idToken = await auth.currentUser?.getIdToken?.();
+    if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+  } catch {}
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ fields }),
+      signal: controller.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 // Initialize Firebase Cloud Messaging only if browser supports it
 export let messaging: any = null;
