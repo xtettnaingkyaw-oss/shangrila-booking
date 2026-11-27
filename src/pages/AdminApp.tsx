@@ -17,6 +17,7 @@ import { AdminExpenseManager, AdminExpenseReportDashboard, AdminRevenueProfitDas
 import { BookOpen, Wallet, PieChart, Send, Bell, BellOff, RefreshCw } from 'lucide-react';
 import { TelegramNotificationCenter } from '../components/TelegramNotificationCenter';
 import { AdminSettingsWorkspace } from '../components/AdminSettingsWorkspace';
+import { AdminCampaignsWorkspace } from '../components/AdminCampaignsWorkspace';
 import { notifyBookingEvent,notifyStaffUpdate,getTelegramConfig,saveTelegramConfig,patchTelegramConfig,pollAndProcessBusinessAutoReplies,DEFAULT_BUSINESS_AUTO_REPLY_RULES,BusinessAutoReplyRule,TelegramBotConfig,getCustomerTelegramSubscribers,fetchRecentBotChats,matchTelegramSubscriberForRecord,CustomerTelegramSubscriber} from '../telegramService';
 import { playAdminAlertSound, unlockAudioContext } from '../utils/soundEffects';
 
@@ -1000,7 +1001,7 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
             {tab === 'roster' && hasAccess('settings') && <DutyRosterSystem therapists={appData.therapists} />}
             {tab === 'hr' && hasAccess('settings') && <AdminHRManagement />}
             {tab === 'settings' && hasAccess('settings') && <AdminSettingsWorkspace appData={appData} onSettingsUpdated={onSettingsUpdated} />}
-            {tab === 'campaigns' && (hasAccess('settings') || hasAccess('bookings')) && <AdminCampaignsView bookings={bookings} adminRole={adminRole} appData={appData} onSettingsUpdated={onSettingsUpdated} />}
+            {tab === 'campaigns' && (hasAccess('settings') || hasAccess('bookings')) && <AdminCampaignsWorkspace bookings={bookings} adminRole={adminRole} appData={appData} onSettingsUpdated={onSettingsUpdated} />}
             {tab === 'pos_sales' && hasAccess('bookings') && <AdminPOSSalesList bookings={bookings} adminRole={adminRole} />}
             {tab === 'sales_summary' && hasAccess('bookings') && <AdminSalesSummaryView bookings={bookings} appData={appData} />}
             {tab === 'revenue_dashboard' && (hasAccess('bookings') || hasAccess('reports')) && <AdminRevenueProfitDashboard bookings={bookings} therapists={appData.therapists} />}

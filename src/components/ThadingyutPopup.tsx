@@ -43,6 +43,7 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
 
     // 2. Saved Promotion & Campaign Cards စာရင်းရှိပါက Active ဖြစ်ပြီး Mini Game Popup ဖွင့်ထားသော ကဒ်ကို ရှာမည်
     const cards: any[] =
+      (appData as any)?.savedCampaignCards ||
       promo.campaigns ||
       promo.cards ||
       promo.savedCampaigns ||
@@ -51,18 +52,18 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
 
     if (Array.isArray(cards) && cards.length > 0) {
       const activeCard = cards.find((c: any) => {
-        const cardEnabled =
-          c.isActive === true || c.active === true || c.enabled === true || c.status === 'ACTIVE';
-        const popupAllowed =
-          c.miniGamePopup !== false &&
-          c.popupEnabled !== false &&
-          c.gameEnabled !== false &&
-          c.isPopupActive !== false;
+        const cardPopupOn =
+          c.isPopupActive === true ||
+          ((c.isActive === true || c.active === true || c.enabled === true || c.status === 'ACTIVE') &&
+            c.miniGamePopup !== false &&
+            c.popupEnabled !== false &&
+            c.gameEnabled !== false &&
+            c.isPopupActive !== false);
         const withinDate =
           (!c.startDate || todayStr >= c.startDate) &&
           (!c.endDate || todayStr <= c.endDate);
 
-        return cardEnabled && popupAllowed && withinDate;
+        return cardPopupOn && withinDate;
       });
 
       // Cards စာရင်းရှိသော်လည်း မည်သည့် Card မှ Popup ဖွင့်မထားပါက Popup လုံးဝ မတက်ရပါ
@@ -71,7 +72,7 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
       return {
         id: activeCard.id || activeCard.slug || '',
         title: activeCard.title || activeCard.campaignTitle || promo.campaignTitle || 'အထူးပရိုမိုးရှင်း အစီအစဉ်',
-        maxDiscount: activeCard.otherDiscount || activeCard.maxDiscount || 50
+        maxDiscount: activeCard.otherDiscountPercent || activeCard.otherDiscount || activeCard.maxDiscount || 50
       };
     }
 

@@ -95,6 +95,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
     // 1. Admin Studio ထဲရှိ Campaign Cards စာရင်း (ရှိပါက) စစ်ဆေးခြင်း
     const cards: any[] =
+      (appData as any)?.savedCampaignCards ||
       promo.campaigns ||
       promo.cards ||
       promo.savedCampaigns ||
@@ -103,7 +104,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
 
     let matchedCard: any = null;
     if (Array.isArray(cards) && cards.length > 0) {
-      if (requestedCampaignId) {
+      if (requestedCampaignId && requestedCampaignId !== 'active' && requestedCampaignId !== 'true') {
         matchedCard = cards.find(
           (c) =>
             String(c.id) === requestedCampaignId ||
@@ -113,23 +114,26 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       } else {
         matchedCard = cards.find(
           (c) =>
-            (c.isActive === true || c.active === true || c.enabled === true) &&
-            c.miniGamePopup !== false &&
-            c.popupEnabled !== false
+            c.isPopupActive === true ||
+            ((c.isActive === true || c.active === true || c.enabled === true) &&
+              c.miniGamePopup !== false &&
+              c.popupEnabled !== false &&
+              c.isPopupActive !== false)
         );
       }
     }
 
     // 2. Global Promotion & Popup Setting ဖွင့်/ပိတ် စစ်ဆေးခြင်း
     const isGlobalEnabled =
-      promo.enabled === true ||
-      promo.isActive === true ||
+      promo.isPopupActive === true ||
       promo.popupEnabled === true ||
       promo.miniGamePopup === true ||
       promo.gameEnabled === true;
 
     const isExplicitlyAllOff =
       promo.allOff === true ||
+      promo.isActive === false ||
+      promo.isPopupActive === false ||
       promo.enabled === false ||
       promo.popupEnabled === false ||
       promo.miniGamePopup === false;
@@ -137,10 +141,12 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     // 3. သတ်မှတ်ထားသော Campaign Card တစ်ခုချင်းစီ အတွက် ဖွင့်/ပိတ် စစ်ဆေးခြင်း
     if (matchedCard) {
       const cardActive =
-        (matchedCard.isActive === true || matchedCard.active === true || matchedCard.enabled === true) &&
-        matchedCard.miniGamePopup !== false &&
-        matchedCard.popupEnabled !== false &&
-        matchedCard.gameEnabled !== false;
+        matchedCard.isPopupActive === true ||
+        ((matchedCard.isActive === true || matchedCard.active === true || matchedCard.enabled === true) &&
+          matchedCard.miniGamePopup !== false &&
+          matchedCard.popupEnabled !== false &&
+          matchedCard.gameEnabled !== false &&
+          matchedCard.isPopupActive !== false);
 
       const withinCardDate =
         (!matchedCard.startDate || today >= matchedCard.startDate) &&
@@ -154,7 +160,14 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     }
 
     // 4. Card သီးသန့်မတွေ့ပါက Global Promotion Setting နှင့် ရက်စွဲကို စစ်ဆေးခြင်း
-    if (requestedCampaignId && Array.isArray(cards) && cards.length > 0 && !matchedCard) {
+    if (
+      requestedCampaignId &&
+      requestedCampaignId !== 'active' &&
+      requestedCampaignId !== 'true' &&
+      Array.isArray(cards) &&
+      cards.length > 0 &&
+      !matchedCard
+    ) {
       return {
         isActive: false,
         title: promo.campaignTitle || 'အထူးပရိုမိုးရှင်း အစီအစဉ်',
@@ -169,7 +182,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     return {
       isActive: Boolean(isGlobalEnabled && !isExplicitlyAllOff && withinGlobalDate),
       title: promo.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
-      campaignId: requestedCampaignId || promo.id || 'main_campaign'
+      campaignId: requestedCampaignId || promo.activeCampaignId || promo.id || 'main_campaign'
     };
   };
 
@@ -294,7 +307,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
           window.open(`https://t.me/${botUsername}?start=subscribe_promo`, '_blank');
         }
         setNotiFeedbackMsg(
-          'Promotion အကြောင်းကြားစာ ရယူမှု को သိမ်းဆည်းပြီးပါပြီ။ Promotion ပြန်လည်စတင်သည်နှင့် ချက်ချင်း အကြောင်းကြားပေးပါမည်။'
+          'Promotion အကြောင်းကြားစာ ရယူမှုကို သိမ်းဆည်းပြီးပါပြီ။ Promotion ပြန်လည်စတင်သည်နှင့် ချက်ချင်း အကြောင်းကြားပေးပါမည်။'
         );
       }
     } catch (error) {
@@ -411,6 +424,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       setRecordId(docRef.id);
       localStorage.setItem('shangrila_campaign_discount', finalPrize.toString());
       localStorage.setItem('shangrila_campaign_label', campaignTitle);
+      localStorage.setItem('shangrila_campaign_date', getTodayStr());
     } catch (err: any) {
       console.error('Save error', err);
     }
@@ -454,6 +468,7 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     setGameState('result');
     localStorage.setItem('shangrila_campaign_discount', prize.toString());
     localStorage.setItem('shangrila_campaign_label', campaignTitle);
+    localStorage.setItem('shangrila_campaign_date', getTodayStr());
   };
 
   const getTelegramLink = () => {

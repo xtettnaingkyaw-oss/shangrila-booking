@@ -1781,9 +1781,14 @@ const handleCancelPosSaleFromHistory = async (sale: OfflineSaleRecord) => {
     const dynamicWebPromos: SavedDiscountPreset[] = [];
     const promo = localAppData?.promotion as any;
     const campTitle = promo?.campaignTitle || 'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း';
+    const now = new Date();
+    const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const withinPromoDate =
+      (!promo?.startDate || todayLocal >= promo.startDate) &&
+      (!promo?.endDate || todayLocal <= promo.endDate);
 
-    if (promo?.isPopupActive) {
-      [5, 10, 15, 20, 25, 30].forEach((pct) => {
+    if (promo?.isPopupActive && withinPromoDate) {
+      [10, 15, 20, 30, 50].forEach((pct) => {
         dynamicWebPromos.push({
           id: `lantern_game_${pct}`,
           label: `${campTitle} (${pct}% OFF)`,
@@ -1794,7 +1799,7 @@ const handleCancelPosSaleFromHistory = async (sale: OfflineSaleRecord) => {
       });
     }
 
-    if (promo?.isBoxActive || promo?.isActive) {
+    if (promo?.isBoxActive && withinPromoDate) {
       if (promo?.otherDiscountPercent && promo.otherDiscountPercent > 0) {
         dynamicWebPromos.push({
           id: 'webapp_active_promo_other',
@@ -2794,9 +2799,11 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       }
       setDetectedVipBenefit(vipBenefit);
 
-      // 2. Check `campaign_records` Collection for Thadingyut Lantern Game Winner!
+      // 2. Check `campaign_records` Collection for Today's Valid Campaign Game Winner (1-Day Validity Rule)
       let latestCampaignWin: { campaignName: string; discountPercent: number; date?: string; createdAt: number } | null = null;
       const campTitle = (localAppData?.promotion as any)?.campaignTitle || 'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း';
+      const nowPos = new Date();
+      const todayPosStr = `${nowPos.getFullYear()}-${String(nowPos.getMonth() + 1).padStart(2, '0')}-${String(nowPos.getDate()).padStart(2, '0')}`;
 
       if (campaignSnap) {
         for (const docSnap of campaignSnap.docs) {
@@ -2804,13 +2811,23 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
             const cData = docSnap.data();
             const rawPhone = String(cData.phone || '').trim();
             if (rawPhone === cleanInput || (targetNorm.length >= 7 && normalizePhone(rawPhone) === targetNorm)) {
+              const rawRecDate = String(cData.date || '').trim();
+              const cleanRecDate = rawRecDate.match(/^(\d{4}-\d{2}-\d{2})/)
+                ? rawRecDate.match(/^(\d{4}-\d{2}-\d{2})/)![1]
+                : cData.createdAt
+                ? (() => {
+                    const dt = new Date(cData.createdAt);
+                    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+                  })()
+                : '';
+              if (cleanRecDate !== todayPosStr) continue;
               const wonPct = Number(cData.discountPercent) || 0;
               const cTime = Number(cData.createdAt) || 0;
               if (wonPct > 0 && (!latestCampaignWin || cTime >= latestCampaignWin.createdAt)) {
                 latestCampaignWin = {
-                  campaignName: campTitle,
+                  campaignName: cData.title || campTitle,
                   discountPercent: wonPct,
-                  date: cData.date || '',
+                  date: cleanRecDate,
                   createdAt: cTime
                 };
               }

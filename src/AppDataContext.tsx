@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   AppData,
@@ -277,6 +277,44 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
+
+  // Real-time sync for settings/appData (Promotions, Campaign Cards, Operations, Branding)
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    const unsub = onSnapshot(
+      doc(db, 'settings', 'appData'),
+      (snap) => {
+        if (!snap.exists()) return;
+        const settingsData = snap.data();
+        setAppData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            vipSettings: settingsData.vipSettings || prev.vipSettings,
+            branding: settingsData.branding ? { ...DEFAULT_BRANDING, ...settingsData.branding } : prev.branding,
+            promotion: { ...DEFAULT_PROMOTION, ...(settingsData.promotion || {}) },
+            signUpBonus: settingsData.signUpBonus ?? prev.signUpBonus,
+            paymentMethods:
+              Array.isArray(settingsData.paymentMethods) && settingsData.paymentMethods.length > 0
+                ? settingsData.paymentMethods
+                : prev.paymentMethods,
+            installSteps:
+              Array.isArray(settingsData.installSteps) && settingsData.installSteps.length > 0
+                ? settingsData.installSteps
+                : prev.installSteps,
+            spaOperations: settingsData.spaOperations ?? prev.spaOperations,
+            savedCampaignCards: Array.isArray(settingsData.savedCampaignCards)
+              ? settingsData.savedCampaignCards
+              : prev.savedCampaignCards || [],
+          };
+        });
+      },
+      () => {
+        // Ignore transient offline snapshot warnings
+      }
+    );
+    return () => unsub();
+  }, []);
 
   return (
     <AppDataContext.Provider value={{ appData, loading, refreshAppData: fetchAllData, setAppData }}>

@@ -2681,32 +2681,39 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
       return today >= sDate && today <= eDate;
   };
 
-  const isHotelService = appData.categories.find(c => c.id === 'hotel')?.items.some(i => i.id === formData.selectedItem?.id) || false;
+  const isHotelService = useMemo(() => {
+      if (!formData.selectedItem) return false;
+      const inHotelCat = appData.categories
+          .filter(c => c.id === 'hotel_service' || c.id === 'hotel' || String(c.title || '').toLowerCase().includes('hotel'))
+          .some(c => (c.items || []).some(i => i.id === formData.selectedItem?.id));
+      if (inHotelCat) return true;
+      const itemNameLower = String(formData.selectedItem.name || '').toLowerCase();
+      return itemNameLower.includes('outcall') || itemNameLower.includes('hotel') || itemNameLower.includes('half day') || itemNameLower.includes('whole');
+  }, [appData.categories, formData.selectedItem]);
   const boxPromoActive = checkBoxPromoActive(); 
   const isBirthday = () => { if (!userProfile?.dob || !formData.date) return false; const dobParts = userProfile.dob.split('-'); const bookParts = formData.date.split('-'); return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; };
 
-  // 🌟 FIX 2: Discount တွက်ချက်သည့်အပိုင်းကို သပ်ရပ်စွာ ပြင်ဆင်ခြင်း 🌟
- // 🌟 FIX 2: Discount တွက်ချက်သည့်အပိုင်း (Mini Game နှင့် Box Promo လုံးဝ မရောစေရန် သီးသန့်ခွဲထုတ်ထားသည်) 🌟
+  // 🌟 FIX 2: Discount တွက်ချက်သည့်အပိုင်း (Mini Game နှင့် Box Promo လုံးဝ မရောစေရန် သီးသန့်ခွဲထုတ်ထားသည်) 🌟
   let finalDiscountPercent = 0; let discountLabel = '';
 
   const isMiniGameActive = () => {
-      const promo = appData.promotion;
-      if (!promo?.isActive || !promo.startDate || !promo.endDate) return false;
-      const today = new Date(getLocalTodayStr()).getTime();
-      const sDate = new Date(promo.startDate).getTime();
-      const eDate = new Date(promo.endDate).getTime();
-      return today >= sDate && today <= eDate;
+      const promo: any = appData.promotion;
+      if (!promo?.isPopupActive || !promo.startDate || !promo.endDate) return false;
+      const today = getLocalTodayStr();
+      return today >= promo.startDate && today <= promo.endDate;
   };
 
   const campaignDiscountStr = localStorage.getItem('shangrila_campaign_discount');
   const campaignLabelStr = localStorage.getItem('shangrila_campaign_label');
-  const campaignPrize = campaignDiscountStr ? parseInt(campaignDiscountStr, 10) : 0;
+  const campaignWinDateStr = localStorage.getItem('shangrila_campaign_date');
+  const isCampaignPrizeValidToday = !campaignWinDateStr || campaignWinDateStr === todayStr;
+  const campaignPrize = campaignDiscountStr && isCampaignPrizeValidToday ? parseInt(campaignDiscountStr, 10) : 0;
   const boxPromoTitle = appData.promotion?.boxTitle || appData.promotion?.title || 'SPECIAL PROMO';
 
-  // Mini Game ဖွင့်ထားပြီး၊ ယခင်က မသုံးရသေးမှသာ Mini Game WINNER Discount ကို ပေးမည်
+  // Mini Game ဖွင့်ထားပြီး၊ ယနေ့ရရှိထားသော မဲပေါက်ကုဒ်ဖြစ်ပြီး ယခင်က မသုံးရသေးမှသာ Mini Game WINNER Discount ကို ပေးမည်
   if (isMiniGameActive() && campaignPrize > 0 && !userPastPromo) {
-      finalDiscountPercent = campaignPrize;
-      discountLabel = `${campaignLabelStr || appData.promotion?.campaignTitle || 'Campaign'} WINNER (${campaignPrize}%)`;
+      finalDiscountPercent = isHotelService ? Math.min(10, campaignPrize) : campaignPrize;
+      discountLabel = `${campaignLabelStr || appData.promotion?.campaignTitle || 'Campaign'} WINNER (${finalDiscountPercent}%)`;
   } else if (boxPromoActive && !userPastPromo) {
       finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
       discountLabel = `${boxPromoTitle} (${finalDiscountPercent}%)`;
@@ -4133,8 +4140,10 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
         
         if (!hasCampaignIntent) return false;
 
-        const promo = mergedAppData.promotion;
-        const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
+        const promo: any = mergedAppData.promotion;
+        const todayNow = getLocalTodayStr();
+        const withinDate = (!promo?.startDate || todayNow >= promo.startDate) && (!promo?.endDate || todayNow <= promo.endDate);
+        const isPromoLive = Boolean(promo?.isPopupActive && withinDate);
 
         if (!isPromoLive) {
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -4176,13 +4185,14 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
 
         if (!hasCampaignIntent) return;
 
-        const promo = mergedAppData.promotion;
-        const isPromoLive = Boolean(promo?.isPopupActive || promo?.isActive);
+        const promo: any = mergedAppData.promotion;
+        const todayNow = getLocalTodayStr();
+        const withinDate = (!promo?.startDate || todayNow >= promo.startDate) && (!promo?.endDate || todayNow <= promo.endDate);
+        const isPromoLive = Boolean(promo?.isPopupActive && withinDate);
 
         if (!isPromoLive && showCampaign) {
             setShowCampaign(false);
             window.history.replaceState({}, document.title, window.location.pathname);
-            alert("🙏 ဤအထူးပရိုမိုးရှင်း / မဲဖောက်သည့် အစီအစဉ် ပြီးဆုံးသွားပါပြီခင်ဗျာ။ (Campaign Ended)");
         }
    }, [mergedAppData.promotion, showCampaign]);
 

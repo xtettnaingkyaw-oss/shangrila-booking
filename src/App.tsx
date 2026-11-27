@@ -37,7 +37,7 @@ const detectInitialPortalMode = (): 'customer' | 'admin' | 'staff' | 'pos' | 'ca
   if (rawMode === 'staff' || path.startsWith('/staff')) return 'staff';
   if (rawMode === 'pos' || path.startsWith('/pos')) return 'pos';
   if (rawMode === 'admin' || path.startsWith('/admin')) return 'admin';
-  if (rawMode === 'campaign' || path.startsWith('/campaign')) return 'campaign';
+  if (rawMode === 'campaign' || path.startsWith('/campaign') || searchParams.has('campaign')) return 'campaign';
   return 'customer';
 };
 
@@ -331,12 +331,17 @@ function MainApp() {
     const promo: any = appData?.promotion;
     if (!promo) return;
 
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isDateExpired = Boolean(promo.endDate && todayStr > promo.endDate);
+
     const isExplicitlyOff =
       promo.allOff === true ||
       promo.isPopupActive === false ||
       promo.isActive === false ||
       promo.popupEnabled === false ||
-      promo.miniGamePopup === false;
+      promo.miniGamePopup === false ||
+      isDateExpired;
 
     if (isExplicitlyOff && appMode === 'campaign') {
       setAppMode('customer');
