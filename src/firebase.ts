@@ -29,15 +29,15 @@ const secondaryApp =
   getApps().find((a) => a.name === 'secondary') ||
   initializeApp(firebaseConfig, 'secondary');
 
-// Firebase v10 standard offline cache with multi-tab support + auto-detect long polling
-// (prevents 10s+ WebChannel stalls on iOS Safari Standalone PWAs & Myanmar mobile networks without VPN)
+// Firebase v10 standard offline cache with multi-tab support + forced HTTPS long polling
+// (bypasses broken/throttled WebChannel streams on iOS Safari Standalone PWAs & Myanmar mobile networks without VPN)
 let firestoreInstance: Firestore;
 try {
   firestoreInstance = initializeFirestore(app, {
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager()
     }),
-    experimentalAutoDetectLongPolling: true
+    experimentalForceLongPolling: true
   });
 } catch {
   firestoreInstance = getFirestore(app);

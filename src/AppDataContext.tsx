@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { collection, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  getDocsFromCache,
+  doc,
+  getDoc,
+  getDocFromCache,
+  onSnapshot
+} from 'firebase/firestore';
 import { db } from './firebase';
 import {
   AppData,
@@ -119,6 +127,7 @@ export const getCachedAppData = (): AppData | null => {
 interface AppDataContextProps {
   appData: AppData | null;
   loading: boolean;
+  isSlowConnection: boolean;
   refreshAppData: () => Promise<void>;
   setAppData: React.Dispatch<React.SetStateAction<AppData | null>>;
 }
@@ -126,6 +135,7 @@ interface AppDataContextProps {
 const AppDataContext = createContext<AppDataContextProps>({
   appData: null,
   loading: true,
+  isSlowConnection: false,
   refreshAppData: async () => {},
   setAppData: () => {},
 });
@@ -143,19 +153,71 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
     return null;
   });
   const [loading, setLoading] = useState(true);
+  const [isSlowConnection, setIsSlowConnection] = useState(false);
 
   const fetchAllData = useCallback(async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       setAppData((prev) => prev || getCachedAppData() || FALLBACK_APPDATA);
       setLoading(false);
+      setIsSlowConnection(false);
       return;
     }
 
     setLoading(true);
+    let serverCompleted = false;
+
+    // 1. Instant local IndexedDB cache read (<25ms) so even if localStorage is cleared,
+    //    no-VPN launches immediately show real categories & settings from Firestore persistent cache.
+    const hydrateFromIndexedDbCache = async () => {
+      try {
+        const [cachedSettingsSnap, cachedCatsSnap] = await Promise.all([
+          getDocFromCache(doc(db, 'settings', 'appData')).catch(() => null),
+          getDocsFromCache(collection(db, 'categories')).catch(() => null),
+        ]);
+        if (serverCompleted) return;
+        const cachedSettings = cachedSettingsSnap?.exists() ? cachedSettingsSnap.data() : null;
+        const cachedCats: MenuCategory[] = [];
+        if (cachedCatsSnap && !cachedCatsSnap.empty) {
+          cachedCatsSnap.forEach((d) => cachedCats.push(d.data() as MenuCategory));
+          cachedCats.sort((a, b) => (a.order || 0) - (b.order || 0));
+        }
+        if (cachedSettings || cachedCats.length > 0) {
+          setAppData((prev) => ({
+            ...(prev || FALLBACK_APPDATA),
+            vipSettings: cachedSettings?.vipSettings || prev?.vipSettings || DEFAULT_VIP_SETTINGS,
+            branding: { ...DEFAULT_BRANDING, ...(prev?.branding || {}), ...(cachedSettings?.branding || {}) },
+            promotion: { ...DEFAULT_PROMOTION, ...(cachedSettings?.promotion || {}) },
+            signUpBonus: cachedSettings?.signUpBonus ?? prev?.signUpBonus,
+            paymentMethods:
+              Array.isArray(cachedSettings?.paymentMethods) && cachedSettings.paymentMethods.length > 0
+                ? cachedSettings.paymentMethods
+                : prev?.paymentMethods || DEFAULT_PAYMENT_METHODS,
+            installSteps:
+              Array.isArray(cachedSettings?.installSteps) && cachedSettings.installSteps.length > 0
+                ? cachedSettings.installSteps
+                : prev?.installSteps || DEFAULT_INSTALL_STEPS,
+            spaOperations: cachedSettings?.spaOperations ?? prev?.spaOperations,
+            savedCampaignCards: cachedSettings?.savedCampaignCards ?? prev?.savedCampaignCards ?? [],
+            categories: cachedCats.length > 0 ? cachedCats : prev?.categories || DEFAULT_CATEGORIES,
+          }));
+        }
+      } catch {
+        // Ignore cache miss
+      }
+    };
+    hydrateFromIndexedDbCache();
+
+    // 2. Soft deadline (3.5s) so slow Myanmar no-VPN routes never hang the splash screen;
+    //    the live Firestore fetch continues silently in the background and hydrates once resolved.
+    const slowTimer = window.setTimeout(() => {
+      if (!serverCompleted) {
+        setIsSlowConnection(true);
+        setAppData((prev) => prev || getCachedAppData() || FALLBACK_APPDATA);
+        setLoading(false);
+      }
+    }, 3500);
+
     try {
-      // Kick off all three Firestore reads in parallel, but resolve lightweight settings + categories FIRST
-      // so Telegram Mini App and slow mobile networks immediately show all real service categories & logo
-      // without being blocked by the heavier therapists image documents.
       const settingsPromise = getDoc(doc(db, 'settings', 'appData')).catch((err) => {
         console.warn('Settings fetch warning:', err);
         return null;
@@ -170,6 +232,9 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       });
 
       const [settingsSnap, categoriesSnap] = await Promise.all([settingsPromise, categoriesPromise]);
+      serverCompleted = true;
+      window.clearTimeout(slowTimer);
+
       const settingsData = settingsSnap && settingsSnap.exists() ? settingsSnap.data() : {};
 
       const categoriesList: MenuCategory[] = [];
@@ -187,6 +252,10 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
 
       const hasCoreRemoteData =
         Boolean(settingsSnap && settingsSnap.exists()) || categoriesList.length > 0;
+
+      if (hasCoreRemoteData) {
+        setIsSlowConnection(false);
+      }
 
       const baseMergedData: Omit<AppData, 'therapists' | 'archivedTherapists'> = {
         vipSettings: settingsData.vipSettings || DEFAULT_VIP_SETTINGS,
@@ -206,7 +275,6 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         categories: resolvedCategories,
       };
 
-      // Immediately publish all real categories + settings so the UI opens with all 4 categories ready
       if (hasCoreRemoteData) {
         setAppData((prev) => ({
           ...baseMergedData,
@@ -244,6 +312,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       const hasRemoteData = hasCoreRemoteData || activeTherapistsList.length > 0;
 
       if (hasRemoteData) {
+        setIsSlowConnection(false);
         const fullMergedData: AppData = {
           ...baseMergedData,
           therapists: resolvedTherapists,
@@ -267,9 +336,13 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         setAppData((prev) => prev || getCachedAppData() || FALLBACK_APPDATA);
       }
     } catch (error) {
+      serverCompleted = true;
+      window.clearTimeout(slowTimer);
       console.warn('Error fetching global app data, falling back to cache:', error);
+      setIsSlowConnection(true);
       setAppData((prev) => prev || getCachedAppData() || FALLBACK_APPDATA);
     } finally {
+      window.clearTimeout(slowTimer);
       setLoading(false);
     }
   }, []);
@@ -285,6 +358,9 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
       doc(db, 'settings', 'appData'),
       (snap) => {
         if (!snap.exists()) return;
+        if (!snap.metadata.fromCache) {
+          setIsSlowConnection(false);
+        }
         const settingsData = snap.data();
         setAppData((prev) => {
           if (!prev) return prev;
@@ -317,7 +393,7 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <AppDataContext.Provider value={{ appData, loading, refreshAppData: fetchAllData, setAppData }}>
+    <AppDataContext.Provider value={{ appData, loading, isSlowConnection, refreshAppData: fetchAllData, setAppData }}>
       {children}
     </AppDataContext.Provider>
   );

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
-import { db, auth, requestNotificationPermission } from './firebase';
-import { Download, X, MapPin, Phone, LogOut, WifiOff } from 'lucide-react';
+import { db, auth, requestNotificationPermission, reconnectFirestoreNetwork } from './firebase';
+import { Download, X, MapPin, Phone, LogOut, WifiOff, RefreshCw } from 'lucide-react';
 import { AppData } from './shared';
 import {
   useAppStore,
@@ -15,12 +15,24 @@ import {
 import PremiumLoadingScreen from './pages/PremiumLoadingScreen';
 import ThadingyutPopup from './components/ThadingyutPopup';
 
+// 🌟 Resilient dynamic import with automatic retry (prevents blank white screen on flaky no-VPN Myanmar mobile data) 🌟
+function importWithRetry<T>(factory: () => Promise<T>, retries = 2, delayMs = 700): Promise<T> {
+  return factory().catch((err) => {
+    if (retries <= 0) throw err;
+    return new Promise<T>((resolve, reject) => {
+      setTimeout(() => {
+        importWithRetry(factory, retries - 1, delayMs * 2).then(resolve, reject);
+      }, delayMs);
+    });
+  });
+}
+
 // 🌟 Code Splitting + Eager Preload of Active Portal Chunk (iPhone တွင် ချက်ချင်းပွင့်စေရန်) 🌟
-const loadCustomerApp = () => import('./pages/CustomerApp');
-const loadAdminApp = () => import('./pages/AdminApp');
-const loadStaffApp = () => import('./pages/StaffApp');
-const loadPOSScreen = () => import('./pages/POSScreen');
-const loadThadingyutCampaign = () => import('./pages/ThadingyutCampaign');
+const loadCustomerApp = () => importWithRetry(() => import('./pages/CustomerApp'));
+const loadAdminApp = () => importWithRetry(() => import('./pages/AdminApp'));
+const loadStaffApp = () => importWithRetry(() => import('./pages/StaffApp'));
+const loadPOSScreen = () => importWithRetry(() => import('./pages/POSScreen'));
+const loadThadingyutCampaign = () => importWithRetry(() => import('./pages/ThadingyutCampaign'));
 
 const CustomerApp = lazy(loadCustomerApp);
 const AdminApp = lazy(loadAdminApp);
@@ -41,20 +53,25 @@ const detectInitialPortalMode = (): 'customer' | 'admin' | 'staff' | 'pos' | 'ca
   return 'customer';
 };
 
+const getLoaderForMode = (mode: 'customer' | 'admin' | 'staff' | 'pos' | 'campaign') => {
+  if (mode === 'staff') return loadStaffApp;
+  if (mode === 'pos') return loadPOSScreen;
+  if (mode === 'admin') return loadAdminApp;
+  if (mode === 'campaign') return loadThadingyutCampaign;
+  return loadCustomerApp;
+};
+
 // Preload the active portal JS bundle immediately in parallel with Firebase startup
+let initialPortalPreloadPromise: Promise<unknown> | null = null;
 if (typeof window !== 'undefined') {
   const bootMode = detectInitialPortalMode();
-  if (bootMode === 'staff') loadStaffApp().catch(() => {});
-  else if (bootMode === 'pos') loadPOSScreen().catch(() => {});
-  else if (bootMode === 'admin') loadAdminApp().catch(() => {});
-  else if (bootMode === 'campaign') loadThadingyutCampaign().catch(() => {});
-  else loadCustomerApp().catch(() => {});
+  initialPortalPreloadPromise = getLoaderForMode(bootMode)().catch(() => null);
 }
 
 const THEME = { primary: '#123524', gold: '#D4AF37', textGray: '#4a5568' };
 const PREFERRED_MODE_KEY = 'shangrila_preferred_portal_mode';
 
-// 🌟 System Settings (App Branding) မှ Logo ကို PWA Icon အဖြစ် ပြောင်းပေးမည့် Helper (CORS ဖြစ်လျှင်လည်း S မပေါ်ဘဲ Logo အစစ်ကိုသာ ပြန်ပေးမည်) 🌟
+// 🌟 System Settings (App Branding) မှ Logo ကို PWA Icon အဖြစ် ပြောင်းပေးမည့် Helper (Timeout ပါဝင်သဖြင့် VPN မဖွင့်လျှင်လည်း မဆိုင်းငံ့ပါ) 🌟
 const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> => {
   return new Promise((resolve) => {
     const fallbackUrl = `${window.location.origin}/logo.png`;
@@ -68,9 +85,18 @@ const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> 
       return;
     }
 
+    let settled = false;
+    const finish = (val: string) => {
+      if (settled) return;
+      settled = true;
+      resolve(val);
+    };
+    const timer = window.setTimeout(() => finish(fallbackUrl), 3500);
+
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      window.clearTimeout(timer);
       try {
         const canvas = document.createElement('canvas');
         canvas.width = size;
@@ -83,17 +109,34 @@ const generatePwaIconFromUrl = (logoUrl: string, size: number): Promise<string> 
           const sx = (img.width - minDim) / 2;
           const sy = (img.height - minDim) / 2;
           ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
-          resolve(canvas.toDataURL('image/png'));
+          finish(canvas.toDataURL('image/png'));
           return;
         }
       } catch {
-        // Canvas CORS Error တက်ပါက S အက္ခရာ မထုတ်ဘဲ မူရင်း Logo URL အစစ်ကိုသာ တိုက်ရိုက်သုံးမည်
+        // Canvas CORS Error တက်ပါက မူရင်း Logo URL အစစ်ကိုသာ တိုက်ရိုက်သုံးမည်
       }
-      resolve(logoUrl);
+      finish(logoUrl);
     };
-    img.onerror = () => resolve(logoUrl || fallbackUrl);
+    img.onerror = () => {
+      window.clearTimeout(timer);
+      finish(logoUrl || fallbackUrl);
+    };
     img.src = logoUrl;
   });
+};
+
+const clearAppCachesAndReload = async () => {
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch {}
+  window.location.reload();
 };
 
 class ErrorBoundary extends React.Component<{ children: any }, { hasError: boolean, error: any }> {
@@ -101,9 +144,34 @@ class ErrorBoundary extends React.Component<{ children: any }, { hasError: boole
   static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
   render() {
     if (this.state.hasError) {
+      const isChunkError = /loading chunk|dynamically imported module|failed to fetch/i.test(String(this.state.error || ''));
       return (
-        <div className="min-h-screen bg-red-50 flex items-center justify-center p-10 text-center">
-          <div><h1 className="text-3xl font-bold text-red-600 mb-4">App Crashed ⚠️</h1><p className="text-gray-700 font-mono text-sm bg-white p-4 rounded shadow">{this.state.error?.toString()}</p><button onClick={() => window.location.reload()} className="mt-6 px-6 py-3 bg-[#123524] text-white rounded-lg font-bold">Reload App</button></div>
+        <div className="min-h-screen bg-[#0a1f15] flex items-center justify-center p-6 text-center">
+          <div className="max-w-sm w-full bg-[#123524] border border-[#D4AF37]/35 rounded-2xl p-6 shadow-2xl space-y-4">
+            <img src="/logo.png" alt="The Shangri-La" className="w-16 h-16 mx-auto object-contain" />
+            <h1 className="text-lg font-bold text-[#D4AF37]">
+              {isChunkError ? 'App ဖိုင်များ ဆွဲယူမှု မပြည့်စုံသေးပါ' : 'App ဖွင့်ရာတွင် အမှားအယွင်း ရှိနေပါသည်'}
+            </h1>
+            <p className="text-xs text-gray-300 leading-relaxed">
+              {isChunkError
+                ? 'အင်တာနက်ချိတ်ဆက်မှု နှေးကွေးခြင်း သို့မဟုတ် Version အသစ် Update ဖြစ်နေခြင်းကြောင့် ဖြစ်နိုင်ပါသည်။ အောက်ပါခလုတ်ဖြင့် ပြန်လည်ဖွင့်ပေးပါ။'
+                : 'ခေတ္တပြန်လည်ဖွင့်ပေးပါ။ ပြဿနာဆက်ရှိနေပါက Cache ရှင်းပြီး ပြန်ဖွင့်နိုင်ပါသည်။'}
+            </p>
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={() => window.location.reload()}
+                className="w-full min-h-[44px] px-5 py-2.5 bg-[#D4AF37] text-[#0a1f15] rounded-xl font-extrabold text-xs shadow"
+              >
+                ပြန်လည်ဖွင့်ရန် (Reload App)
+              </button>
+              <button
+                onClick={clearAppCachesAndReload}
+                className="w-full min-h-[40px] px-5 py-2 bg-white/10 text-gray-200 border border-white/15 rounded-xl font-bold text-xs"
+              >
+                Cache ရှင်းပြီး ပြန်ဖွင့်ရန်
+              </button>
+            </div>
+          </div>
         </div>
       );
     }
@@ -139,11 +207,15 @@ function MainApp() {
   });
 
   const [loggedInAdmin, setLoggedInAdmin] = useState<string | null>(sessionStorage.getItem('shangrila_admin'));
-  const { appData, setAppData } = useAppStore();
+  const { appData, setAppData, isSlowConnection, refreshAppData } = useAppStore();
+
+  const [isPortalChunkReady, setIsPortalChunkReady] = useState<boolean>(false);
+  const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
+  const [hasAppUpdate, setHasAppUpdate] = useState<boolean>(false);
 
   const [isLoaderFinished, setIsLoaderFinished] = useState<boolean>(() => {
     const isPos = detectInitialPortalMode() === 'pos';
-    return isPos || !navigator.onLine;
+    return isPos;
   });
   
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -154,8 +226,45 @@ function MainApp() {
 
   const isIOSDevice = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
 
+  // Track active portal lazy chunk readiness so splash never fades out into a blank white screen
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    let active = true;
+    const loader =
+      appMode === detectInitialPortalMode() && initialPortalPreloadPromise
+        ? initialPortalPreloadPromise
+        : getLoaderForMode(appMode)().catch(() => null);
+
+    Promise.resolve(loader).finally(() => {
+      if (active) setIsPortalChunkReady(true);
+    });
+
+    const chunkFallback = window.setTimeout(() => {
+      if (active) setIsPortalChunkReady(true);
+    }, 5000);
+
+    return () => {
+      active = false;
+      window.clearTimeout(chunkFallback);
+    };
+  }, [appMode]);
+
+  // Listen for Service Worker background update notifications
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SHANGRILA_APP_UPDATED') {
+        setHasAppUpdate(true);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      refreshAppData().catch(() => {});
+    };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -163,12 +272,13 @@ function MainApp() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [refreshAppData]);
 
-  // Notification Setup
+  // Notification Setup — deferred & non-blocking, only refreshes token if permission was already granted
   useEffect(() => {
     if (!navigator.onLine) return;
-    const setupNotifications = async () => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    const timer = window.setTimeout(async () => {
       try {
         if (typeof requestNotificationPermission === 'function') {
           const token = await requestNotificationPermission();
@@ -181,8 +291,8 @@ function MainApp() {
       } catch (err) {
         console.warn("Notification Error:", err);
       }
-    };
-    setupNotifications();
+    }, 4000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -351,13 +461,13 @@ function MainApp() {
   }, [appData?.promotion, appMode]);
 
   useEffect(() => {
-    // Give Firestore enough time on Telegram Mini App / mobile networks before falling back to offline defaults
+    // Fast safety deadlines so slow Myanmar no-VPN routes never leave users waiting on the splash screen
     const dataSafetyTimer = setTimeout(() => {
       setAppData((prev) => prev || getCachedAppData() || FALLBACK_APPDATA);
-    }, 7500);
+    }, 3800);
     const loaderSafetyTimer = setTimeout(() => {
       setIsLoaderFinished(true);
-    }, 9000);
+    }, 5800);
 
     if (navigator.onLine) {
       signInAnonymously(auth).catch((error) => { console.warn("Firebase Auth Warning:", error); });
@@ -408,10 +518,10 @@ function MainApp() {
         }}
       />
 
-      {/* 🌟 Premium Loading Screen Overlay (Fade out ဖြစ်ချိန်တွင် အဖြူ Screen မပေါ်ဘဲ အောက်ခံ App တိုက်ရိုက်ပေါ်လာမည်) 🌟 */}
+      {/* 🌟 Premium Loading Screen Overlay (Portal chunk & data ready ဖြစ်မှ Fade out လုပ်သဖြင့် အဖြူ Screen လုံးဝမပေါ်ပါ) 🌟 */}
       {showLoadingOverlay && (
         <PremiumLoadingScreen
-          isDataReady={!!appData}
+          isDataReady={!!appData && isPortalChunkReady}
           onFinish={() => setIsLoaderFinished(true)}
         />
       )}
@@ -458,6 +568,39 @@ function MainApp() {
           <WifiOff className="w-3.5 h-3.5 flex-shrink-0" />
           <span>Offline Mode — Cached data</span>
         </div>
+      )}
+
+      {isOnline && isSlowConnection && (
+        <button
+          type="button"
+          disabled={isReconnecting}
+          onClick={async () => {
+            setIsReconnecting(true);
+            try {
+              await reconnectFirestoreNetwork(true);
+              await refreshAppData();
+            } finally {
+              setIsReconnecting(false);
+            }
+          }}
+          className="fixed bottom-4 left-4 z-[180] flex items-center gap-2 rounded-full bg-[#0B2419]/95 text-[#D4AF37] px-3.5 py-2 text-[11px] font-bold shadow-lg border border-[#D4AF37]/40 backdrop-blur-sm"
+          style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 flex-shrink-0 ${isReconnecting ? 'animate-spin' : ''}`} />
+          <span>{isReconnecting ? 'Server ချိတ်ဆက်နေပါသည်...' : 'Cached Mode — ပြန်ချိတ်ရန် နှိပ်ပါ'}</span>
+        </button>
+      )}
+
+      {hasAppUpdate && (
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="fixed bottom-4 right-4 z-[180] flex items-center gap-2 rounded-full bg-[#123524] text-[#D4AF37] px-4 py-2 text-[11px] font-extrabold shadow-xl border border-[#D4AF37]/50"
+          style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Update အသစ်ရပါပြီ — ဖွင့်မည်</span>
+        </button>
       )}
 
       {!isFullScreenMode && (
