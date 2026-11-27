@@ -503,6 +503,26 @@ export const saveTelegramConfig = async (config: TelegramBotConfig): Promise<boo
   }
 };
 
+export const patchTelegramConfig = async (partial: Partial<TelegramBotConfig>): Promise<boolean> => {
+  try {
+    const cleanPatch: Record<string, any> = { updatedAt: new Date().toISOString() };
+    Object.entries(partial).forEach(([k, v]) => {
+      if (v !== undefined) cleanPatch[k] = v;
+    });
+    if (typeof partial.botUsername === 'string' && partial.botUsername.trim()) {
+      try {
+        localStorage.setItem('shangrila_bot_username', partial.botUsername.replace(/^@/, '').trim());
+      } catch {}
+    }
+    const docRef = doc(db, 'settings', 'telegramConfig');
+    await setDoc(docRef, cleanPatch, { merge: true });
+    return true;
+  } catch (error) {
+    console.error('Error patching Telegram config:', error);
+    return false;
+  }
+};
+
 const logTelegramActivity = async (
   type: string,
   targetChatId: string,

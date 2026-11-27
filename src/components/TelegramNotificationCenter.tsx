@@ -56,6 +56,7 @@ import {
   DEFAULT_TELEGRAM_CONFIG,
   getTelegramConfig,
   saveTelegramConfig,
+  patchTelegramConfig,
   sendRawTelegramMessage,
   notifyBookingEvent,
   notifyStaffUpdate,
@@ -1297,7 +1298,8 @@ export const TelegramNotificationCenter: React.FC = () => {
   const handleSaveConfig = async () => {
     setSaving(true);
     setButtonFeedback('save_all', 'loading');
-    const ok = await saveTelegramConfig(config);
+    const { businessAutoReplyEnabled: _e, businessAutoReplyRules: _r, ...centerOnlyConfig } = config;
+    const ok = await patchTelegramConfig(centerOnlyConfig);
     setSaving(false);
     if (ok) {
       setButtonFeedback('save_all', 'success');
@@ -1718,32 +1720,32 @@ export const TelegramNotificationCenter: React.FC = () => {
       )}
 
       {/* Header */}
-      <div className="p-5 bg-gradient-to-r from-[#071810] via-[#0B2419] to-[#071810] border-b border-[#C8A951]/30 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-[#C8A951]/15 border border-[#C8A951]/40 text-[#C8A951]">
+      <div className="p-4 sm:p-5 bg-gradient-to-r from-[#071810] via-[#0B2419] to-[#071810] border-b border-[#C8A951]/30 flex flex-col md:flex-row md:items-center md:justify-between gap-3.5">
+        <div className="min-w-0">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-[#C8A951]/15 border border-[#C8A951]/40 text-[#C8A951] shrink-0">
               <Send className="w-5 h-5" />
             </span>
-            <div>
-              <h2 className="text-lg font-bold text-[#C8A951] tracking-wide">
-                TELEGRAM BOT, MINI APP & REAL-TIME NOTIFICATION CENTER
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-lg font-bold text-[#C8A951] tracking-wide leading-snug">
+                TELEGRAM BOT, MINI APP &amp; REAL-TIME NOTIFICATION CENTER
               </h2>
-              <p className="text-[11px] text-stone-400">
+              <p className="text-[11px] text-stone-400 mt-0.5 leading-relaxed">
                 Clean Summary Mode — ပြင်ဆင်လိုသော ကဒ်ရှိ <b>✏️ Edit</b> ကိုနှိပ်မှသာ ပြင်ဆင်နိုင်အောင် စနစ်တကျ Lock ချထားပါသည်။
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <label className="flex items-center gap-2 cursor-pointer bg-black/30 px-3 py-2 rounded-xl border border-[#C8A951]/30 hover:border-[#C8A951]/60 transition">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <label className="flex items-center gap-2 cursor-pointer bg-black/30 px-3 py-2 min-h-[40px] rounded-xl border border-[#C8A951]/30 hover:border-[#C8A951]/60 transition flex-1 sm:flex-initial justify-center">
             <input
               type="checkbox"
               checked={config.enabled}
               onChange={(e) => {
                 const next = { ...config, enabled: e.target.checked };
                 setConfig(next);
-                saveTelegramConfig(next);
+                patchTelegramConfig({ enabled: e.target.checked });
                 showToast(
                   'success',
                   e.target.checked ? '🟢 Telegram Bot ကို ဖွင့်လိုက်ပါပြီ။' : '🔴 Telegram Bot ကို ခေတ္တပိတ်ထားပါသည်။'
@@ -1751,7 +1753,7 @@ export const TelegramNotificationCenter: React.FC = () => {
               }}
               className="accent-[#C8A951] w-4 h-4"
             />
-            <span className="text-xs font-semibold text-[#C8A951]">
+            <span className="text-xs font-semibold text-[#C8A951] whitespace-nowrap">
               {config.enabled ? '🟢 BOT ACTIVE' : '🔴 BOT PAUSED'}
             </span>
           </label>
@@ -1759,7 +1761,7 @@ export const TelegramNotificationCenter: React.FC = () => {
           <button
             onClick={handleSaveConfig}
             disabled={saving}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold text-xs active:scale-95 transition shadow-md ${
+            className={`flex items-center justify-center gap-1.5 px-4 py-2 min-h-[40px] rounded-xl font-bold text-xs active:scale-95 transition shadow-md whitespace-nowrap flex-1 sm:flex-initial ${
               btnStates['save_all'] === 'success'
                 ? 'bg-emerald-500 text-black'
                 : 'bg-[#C8A951] text-[#0B2419] hover:bg-[#d8b962]'
@@ -1775,37 +1777,39 @@ export const TelegramNotificationCenter: React.FC = () => {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="flex overflow-x-auto border-b border-[#C8A951]/20 bg-[#071810]/60 px-4">
+      {/* Navigation Tabs — Mobile-First 2x3 Tap Grid, Desktop Single-Row Tab Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:overflow-x-auto gap-1.5 lg:gap-0 p-2.5 lg:p-0 lg:px-4 border-b border-[#C8A951]/20 bg-[#071810]/70">
         {[
-          { id: 'setup', label: '1. Bot Setup', icon: Settings },
-          { id: 'triggers', label: '2. Notification Triggers', icon: Bell },
-          { id: 'staff', label: `3. Active Staff (${config.staffMappings.length})`, icon: Users },
-          { id: 'customers', label: `4. Subscribed Customers (${subscribers.length})`, icon: Smartphone },
-          { id: 'botflow', label: '5. Mini App & Promo', icon: Megaphone },
-          { id: 'logs', label: '6. Delivery Logs', icon: History },
+          { id: 'setup', shortLabel: '1. Bot Setup', label: '1. Bot Setup', icon: Settings },
+          { id: 'triggers', shortLabel: '2. Triggers', label: '2. Notification Triggers', icon: Bell },
+          { id: 'staff', shortLabel: `3. Staff (${config.staffMappings.length})`, label: `3. Active Staff (${config.staffMappings.length})`, icon: Users },
+          { id: 'customers', shortLabel: `4. Customers (${subscribers.length})`, label: `4. Subscribed Customers (${subscribers.length})`, icon: Smartphone },
+          { id: 'botflow', shortLabel: '5. Mini App', label: '5. Mini App & Promo', icon: Megaphone },
+          { id: 'logs', shortLabel: '6. Logs', label: '6. Delivery Logs', icon: History },
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
           return (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-3 text-xs font-semibold whitespace-nowrap border-b-2 active:scale-95 transition ${
+              className={`flex items-center justify-center lg:justify-start gap-1.5 lg:gap-2 px-2.5 lg:px-4 py-2.5 lg:py-3 min-h-[42px] text-[11px] lg:text-xs font-semibold whitespace-nowrap rounded-xl lg:rounded-none border lg:border-0 lg:border-b-2 active:scale-[0.98] transition tabular-nums ${
                 active
-                  ? 'border-[#C8A951] text-[#C8A951] bg-[#C8A951]/10'
-                  : 'border-transparent text-stone-400 hover:text-stone-200'
+                  ? 'border-[#C8A951] text-[#C8A951] bg-[#C8A951]/15 lg:bg-[#C8A951]/10 shadow-xs lg:shadow-none'
+                  : 'border-white/10 lg:border-transparent text-stone-300 lg:text-stone-400 bg-white/[0.03] lg:bg-transparent hover:text-stone-100'
               }`}
             >
-              <Icon className="w-4 h-4" />
-              {tab.label}
+              <Icon className="w-3.5 h-3.5 lg:w-4 lg:h-4 shrink-0" />
+              <span className="truncate lg:hidden">{tab.shortLabel}</span>
+              <span className="hidden lg:inline">{tab.label}</span>
             </button>
           );
         })}
       </div>
 
       {/* Tab Content */}
-      <div className="p-5 space-y-4">
+      <div className="p-3.5 sm:p-5 space-y-4">
         {/* =====================================================================
             TAB 1: BOT & CHANNELS SETUP (COMPACT READ-ONLY CARD + EDIT TOGGLE)
         ===================================================================== */}
