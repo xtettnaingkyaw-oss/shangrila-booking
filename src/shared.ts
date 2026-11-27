@@ -83,10 +83,20 @@ export interface AppBranding {
 }
 
 export type PromotionType = 'percentage_discount' | 'mini_game' | 'category_discount';
+export type MiniGameStyle = 'christmas_santa' | 'lantern_catch';
+
+export const DEFAULT_CHRISTMAS_PROBABILITIES: Record<number, number> = {
+  10: 55,
+  15: 23,
+  20: 14,
+  30: 7,
+  50: 1,
+};
 
 export interface SavedCampaignCard {
   id: string;
   promoType: PromotionType;
+  gameStyle?: MiniGameStyle;
   campaignTitle: string;
   boxTitle: string;
   description?: string;
@@ -97,8 +107,10 @@ export interface SavedCampaignCard {
   otherDiscountPercent: number;
   // Type 2: Mini Game Campaign Rewards
   gameRewardTiers?: number[];
+  rewardProbabilities?: Record<number, number>;
   outcallRewardCap?: number;
   rewardValidityDays?: number;
+  telegramAutoNotify?: boolean;
   // Type 3: Service Category Discounts ({ [categoryId]: discountPercent })
   categoryDiscounts?: Record<string, number>;
   // Duration & Visuals
@@ -116,6 +128,7 @@ export interface PromotionSettings {
 
   // 🌟 Promotion Type Architecture (3 Clear Modes) 🌟
   promoType?: PromotionType;
+  gameStyle?: MiniGameStyle;
   description?: string;
 
   // Box အတွက် Settings
@@ -139,8 +152,10 @@ export interface PromotionSettings {
 
   // Type 2: Mini Game Settings
   gameRewardTiers?: number[];
+  rewardProbabilities?: Record<number, number>;
   outcallRewardCap?: number;
   rewardValidityDays?: number;
+  telegramAutoNotify?: boolean;
 
   // Type 3: Service Category Discounts
   categoryDiscounts?: Record<string, number>;
@@ -163,12 +178,122 @@ export const resolvePromotionType = (promoOrCard: any): PromotionType => {
   if (Array.isArray(promoOrCard.gameRewardTiers) && promoOrCard.gameRewardTiers.length > 0) {
     return 'mini_game';
   }
-  // Legacy heuristic: old Thadingyut lantern card or popup-only legacy campaign
   const idLower = String(promoOrCard.id || promoOrCard.activeCampaignId || '').toLowerCase();
-  if (idLower.includes('thadingyut') || idLower.includes('lantern') || idLower.includes('game')) {
+  if (
+    idLower.includes('thadingyut') ||
+    idLower.includes('lantern') ||
+    idLower.includes('christmas') ||
+    idLower.includes('santa') ||
+    idLower.includes('xmas') ||
+    idLower.includes('game')
+  ) {
     return 'mini_game';
   }
   return 'percentage_discount';
+};
+
+export const resolveMiniGameStyle = (promoOrCard: any): MiniGameStyle => {
+  if (!promoOrCard) return 'lantern_catch';
+  if (promoOrCard.gameStyle === 'christmas_santa' || promoOrCard.gameStyle === 'lantern_catch') {
+    return promoOrCard.gameStyle;
+  }
+  const combined = [
+    promoOrCard.id,
+    promoOrCard.activeCampaignId,
+    promoOrCard.campaignTitle,
+    promoOrCard.title,
+    promoOrCard.boxTitle,
+    promoOrCard.badgeText,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (
+    combined.includes('christmas') ||
+    combined.includes('santa') ||
+    combined.includes('xmas') ||
+    combined.includes('ခရစ္စမတ်')
+  ) {
+    return 'christmas_santa';
+  }
+  return 'lantern_catch';
+};
+
+export const buildDefaultRewardProbabilities = (tiers: number[]): Record<number, number> => {
+  const sorted = [...new Set(tiers.map(Number).filter((n) => n > 0))].sort((a, b) => a - b);
+  if (sorted.length === 0) return { ...DEFAULT_CHRISTMAS_PROBABILITIES };
+  const exactClassic =
+    sorted.length === 5 &&
+    sorted[0] === 10 &&
+    sorted[1] === 15 &&
+    sorted[2] === 20 &&
+    sorted[3] === 30 &&
+    sorted[4] === 50;
+  if (exactClassic) return { ...DEFAULT_CHRISTMAS_PROBABILITIES };
+
+  // Dynamic fair distribution: lowest tier gets highest share, 50% (or top tier) stays rare (~1%)
+  const result: Record<number, number> = {};
+  if (sorted.length === 1) {
+    result[sorted[0]] = 100;
+    return result;
+  }
+  const hasTopRare = sorted[sorted.length - 1] >= 50;
+  let remaining = hasTopRare ? 99 : 100;
+  const activePool = hasTopRare ? sorted.slice(0, -1) : sorted;
+  const rawWeights = activePool.map((_, i) => Math.pow(2.2, activePool.length - 1 - i));
+  const rawSum = rawWeights.reduce((a, b) => a + b, 0);
+  let assigned = 0;
+  activePool.forEach((tier, i) => {
+    if (i === activePool.length - 1) {
+      result[tier] = Math.max(1, remaining - assigned);
+    } else {
+      const share = Math.max(1, Math.round((rawWeights[i] / rawSum) * remaining));
+      result[tier] = share;
+      assigned += share;
+    }
+  });
+  if (hasTopRare) {
+    result[sorted[sorted.length - 1]] = 1;
+  }
+  return result;
+};
+
+export const pickWeightedMiniGamePrize = (
+  rawTiers?: number[],
+  customProbabilities?: Record<number, number>
+): number => {
+  const tiers =
+    Array.isArray(rawTiers) && rawTiers.length > 0
+      ? [...new Set(rawTiers.map(Number).filter((n) => n > 0))].sort((a, b) => a - b)
+      : [10, 15, 20, 30, 50];
+
+  if (tiers.length === 1) return tiers[0];
+
+  const fallbackProbs = buildDefaultRewardProbabilities(tiers);
+  const weights = tiers.map((tier) => {
+    const custom = customProbabilities ? Number((customProbabilities as any)[tier] ?? (customProbabilities as any)[String(tier)]) : NaN;
+    if (!isNaN(custom) && custom >= 0) return custom;
+    return fallbackProbs[tier] ?? 1;
+  });
+
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  if (totalWeight <= 0) return tiers[0];
+
+  let randUnit = Math.random();
+  try {
+    if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+      const arr = new Uint32Array(1);
+      window.crypto.getRandomValues(arr);
+      randUnit = arr[0] / 4294967296;
+    }
+  } catch {}
+
+  let r = randUnit * totalWeight;
+  for (let i = 0; i < tiers.length; i++) {
+    r -= weights[i];
+    if (r < 0) return tiers[i];
+  }
+  return tiers[0];
 };
 
 export const getCategoryDiscountPercent = (

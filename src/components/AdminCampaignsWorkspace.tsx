@@ -23,6 +23,10 @@ import {
   Layers,
   Gamepad2,
   Files,
+  Send,
+  Snowflake,
+  RotateCcw,
+  Crown,
 } from 'lucide-react';
 import { db } from '../firebase';
 import { encryptText } from '../security';
@@ -31,9 +35,17 @@ import {
   Booking,
   formatPrice,
   PromotionType,
+  MiniGameStyle,
   SavedCampaignCard,
+  DEFAULT_CHRISTMAS_PROBABILITIES,
+  buildDefaultRewardProbabilities,
   resolvePromotionType,
+  resolveMiniGameStyle,
 } from '../shared';
+import {
+  notifyCampaignWinnerToTelegram,
+  broadcastCampaignAnnouncementToTelegram,
+} from '../telegramService';
 
 export type { SavedCampaignCard };
 
@@ -85,10 +97,35 @@ const PROMO_TYPE_META: Record<
   },
 };
 
+const buildChristmasSantaPresetCard = (startDateStr: string): SavedCampaignCard => ({
+  id: 'camp_christmas_santa',
+  promoType: 'mini_game',
+  gameStyle: 'christmas_santa',
+  campaignTitle: 'Christmas Santa လက်ဆောင်အိတ် ကံစမ်းမဲ Campaign',
+  boxTitle: 'CHRISTMAS SANTA GIFT',
+  description: 'Santa ဖိုးဖိုးကြီးထံမှ လက်ဆောင်တောင်းပြီး 10% မှ 50% OFF အထိ Christmas အထူးလျှော့ဈေးများ ရယူလိုက်ပါ',
+  isPopupActive: false,
+  isBoxActive: false,
+  hotelDiscountPercent: 0,
+  otherDiscountPercent: 0,
+  gameRewardTiers: [10, 15, 20, 30, 50],
+  rewardProbabilities: { ...DEFAULT_CHRISTMAS_PROBABILITIES },
+  outcallRewardCap: 10,
+  rewardValidityDays: 3,
+  telegramAutoNotify: true,
+  startDate: startDateStr,
+  endDate: '2026-12-31',
+  themeColor: 'from-[#7f1d1d] via-[#123524] to-[#081c12]',
+  badgeText: 'MERRY CHRISTMAS GIFT',
+  updatedAt: Date.now(),
+});
+
 const DEFAULT_SAVED_CAMPAIGNS: SavedCampaignCard[] = [
+  buildChristmasSantaPresetCard('2026-11-27'),
   {
     id: 'camp_thadingyut',
     promoType: 'mini_game',
+    gameStyle: 'lantern_catch',
     campaignTitle: 'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း Campaign',
     boxTitle: 'FESTIVAL MINI GAME',
     description: 'ဂိမ်းကစားပြီး ၅၀% အထိ အထူးလျှော့ဈေးများ ကံစမ်းရယူလိုက်ပါ',
@@ -97,8 +134,10 @@ const DEFAULT_SAVED_CAMPAIGNS: SavedCampaignCard[] = [
     hotelDiscountPercent: 0,
     otherDiscountPercent: 0,
     gameRewardTiers: [10, 15, 20, 30, 50],
+    rewardProbabilities: { ...DEFAULT_CHRISTMAS_PROBABILITIES },
     outcallRewardCap: 10,
     rewardValidityDays: 1,
+    telegramAutoNotify: true,
     startDate: '2026-10-01',
     endDate: '2026-10-31',
     themeColor: 'from-amber-900 via-[#2a1808] to-[#140b03]',
@@ -142,8 +181,8 @@ const DEFAULT_SAVED_CAMPAIGNS: SavedCampaignCard[] = [
 
 const THEME_PRESETS = [
   { label: 'Emerald Gold', value: 'from-[#123524] via-[#0B2419] to-[#06150e]', swatch: 'bg-[#123524]' },
+  { label: 'Christmas Red', value: 'from-[#7f1d1d] via-[#123524] to-[#081c12]', swatch: 'bg-red-800' },
   { label: 'Lantern Amber', value: 'from-amber-900 via-[#2a1808] to-[#140b03]', swatch: 'bg-amber-900' },
-  { label: 'Deep Forest', value: 'from-emerald-950 via-[#123524] to-[#091e14]', swatch: 'bg-emerald-950' },
   { label: 'Royal Slate', value: 'from-slate-900 via-slate-800 to-slate-950', swatch: 'bg-slate-900' },
 ];
 
@@ -169,13 +208,27 @@ const normalizeMyanmarPhone = (phone: string): string => {
 
 const normalizeCard = (raw: any): SavedCampaignCard => {
   const pType = resolvePromotionType(raw);
-  const rawTiers =
+  const gStyle = resolveMiniGameStyle(raw);
+  const rawTiers: number[] =
     Array.isArray(raw?.gameRewardTiers) && raw.gameRewardTiers.length > 0
-      ? raw.gameRewardTiers.map(Number).filter((n: number) => n > 0)
+      ? [...new Set<number>(raw.gameRewardTiers.map(Number).filter((n: number) => n > 0))].sort((a, b) => a - b)
       : [10, 15, 20, 30, 50];
+  const normalizedProbs: Record<number, number> =
+    raw?.rewardProbabilities && typeof raw.rewardProbabilities === 'object'
+      ? Object.fromEntries(
+          rawTiers.map((t) => [
+            t,
+            raw.rewardProbabilities[t] !== undefined
+              ? Number(raw.rewardProbabilities[t])
+              : buildDefaultRewardProbabilities(rawTiers)[t] ?? 1,
+          ])
+        )
+      : buildDefaultRewardProbabilities(rawTiers);
+
   return {
     id: raw?.id || `camp_${Date.now()}`,
     promoType: pType,
+    gameStyle: gStyle,
     campaignTitle: raw?.campaignTitle || raw?.title || 'Untitled Promotion',
     boxTitle: raw?.boxTitle || 'SPECIAL PROMO',
     description: raw?.description || '',
@@ -184,8 +237,10 @@ const normalizeCard = (raw: any): SavedCampaignCard => {
     hotelDiscountPercent: Number(raw?.hotelDiscountPercent) || 0,
     otherDiscountPercent: Number(raw?.otherDiscountPercent) || 0,
     gameRewardTiers: rawTiers,
+    rewardProbabilities: normalizedProbs,
     outcallRewardCap: raw?.outcallRewardCap !== undefined ? Number(raw.outcallRewardCap) : 10,
     rewardValidityDays: Math.max(1, Number(raw?.rewardValidityDays) || 1),
+    telegramAutoNotify: raw?.telegramAutoNotify !== false,
     categoryDiscounts:
       raw?.categoryDiscounts && typeof raw.categoryDiscounts === 'object' ? { ...raw.categoryDiscounts } : {},
     startDate: raw?.startDate || getLocalTodayStr(),
@@ -306,38 +361,52 @@ function PromotionFormModal({
   onSubmit: (card: SavedCampaignCard) => void | Promise<void>;
   onError: (msg: string) => void;
 }) {
-  const [form, setForm] = useState<SavedCampaignCard>(() => ({
-    ...initialCard,
-    categoryDiscounts: { ...(initialCard.categoryDiscounts || {}) },
-    gameRewardTiers: [...(initialCard.gameRewardTiers || [10, 15, 20, 30, 50])],
-  }));
+  const [form, setForm] = useState<SavedCampaignCard>(() => {
+    const tiers = [...(initialCard.gameRewardTiers || [10, 15, 20, 30, 50])];
+    return {
+      ...initialCard,
+      gameStyle: initialCard.gameStyle || resolveMiniGameStyle(initialCard),
+      telegramAutoNotify: initialCard.telegramAutoNotify !== false,
+      categoryDiscounts: { ...(initialCard.categoryDiscounts || {}) },
+      gameRewardTiers: tiers,
+      rewardProbabilities: {
+        ...buildDefaultRewardProbabilities(tiers),
+        ...(initialCard.rewardProbabilities || {}),
+      },
+    };
+  });
   const [submitting, setSubmitting] = useState(false);
 
   const meta = PROMO_TYPE_META[form.promoType];
 
   const handleSelectType = (nextType: PromotionType) => {
-    setForm((prev) => ({
-      ...prev,
-      promoType: nextType,
-      badgeText:
-        !prev.badgeText ||
-        Object.values(PROMO_TYPE_META).some((m) => m.kicker === prev.badgeText)
-          ? PROMO_TYPE_META[nextType].kicker
-          : prev.badgeText,
-      themeColor:
-        nextType === 'mini_game'
-          ? THEME_PRESETS[1].value
-          : nextType === 'category_discount'
-          ? THEME_PRESETS[2].value
-          : THEME_PRESETS[0].value,
-      // Sensible defaults when switching types
-      otherDiscountPercent: nextType === 'percentage_discount' ? prev.otherDiscountPercent || 20 : prev.otherDiscountPercent,
-      hotelDiscountPercent: nextType === 'percentage_discount' ? prev.hotelDiscountPercent || 10 : prev.hotelDiscountPercent,
-      gameRewardTiers:
-        prev.gameRewardTiers && prev.gameRewardTiers.length > 0 ? prev.gameRewardTiers : [10, 15, 20, 30, 50],
-      outcallRewardCap: prev.outcallRewardCap ?? 10,
-      rewardValidityDays: prev.rewardValidityDays || 1,
-    }));
+    setForm((prev) => {
+      const nextTiers =
+        prev.gameRewardTiers && prev.gameRewardTiers.length > 0 ? prev.gameRewardTiers : [10, 15, 20, 30, 50];
+      return {
+        ...prev,
+        promoType: nextType,
+        gameStyle: nextType === 'mini_game' ? prev.gameStyle || 'christmas_santa' : prev.gameStyle,
+        badgeText:
+          !prev.badgeText ||
+          Object.values(PROMO_TYPE_META).some((m) => m.kicker === prev.badgeText)
+            ? PROMO_TYPE_META[nextType].kicker
+            : prev.badgeText,
+        themeColor:
+          nextType === 'mini_game'
+            ? (prev.gameStyle || 'christmas_santa') === 'christmas_santa'
+              ? THEME_PRESETS[1].value
+              : THEME_PRESETS[2].value
+            : THEME_PRESETS[0].value,
+        otherDiscountPercent: nextType === 'percentage_discount' ? prev.otherDiscountPercent || 20 : prev.otherDiscountPercent,
+        hotelDiscountPercent: nextType === 'percentage_discount' ? prev.hotelDiscountPercent || 10 : prev.hotelDiscountPercent,
+        gameRewardTiers: nextTiers,
+        rewardProbabilities: prev.rewardProbabilities || buildDefaultRewardProbabilities(nextTiers),
+        outcallRewardCap: prev.outcallRewardCap ?? 10,
+        rewardValidityDays: prev.rewardValidityDays || 3,
+        telegramAutoNotify: prev.telegramAutoNotify !== false,
+      };
+    });
   };
 
   const toggleGameTier = (pct: number) => {
@@ -345,9 +414,26 @@ function PromotionFormModal({
       const current = prev.gameRewardTiers || [10, 15, 20, 30, 50];
       const exists = current.includes(pct);
       const next = exists ? current.filter((t) => t !== pct) : [...current, pct].sort((a, b) => a - b);
-      return { ...prev, gameRewardTiers: next };
+      const nextProbs = buildDefaultRewardProbabilities(next);
+      return { ...prev, gameRewardTiers: next, rewardProbabilities: nextProbs };
     });
   };
+
+  const setTierProbability = (tier: number, val: number) => {
+    const clean = Math.max(0, Math.min(100, Number(val) || 0));
+    setForm((prev) => ({
+      ...prev,
+      rewardProbabilities: {
+        ...(prev.rewardProbabilities || {}),
+        [tier]: clean,
+      },
+    }));
+  };
+
+  const totalProbabilityWeight = (form.gameRewardTiers || []).reduce(
+    (sum, t) => sum + (Number(form.rewardProbabilities?.[t]) || 0),
+    0
+  );
 
   const setCategoryPercent = (catId: string, val: number) => {
     const clean = Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
@@ -381,6 +467,10 @@ function PromotionFormModal({
         onError('Mini Game Reward % အနည်းဆုံးတစ်ခု ရွေးချယ်ပေးပါ။');
         return;
       }
+      if (totalProbabilityWeight <= 0) {
+        onError('Reward % ကျနိုင်ခြေ (Odds) အနည်းဆုံးတစ်ခု 0 ထက်ကြီးရပါမည်။');
+        return;
+      }
     } else if (form.promoType === 'category_discount') {
       const hasAnyCategoryDiscount = Object.values(form.categoryDiscounts || {}).some((v) => Number(v) > 0);
       if (!hasAnyCategoryDiscount) {
@@ -399,8 +489,22 @@ function PromotionFormModal({
         }
       }
 
+      const sortedTiers =
+        form.promoType === 'mini_game'
+          ? [...(form.gameRewardTiers || [10, 15, 20, 30, 50])].sort((a, b) => a - b)
+          : [];
+      const cleanedProbs: Record<number, number> = {};
+      if (form.promoType === 'mini_game') {
+        const defaults = buildDefaultRewardProbabilities(sortedTiers);
+        sortedTiers.forEach((t) => {
+          const rawP = form.rewardProbabilities?.[t];
+          cleanedProbs[t] = rawP !== undefined ? Math.max(0, Number(rawP) || 0) : defaults[t] ?? 1;
+        });
+      }
+
       const finalCard: SavedCampaignCard = {
         ...form,
+        gameStyle: form.promoType === 'mini_game' ? form.gameStyle || 'christmas_santa' : undefined,
         campaignTitle: form.campaignTitle.trim(),
         boxTitle: (form.boxTitle || form.campaignTitle).trim(),
         description: (form.description || '').trim(),
@@ -409,12 +513,13 @@ function PromotionFormModal({
           form.promoType === 'percentage_discount' ? Math.max(0, Math.min(100, Number(form.hotelDiscountPercent) || 0)) : 0,
         otherDiscountPercent:
           form.promoType === 'percentage_discount' ? Math.max(0, Math.min(100, Number(form.otherDiscountPercent) || 0)) : 0,
-        gameRewardTiers:
-          form.promoType === 'mini_game' ? [...(form.gameRewardTiers || [10, 15, 20, 30, 50])].sort((a, b) => a - b) : [],
+        gameRewardTiers: sortedTiers,
+        rewardProbabilities: cleanedProbs,
         outcallRewardCap:
           form.promoType === 'mini_game' ? Math.max(0, Math.min(100, Number(form.outcallRewardCap ?? 10))) : 10,
         rewardValidityDays:
           form.promoType === 'mini_game' ? Math.max(1, Number(form.rewardValidityDays) || 1) : 1,
+        telegramAutoNotify: form.promoType === 'mini_game' ? form.telegramAutoNotify !== false : false,
         categoryDiscounts: cleanedCategoryMap,
         updatedAt: Date.now(),
       };
@@ -538,7 +643,59 @@ function PromotionFormModal({
             )}
 
             {form.promoType === 'mini_game' && (
-              <div className="space-y-3.5 bg-gray-50 p-3.5 rounded-xl border border-gray-200/80">
+              <div className="space-y-4 bg-gray-50 p-3.5 rounded-xl border border-gray-200/80">
+                {/* Mini Game Experience Style */}
+                <div>
+                  <label className="text-[11px] font-bold text-gray-700 block mb-1.5">
+                    Mini Game အမျိုးအစား (Game Theme)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        {
+                          id: 'christmas_santa' as MiniGameStyle,
+                          title: 'Christmas Santa Gift Sack',
+                          desc: 'Santa ဖိုးဖိုးကြီး လက်ဆောင်အိတ်မွှေနှောက်ဂိမ်း',
+                        },
+                        {
+                          id: 'lantern_catch' as MiniGameStyle,
+                          title: 'Lantern Catch Game',
+                          desc: 'မီးပုံးဖမ်း ကံစမ်းမဲဂိမ်း',
+                        },
+                      ] as const
+                    ).map((g) => {
+                      const active = (form.gameStyle || 'christmas_santa') === g.id;
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() =>
+                            setForm((prev) => ({
+                              ...prev,
+                              gameStyle: g.id,
+                              themeColor:
+                                g.id === 'christmas_santa' ? THEME_PRESETS[1].value : THEME_PRESETS[2].value,
+                            }))
+                          }
+                          className={`p-2.5 rounded-xl border text-left transition ${
+                            active
+                              ? 'bg-[#0B2419] text-white border-[#D4AF37]'
+                              : 'bg-white text-gray-800 border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          <div className={`text-xs font-black ${active ? 'text-[#D4AF37]' : 'text-gray-900'}`}>
+                            {g.title}
+                          </div>
+                          <div className={`text-[10px] mt-0.5 leading-snug ${active ? 'text-gray-300' : 'text-gray-500'}`}>
+                            {g.desc}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Reward % Tiers */}
                 <div>
                   <label className="text-[11px] font-bold text-gray-700 block mb-1.5">
                     ဂိမ်းမှ ပေါက်နိုင်မည့် Reward % များ ရွေးချယ်ပါ
@@ -563,6 +720,72 @@ function PromotionFormModal({
                     })}
                   </div>
                 </div>
+
+                {/* Exact Probability / Drop Rate Editor */}
+                {(form.gameRewardTiers || []).length > 0 && (
+                  <div className="bg-white p-3 rounded-xl border border-gray-200 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[11px] font-black text-[#123524]">
+                          ဆုကျနိုင်ခြေ သတ်မှတ်ချက် (Drop Odds %)
+                        </div>
+                        <div className="text-[10px] text-gray-500">
+                          ဥပမာ - 10% ကို အများဆုံး (55%) · 50% ကို 100 မှာ 1 ယောက် (1%)
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            rewardProbabilities: buildDefaultRewardProbabilities(prev.gameRewardTiers || []),
+                          }))
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold flex items-center gap-1 shrink-0"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Default</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {[...(form.gameRewardTiers || [])]
+                        .sort((a, b) => a - b)
+                        .map((tier) => {
+                          const w = Number(form.rewardProbabilities?.[tier] ?? 0);
+                          const effectivePct =
+                            totalProbabilityWeight > 0 ? ((w / totalProbabilityWeight) * 100).toFixed(1) : '0.0';
+                          return (
+                            <div
+                              key={tier}
+                              className="p-2 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-between gap-1.5"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-black text-[#123524] tabular-nums">{tier}% OFF</div>
+                                <div className="text-[10px] text-gray-500 tabular-nums">{effectivePct}% chance</div>
+                              </div>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={w}
+                                onChange={(e) => setTierProbability(tier, Number(e.target.value))}
+                                className="w-14 min-h-[34px] px-1.5 py-1 border border-gray-300 bg-white rounded-lg text-xs font-black text-center text-[#123524] outline-none focus:border-[#123524] tabular-nums"
+                              />
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10.5px] font-bold pt-1 border-t border-gray-100 tabular-nums">
+                      <span className="text-gray-500">Total Weight</span>
+                      <span className={totalProbabilityWeight === 100 ? 'text-emerald-700' : 'text-amber-600'}>
+                        {totalProbabilityWeight}% {totalProbabilityWeight === 100 ? '· Exact 100%' : '· Auto-normalized'}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div>
@@ -600,6 +823,25 @@ function PromotionFormModal({
                     </div>
                   </div>
                 </div>
+
+                {/* Telegram Bot Auto-Notification Toggle */}
+                <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white border border-gray-200 cursor-pointer">
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                      <Send className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <span>Telegram Bot Auto-Notification</span>
+                    </div>
+                    <div className="text-[10.5px] text-gray-500 mt-0.5">
+                      ဆုမဲပေါက်တိုင်း Admin Group နှင့် Customer Telegram Bot ထံ အလိုအလျောက် အကြောင်းကြားပေးမည်
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={form.telegramAutoNotify !== false}
+                    onChange={(e) => setForm({ ...form, telegramAutoNotify: e.target.checked })}
+                    className="w-5 h-5 accent-[#123524] shrink-0"
+                  />
+                </label>
               </div>
             )}
 
@@ -897,10 +1139,14 @@ export function AdminCampaignsWorkspace({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [applyingBookingId, setApplyingBookingId] = useState<string | null>(null);
+  const [sendingWinnerId, setSendingWinnerId] = useState<string | null>(null);
+  const [broadcastingCardId, setBroadcastingCardId] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<'today' | 'yesterday' | 'this_month' | 'all_time' | 'custom_range'>('all_time');
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active_unused' | 'used_completed' | 'expired'>('all');
+  const [campaignFilter, setCampaignFilter] = useState<string>('all');
+  const [tierFilter, setTierFilter] = useState<number | 'all'>('all');
 
   const getYesterdayStr = () => addDaysToDateStr(-1);
   const getThisMonthPrefix = () => todayStr.slice(0, 7);
@@ -974,6 +1220,7 @@ export function AdminCampaignsWorkspace({
     const newGlobalPromo = activeCardForGlobal && isAnyOn
       ? {
           promoType: activeType,
+          gameStyle: activeType === 'mini_game' ? resolveMiniGameStyle(activeCardForGlobal) : undefined,
           isActive: true,
           allOff: false,
           isPopupActive: isPopupOn,
@@ -987,8 +1234,14 @@ export function AdminCampaignsWorkspace({
           hotelDiscountPercent: activeType === 'percentage_discount' ? Number(activeCardForGlobal.hotelDiscountPercent) || 0 : 0,
           otherDiscountPercent: activeType === 'percentage_discount' ? Number(activeCardForGlobal.otherDiscountPercent) || 0 : 0,
           gameRewardTiers: activeType === 'mini_game' ? (activeCardForGlobal.gameRewardTiers || [10, 15, 20, 30, 50]) : [],
+          rewardProbabilities:
+            activeType === 'mini_game'
+              ? activeCardForGlobal.rewardProbabilities ||
+                buildDefaultRewardProbabilities(activeCardForGlobal.gameRewardTiers || [10, 15, 20, 30, 50])
+              : {},
           outcallRewardCap: activeType === 'mini_game' ? Number(activeCardForGlobal.outcallRewardCap ?? 10) : 10,
           rewardValidityDays: activeType === 'mini_game' ? Math.max(1, Number(activeCardForGlobal.rewardValidityDays) || 1) : 1,
+          telegramAutoNotify: activeType === 'mini_game' ? activeCardForGlobal.telegramAutoNotify !== false : false,
           categoryDiscounts: activeType === 'category_discount' ? (activeCardForGlobal.categoryDiscounts || {}) : {},
           startDate: activeCardForGlobal.startDate,
           endDate: activeCardForGlobal.endDate,
@@ -1009,8 +1262,10 @@ export function AdminCampaignsWorkspace({
           hotelDiscountPercent: 0,
           otherDiscountPercent: 0,
           gameRewardTiers: [],
+          rewardProbabilities: {},
           outcallRewardCap: 10,
           rewardValidityDays: 1,
+          telegramAutoNotify: false,
           categoryDiscounts: {},
           startDate: '',
           endDate: '',
@@ -1163,27 +1418,76 @@ export function AdminCampaignsWorkspace({
     setModalCard({
       id: `camp_${Date.now()}`,
       promoType: pType,
+      gameStyle: pType === 'mini_game' ? 'christmas_santa' : undefined,
       campaignTitle: '',
-      boxTitle: 'SPECIAL PROMO',
+      boxTitle: pType === 'mini_game' ? 'CHRISTMAS SANTA GIFT' : 'SPECIAL PROMO',
       description: '',
       isPopupActive: true,
       isBoxActive: true,
       hotelDiscountPercent: pType === 'percentage_discount' ? 10 : 0,
       otherDiscountPercent: pType === 'percentage_discount' ? 20 : 0,
       gameRewardTiers: [10, 15, 20, 30, 50],
+      rewardProbabilities: { ...DEFAULT_CHRISTMAS_PROBABILITIES },
       outcallRewardCap: 10,
-      rewardValidityDays: 1,
+      rewardValidityDays: 3,
+      telegramAutoNotify: true,
       categoryDiscounts: {},
       startDate: todayStr,
       endDate: addDaysToDateStr(14),
-      themeColor:
-        pType === 'mini_game'
-          ? THEME_PRESETS[1].value
-          : pType === 'category_discount'
-          ? THEME_PRESETS[2].value
-          : THEME_PRESETS[0].value,
+      themeColor: pType === 'mini_game' ? THEME_PRESETS[1].value : THEME_PRESETS[0].value,
       badgeText: PROMO_TYPE_META[pType].kicker,
       updatedAt: Date.now(),
+    });
+  };
+
+  const handleQuickAddChristmasSantaCampaign = async () => {
+    setSavingPromoId('add_christmas');
+    try {
+      const preset = buildChristmasSantaPresetCard(todayStr);
+      const updatedCards = [preset, ...campaignCards];
+      const activeCard = updatedCards.find((c) => c.isPopupActive || c.isBoxActive) || null;
+      await syncCampaignCardsToFirestore(updatedCards, activeCard);
+      setExpandedCards((prev) => ({ ...prev, [preset.id]: true }));
+      showToast('Christmas Santa Campaign ထည့်သွင်းပြီးပါပြီ! Activate နှိပ်၍ စတင်ဖွင့်နိုင်ပါသည်။', 'success');
+    } catch {
+      showToast('Christmas Campaign ထည့်သွင်းရာတွင် အမှားအယွင်းရှိနေပါသည်။', 'error');
+    } finally {
+      setSavingPromoId(null);
+    }
+  };
+
+  const handleBroadcastCampaignCard = (card: SavedCampaignCard) => {
+    setConfirmDialog({
+      title: 'Telegram Subscribers များထံ ပို့မည်လား?',
+      message: `"${card.campaignTitle}" ကို Telegram Bot ချိတ်ထားသော Customer များအားလုံးထံ တိုက်ရိုက် ကံစမ်းနိုင်သည့် ခလုတ်နှင့်အတူ ပေးပို့မည် သေချာပါသလား?`,
+      confirmLabel: 'Telegram မှ ပေးပို့မည်',
+      tone: 'primary',
+      onConfirm: async () => {
+        setBroadcastingCardId(card.id);
+        try {
+          const tiers = card.gameRewardTiers?.length ? card.gameRewardTiers : [10, 15, 20, 30, 50];
+          const res = await broadcastCampaignAnnouncementToTelegram({
+            campaignId: card.id,
+            campaignTitle: card.campaignTitle,
+            description: card.description,
+            gameStyle: resolveMiniGameStyle(card),
+            maxDiscountPercent: Math.max(...tiers),
+            endDate: card.endDate,
+          });
+          if (res.error) {
+            showToast(res.error, 'error');
+          } else {
+            showToast(
+              `Telegram Broadcast ပေးပို့ပြီးပါပြီ (${res.successCount}/${res.totalTargeted} ဦး အောင်မြင်သည်)`,
+              'success'
+            );
+          }
+        } catch {
+          showToast('Telegram Broadcast ပေးပို့ရာတွင် အမှားအယွင်းရှိနေပါသည်။', 'error');
+        } finally {
+          setBroadcastingCardId(null);
+        }
+      },
     });
   };
 
@@ -1284,10 +1588,13 @@ export function AdminCampaignsWorkspace({
   const getOfferSummaryLine = (card: SavedCampaignCard): string => {
     if (card.promoType === 'mini_game') {
       const tiers = card.gameRewardTiers?.length ? [...card.gameRewardTiers].sort((a, b) => a - b) : [10, 15, 20, 30, 50];
+      const styleLabel = resolveMiniGameStyle(card) === 'christmas_santa' ? 'Santa Gift Sack' : 'Lantern Game';
       const minT = tiers[0];
       const maxT = tiers[tiers.length - 1];
       const days = Math.max(1, Number(card.rewardValidityDays) || 1);
-      return `Game Rewards ${minT === maxT ? `${maxT}%` : `${minT}%–${maxT}%`} · Valid ${days}d`;
+      const topOdds = card.rewardProbabilities?.[maxT];
+      const topOddsStr = topOdds !== undefined ? ` · ${maxT}% (${topOdds}%)` : '';
+      return `${styleLabel} · ${minT === maxT ? `${maxT}%` : `${minT}%–${maxT}%`}${topOddsStr} · ${days}d`;
     }
     if (card.promoType === 'category_discount') {
       const entries = Object.entries(card.categoryDiscounts || {})
@@ -1300,6 +1607,14 @@ export function AdminCampaignsWorkspace({
     if (card.hotelDiscountPercent > 0) parts.push(`Outcall ${card.hotelDiscountPercent}%`);
     return parts.length > 0 ? parts.join(' · ') : '0% Discount';
   };
+
+  const hasChristmasSantaCard = useMemo(
+    () =>
+      campaignCards.some(
+        (c) => resolvePromotionType(c) === 'mini_game' && resolveMiniGameStyle(c) === 'christmas_santa'
+      ),
+    [campaignCards]
+  );
 
   // =========================================================================
   // GAME WINNERS ENRICHMENT & FILTERS
@@ -1320,19 +1635,21 @@ export function AdminCampaignsWorkspace({
       }
 
       const usage = isCampaignRewardUsedByCompletedService(r.phone || '', cleanDate, bookings);
+      const recValidity = Math.max(1, Number(r.rewardValidityDays) || activeValidityDays);
       const recMs = new Date(`${cleanDate}T00:00:00`).getTime();
       const diffDays = isNaN(recMs) ? 999 : Math.floor((todayMs - recMs) / (1000 * 60 * 60 * 24));
-      const isWithinValidity = diffDays >= 0 && diffDays < activeValidityDays;
+      const isWithinValidity = diffDays >= 0 && diffDays < recValidity;
 
       let rewardStatus: 'used_completed' | 'active_unused' | 'expired' = 'expired';
-      if (usage.isUsed) {
+      if (r.manualRedeemed === true || usage.isUsed) {
         rewardStatus = 'used_completed';
       } else if (isWithinValidity) {
         rewardStatus = 'active_unused';
       }
 
       const activeBookingNeedsDiscount = Boolean(
-        usage.activePendingBooking &&
+        !r.manualRedeemed &&
+          usage.activePendingBooking &&
           (!usage.activePendingBooking.discountPercent || Number(usage.activePendingBooking.discountPercent) === 0)
       );
 
@@ -1346,6 +1663,14 @@ export function AdminCampaignsWorkspace({
       };
     });
   }, [records, bookings, todayStr, livePromotion?.rewardValidityDays]);
+
+  const availableCampaignTitles = useMemo(() => {
+    const titles = new Set<string>();
+    enrichedRecords.forEach((r) => {
+      if (r.title) titles.add(String(r.title));
+    });
+    return Array.from(titles);
+  }, [enrichedRecords]);
 
   const dateAndSearchFiltered = useMemo(() => {
     const yesterday = getYesterdayStr();
@@ -1364,17 +1689,23 @@ export function AdminCampaignsWorkspace({
         if (end && d > end) return false;
       }
 
+      if (campaignFilter !== 'all' && String(r.title || '') !== campaignFilter) return false;
+      if (tierFilter !== 'all' && Number(r.discountPercent) !== tierFilter) return false;
+
       if (q) {
         const matchPhone = String(r.phone || '').toLowerCase().includes(q);
         const matchPct = `${r.discountPercent}%`.includes(q);
+        const matchCode = String(r.promoCode || '').toLowerCase().includes(q);
+        const matchTitle = String(r.title || '').toLowerCase().includes(q);
         const matchCustName =
+          (r.customerName || '').toLowerCase().includes(q) ||
           (r.completedBooking?.name || '').toLowerCase().includes(q) ||
           (r.activePendingBooking?.name || '').toLowerCase().includes(q);
-        if (!matchPhone && !matchPct && !matchCustName) return false;
+        if (!matchPhone && !matchPct && !matchCode && !matchTitle && !matchCustName) return false;
       }
       return true;
     });
-  }, [enrichedRecords, dateFilterMode, fromDate, toDate, search, todayStr]);
+  }, [enrichedRecords, dateFilterMode, fromDate, toDate, search, todayStr, campaignFilter, tierFilter]);
 
   const finalFilteredRecords = useMemo(() => {
     if (statusFilter === 'all') return dateAndSearchFiltered;
@@ -1382,18 +1713,21 @@ export function AdminCampaignsWorkspace({
   }, [dateAndSearchFiltered, statusFilter]);
 
   const summaryStats = useMemo(() => {
-    let total = dateAndSearchFiltered.length;
+    const total = dateAndSearchFiltered.length;
     let usedCount = 0;
     let activeCount = 0;
     let expiredCount = 0;
+    const tierCounts: Record<number, number> = { 10: 0, 15: 0, 20: 0, 30: 0, 50: 0 };
 
     dateAndSearchFiltered.forEach((r) => {
       if (r.rewardStatus === 'used_completed') usedCount++;
       else if (r.rewardStatus === 'active_unused') activeCount++;
       else expiredCount++;
+      const p = Number(r.discountPercent) || 0;
+      if (p > 0) tierCounts[p] = (tierCounts[p] || 0) + 1;
     });
 
-    return { total, usedCount, activeCount, expiredCount };
+    return { total, usedCount, activeCount, expiredCount, tierCounts };
   }, [dateAndSearchFiltered]);
 
   const groupedByDate = useMemo(() => {
@@ -1461,6 +1795,65 @@ export function AdminCampaignsWorkspace({
     });
   };
 
+  const handleToggleManualRedeemed = async (record: any) => {
+    const nextRedeemed = !record.manualRedeemed;
+    try {
+      await updateDoc(doc(db, 'campaign_records', record.id), {
+        manualRedeemed: nextRedeemed,
+        redeemedAt: nextRedeemed ? Date.now() : null,
+      });
+      showToast(
+        nextRedeemed
+          ? `${record.phone} (${record.discountPercent}% OFF) ကို သုံးပြီးပြီဟု မှတ်သားပြီးပါပြီ။`
+          : `${record.phone} ၏ Redeem အခြေအနေကို ပြန်ဖွင့်ပြီးပါပြီ။`,
+        'success'
+      );
+    } catch {
+      showToast('Redeem အခြေအနေ ပြောင်းလဲရာတွင် အမှားအယွင်းရှိနေပါသည်။', 'error');
+    }
+  };
+
+  const handleSendWinnerBotVoucher = async (record: any) => {
+    setSendingWinnerId(record.id);
+    try {
+      const linkedB = record.completedBooking || record.activePendingBooking;
+      const res = await notifyCampaignWinnerToTelegram({
+        campaignId: record.campaignId,
+        campaignTitle: record.title || 'Christmas Santa Gift Campaign',
+        gameStyle: record.gameStyle || resolveMiniGameStyle({ title: record.title }),
+        customerName: record.customerName || linkedB?.name || 'VIP Guest',
+        customerPhone: record.phone,
+        customerChatId: record.customerChatId || linkedB?.customerChatId || linkedB?.telegramChatId,
+        discountPercent: Number(record.discountPercent) || 10,
+        promoCode: record.promoCode || `XMAS-${record.discountPercent}`,
+        rewardValidityDays: Number(record.rewardValidityDays || livePromotion?.rewardValidityDays) || 1,
+        outcallRewardCap: Number(record.outcallRewardCap ?? livePromotion?.outcallRewardCap ?? 10),
+        winDate: record.cleanDate || todayStr,
+        sendToAdmin: false,
+        sendToCustomer: true,
+      });
+
+      if (res.customerSent) {
+        await updateDoc(doc(db, 'campaign_records', record.id), {
+          telegramNotiCustomerSent: true,
+          telegramNotiAt: Date.now(),
+          ...(res.customerChatId ? { customerChatId: res.customerChatId } : {}),
+        }).catch(() => {});
+        showToast(`${record.phone} ၏ Telegram Bot ထံ Voucher ပေးပို့ပြီးပါပြီ။`, 'success');
+      } else {
+        showToast(
+          'Customer သည် Telegram Bot နှင့် မချိတ်ဆက်ရသေးပါ — တိုက်ရိုက် Telegram Chat ဖြင့် ဆက်သွယ်နိုင်ပါသည်။',
+          'info'
+        );
+        handleContactUser(record.phone, record.discountPercent);
+      }
+    } catch {
+      showToast('Telegram Bot ပေးပို့ရာတွင် အမှားအယွင်းရှိနေပါသည်။', 'error');
+    } finally {
+      setSendingWinnerId(null);
+    }
+  };
+
   const handleContactUser = (phone: string, discount: number) => {
     if (!phone) return;
     let formattedPhone = phone.replace(/[^0-9+]/g, '');
@@ -1500,31 +1893,44 @@ export function AdminCampaignsWorkspace({
   const handleExportCSV = () => {
     const headers = [
       'Winning Date',
+      'Campaign',
+      'Promo Code',
       'Phone Number',
       'Customer Name',
       'Discount Won (%)',
       'Reward Status',
+      'Telegram Bot Noti',
       'Booking / Receipt Status',
       'Invoice / TxID',
-      'Contact Source',
     ];
     const rows = finalFilteredRecords.map((r) => {
       const statusText =
         r.rewardStatus === 'used_completed'
-          ? 'သုံးပြီးပြီ (Used - Service Completed)'
+          ? r.manualRedeemed
+            ? 'သုံးပြီးပြီ (Manual Redeem)'
+            : 'သုံးပြီးပြီ (Used - Service Completed)'
           : r.rewardStatus === 'active_unused'
           ? 'မသုံးရသေး (Active)'
           : 'သက်တမ်းကုန်ဆုံး (Expired)';
       const linkedB = r.completedBooking || r.activePendingBooking;
+      const botStatus = r.telegramNotiCustomerSent
+        ? 'Customer + Admin Sent'
+        : r.telegramNotiAdminSent
+        ? 'Admin Sent'
+        : r.telegramClicked
+        ? 'Manual Telegram'
+        : 'App Only';
       return [
         `"${r.cleanDate}"`,
+        `"${r.title || 'Campaign'}"`,
+        `"${r.promoCode || `PROMO-${r.discountPercent}`}"`,
         `"${r.phone}"`,
-        `"${linkedB?.name || '-'}"`,
+        `"${r.customerName || linkedB?.name || '-'}"`,
         `${r.discountPercent}%`,
         `"${statusText}"`,
+        `"${botStatus}"`,
         `"${linkedB ? linkedB.status.toUpperCase() : 'No Booking'}"`,
         `"${linkedB?.txId || '-'}"`,
-        `"${r.telegramClicked ? 'Telegram' : 'App Only'}"`,
       ];
     });
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -1821,6 +2227,34 @@ export function AdminCampaignsWorkspace({
             </div>
           </div>
 
+          {/* 1-Click Ready-Made Christmas Santa Campaign Installer (shown only if not yet in saved cards) */}
+          {!hasChristmasSantaCard && (
+            <div className="bg-gradient-to-r from-[#7f1d1d] via-[#123524] to-[#0B2419] rounded-2xl p-4 text-white border border-[#D4AF37]/40 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start sm:items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/20 border border-[#D4AF37]/50 flex items-center justify-center text-[#FDE68A] shrink-0">
+                  <Snowflake className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs sm:text-sm font-black text-[#FDE68A]">
+                    Christmas Santa Gift Sack Campaign (အသင့်သုံး)
+                  </div>
+                  <p className="text-[11px] text-gray-200 mt-0.5 leading-snug">
+                    10% (55%) · 15% (23%) · 20% (14%) · 30% (7%) · 50% (1% — 1 in 100) + Telegram Bot Auto-Noti
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={savingPromoId === 'add_christmas'}
+                onClick={handleQuickAddChristmasSantaCampaign}
+                className="w-full sm:w-auto min-h-[42px] px-4 py-2 rounded-xl bg-[#D4AF37] hover:bg-[#c59b27] text-[#0B2419] text-xs font-black shrink-0 transition flex items-center justify-center gap-1.5"
+              >
+                <Gift className="w-4 h-4 shrink-0" />
+                <span>{savingPromoId === 'add_christmas' ? 'Adding...' : 'Christmas Campaign ထည့်သွင်းမည်'}</span>
+              </button>
+            </div>
+          )}
+
           {/* Empty State for Selected Filter */}
           {filteredCards.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-200/90 p-8 text-center space-y-3">
@@ -2072,6 +2506,27 @@ export function AdminCampaignsWorkspace({
                           </div>
                         </div>
 
+                        {/* Mini Game Telegram Bot Integration Strip */}
+                        {pType === 'mini_game' && (
+                          <div className="pt-1 flex items-center justify-between gap-2">
+                            <div className="text-[11px] text-gray-600 font-semibold">
+                              Telegram Bot Winner Noti:{' '}
+                              <span className={card.telegramAutoNotify !== false ? 'text-emerald-700 font-bold' : 'text-gray-400'}>
+                                {card.telegramAutoNotify !== false ? 'ON' : 'OFF'}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={broadcastingCardId === card.id}
+                              onClick={() => handleBroadcastCampaignCard(card)}
+                              className="min-h-[34px] px-3 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-[11px] font-bold flex items-center gap-1.5 transition shrink-0"
+                            >
+                              <Send className="w-3 h-3 shrink-0" />
+                              <span>{broadcastingCardId === card.id ? 'Sending...' : 'Telegram Broadcast'}</span>
+                            </button>
+                          </div>
+                        )}
+
                         {/* Secondary Card Actions: Edit, Duplicate, Delete */}
                         <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-200/80">
                           <div className="flex items-center gap-1">
@@ -2202,6 +2657,57 @@ export function AdminCampaignsWorkspace({
               </div>
             )}
 
+            {/* Campaign & Reward Tier Filters */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              {availableCampaignTitles.length > 1 && (
+                <select
+                  value={campaignFilter}
+                  onChange={(e) => setCampaignFilter(e.target.value)}
+                  className="min-h-[38px] px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 outline-none focus:border-[#123524]"
+                >
+                  <option value="all">All Campaigns</option>
+                  {availableCampaignTitles.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                {(['all', 50, 30, 20, 15, 10] as const).map((tier) => (
+                  <button
+                    key={String(tier)}
+                    type="button"
+                    onClick={() => setTierFilter(tier)}
+                    className={`min-h-[36px] px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition tabular-nums ${
+                      tierFilter === tier
+                        ? 'bg-[#0B2419] text-[#D4AF37]'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {tier === 'all' ? 'All Tiers' : tier === 50 ? '50% Jackpot' : `${tier}% OFF`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Live Drop-Rate / Tier Distribution Bar */}
+            {summaryStats.total > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-600 bg-gray-50/90 border border-gray-200/80 rounded-xl px-3.5 py-2 tabular-nums">
+                <span className="font-bold text-[#123524]">Prize Distribution:</span>
+                {[10, 15, 20, 30, 50].map((pct) => {
+                  const cnt = summaryStats.tierCounts[pct] || 0;
+                  const share = summaryStats.total > 0 ? ((cnt / summaryStats.total) * 100).toFixed(1) : '0.0';
+                  return (
+                    <span key={pct} className={pct === 50 && cnt > 0 ? 'font-black text-amber-700' : 'font-semibold'}>
+                      {pct}%: {cnt} ({share}%)
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Status Filter KPI Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
               {(
@@ -2263,9 +2769,12 @@ export function AdminCampaignsWorkspace({
                   <div className="divide-y divide-gray-100 md:hidden">
                     {group.items.map((r) => {
                       const linkedBooking = r.completedBooking || r.activePendingBooking;
+                      const isJackpot = Number(r.discountPercent) >= 50;
                       const statusLabel =
                         r.rewardStatus === 'used_completed'
-                          ? 'သုံးပြီးပြီ'
+                          ? r.manualRedeemed
+                            ? 'သုံးပြီးပြီ (Manual)'
+                            : 'သုံးပြီးပြီ'
                           : r.rewardStatus === 'active_unused'
                           ? 'Active (မသုံးရသေး)'
                           : 'သက်တမ်းကုန်';
@@ -2280,13 +2789,31 @@ export function AdminCampaignsWorkspace({
                         <div key={r.id} className="p-4 space-y-2.5">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="text-sm font-black text-gray-900 font-mono tabular-nums">{r.phone}</div>
+                              <div className="text-sm font-black text-gray-900 font-mono tabular-nums flex items-center gap-1.5">
+                                <span>{r.phone}</span>
+                                {isJackpot && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                              </div>
                               <div className="text-[11px] text-gray-500 truncate mt-0.5">
-                                {linkedBooking?.name || 'Guest Winner'} · {r.telegramClicked ? 'Telegram' : 'App'}
+                                {r.customerName || linkedBooking?.name || 'Guest Winner'} ·{' '}
+                                <span className="font-mono font-semibold text-gray-700">
+                                  {r.promoCode || `PROMO-${r.discountPercent}`}
+                                </span>
+                              </div>
+                              <div className="text-[10.5px] text-gray-400 truncate mt-0.5">
+                                {r.title || 'Campaign'}
+                                {r.telegramNotiCustomerSent
+                                  ? ' · Bot Voucher Sent'
+                                  : r.telegramNotiAdminSent
+                                  ? ' · Admin Notified'
+                                  : ''}
                               </div>
                             </div>
                             <div className="text-right shrink-0">
-                              <div className="text-base font-black text-[#123524] tabular-nums">
+                              <div
+                                className={`text-base font-black tabular-nums ${
+                                  isJackpot ? 'text-amber-600' : 'text-[#123524]'
+                                }`}
+                              >
                                 {r.discountPercent}% OFF
                               </div>
                               <div className={`text-[11px] font-bold ${statusColor}`}>{statusLabel}</div>
@@ -2302,7 +2829,7 @@ export function AdminCampaignsWorkspace({
                             </div>
                           )}
 
-                          <div className="flex items-center gap-2 pt-0.5">
+                          <div className="flex flex-wrap items-center gap-2 pt-0.5">
                             {r.activeBookingNeedsDiscount && r.activePendingBooking && (
                               <button
                                 type="button"
@@ -2316,13 +2843,37 @@ export function AdminCampaignsWorkspace({
                               </button>
                             )}
 
+                            {!r.completedBooking && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleManualRedeemed(r)}
+                                className={`min-h-[40px] px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                                  r.manualRedeemed
+                                    ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                                }`}
+                              >
+                                {r.manualRedeemed ? 'Undo Used' : 'Mark Used'}
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              disabled={sendingWinnerId === r.id}
+                              onClick={() => handleSendWinnerBotVoucher(r)}
+                              className="min-h-[40px] px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold flex items-center gap-1.5 transition"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>{sendingWinnerId === r.id ? 'Sending...' : 'Bot Voucher'}</span>
+                            </button>
+
                             <button
                               type="button"
                               onClick={() => handleContactUser(r.phone, r.discountPercent)}
-                              className="min-h-[40px] px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold flex items-center gap-1.5 transition"
+                              aria-label="Open Telegram Chat"
+                              className="min-h-[40px] min-w-[40px] rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center transition"
                             >
-                              <MessageCircle className="w-3.5 h-3.5" />
-                              <span>Telegram</span>
+                              <MessageCircle className="w-4 h-4" />
                             </button>
 
                             {adminRole === 'super_admin' && (
@@ -2347,6 +2898,7 @@ export function AdminCampaignsWorkspace({
                       <thead>
                         <tr className="border-b border-gray-100 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                           <th className="py-3 px-4">Phone / Customer</th>
+                          <th className="py-3 px-4">Campaign & Code</th>
                           <th className="py-3 px-4">Discount</th>
                           <th className="py-3 px-4">Status</th>
                           <th className="py-3 px-4">Booking Link</th>
@@ -2356,20 +2908,43 @@ export function AdminCampaignsWorkspace({
                       <tbody className="divide-y divide-gray-100 text-xs">
                         {group.items.map((r) => {
                           const linkedBooking = r.completedBooking || r.activePendingBooking;
+                          const isJackpot = Number(r.discountPercent) >= 50;
                           return (
                             <tr key={r.id} className="hover:bg-gray-50/70 transition">
                               <td className="py-3 px-4">
-                                <div className="font-mono font-bold text-gray-900 tabular-nums">{r.phone}</div>
+                                <div className="font-mono font-bold text-gray-900 tabular-nums flex items-center gap-1.5">
+                                  <span>{r.phone}</span>
+                                  {isJackpot && <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                                </div>
                                 <div className="text-[11px] text-gray-500">
-                                  {linkedBooking?.name || 'Guest Winner'} · {r.telegramClicked ? 'Telegram' : 'App'}
+                                  {r.customerName || linkedBooking?.name || 'Guest Winner'}
+                                  {r.telegramNotiCustomerSent
+                                    ? ' · Bot Sent'
+                                    : r.telegramNotiAdminSent
+                                    ? ' · Admin Notified'
+                                    : ''}
                                 </div>
                               </td>
-                              <td className="py-3 px-4 font-black text-[#123524] text-sm tabular-nums">
+                              <td className="py-3 px-4">
+                                <div className="font-mono font-bold text-[#123524] tabular-nums">
+                                  {r.promoCode || `PROMO-${r.discountPercent}`}
+                                </div>
+                                <div className="text-[11px] text-gray-500 truncate max-w-[190px]">
+                                  {r.title || 'Campaign'}
+                                </div>
+                              </td>
+                              <td
+                                className={`py-3 px-4 font-black text-sm tabular-nums ${
+                                  isJackpot ? 'text-amber-600' : 'text-[#123524]'
+                                }`}
+                              >
                                 {r.discountPercent}% OFF
                               </td>
                               <td className="py-3 px-4 font-bold">
                                 {r.rewardStatus === 'used_completed' ? (
-                                  <span className="text-emerald-700">သုံးပြီးပြီ</span>
+                                  <span className="text-emerald-700">
+                                    {r.manualRedeemed ? 'သုံးပြီးပြီ (Manual)' : 'သုံးပြီးပြီ'}
+                                  </span>
                                 ) : r.rewardStatus === 'active_unused' ? (
                                   <span className="text-amber-700">Active (မသုံးရသေး)</span>
                                 ) : (
@@ -2379,7 +2954,7 @@ export function AdminCampaignsWorkspace({
                               <td className="py-3 px-4">
                                 {linkedBooking ? (
                                   <div>
-                                    <div className="font-semibold text-gray-800 truncate max-w-[200px]">
+                                    <div className="font-semibold text-gray-800 truncate max-w-[180px]">
                                       {linkedBooking.service}
                                     </div>
                                     <div className="text-[11px] text-gray-500 font-mono tabular-nums">
@@ -2402,12 +2977,35 @@ export function AdminCampaignsWorkspace({
                                       Apply {r.discountPercent}%
                                     </button>
                                   )}
+                                  {!r.completedBooking && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleManualRedeemed(r)}
+                                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold ${
+                                        r.manualRedeemed
+                                          ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                                      }`}
+                                    >
+                                      {r.manualRedeemed ? 'Undo' : 'Mark Used'}
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    disabled={sendingWinnerId === r.id}
+                                    onClick={() => handleSendWinnerBotVoucher(r)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-[11px] font-bold inline-flex items-center gap-1"
+                                  >
+                                    <Send className="w-3 h-3" />
+                                    <span>{sendingWinnerId === r.id ? '...' : 'Bot'}</span>
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => handleContactUser(r.phone, r.discountPercent)}
-                                    className="px-2.5 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-[11px] font-bold"
+                                    className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700"
+                                    title="Direct Telegram Chat"
                                   >
-                                    Telegram
+                                    <MessageCircle className="w-3.5 h-3.5" />
                                   </button>
                                   {adminRole === 'super_admin' && (
                                     <button

@@ -2834,6 +2834,7 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
         for (const docSnap of campaignSnap.docs) {
           try {
             const cData = docSnap.data();
+            if (cData.manualRedeemed === true) continue;
             const rawPhone = String(cData.phone || '').trim();
             if (rawPhone === cleanInput || (targetNorm.length >= 7 && normalizePhone(rawPhone) === targetNorm)) {
               const rawRecDate = String(cData.date || '').trim();
@@ -2845,9 +2846,10 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
                   })()
                 : '';
+              const recValidity = Math.max(1, Number(cData.rewardValidityDays) || validityDays);
               const recMs = cleanRecDate ? new Date(`${cleanRecDate}T00:00:00`).getTime() : NaN;
               const diffDays = isNaN(recMs) ? 999 : Math.floor((todayPosMs - recMs) / (1000 * 60 * 60 * 24));
-              if (diffDays < 0 || diffDays >= validityDays) continue;
+              if (diffDays < 0 || diffDays >= recValidity) continue;
               const wonPct = Number(cData.discountPercent) || 0;
               const cTime = Number(cData.createdAt) || 0;
               if (wonPct > 0 && (!latestCampaignWin || cTime >= latestCampaignWin.createdAt)) {

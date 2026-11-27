@@ -5,7 +5,7 @@ import { db, patchFirestoreDocumentFast, reconnectFirestoreNetwork } from '../fi
 import { encryptText, decryptText } from '../security';
 
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert, PartyPopper, Bell, Send, RefreshCw} from 'lucide-react';
-import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice, resolvePromotionType, getCategoryDiscountPercent } from '../shared';
+import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice, resolvePromotionType, resolveMiniGameStyle, getCategoryDiscountPercent } from '../shared';
 
 import { useAppStore } from '../AppDataContext';
 import ThadingyutCampaign from './ThadingyutCampaign';
@@ -3520,11 +3520,18 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
                         ? `/?mode=campaign&campaign=${encodeURIComponent(cid)}`
                         : '/?mode=campaign';
                     }}
-                    className="w-full sm:w-auto min-h-[42px] px-4 py-2 rounded-xl bg-[#D4AF37] hover:bg-[#c59b27] text-[#0B2419] font-black text-xs shadow transition flex items-center justify-center gap-1.5"
+                    className={`w-full sm:w-auto min-h-[42px] px-4 py-2 rounded-xl font-black text-xs shadow transition flex items-center justify-center gap-1.5 ${
+                      resolveMiniGameStyle(appData.promotion) === 'christmas_santa'
+                        ? 'bg-gradient-to-r from-[#B91C1C] to-[#991B1B] hover:from-[#DC2626] hover:to-[#B91C1C] text-[#FDE68A] border border-[#D4AF37]/70'
+                        : 'bg-[#D4AF37] hover:bg-[#c59b27] text-[#0B2419]'
+                    }`}
                   >
-                    <Gift className="w-4 h-4" />
+                    <Gift className="w-4 h-4 shrink-0" />
                     <span>
-                      ကံစမ်းမည် (Up to{' '}
+                      {resolveMiniGameStyle(appData.promotion) === 'christmas_santa'
+                        ? 'Santa ထံမှ လက်ဆောင်တောင်းမည်'
+                        : 'ကံစမ်းမည်'}{' '}
+                      (Up to{' '}
                       {Array.isArray((appData.promotion as any)?.gameRewardTiers) &&
                       (appData.promotion as any).gameRewardTiers.length > 0
                         ? Math.max(...(appData.promotion as any).gameRewardTiers.map(Number))

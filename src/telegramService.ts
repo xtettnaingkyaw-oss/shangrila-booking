@@ -3374,3 +3374,243 @@ export const notifyServiceOverdueReminder = async (
 
   return { adminSent, staffSent };
 };
+
+// ==========================================
+// 11. CHRISTMAS SANTA & MINI GAME CAMPAIGN WINNER NOTIFICATIONS
+// ==========================================
+
+export interface CampaignWinnerNotificationPayload {
+  campaignId?: string;
+  campaignTitle: string;
+  gameStyle?: 'christmas_santa' | 'lantern_catch';
+  customerName?: string;
+  customerPhone: string;
+  customerChatId?: string;
+  discountPercent: number;
+  promoCode: string;
+  rewardValidityDays?: number;
+  outcallRewardCap?: number;
+  winDate: string;
+  sendToAdmin?: boolean;
+  sendToCustomer?: boolean;
+}
+
+export const notifyCampaignWinnerToTelegram = async (
+  payload: CampaignWinnerNotificationPayload
+): Promise<{
+  adminSent: boolean;
+  customerSent: boolean;
+  customerChatId?: string | null;
+  error?: string;
+}> => {
+  try {
+    const config = await getTelegramConfig();
+    if (!config.enabled || !config.botToken) {
+      return { adminSent: false, customerSent: false, error: 'Telegram Bot is disabled or missing token' };
+    }
+
+    const isChristmas = payload.gameStyle === 'christmas_santa';
+    const isJackpot = Number(payload.discountPercent) >= 50;
+    const cleanPhone = normalizePhone(payload.customerPhone) || safeDecryptValue(payload.customerPhone || '');
+    const cleanName = safeDecryptValue(payload.customerName || '').trim() || 'VIP Guest';
+    const validityDays = Math.max(1, Number(payload.rewardValidityDays) || 1);
+    const outcallCap = Math.max(0, Number(payload.outcallRewardCap ?? 10));
+    const cleanUrl = (config.webAppUrl || 'https://www.shangrilamenretreat.online').replace(/\/$/, '');
+
+    const nowTimeStr = new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    let adminSent = false;
+    let customerSent = false;
+
+    // 1. Auto-Notify Admin Group
+    if (payload.sendToAdmin !== false && config.adminGroupChatId) {
+      const adminHeader = isJackpot
+        ? `🚨👑 <b>JACKPOT ${payload.discountPercent}% OFF WINNER!</b> 🎄`
+        : isChristmas
+        ? `🎅🎁 <b>CHRISTMAS SANTA GIFT WINNER</b>`
+        : `🎉 <b>MINI GAME CAMPAIGN WINNER</b>`;
+
+      const adminHtml = [
+        adminHeader,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `🎄 <b>Campaign:</b> ${escapeHtml(payload.campaignTitle)}`,
+        `👤 <b>Customer:</b> ${escapeHtml(cleanName)}`,
+        `📞 <b>ဖုန်းနံပါတ်:</b> <code>${escapeHtml(cleanPhone)}</code>`,
+        `🏆 <b>ရရှိသည့်ဆု:</b> <b>${payload.discountPercent}% OFF</b>${isJackpot ? ' (RARE 1% JACKPOT!)' : ''}`,
+        `🎟 <b>Promo Code:</b> <code>${escapeHtml(payload.promoCode)}</code>`,
+        `📅 <b>ရက်စွဲ / အချိန်:</b> ${escapeHtml(payload.winDate)} · ${escapeHtml(nowTimeStr)}`,
+        `⏳ <b>သက်တမ်း:</b> ${validityDays === 1 ? '1 Day (24 Hrs)' : `${validityDays} Days`} · Outcall Cap: ${outcallCap}%`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `📌 <i>Admin App ၏ Promotion & Campaigns → Game Winners Tab တွင် စီမံစစ်ဆေးနိုင်ပါသည်။</i>`,
+      ].join('\n');
+
+      const res = await sendRawTelegramMessage(
+        config.botToken,
+        config.adminGroupChatId,
+        adminHtml,
+        undefined,
+        isJackpot ? 'CAMPAIGN_JACKPOT_WINNER' : 'CAMPAIGN_WINNER_ADMIN'
+      );
+      adminSent = res.ok;
+    }
+
+    // 2. Auto-Notify Customer Direct via Telegram Bot (if Chat ID is linked)
+    let resolvedCustomerChatId: string | null = null;
+    if (payload.sendToCustomer !== false) {
+      resolvedCustomerChatId = await findCustomerChatId(
+        cleanPhone,
+        payload.customerChatId,
+        cleanName
+      );
+
+      if (resolvedCustomerChatId) {
+        const customerHeader = isJackpot
+          ? `🎅👑 <b>MERRY CHRISTMAS! GRAND JACKPOT ${payload.discountPercent}% OFF!</b> 🎄✨`
+          : isChristmas
+          ? `🎅🎁 <b>Santa ဖိုးဖိုးကြီးထံမှ Christmas လက်ဆောင် ရရှိပါပြီ!</b>`
+          : `🎉 <b>ဂုဏ်ယူပါတယ်! အထူး Discount ဆုမဲ ရရှိပါပြီ</b>`;
+
+        const customerHtml = [
+          customerHeader,
+          `━━━━━━━━━━━━━━━━━━━━`,
+          `မင်္ဂလာပါ <b>${escapeHtml(cleanName)}</b> ခင်ဗျာ၊`,
+          ``,
+          `🎁 <b>ရရှိထားသော လက်ဆောင်:</b> <b>${payload.discountPercent}% OFF</b>`,
+          `🎟 <b>Promo Code:</b> <code>${escapeHtml(payload.promoCode)}</code>`,
+          `🎄 <b>Campaign:</b> ${escapeHtml(payload.campaignTitle)}`,
+          `⏳ <b>အသုံးပြုနိုင်မည့် သက်တမ်း:</b> ${validityDays === 1 ? 'ယနေ့တစ်ရက်တည်း (24 Hours)' : `${validityDays} ရက်အတွင်း`}`,
+          `━━━━━━━━━━━━━━━━━━━━`,
+          `✨ App မှ Booking တင်ချိန်တွင် အလိုအလျောက် လျှော့ပေးမည်ဖြစ်ပြီး ဆိုင်သို့ Walk-in လာရောက်ပါက ဤ Voucher ကို ပြသ၍ အသုံးပြုနိုင်ပါသည်။`,
+          ``,
+          `🌿 <i>The Shangri-La Men's Retreat</i>`,
+        ].join('\n');
+
+        const replyMarkup = {
+          inline_keyboard: [
+            [
+              {
+                text: `📅 ယခုပဲ Booking တင်မည် (${payload.discountPercent}% OFF)`,
+                web_app: { url: `${cleanUrl}/?tab=booking` },
+              },
+            ],
+            [
+              {
+                text: '👥 ဝန်ထမ်းပုံကြည့်ရန်',
+                web_app: { url: `${cleanUrl}/?tab=therapists` },
+              },
+            ],
+          ],
+        };
+
+        const cRes = await sendRawTelegramMessage(
+          config.botToken,
+          resolvedCustomerChatId,
+          customerHtml,
+          replyMarkup,
+          'CAMPAIGN_WINNER_CUSTOMER'
+        );
+        customerSent = cRes.ok;
+      }
+    }
+
+    return {
+      adminSent,
+      customerSent,
+      customerChatId: resolvedCustomerChatId,
+    };
+  } catch (err: any) {
+    console.warn('notifyCampaignWinnerToTelegram warning:', err);
+    return { adminSent: false, customerSent: false, error: err?.message || 'Failed' };
+  }
+};
+
+export const broadcastCampaignAnnouncementToTelegram = async (params: {
+  campaignId: string;
+  campaignTitle: string;
+  description?: string;
+  gameStyle?: 'christmas_santa' | 'lantern_catch';
+  maxDiscountPercent?: number;
+  endDate?: string;
+}): Promise<{ totalTargeted: number; successCount: number; failedCount: number; error?: string }> => {
+  const config = await getTelegramConfig();
+  if (!config.enabled || !config.botToken) {
+    return { totalTargeted: 0, successCount: 0, failedCount: 0, error: 'Telegram Bot is disabled or missing token' };
+  }
+
+  const allSubscribers = await getCustomerTelegramSubscribers();
+  const activeSubscribers = allSubscribers.filter(
+    (s) => s.subscribed !== false && isPrivateUserChatId(s.chatId)
+  );
+
+  if (activeSubscribers.length === 0) {
+    return { totalTargeted: 0, successCount: 0, failedCount: 0, error: 'Telegram Subscriber မရှိသေးပါ။' };
+  }
+
+  const cleanUrl = (config.webAppUrl || 'https://www.shangrilamenretreat.online').replace(/\/$/, '');
+  const isChristmas = params.gameStyle === 'christmas_santa';
+  const maxPct = params.maxDiscountPercent || 50;
+  const playUrl = `${cleanUrl}/?mode=campaign&campaign=${encodeURIComponent(params.campaignId)}`;
+
+  const msgHtml = [
+    isChristmas
+      ? `🎅🎄 <b>${escapeHtml(params.campaignTitle)}</b> ✨`
+      : `🎁 <b>${escapeHtml(params.campaignTitle)}</b>`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    params.description
+      ? escapeHtml(params.description)
+      : isChristmas
+      ? `Santa ဖိုးဖိုးကြီး၏ လက်ဆောင်အိတ်ကြီးထဲမှ 10% မှ ${maxPct}% OFF အထိ အထူး Christmas လက်ဆောင်များကို ယခုပဲ ကံစမ်းရယူလိုက်ပါ!`
+      : `Mini Game ကစားပြီး ${maxPct}% OFF အထိ အထူးလျှော့ဈေးများ ရယူလိုက်ပါ!`,
+    params.endDate ? `\n📅 <b>ကာလ:</b> ${escapeHtml(params.endDate)} အထိ` : '',
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `👇 အောက်ပါခလုတ်ကိုနှိပ်ပြီး ချက်ချင်း ကံစမ်းလိုက်ပါ!`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const replyMarkup = {
+    inline_keyboard: [
+      [
+        {
+          text: isChristmas
+            ? `🎅 Santa ဖိုးဖိုးကြီးထံမှ လက်ဆောင်တောင်းမည် (Up to ${maxPct}%)`
+            : `🎁 ယခုပဲ ကံစမ်းမည် (Up to ${maxPct}% OFF)`,
+          web_app: { url: playUrl },
+        },
+      ],
+      [
+        {
+          text: '📅 Booking တင်ရန်',
+          web_app: { url: `${cleanUrl}/?tab=booking` },
+        },
+      ],
+    ],
+  };
+
+  let successCount = 0;
+  let failedCount = 0;
+
+  for (const sub of activeSubscribers) {
+    const res = await sendRawTelegramMessage(
+      config.botToken,
+      sub.chatId,
+      msgHtml,
+      replyMarkup,
+      'CAMPAIGN_LAUNCH_BROADCAST'
+    );
+    if (res.ok) successCount++;
+    else failedCount++;
+    await new Promise((r) => setTimeout(r, 60));
+  }
+
+  return {
+    totalTargeted: activeSubscribers.length,
+    successCount,
+    failedCount,
+  };
+};
+

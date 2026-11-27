@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, X, Sparkles, Percent, Tag, Calendar, ArrowRight } from 'lucide-react';
-import { AppData, PromotionType, resolvePromotionType } from '../shared';
+import { Gift, X, Sparkles, Percent, Tag, Calendar, ArrowRight, Snowflake } from 'lucide-react';
+import {
+  AppData,
+  MiniGameStyle,
+  PromotionType,
+  resolveMiniGameStyle,
+  resolvePromotionType,
+} from '../shared';
+import santaHeroImg from '../assets/images/christmas_santa_hero_1795782111338.jpg';
 
 const getLocalTodayStr = () => {
   const d = new Date();
@@ -16,6 +23,7 @@ const getLocalTodayStr = () => {
 interface ActivePopupOffer {
   id: string;
   promoType: PromotionType;
+  gameStyle: MiniGameStyle;
   title: string;
   boxTitle: string;
   description?: string;
@@ -24,12 +32,24 @@ interface ActivePopupOffer {
   endDate?: string;
   hotelDiscountPercent: number;
   otherDiscountPercent: number;
+  minGameDiscount: number;
   maxGameDiscount: number;
+  gameRewardTiers: number[];
   categoryEntries: { id: string; title: string; percent: number }[];
 }
 
+const SNOWFLAKES = Array.from({ length: 18 }).map((_, i) => ({
+  id: i,
+  left: 4 + ((i * 19) % 92),
+  size: 4 + (i % 4) * 2.2,
+  duration: 4.5 + (i % 5) * 1.15,
+  delay: (i % 6) * 0.65,
+  opacity: 0.4 + (i % 4) * 0.14,
+}));
+
 export default function ThadingyutPopup({ appData }: { appData: AppData }) {
   const [isVisible, setIsVisible] = useState(false);
+  const [santaImgFailed, setSantaImgFailed] = useState(false);
   const [fallingLanterns, setFallingLanterns] = useState<
     { id: number; left: number; duration: number; size: number; delay: number; opacity: number }[]
   >([]);
@@ -43,7 +63,6 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
 
     const todayStr = getLocalTodayStr();
 
-    // 1. Respect Global All OFF or Popup OFF
     if (
       promo.allOff === true ||
       promo.isActive === false ||
@@ -68,7 +87,6 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
     let source: any = null;
 
     if (Array.isArray(cards) && cards.length > 0) {
-      // If arrived via direct promo link (?promo=<id>), prefer that card if active & valid
       if (requestedPromoId) {
         const directCard = cards.find((c: any) => String(c.id) === requestedPromoId);
         if (directCard && directCard.isPopupActive === true) {
@@ -101,13 +119,16 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
     }
 
     const promoType = resolvePromotionType(source);
+    const gameStyle = resolveMiniGameStyle(source);
+
     const tiers: number[] =
       Array.isArray(source.gameRewardTiers) && source.gameRewardTiers.length > 0
-        ? source.gameRewardTiers.map(Number).filter((n: number) => n > 0)
+        ? [...new Set<number>(source.gameRewardTiers.map(Number).filter((n: number) => n > 0))].sort((a, b) => a - b)
         : Array.isArray(promo.gameRewardTiers) && promo.gameRewardTiers.length > 0
-        ? promo.gameRewardTiers.map(Number).filter((n: number) => n > 0)
+        ? [...new Set<number>(promo.gameRewardTiers.map(Number).filter((n: number) => n > 0))].sort((a, b) => a - b)
         : [10, 15, 20, 30, 50];
-    const maxGameDiscount = tiers.length > 0 ? Math.max(...tiers) : 50;
+    const minGameDiscount = tiers.length > 0 ? tiers[0] : 10;
+    const maxGameDiscount = tiers.length > 0 ? tiers[tiers.length - 1] : 50;
 
     const rawCatMap: Record<string, number> = source.categoryDiscounts || promo.categoryDiscounts || {};
     const categoryEntries: { id: string; title: string; percent: number }[] = [];
@@ -119,7 +140,6 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
           categoryEntries.push({ id: cat.id, title: cat.title, percent: pct });
         }
       }
-      // Fallback if custom category keys exist
       if (categoryEntries.length === 0) {
         for (const [k, v] of Object.entries(rawCatMap)) {
           if (Number(v) > 0) {
@@ -132,15 +152,24 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
     return {
       id: source.id || promo.activeCampaignId || '',
       promoType,
+      gameStyle,
       title: source.campaignTitle || source.title || promo.campaignTitle || 'အထူးပရိုမိုးရှင်း အစီအစဉ်',
       boxTitle: source.boxTitle || promo.boxTitle || 'SPECIAL PROMO',
       description: source.description || promo.description || '',
-      badgeText: source.badgeText || (promoType === 'mini_game' ? 'MINI GAME EVENT' : 'SPECIAL OFFER'),
+      badgeText:
+        source.badgeText ||
+        (promoType === 'mini_game'
+          ? gameStyle === 'christmas_santa'
+            ? 'MERRY CHRISTMAS GIFT'
+            : 'MINI GAME EVENT'
+          : 'SPECIAL OFFER'),
       startDate: source.startDate || promo.startDate,
       endDate: source.endDate || promo.endDate,
       hotelDiscountPercent: Number(source.hotelDiscountPercent ?? promo.hotelDiscountPercent) || 0,
       otherDiscountPercent: Number(source.otherDiscountPercent ?? promo.otherDiscountPercent) || 0,
+      minGameDiscount,
       maxGameDiscount,
+      gameRewardTiers: tiers,
       categoryEntries,
     };
   };
@@ -166,11 +195,12 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
       }, delay);
       return () => clearTimeout(timer);
     }
-  }, [appData, activeOffer?.id, activeOffer?.title, activeOffer?.promoType]);
+  }, [appData, activeOffer?.id, activeOffer?.title, activeOffer?.promoType, activeOffer?.gameStyle]);
 
-  // Ambient lanterns only for Mini Game popup
   useEffect(() => {
-    if (!isVisible || !activeOffer || activeOffer.promoType !== 'mini_game') return;
+    if (!isVisible || !activeOffer || activeOffer.promoType !== 'mini_game' || activeOffer.gameStyle !== 'lantern_catch') {
+      return;
+    }
 
     const initial = Array.from({ length: 9 }).map((_, i) => ({
       id: i,
@@ -178,15 +208,14 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
       duration: 4 + Math.random() * 3,
       size: 0.85 + Math.random() * 0.65,
       delay: Math.random() * 2.5,
-      opacity: 0.45 + Math.random() * 0.45
+      opacity: 0.45 + Math.random() * 0.45,
     }));
     setFallingLanterns(initial);
-  }, [isVisible, activeOffer?.id, activeOffer?.promoType]);
+  }, [isVisible, activeOffer?.id, activeOffer?.promoType, activeOffer?.gameStyle]);
 
   const handleClose = () => {
     sessionStorage.setItem('shangrila_popup_dismissed', 'true');
     setIsVisible(false);
-    // Clean ?promo= param so reload doesn't repeatedly force popup
     const sp = new URLSearchParams(window.location.search);
     if (sp.has('promo')) {
       sp.delete('promo');
@@ -197,7 +226,7 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
 
   const handlePlayNowClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     const button = e.currentTarget;
-    button.style.transform = 'scale(0.95)';
+    button.style.transform = 'scale(0.96)';
 
     const circle = document.createElement('span');
     const diameter = Math.max(button.clientWidth, button.clientHeight);
@@ -221,13 +250,196 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
         ? `/?mode=campaign&campaign=${encodeURIComponent(activeOffer.id)}`
         : '/?mode=campaign';
       window.location.href = targetUrl;
-    }, 320);
+    }, 280);
   };
 
   if (!isVisible || !activeOffer) return null;
 
   // ============================================================================
-  // VIEW A: MINI GAME CAMPAIGN POPUP (Type 2)
+  // VIEW A1: CHRISTMAS SANTA GIFT CAMPAIGN POPUP
+  // ============================================================================
+  if (activeOffer.promoType === 'mini_game' && activeOffer.gameStyle === 'christmas_santa') {
+    return (
+      <div
+        className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-[3px] flex items-center justify-center p-4 sm:p-5 animate-fade-in"
+        onClick={handleClose}
+      >
+        <style>{`
+          @keyframes santaPopupSnow {
+            0% { transform: translateY(-16px) translateX(0px); opacity: 0; }
+            15% { opacity: var(--snow-op, 0.7); }
+            85% { opacity: var(--snow-op, 0.7); }
+            100% { transform: translateY(420px) translateX(16px); opacity: 0; }
+          }
+          .santa-popup-flake {
+            position: absolute;
+            top: 0;
+            border-radius: 9999px;
+            background: #ffffff;
+            pointer-events: none;
+            animation-name: santaPopupSnow;
+            animation-timing-function: linear;
+            animation-iteration-count: infinite;
+          }
+          @keyframes santaPortraitFloat {
+            0%, 100% { transform: translateY(0px) rotate(-0.8deg); }
+            50% { transform: translateY(-4px) rotate(0.8deg); }
+          }
+          .santa-portrait-float {
+            animation: santaPortraitFloat 3.6s ease-in-out infinite;
+          }
+          .popup-ripple-effect {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.55);
+            transform: scale(0);
+            animation: popupRipple 0.5s ease-out;
+            pointer-events: none;
+          }
+          @keyframes popupRipple {
+            to { transform: scale(4); opacity: 0; }
+          }
+          @keyframes goldShimmer {
+            0% { transform: translateX(-120%) skewX(-15deg); }
+            100% { transform: translateX(220%) skewX(-15deg); }
+          }
+          .btn-shimmer-sweep {
+            animation: goldShimmer 2.8s infinite;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .santa-popup-flake, .santa-portrait-float, .btn-shimmer-sweep { animation: none !important; }
+          }
+        `}</style>
+
+        <div
+          className="relative w-full max-w-[365px] rounded-[2rem] p-[1.5px] bg-gradient-to-b from-[#D4AF37] via-[#991b1b]/80 to-[#D4AF37]/80 shadow-[0_24px_65px_rgba(0,0,0,0.8)] animate-slide-up overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="relative w-full rounded-[calc(2rem-1.5px)] bg-gradient-to-b from-[#0E2E20] via-[#0B2419] to-[#1A0A0D] px-5 pt-6 pb-5 text-center overflow-hidden">
+            {/* Soft Crimson & Gold Festive Ambient Glow */}
+            <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-48 bg-gradient-to-b from-[#991b1b]/45 via-[#D4AF37]/20 to-transparent rounded-full blur-2xl pointer-events-none" />
+
+            {/* Gentle Falling Snowflakes */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+              {SNOWFLAKES.map((f) => (
+                <span
+                  key={f.id}
+                  className="santa-popup-flake"
+                  style={{
+                    left: `${f.left}%`,
+                    width: `${f.size}px`,
+                    height: `${f.size}px`,
+                    animationDuration: `${f.duration}s`,
+                    animationDelay: `${f.delay}s`,
+                    ['--snow-op' as any]: f.opacity,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={handleClose}
+              aria-label="Close"
+              className="absolute top-3.5 right-3.5 z-30 w-9 h-9 rounded-full bg-black/35 hover:bg-black/55 text-amber-100 hover:text-white flex items-center justify-center transition border border-[#D4AF37]/35 active:scale-95"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Top Kicker */}
+            <div className="relative z-10 flex items-center justify-center gap-1.5 text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.22em] mb-3">
+              <Snowflake className="w-3 h-3" />
+              <span>{activeOffer.badgeText || 'MERRY CHRISTMAS GIFT'}</span>
+              <Snowflake className="w-3 h-3" />
+            </div>
+
+            {/* Bespoke Santa Hero Portrait */}
+            <div className="relative z-10 mx-auto w-36 h-36 sm:w-40 sm:h-40 rounded-3xl p-[2px] bg-gradient-to-b from-[#D4AF37] via-amber-200/70 to-[#991b1b] shadow-[0_12px_35px_rgba(0,0,0,0.65)] mb-4 santa-portrait-float">
+              <div className="w-full h-full rounded-[calc(1.5rem-2px)] overflow-hidden bg-[#0B2419] flex items-center justify-center">
+                {!santaImgFailed ? (
+                  <img
+                    src={santaHeroImg}
+                    alt="Santa Claus with Christmas gift sack"
+                    referrerPolicy="no-referrer"
+                    onError={() => setSantaImgFailed(true)}
+                    className="w-full h-full object-cover scale-[1.12]"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-b from-[#7f1d1d] to-[#0B2419] flex flex-col items-center justify-center text-[#D4AF37]">
+                    <Gift className="w-12 h-12 mb-1" />
+                    <span className="text-[11px] font-black tracking-wider">SANTA GIFT</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Title & Prize Details */}
+            <div className="relative z-10">
+              <h2
+                className="text-lg sm:text-xl font-serif font-extrabold text-[#FDE68A] mb-2 tracking-wide"
+                style={{ lineHeight: '1.5', textWrap: 'balance' }}
+              >
+                {activeOffer.title}
+              </h2>
+
+              <p
+                className="text-xs text-gray-200/95 font-medium mb-3.5 px-1"
+                style={{ lineHeight: '1.7' }}
+              >
+                {activeOffer.description || (
+                  <>
+                    Santa ဖိုးဖိုးကြီး၏ လက်ဆောင်အိတ်ကြီးထဲမှ{' '}
+                    <span className="text-[#FDE68A] font-extrabold">
+                      {activeOffer.minGameDiscount}% မှ {activeOffer.maxGameDiscount}% OFF
+                    </span>{' '}
+                    အထိ Christmas အထူးလက်ဆောင်များ ကံစမ်းရယူလိုက်ပါ။
+                  </>
+                )}
+              </p>
+
+              {/* Clean Unboxed Reward Tier Strip */}
+              <div className="text-[11px] font-mono font-bold text-[#D4AF37] tabular-nums mb-3.5">
+                {activeOffer.gameRewardTiers.map((t) => `${t}%`).join(' · ')} OFF
+              </div>
+
+              {activeOffer.endDate && (
+                <div className="text-[10.5px] text-emerald-200/80 font-mono mb-4 flex items-center justify-center gap-1.5 tabular-nums">
+                  <Calendar className="w-3 h-3 text-[#D4AF37]" />
+                  <span>
+                    {activeOffer.startDate || ''} — {activeOffer.endDate}
+                  </span>
+                </div>
+              )}
+
+              {/* Primary CTA -> Navigates straight into Santa Gift Sack Campaign */}
+              <button
+                type="button"
+                onClick={handlePlayNowClick}
+                className="relative overflow-hidden w-full min-h-[48px] px-4 py-3 bg-gradient-to-r from-[#B91C1C] via-[#991B1B] to-[#7F1D1D] hover:from-[#DC2626] hover:to-[#991B1B] text-[#FDE68A] rounded-xl font-black text-xs sm:text-sm shadow-[0_8px_24px_rgba(153,27,27,0.55)] border border-[#D4AF37]/75 transition-all duration-200 flex items-center justify-center gap-2 tracking-wide"
+              >
+                <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/25 to-transparent btn-shimmer-sweep pointer-events-none" />
+                <Gift className="w-4 h-4 relative z-10 text-[#D4AF37] shrink-0" />
+                <span className="relative z-10">Santa ဖိုးဖိုးကြီးထံမှ လက်ဆောင်တောင်းမည်</span>
+                <ArrowRight className="w-4 h-4 relative z-10 shrink-0" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClose}
+                className="mt-2.5 text-[11px] font-semibold text-gray-400 hover:text-[#D4AF37] transition py-1.5 px-4"
+              >
+                နောက်မှ လက်ဆောင်တောင်းမည်
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // VIEW A2: LANTERN FESTIVAL MINI GAME POPUP
   // ============================================================================
   if (activeOffer.promoType === 'mini_game') {
     return (
@@ -285,7 +497,7 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
               className="absolute top-0 left-0 right-0 h-44 overflow-hidden pointer-events-none z-0"
               style={{
                 WebkitMaskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)',
-                maskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)'
+                maskImage: 'linear-gradient(to bottom, black 45%, transparent 100%)',
               }}
             >
               {fallingLanterns.map((l) => (
@@ -297,7 +509,7 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
                     animationDuration: `${l.duration}s`,
                     animationDelay: `${l.delay}s`,
                     fontSize: `${l.size}rem`,
-                    ['--max-op' as any]: l.opacity
+                    ['--max-op' as any]: l.opacity,
                   }}
                 >
                   🏮
@@ -426,7 +638,6 @@ export default function ThadingyutPopup({ appData }: { appData: AppData }) {
               <p className="text-xs text-gray-300 leading-relaxed mb-4">{activeOffer.description}</p>
             )}
 
-            {/* Offer Details Breakdown */}
             {isCategoryType ? (
               <div className="my-4 bg-black/25 border border-white/10 rounded-2xl divide-y divide-white/10 text-left overflow-hidden">
                 {activeOffer.categoryEntries.length > 0 ? (
