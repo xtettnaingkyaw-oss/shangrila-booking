@@ -712,13 +712,13 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'
         } ${isDesktopSidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}`}
       >
-        {/* 1. Brand Header inside Sidebar (iOS Safe-Area Top Protected) */}
+        {/* 1. Brand Header inside Sidebar (iOS 26 Safe-Area + Blur Clearance Protected) */}
         <div
-          className="px-4 bg-gradient-to-r from-[#123524] to-[#0B2419] border-b border-[#C8A951]/25 flex items-center justify-between flex-shrink-0"
+          className="px-4 bg-[#0e2a1c] bg-gradient-to-r from-[#123524] to-[#0B2419] border-b border-[#C8A951]/25 flex items-center justify-between flex-shrink-0"
           style={{
-            paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+            paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))',
             paddingBottom: '0.75rem',
-            minHeight: 'calc(4rem + env(safe-area-inset-top))',
+            minHeight: 'calc(4rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))',
           }}
         >
           <div className="flex items-center gap-3 min-w-0">
@@ -880,13 +880,14 @@ function AdminLogin({ onLogin }: { onLogin: (u: string) => void }) {
           MAIN FULL-SCREEN WORKSPACE (100% Width on Desktop & Responsive on Mobile/Tablet)
          ========================================== */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-        {/* Top Executive Header Bar (iOS Dynamic Island / Notch Safe-Area Protected) */}
+        {/* Top Executive Header Bar (iOS 26 Dynamic Island + Progressive Blur Zone Protected) */}
         <header
           className="bg-white border-b border-gray-200 px-4 sm:px-6 flex items-center justify-between gap-3 flex-shrink-0 shadow-2xs z-30 relative"
           style={{
-            paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+            backgroundColor: '#ffffff',
+            paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))',
             paddingBottom: '0.75rem',
-            minHeight: 'calc(4rem + env(safe-area-inset-top))',
+            minHeight: 'calc(4rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))',
           }}
         >
           <div className="flex items-center gap-3 min-w-0">

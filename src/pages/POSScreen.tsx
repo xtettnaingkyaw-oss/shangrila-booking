@@ -4166,8 +4166,11 @@ const handleForceRefreshApp = async () => {
        COMPACT RESPONSIVE TOP POS HEADER BAR (NO OVERLAP ON TABLET)
       ========================================== */}
    <header
-     className="no-print sticky top-0 z-50 bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-2.5 sm:px-4 pb-2 shadow-md border-b border-[#D4AF37]/40 flex flex-wrap items-center justify-between gap-2"
-     style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
+     className="no-print sticky top-0 z-50 bg-[#123524] bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] text-white px-2.5 sm:px-4 pb-2 shadow-md border-b border-[#D4AF37]/40 flex flex-wrap items-center justify-between gap-2"
+     style={{
+       backgroundColor: '#123524',
+       paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))',
+     }}
    >
      <div className="flex items-center gap-2 min-w-0">
        <button

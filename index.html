@@ -15,12 +15,33 @@
     <link rel="preload" as="image" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <style>
+      :root {
+        --ios-top-clearance: 0px;
+      }
+      html.ios-standalone-pwa {
+        --ios-top-clearance: 16px;
+      }
       html, body {
         background-color: #0a1f15;
         margin: 0;
         padding: 0;
       }
     </style>
+    <script>
+      (function () {
+        try {
+          var isStandalone =
+            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+            window.navigator.standalone === true;
+          var isIOS =
+            /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+          if (isStandalone && isIOS) {
+            document.documentElement.classList.add('ios-standalone-pwa');
+          }
+        } catch (e) {}
+      })();
+    </script>
 
     <!-- 🌟 Google တွင် ပေါ်မည့် Title နှင့် Description (SEO) 🌟 -->
     <title>The Shangri-La Men's Retreat | Best Men Spa in Mandalay</title>
@@ -182,15 +203,16 @@
     </script>
   </head>
 
-  <body class="bg-gray-50 text-gray-900 antialiased selection:bg-[#D4AF37] selection:text-[#123524]">
+  <body class="text-gray-900 antialiased selection:bg-[#D4AF37] selection:text-[#123524]" style="background-color:#0a1f15;">
     <noscript>You need to enable JavaScript to run this app.</noscript>
 
     <div id="root">
-      <!-- 🌟 Instant Zero-White-Screen Splash (JS/CSS Load နေစဉ် အဖြူ Screen မပြဘဲ ချက်ချင်း Shangri-La Loading Screen ပြပေးမည်) 🌟 -->
+      <!-- 🌟 Instant Zero-White-Screen Splash (Solid #0a1f15 backing + top shield prevents iOS 26 white status-bar haze) 🌟 -->
       <div
         id="initial-boot-splash"
-        style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0a1f15 0%,#123524 50%,#0a1f15 100%);overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
+        style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background-color:#0a1f15;background-image:linear-gradient(135deg,#0a1f15 0%,#123524 50%,#0a1f15 100%);overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
       >
+        <div style="position:fixed;top:0;left:0;right:0;height:max(env(safe-area-inset-top, 0px), 12px);background-color:#0a1f15;z-index:10000;pointer-events:none;"></div>
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:28rem;height:28rem;background:#D4AF37;border-radius:9999px;filter:blur(120px);opacity:0.12;pointer-events:none;"></div>
         <div style="position:relative;z-index:10;display:flex;flex-direction:column;align-items:center;padding:0 2rem;">
           <img

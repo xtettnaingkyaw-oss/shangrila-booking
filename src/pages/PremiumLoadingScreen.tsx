@@ -49,7 +49,16 @@ export default function PremiumLoadingScreen({ isDataReady = false, onFinish }: 
     }, [isComplete]);
 
     return (
-        <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gradient-to-br from-[#0a1f15] via-[#123524] to-[#0a1f15] overflow-hidden transition-all duration-700 ease-in-out ${fadeAnim ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'}`}>
+        <div
+            className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0a1f15] bg-gradient-to-br from-[#0a1f15] via-[#123524] to-[#0a1f15] overflow-hidden transition-all duration-700 ease-in-out ${fadeAnim ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'}`}
+            style={{ backgroundColor: '#0a1f15' }}
+        >
+            {/* Solid top status-bar backing plate for iOS 26 standalone WebKit color sampling */}
+            <div
+                aria-hidden="true"
+                className="fixed top-0 left-0 right-0 pointer-events-none z-[10000]"
+                style={{ height: 'max(env(safe-area-inset-top, 0px), 12px)', backgroundColor: '#0a1f15' }}
+            />
             
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[35rem] h-[35rem] bg-[#D4AF37] rounded-full blur-[140px] opacity-10 animate-pulse pointer-events-none"></div>
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shangrila-pos-cache-v16';
+const CACHE_NAME = 'shangrila-pos-cache-v17';
 const CORE_ASSETS = [
   '/',
   '/index.html',

@@ -309,11 +309,18 @@ function MainApp() {
           ? 'SL Admin'
           : 'Shangri-La';
       }
-      // 6. Sync browser/iOS theme-color with active portal header so status bar stays crisp
+      // 6. Sync browser/iOS theme-color + html/body solid background with active portal so iOS 26 status bar never shows a mismatched blur band
+      const activeSurfaceColor = !isLoaderFinished && appMode !== 'pos'
+        ? '#0a1f15'
+        : isPosMode
+        ? '#123524'
+        : '#ffffff';
       const themeMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
-      if (themeMeta && isLoaderFinished) {
-        themeMeta.content = isPosMode ? '#123524' : '#ffffff';
+      if (themeMeta) {
+        themeMeta.content = activeSurfaceColor;
       }
+      document.documentElement.style.backgroundColor = activeSurfaceColor;
+      document.body.style.backgroundColor = activeSurfaceColor;
     };
 
     syncBrandingAndManifest();
@@ -382,8 +389,20 @@ function MainApp() {
     promoSettings.miniGamePopup !== false
   );
 
+  const statusBarBgColor = showLoadingOverlay ? '#0a1f15' : appMode === 'pos' ? '#123524' : '#ffffff';
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 font-sans flex flex-col relative">
+      {/* 🌟 Solid real DOM status-bar backing plate at top:0 for iOS 26 Standalone PWA WebKit color sampling 🌟 */}
+      <div
+        aria-hidden="true"
+        className="fixed top-0 left-0 right-0 pointer-events-none z-[185] transition-colors duration-300"
+        style={{
+          height: 'env(safe-area-inset-top, 0px)',
+          backgroundColor: statusBarBgColor,
+        }}
+      />
+
       {/* 🌟 Premium Loading Screen Overlay (Fade out ဖြစ်ချိန်တွင် အဖြူ Screen မပေါ်ဘဲ အောက်ခံ App တိုက်ရိုက်ပေါ်လာမည်) 🌟 */}
       {showLoadingOverlay && (
         <PremiumLoadingScreen
@@ -438,10 +457,13 @@ function MainApp() {
 
       {!isFullScreenMode && (
         <header 
-          className={`sticky top-0 z-[100] w-full transition-all duration-300 border-b border-gray-200 flex flex-col items-center justify-center ${isScrolled ? 'bg-white/95 backdrop-blur-md shadow-sm' : 'bg-white shadow-sm'} px-4 text-center`}
+          className="sticky top-0 z-[100] w-full transition-all duration-300 border-b border-gray-200 flex flex-col items-center justify-center bg-white shadow-sm px-4 text-center"
           style={{ 
-            paddingTop: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'calc(1.5rem + env(safe-area-inset-top))',
-            paddingBottom: isScrolled ? '0.5rem' : '1.5rem'
+            backgroundColor: '#ffffff',
+            paddingTop: isScrolled
+              ? 'calc(0.65rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))'
+              : 'calc(1.25rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))',
+            paddingBottom: isScrolled ? '0.65rem' : '1.35rem'
           }}
         >
           <div className="flex items-center justify-center mb-1 transition-all duration-300">
@@ -456,12 +478,12 @@ function MainApp() {
           <p className={`font-bold uppercase tracking-[0.2em] transition-all duration-300 overflow-hidden ${isScrolled ? 'h-0 opacity-0 m-0' : 'h-auto opacity-100 text-[10px] sm:text-[11px] mt-1.5'}`} style={{ color: THEME.gold }}>Men's Retreat (Beyond Relaxation)</p>
           
           {!isStandalone && (appMode === 'customer' || appMode === 'staff') && (
-             <button onClick={handleDownloadApp} className={`transition-all duration-300 font-bold text-white flex items-center justify-center bg-gradient-to-r from-[#D4AF37] to-yellow-600 rounded-full shadow-sm border border-yellow-500 hover:opacity-90 ${isScrolled ? 'absolute right-3 sm:right-6 text-[9px] px-2.5 py-1.5' : 'mt-4 text-[10px] sm:text-xs px-4 py-2'}`} style={{ top: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'auto' }}>
+             <button onClick={handleDownloadApp} className={`transition-all duration-300 font-bold text-white flex items-center justify-center bg-gradient-to-r from-[#D4AF37] to-yellow-600 rounded-full shadow-sm border border-yellow-500 hover:opacity-90 ${isScrolled ? 'absolute right-3 sm:right-6 text-[9px] px-2.5 py-1.5' : 'mt-4 text-[10px] sm:text-xs px-4 py-2'}`} style={{ top: isScrolled ? 'calc(0.65rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))' : 'auto' }}>
                <Download className={`${isScrolled ? 'w-3 h-3 mr-1' : 'w-3.5 h-3.5 mr-1.5'}`} /> {isScrolled ? 'App' : appMode === 'staff' ? 'Install Staff App' : 'Download App'}
              </button>
           )}
           {appMode === 'admin' && loggedInAdmin && (
-             <button onClick={() => { setLoggedInAdmin(null); sessionStorage.removeItem('shangrila_admin'); }} className={`absolute right-4 sm:right-6 text-xs font-bold text-red-500 flex items-center bg-red-50 rounded-full hover:bg-red-100 transition border border-red-100 ${isScrolled ? 'px-2 py-1' : 'px-3 py-1.5'}`} style={{ top: isScrolled ? 'calc(0.5rem + env(safe-area-inset-top))' : 'calc(1.5rem + env(safe-area-inset-top))' }}><LogOut className="w-3 h-3 mr-1" /> Logout</button>
+             <button onClick={() => { setLoggedInAdmin(null); sessionStorage.removeItem('shangrila_admin'); }} className={`absolute right-4 sm:right-6 text-xs font-bold text-red-500 flex items-center bg-red-50 rounded-full hover:bg-red-100 transition border border-red-100 ${isScrolled ? 'px-2 py-1' : 'px-3 py-1.5'}`} style={{ top: isScrolled ? 'calc(0.65rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))' : 'calc(1.25rem + env(safe-area-inset-top, 0px) + var(--ios-top-clearance, 0px))' }}><LogOut className="w-3 h-3 mr-1" /> Logout</button>
           )}
         </header>
       )}

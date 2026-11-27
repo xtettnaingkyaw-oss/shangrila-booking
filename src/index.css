@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ios-top-clearance: 0px;
+}
+
+html.ios-standalone-pwa {
+  --ios-top-clearance: 16px;
+}
+
 html {
   background-color: #0a1f15;
   overscroll-behavior-y: none;
