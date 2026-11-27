@@ -5,7 +5,7 @@ import { db, patchFirestoreDocumentFast, reconnectFirestoreNetwork } from '../fi
 import { encryptText, decryptText } from '../security';
 
 import { Calendar, Clock, CreditCard, CheckCircle, User, Phone, ChevronRight, ChevronLeft, Check, Sparkles, Droplets, Scissors, Home, ChevronDown, ChevronUp, History, UserCircle, CalendarPlus, ImageIcon, Activity, Crown, Copy, Percent, AlertCircle, KeyRound, BarChart2, Edit, LogOut, X, Trash2, Award, Star, ShieldCheck, Gift, Target, Info, MessageCircle, UserPlus, ShieldAlert, PartyPopper, Bell, Send, RefreshCw} from 'lucide-react';
-import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice } from '../shared';
+import { THEME, AppData, Booking, MenuItem, TherapistProfile, UserProfile, formatPrice, resolvePromotionType, getCategoryDiscountPercent } from '../shared';
 
 import { useAppStore } from '../AppDataContext';
 import ThadingyutCampaign from './ThadingyutCampaign';
@@ -2669,55 +2669,101 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
   const getTier = (points: number) => { if(!vipSettings.isActive || !vipSettings.tiers) return null; const sortedTiers = [...vipSettings.tiers].sort((a,b) => b.requiredPoints - a.requiredPoints); return sortedTiers.find(t => points >= t.requiredPoints); };
   const userTier = getTier(userProfile?.points || 0);
 
-  // 🌟 FIX 1: Box Promotion ကို အမှန်ခြစ်ထားမှသာ (isBoxActive) အလုပ်လုပ်မည့် Function 🌟
-  const checkBoxPromoActive = () => {
-      const promo = appData.promotion; 
-      if (!promo?.isBoxActive) return false; 
+  // 🌟 TYPE-AWARE PROMOTION ENGINE (% Discount | Mini Game | Category Discount) 🌟
+  const activePromoType = resolvePromotionType(appData.promotion);
+
+  const isPromoWithinDate = () => {
+      const promo: any = appData.promotion;
+      if (!promo || promo.allOff === true) return false;
       if (!promo.startDate || !promo.endDate) return false;
-      
-      const today = new Date(getLocalTodayStr()).getTime(); 
-      const sDate = new Date(promo.startDate).getTime(); 
-      const eDate = new Date(promo.endDate).getTime();
-      return today >= sDate && today <= eDate;
+      const today = getLocalTodayStr();
+      return today >= promo.startDate && today <= promo.endDate;
   };
+
+  const checkBoxPromoActive = () => {
+      const promo: any = appData.promotion;
+      return Boolean(promo?.isBoxActive && isPromoWithinDate());
+  };
+
+  const isAnyDiscountChannelLive = () => {
+      const promo: any = appData.promotion;
+      return Boolean((promo?.isBoxActive || promo?.isPopupActive) && isPromoWithinDate());
+  };
+
+  const selectedCategoryObj = useMemo(() => {
+      if (!formData.selectedItem) return null;
+      return appData.categories.find(c => (c.items || []).some(i => i.id === formData.selectedItem?.id)) || null;
+  }, [appData.categories, formData.selectedItem]);
 
   const isHotelService = useMemo(() => {
       if (!formData.selectedItem) return false;
-      const inHotelCat = appData.categories
-          .filter(c => c.id === 'hotel_service' || c.id === 'hotel' || String(c.title || '').toLowerCase().includes('hotel'))
-          .some(c => (c.items || []).some(i => i.id === formData.selectedItem?.id));
-      if (inHotelCat) return true;
+      if (
+        selectedCategoryObj &&
+        (selectedCategoryObj.id === 'hotel_service' ||
+          selectedCategoryObj.id === 'hotel' ||
+          String(selectedCategoryObj.title || '').toLowerCase().includes('hotel'))
+      ) {
+        return true;
+      }
       const itemNameLower = String(formData.selectedItem.name || '').toLowerCase();
       return itemNameLower.includes('outcall') || itemNameLower.includes('hotel') || itemNameLower.includes('half day') || itemNameLower.includes('whole');
-  }, [appData.categories, formData.selectedItem]);
-  const boxPromoActive = checkBoxPromoActive(); 
+  }, [selectedCategoryObj, formData.selectedItem]);
+
+  const boxPromoActive = checkBoxPromoActive();
+  const discountChannelLive = isAnyDiscountChannelLive();
   const isBirthday = () => { if (!userProfile?.dob || !formData.date) return false; const dobParts = userProfile.dob.split('-'); const bookParts = formData.date.split('-'); return dobParts[1] === bookParts[1] && dobParts[2] === bookParts[2]; };
 
-  // 🌟 FIX 2: Discount တွက်ချက်သည့်အပိုင်း (Mini Game နှင့် Box Promo လုံးဝ မရောစေရန် သီးသန့်ခွဲထုတ်ထားသည်) 🌟
   let finalDiscountPercent = 0; let discountLabel = '';
 
   const isMiniGameActive = () => {
       const promo: any = appData.promotion;
-      if (!promo?.isPopupActive || !promo.startDate || !promo.endDate) return false;
-      const today = getLocalTodayStr();
-      return today >= promo.startDate && today <= promo.endDate;
+      return Boolean(
+        activePromoType === 'mini_game' &&
+        (promo?.isPopupActive || promo?.isBoxActive) &&
+        isPromoWithinDate()
+      );
   };
 
   const campaignDiscountStr = localStorage.getItem('shangrila_campaign_discount');
   const campaignLabelStr = localStorage.getItem('shangrila_campaign_label');
   const campaignWinDateStr = localStorage.getItem('shangrila_campaign_date');
-  const isCampaignPrizeValidToday = !campaignWinDateStr || campaignWinDateStr === todayStr;
-  const campaignPrize = campaignDiscountStr && isCampaignPrizeValidToday ? parseInt(campaignDiscountStr, 10) : 0;
+  const validityDays = Math.max(1, Number((appData.promotion as any)?.rewardValidityDays) || 1);
+  const isCampaignPrizeValid = (() => {
+      if (!campaignWinDateStr) return true;
+      const winMs = new Date(`${campaignWinDateStr}T00:00:00`).getTime();
+      const todayMs = new Date(`${todayStr}T00:00:00`).getTime();
+      if (isNaN(winMs) || isNaN(todayMs)) return campaignWinDateStr === todayStr;
+      const diffDays = Math.floor((todayMs - winMs) / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays < validityDays;
+  })();
+  const campaignPrize = campaignDiscountStr && isCampaignPrizeValid ? parseInt(campaignDiscountStr, 10) : 0;
+  const outcallRewardCap = Math.max(0, Number((appData.promotion as any)?.outcallRewardCap ?? 10));
   const boxPromoTitle = appData.promotion?.boxTitle || appData.promotion?.title || 'SPECIAL PROMO';
 
-  // Mini Game ဖွင့်ထားပြီး၊ ယနေ့ရရှိထားသော မဲပေါက်ကုဒ်ဖြစ်ပြီး ယခင်က မသုံးရသေးမှသာ Mini Game WINNER Discount ကို ပေးမည်
-  if (isMiniGameActive() && campaignPrize > 0 && !userPastPromo) {
-      finalDiscountPercent = isHotelService ? Math.min(10, campaignPrize) : campaignPrize;
+  // Type-Strict Discount Resolution (Zero Cross-Type Leakage!)
+  if (activePromoType === 'mini_game' && isMiniGameActive() && campaignPrize > 0 && !userPastPromo) {
+      finalDiscountPercent = isHotelService ? Math.min(outcallRewardCap, campaignPrize) : campaignPrize;
       discountLabel = `${campaignLabelStr || appData.promotion?.campaignTitle || 'Campaign'} WINNER (${finalDiscountPercent}%)`;
-  } else if (boxPromoActive && !userPastPromo) {
-      finalDiscountPercent = isHotelService ? (appData.promotion?.hotelDiscountPercent || 0) : (appData.promotion?.otherDiscountPercent || 0);
-      discountLabel = `${boxPromoTitle} (${finalDiscountPercent}%)`;
-  } else if (vipSettings.isActive && userProfile) {
+  } else if (activePromoType === 'percentage_discount' && discountChannelLive && !userPastPromo) {
+      finalDiscountPercent = isHotelService
+        ? (appData.promotion?.hotelDiscountPercent || 0)
+        : (appData.promotion?.otherDiscountPercent || 0);
+      if (finalDiscountPercent > 0) {
+        discountLabel = `${boxPromoTitle} (${finalDiscountPercent}%)`;
+      }
+  } else if (activePromoType === 'category_discount' && discountChannelLive && !userPastPromo) {
+      const catPct = getCategoryDiscountPercent(
+        (appData.promotion as any)?.categoryDiscounts,
+        selectedCategoryObj?.id,
+        selectedCategoryObj?.title
+      );
+      if (catPct > 0) {
+        finalDiscountPercent = catPct;
+        discountLabel = `${boxPromoTitle} - ${selectedCategoryObj?.title || 'Category'} (${catPct}%)`;
+      }
+  }
+
+  if (finalDiscountPercent === 0 && vipSettings.isActive && userProfile) {
       const currentMonthPrefix = getLocalTodayStr().substring(0, 7);
       const monthlyPts = pointHistory.filter(h => h.date && h.date.startsWith(currentMonthPrefix)).reduce((s, h) => s + h.pointsEarned, 0);
       
@@ -3424,29 +3470,110 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
       )}
 
 
-      {/* 🌟 Customer App Promotion Box ကို ဖွင့်ထားမှသာ ပေါ်မည့် သီးသန့် Box 🌟 */}
+      {/* 🌟 Type-Aware Customer App Booking Promo Box (% Discount | Mini Game | Category Discount) 🌟 */}
       {boxPromoActive && !userPastPromo && (
-        <div className="relative overflow-hidden bg-gradient-to-r from-[#123524] via-[#1a4a32] to-[#123524] p-3.5 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in flex items-center justify-between mx-1.5 sm:mx-0">
-           <div className="absolute -top-6 -right-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-           <div className="absolute -bottom-6 -left-6 w-20 h-20 bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-           <div className="relative z-10 flex items-center">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-full flex items-center justify-center mr-2.5 sm:mr-3 border border-[#123524] shadow-sm flex-shrink-0">
-                <Percent className="w-4 h-4 sm:w-5 sm:h-5 text-[#123524]" />
+        <div className="relative overflow-hidden bg-gradient-to-r from-[#0B2419] via-[#123524] to-[#0B2419] p-4 sm:p-5 rounded-2xl mb-6 shadow-md border border-[#D4AF37]/40 animate-fade-in mx-1.5 sm:mx-0">
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3 min-w-0">
+              <div className="w-10 h-10 bg-gradient-to-br from-[#D4AF37] to-yellow-600 rounded-xl flex items-center justify-center border border-[#123524] shadow-sm flex-shrink-0">
+                {activePromoType === 'mini_game' ? (
+                  <Gift className="w-5 h-5 text-[#0B2419]" />
+                ) : (
+                  <Percent className="w-5 h-5 text-[#0B2419]" />
+                )}
               </div>
-              <div>
-                 <div className="flex items-center gap-2 mb-0.5">
-                    <h4 className="font-extrabold text-[#D4AF37] text-xs sm:text-sm tracking-wide uppercase flex items-center">
-                      <Sparkles className="w-3 h-3 mr-1" /> {appData.promotion?.boxTitle || promoTitle}
-                    </h4>
-                    <span className="text-[7px] sm:text-[8px] text-[#123524] bg-[#D4AF37] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-widest shadow-sm whitespace-nowrap ml-1">Limited Time</span>
-                 </div>
-                 <div className="text-[9px] sm:text-[10px] text-gray-300 font-semibold flex items-center">Valid until: <span className="text-white ml-1">{appData.promotion?.endDate}</span></div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">
+                  {activePromoType === 'mini_game'
+                    ? 'Mini Game Campaign'
+                    : activePromoType === 'category_discount'
+                    ? 'Category Special'
+                    : 'Special Discount'}
+                  {' · '}
+                  Valid until {appData.promotion?.endDate}
+                </div>
+                <h4 className="font-extrabold text-[#D4AF37] text-sm sm:text-base leading-snug mt-0.5 truncate">
+                  {appData.promotion?.boxTitle || appData.promotion?.campaignTitle || promoTitle}
+                </h4>
+                {(appData.promotion as any)?.description && (
+                  <p className="text-[11px] text-gray-300 mt-0.5 leading-snug">
+                    {(appData.promotion as any).description}
+                  </p>
+                )}
               </div>
-           </div>
-           <div className="relative z-10 flex flex-col gap-1.5 ml-3">
-               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm"><span className="flex items-center"><Home className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Hotel</span> <span className="text-[#D4AF37] ml-2">{appData.promotion?.hotelDiscountPercent}% OFF</span></div>
-               <div className="bg-white/10 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded border border-[#D4AF37]/30 flex items-center justify-between min-w-[100px] backdrop-blur-sm shadow-sm"><span className="flex items-center"><Activity className="w-2.5 h-2.5 mr-1 text-[#D4AF37]"/> Other</span><span className="text-[#D4AF37] ml-2">{appData.promotion?.otherDiscountPercent}% OFF</span></div>
-           </div>
+            </div>
+
+            {/* Right Action / Offer Summary based on exact Promo Type */}
+            {activePromoType === 'mini_game' ? (
+              <div className="flex items-center gap-2 shrink-0">
+                {campaignPrize > 0 ? (
+                  <div className="bg-emerald-500/20 border border-emerald-400/40 rounded-xl px-3.5 py-2 text-right">
+                    <div className="text-[10px] text-emerald-200 font-bold">Your Reward</div>
+                    <div className="text-sm font-black text-[#D4AF37] tabular-nums">{campaignPrize}% OFF Ready</div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cid = (appData.promotion as any)?.activeCampaignId;
+                      window.location.href = cid
+                        ? `/?mode=campaign&campaign=${encodeURIComponent(cid)}`
+                        : '/?mode=campaign';
+                    }}
+                    className="w-full sm:w-auto min-h-[42px] px-4 py-2 rounded-xl bg-[#D4AF37] hover:bg-[#c59b27] text-[#0B2419] font-black text-xs shadow transition flex items-center justify-center gap-1.5"
+                  >
+                    <Gift className="w-4 h-4" />
+                    <span>
+                      ကံစမ်းမည် (Up to{' '}
+                      {Array.isArray((appData.promotion as any)?.gameRewardTiers) &&
+                      (appData.promotion as any).gameRewardTiers.length > 0
+                        ? Math.max(...(appData.promotion as any).gameRewardTiers.map(Number))
+                        : 50}
+                      %)
+                    </span>
+                  </button>
+                )}
+              </div>
+            ) : activePromoType === 'category_discount' ? (
+              <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                {appData.categories
+                  .map((cat) => ({
+                    id: cat.id,
+                    title: cat.title,
+                    pct: getCategoryDiscountPercent((appData.promotion as any)?.categoryDiscounts, cat.id, cat.title),
+                  }))
+                  .filter((entry) => entry.pct > 0)
+                  .map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="bg-black/25 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/30 flex items-center gap-2 tabular-nums"
+                    >
+                      <span className="text-gray-200">{entry.title}</span>
+                      <span className="text-[#D4AF37] font-black">{entry.pct}% OFF</span>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="flex sm:flex-col gap-1.5 shrink-0">
+                {(appData.promotion?.otherDiscountPercent || 0) > 0 && (
+                  <div className="flex-1 sm:flex-none bg-black/25 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between gap-3 tabular-nums">
+                    <span className="flex items-center text-gray-200">
+                      <Activity className="w-3 h-3 mr-1 text-[#D4AF37]" /> In-Spa
+                    </span>
+                    <span className="text-[#D4AF37] font-black">{appData.promotion?.otherDiscountPercent}% OFF</span>
+                  </div>
+                )}
+                {(appData.promotion?.hotelDiscountPercent || 0) > 0 && (
+                  <div className="flex-1 sm:flex-none bg-black/25 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg border border-[#D4AF37]/30 flex items-center justify-between gap-3 tabular-nums">
+                    <span className="flex items-center text-gray-200">
+                      <Home className="w-3 h-3 mr-1 text-[#D4AF37]" /> Outcall
+                    </span>
+                    <span className="text-[#D4AF37] font-black">{appData.promotion?.hotelDiscountPercent}% OFF</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -3458,10 +3585,22 @@ export function CustomerBookingWizard({ appData, userPhone = '', onBooked, force
       <div className="space-y-4">
           {appData.categories.map(category => {
             const CategoryIcon = ICON_MAP[category.id] || Activity;
+            const categoryPromoPct =
+              activePromoType === 'category_discount' && discountChannelLive && !userPastPromo
+                ? getCategoryDiscountPercent((appData.promotion as any)?.categoryDiscounts, category.id, category.title)
+                : 0;
             return (
               <div key={category.id} className="bg-white rounded-[1.2rem] shadow-sm border border-gray-100 overflow-hidden">
                 <div onClick={() => setActiveCategory(activeCategory === category.id ? null : category.id)} className="p-3.5 sm:p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
-                  <div className="flex items-center text-sm font-bold" style={{ color: THEME.primary }}><CategoryIcon className="w-5 h-5 mr-3" style={{ color: THEME.gold }} /> {category.title}</div>
+                  <div className="flex items-center text-sm font-bold gap-2" style={{ color: THEME.primary }}>
+                    <CategoryIcon className="w-5 h-5 mr-1 shrink-0" style={{ color: THEME.gold }} />
+                    <span>{category.title}</span>
+                    {categoryPromoPct > 0 && (
+                      <span className="text-[11px] font-extrabold text-emerald-700 tabular-nums">
+                        · {categoryPromoPct}% OFF
+                      </span>
+                    )}
+                  </div>
                   {activeCategory === category.id ? <ChevronUp className="w-5 h-5" style={{ color: THEME.primary }} /> : <ChevronDown className="w-5 h-5" style={{ color: THEME.primary }} />}
                 </div>
                 {activeCategory === category.id && (
@@ -4143,7 +4282,12 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
         const promo: any = mergedAppData.promotion;
         const todayNow = getLocalTodayStr();
         const withinDate = (!promo?.startDate || todayNow >= promo.startDate) && (!promo?.endDate || todayNow <= promo.endDate);
-        const isPromoLive = Boolean(promo?.isPopupActive && withinDate);
+        const isPromoLive = Boolean(
+          resolvePromotionType(promo) === 'mini_game' &&
+          (promo?.isPopupActive || promo?.isBoxActive) &&
+          promo?.allOff !== true &&
+          withinDate
+        );
 
         if (!isPromoLive) {
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -4188,7 +4332,12 @@ export default function CustomerApp({ appData }: { appData: AppData }) {
         const promo: any = mergedAppData.promotion;
         const todayNow = getLocalTodayStr();
         const withinDate = (!promo?.startDate || todayNow >= promo.startDate) && (!promo?.endDate || todayNow <= promo.endDate);
-        const isPromoLive = Boolean(promo?.isPopupActive && withinDate);
+        const isPromoLive = Boolean(
+          resolvePromotionType(promo) === 'mini_game' &&
+          (promo?.isPopupActive || promo?.isBoxActive) &&
+          promo?.allOff !== true &&
+          withinDate
+        );
 
         if (!isPromoLive && showCampaign) {
             setShowCampaign(false);

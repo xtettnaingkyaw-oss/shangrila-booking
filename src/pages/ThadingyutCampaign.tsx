@@ -13,7 +13,7 @@ import {
   BellRing,
   CheckCircle2
 } from 'lucide-react';
-import { AppData } from '../shared';
+import { AppData, resolvePromotionType } from '../shared';
 import { db } from '../firebase';
 import { collection, addDoc, getDocs, query, updateDoc, doc, setDoc } from 'firebase/firestore';
 
@@ -114,48 +114,53 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       } else {
         matchedCard = cards.find(
           (c) =>
-            c.isPopupActive === true ||
-            ((c.isActive === true || c.active === true || c.enabled === true) &&
-              c.miniGamePopup !== false &&
-              c.popupEnabled !== false &&
-              c.isPopupActive !== false)
+            resolvePromotionType(c) === 'mini_game' &&
+            (c.isPopupActive === true || c.isBoxActive === true)
         );
       }
     }
 
     // 2. Global Promotion & Popup Setting ဖွင့်/ပိတ် စစ်ဆေးခြင်း
+    const isGlobalMiniGame = resolvePromotionType(promo) === 'mini_game';
     const isGlobalEnabled =
-      promo.isPopupActive === true ||
-      promo.popupEnabled === true ||
-      promo.miniGamePopup === true ||
-      promo.gameEnabled === true;
+      isGlobalMiniGame &&
+      (promo.isPopupActive === true ||
+        promo.isBoxActive === true ||
+        promo.popupEnabled === true ||
+        promo.miniGamePopup === true ||
+        promo.gameEnabled === true);
 
     const isExplicitlyAllOff =
       promo.allOff === true ||
       promo.isActive === false ||
-      promo.isPopupActive === false ||
-      promo.enabled === false ||
-      promo.popupEnabled === false ||
-      promo.miniGamePopup === false;
+      promo.enabled === false;
+
+    const fallbackTiers: number[] =
+      Array.isArray(promo.gameRewardTiers) && promo.gameRewardTiers.length > 0
+        ? promo.gameRewardTiers.map(Number).filter((n: number) => n > 0)
+        : [10, 15, 20, 30, 50];
 
     // 3. သတ်မှတ်ထားသော Campaign Card တစ်ခုချင်းစီ အတွက် ဖွင့်/ပိတ် စစ်ဆေးခြင်း
     if (matchedCard) {
+      const isCardMiniGame = resolvePromotionType(matchedCard) === 'mini_game';
       const cardActive =
-        matchedCard.isPopupActive === true ||
-        ((matchedCard.isActive === true || matchedCard.active === true || matchedCard.enabled === true) &&
-          matchedCard.miniGamePopup !== false &&
-          matchedCard.popupEnabled !== false &&
-          matchedCard.gameEnabled !== false &&
-          matchedCard.isPopupActive !== false);
+        isCardMiniGame &&
+        (matchedCard.isPopupActive === true || matchedCard.isBoxActive === true);
 
       const withinCardDate =
         (!matchedCard.startDate || today >= matchedCard.startDate) &&
         (!matchedCard.endDate || today <= matchedCard.endDate);
 
+      const cardTiers =
+        Array.isArray(matchedCard.gameRewardTiers) && matchedCard.gameRewardTiers.length > 0
+          ? matchedCard.gameRewardTiers.map(Number).filter((n: number) => n > 0)
+          : fallbackTiers;
+
       return {
         isActive: cardActive && withinCardDate && !isExplicitlyAllOff,
         title: matchedCard.title || matchedCard.campaignTitle || promo.campaignTitle || 'အထူးပရိုမိုးရှင်း အစီအစဉ်',
-        campaignId: matchedCard.id || requestedCampaignId || 'campaign'
+        campaignId: matchedCard.id || requestedCampaignId || 'campaign',
+        rewardTiers: cardTiers
       };
     }
 
@@ -171,7 +176,8 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
       return {
         isActive: false,
         title: promo.campaignTitle || 'အထူးပရိုမိုးရှင်း အစီအစဉ်',
-        campaignId: requestedCampaignId
+        campaignId: requestedCampaignId,
+        rewardTiers: fallbackTiers
       };
     }
 
@@ -182,11 +188,13 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
     return {
       isActive: Boolean(isGlobalEnabled && !isExplicitlyAllOff && withinGlobalDate),
       title: promo.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
-      campaignId: requestedCampaignId || promo.activeCampaignId || promo.id || 'main_campaign'
+      campaignId: requestedCampaignId || promo.activeCampaignId || promo.id || 'main_campaign',
+      rewardTiers: fallbackTiers
     };
   };
 
-  const { isActive: isCampaignActive, title: campaignTitle, campaignId: activeCampaignId } = evaluateCampaignStatus();
+  const campaignStatus = evaluateCampaignStatus();
+  const { isActive: isCampaignActive, title: campaignTitle, campaignId: activeCampaignId } = campaignStatus;
 
   useEffect(() => {
     const savedPhone = localStorage.getItem('shangrila_user_phone');
@@ -327,12 +335,19 @@ export default function ThadingyutCampaign({ appData }: ThadingyutCampaignProps)
   };
 
   const calculatePrize = () => {
-    const rand = Math.random() * 100;
-    if (rand < 40) return 15;
-    if (rand < 70) return 10;
-    if (rand < 85) return 20;
-    if (rand < 95) return 30;
-    return 50;
+    const tiers = (campaignStatus as any)?.rewardTiers?.length
+      ? [...((campaignStatus as any).rewardTiers as number[])].sort((a, b) => a - b)
+      : [10, 15, 20, 30, 50];
+    if (tiers.length === 1) return tiers[0];
+    // Weighted probability favoring realistic lower-to-mid rewards with rare top prize
+    const weights = tiers.map((_, idx) => Math.max(1, Math.pow(2, tiers.length - 1 - idx)));
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * totalWeight;
+    for (let i = 0; i < tiers.length; i++) {
+      r -= weights[i];
+      if (r <= 0) return tiers[i];
+    }
+    return tiers[0];
   };
 
   const startGame = async () => {

@@ -1,4 +1,4 @@
-const SHELL_CACHE = 'shangrila-shell-v21';
+const SHELL_CACHE = 'shangrila-shell-v22';
 const ASSET_CACHE = 'shangrila-assets-v1';
 
 const CORE_ASSETS = [

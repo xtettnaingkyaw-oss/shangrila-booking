@@ -82,32 +82,121 @@ export interface AppBranding {
   shopLng?: number;
 }
 
+export type PromotionType = 'percentage_discount' | 'mini_game' | 'category_discount';
+
+export interface SavedCampaignCard {
+  id: string;
+  promoType: PromotionType;
+  campaignTitle: string;
+  boxTitle: string;
+  description?: string;
+  isPopupActive: boolean;
+  isBoxActive: boolean;
+  // Type 1: Percentage Discount (In-Spa & Outcall)
+  hotelDiscountPercent: number;
+  otherDiscountPercent: number;
+  // Type 2: Mini Game Campaign Rewards
+  gameRewardTiers?: number[];
+  outcallRewardCap?: number;
+  rewardValidityDays?: number;
+  // Type 3: Service Category Discounts ({ [categoryId]: discountPercent })
+  categoryDiscounts?: Record<string, number>;
+  // Duration & Visuals
+  startDate: string;
+  endDate: string;
+  themeColor?: string;
+  badgeText?: string;
+  updatedAt: number;
+}
+
 export interface PromotionSettings {
   // Legacy & Master Flags
   isActive?: boolean;
   title?: string;
 
+  // 🌟 Promotion Type Architecture (3 Clear Modes) 🌟
+  promoType?: PromotionType;
+  description?: string;
+
   // Box အတွက် Settings
-  isBoxActive: boolean;           // 🌟 Customer App ထဲက Box အတွက်
+  isBoxActive: boolean;           // 🌟 Customer App Booking မျက်နှာပြင်ပေါ်ရှိ Promo Box
   boxTitle?: string;              // Box ခေါင်းစဉ် (ဥပမာ: "Special Discount")
   
-  // Popup/Campaign အတွက် Settings
-  isPopupActive: boolean;         // 🌟 App အဖွင့်မှာတက်လာမယ့် Popup အတွက်
-  campaignTitle?: string;         // Popup/Game ခေါင်းစဉ် (ဥပမာ: "သီတင်းကျွတ် အထူးပရိုမိုးရှင်း")
+  // Popup & Link အတွက် Settings
+  isPopupActive: boolean;         // 🌟 App အဖွင့် Popup နှင့် Shareable Direct Link
+  campaignTitle?: string;         // Campaign / Offer ခေါင်းစဉ်
   
   // 🌟 Admin Backoffice All OFF & Card Controls များအတွက် 🌟
   allOff?: boolean;               // Admin မှ All OFF ပိတ်ထားခြင်း ရှိ/မရှိ
   activeCampaignId?: string;
   updatedAt?: number;
-  campaigns?: any[];              // Saved Promotion & Campaign Cards စာရင်း
-  cards?: any[];                  // Fallback cards array
+  campaigns?: SavedCampaignCard[]; // Saved Promotion & Campaign Cards စာရင်း
+  cards?: SavedCampaignCard[];     // Fallback cards array
   
-  // အခြား Settings
+  // Type 1: General % Discount Settings
   hotelDiscountPercent: number;
   otherDiscountPercent: number;
+
+  // Type 2: Mini Game Settings
+  gameRewardTiers?: number[];
+  outcallRewardCap?: number;
+  rewardValidityDays?: number;
+
+  // Type 3: Service Category Discounts
+  categoryDiscounts?: Record<string, number>;
+
+  // Duration
   startDate: string;
   endDate: string;
 }
+
+export const resolvePromotionType = (promoOrCard: any): PromotionType => {
+  if (!promoOrCard) return 'percentage_discount';
+  const raw = promoOrCard.promoType;
+  if (raw === 'percentage_discount' || raw === 'mini_game' || raw === 'category_discount') {
+    return raw;
+  }
+  const catMap = promoOrCard.categoryDiscounts;
+  if (catMap && typeof catMap === 'object' && Object.values(catMap).some((v) => Number(v) > 0)) {
+    return 'category_discount';
+  }
+  if (Array.isArray(promoOrCard.gameRewardTiers) && promoOrCard.gameRewardTiers.length > 0) {
+    return 'mini_game';
+  }
+  // Legacy heuristic: old Thadingyut lantern card or popup-only legacy campaign
+  const idLower = String(promoOrCard.id || promoOrCard.activeCampaignId || '').toLowerCase();
+  if (idLower.includes('thadingyut') || idLower.includes('lantern') || idLower.includes('game')) {
+    return 'mini_game';
+  }
+  return 'percentage_discount';
+};
+
+export const getCategoryDiscountPercent = (
+  categoryDiscounts: Record<string, number> | undefined,
+  categoryId?: string,
+  categoryTitle?: string
+): number => {
+  if (!categoryDiscounts || typeof categoryDiscounts !== 'object') return 0;
+  if (categoryId && Number(categoryDiscounts[categoryId]) > 0) {
+    return Number(categoryDiscounts[categoryId]);
+  }
+  // Alias matching for legacy 'hotel' <-> 'hotel_service'
+  if (categoryId === 'hotel_service' && Number(categoryDiscounts['hotel']) > 0) {
+    return Number(categoryDiscounts['hotel']);
+  }
+  if (categoryId === 'hotel' && Number(categoryDiscounts['hotel_service']) > 0) {
+    return Number(categoryDiscounts['hotel_service']);
+  }
+  if (categoryTitle) {
+    const titleLower = categoryTitle.toLowerCase();
+    for (const [k, v] of Object.entries(categoryDiscounts)) {
+      if (Number(v) > 0 && (k.toLowerCase() === titleLower || (titleLower.includes('hotel') && k.toLowerCase().includes('hotel')))) {
+        return Number(v);
+      }
+    }
+  }
+  return 0;
+};
 
 export interface VipTier {
   id: string;

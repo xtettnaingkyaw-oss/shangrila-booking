@@ -3,7 +3,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth, requestNotificationPermission, reconnectFirestoreNetwork } from './firebase';
 import { Download, X, MapPin, Phone, LogOut, WifiOff, RefreshCw } from 'lucide-react';
-import { AppData } from './shared';
+import { AppData, resolvePromotionType } from './shared';
 import {
   useAppStore,
   FALLBACK_APPDATA,
@@ -436,7 +436,7 @@ function MainApp() {
     syncBrandingAndManifest();
   }, [appData?.branding, appMode, isLoaderFinished]);
 
-  // 🌟 REAL-TIME CAMPAIGN & POPUP LOCKOUT GUARD (Admin မှ ပိတ်ထားလျှင် customer mode သို့ အလိုအလျောက် ပြန်ပို့မည်) 🌟
+  // 🌟 REAL-TIME CAMPAIGN & POPUP LOCKOUT GUARD (Mini Game Campaign မဟုတ်လျှင် သို့မဟုတ် ပိတ်ထားလျှင် customer mode သို့ အလိုအလျောက် ပြန်ပို့မည်) 🌟
   useEffect(() => {
     const promo: any = appData?.promotion;
     if (!promo) return;
@@ -444,13 +444,13 @@ function MainApp() {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const isDateExpired = Boolean(promo.endDate && todayStr > promo.endDate);
+    const isMiniGameType = resolvePromotionType(promo) === 'mini_game';
 
     const isExplicitlyOff =
+      !isMiniGameType ||
       promo.allOff === true ||
-      promo.isPopupActive === false ||
       promo.isActive === false ||
-      promo.popupEnabled === false ||
-      promo.miniGamePopup === false ||
+      (promo.isPopupActive === false && promo.isBoxActive === false) ||
       isDateExpired;
 
     if (isExplicitlyOff && appMode === 'campaign') {
@@ -493,15 +493,14 @@ function MainApp() {
 
   const isFullScreenMode = appMode === 'pos' || appMode === 'campaign' || (appMode === 'admin' && Boolean(loggedInAdmin));
 
-  // 🌟 Admin မှ All OFF သို့မဟုတ် Popup ပိတ်ထားခြင်း ရှိမရှိ စစ်ဆေးခြင်း 🌟
+  // 🌟 Admin မှ All OFF သို့မဟုတ် Popup ပိတ်ထားခြင်း ရှိမရှိ စစ်ဆေးခြင်း (Promotion အမျိုးအစား ၃ မျိုးလုံးအတွက်) 🌟
   const promoSettings: any = safeAppData?.promotion;
   const isGlobalPopupAllowed = Boolean(
     promoSettings &&
     promoSettings.allOff !== true &&
-    promoSettings.isPopupActive !== false &&
+    promoSettings.isPopupActive === true &&
     promoSettings.isActive !== false &&
-    promoSettings.popupEnabled !== false &&
-    promoSettings.miniGamePopup !== false
+    promoSettings.popupEnabled !== false
   );
 
   const statusBarBgColor = showLoadingOverlay ? '#0a1f15' : appMode === 'pos' ? '#123524' : '#ffffff';

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, addDoc, getDocs, updateDoc, doc, onSnapshot, setDoc, deleteDoc, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { encryptText, decryptText } from '../security';
-import { AppData, MenuItem, TherapistProfile, formatPrice } from '../shared';
+import { AppData, MenuItem, TherapistProfile, formatPrice, resolvePromotionType, getCategoryDiscountPercent } from '../shared';
 import {
   Sparkles, User, Clock, Plus, Printer, Wifi, WifiOff,
   RefreshCw, CheckCircle, Crown, Percent, ShoppingBag,
@@ -1776,51 +1776,74 @@ const handleCancelPosSaleFromHistory = async (sale: OfflineSaleRecord) => {
     updateSavedDiscountPresets(savedDiscountPresets.filter((d) => d.id !== id));
   };
 
-  // Combine Web App Active Promotion Discounts + Saved Presets for the Dropdown
+  // Combine Web App Active Promotion Discounts + Saved Presets for the Dropdown (Type-Aware!)
   const allAvailableDiscounts = useMemo(() => {
     const dynamicWebPromos: SavedDiscountPreset[] = [];
     const promo = localAppData?.promotion as any;
-    const campTitle = promo?.campaignTitle || 'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း';
+    const campTitle = promo?.campaignTitle || 'Mini Game Campaign';
+    const boxTitle = promo?.boxTitle || promo?.campaignTitle || 'In-App Promo';
+    const promoType = resolvePromotionType(promo);
     const now = new Date();
     const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const withinPromoDate =
-      (!promo?.startDate || todayLocal >= promo.startDate) &&
-      (!promo?.endDate || todayLocal <= promo.endDate);
+      promo &&
+      promo.allOff !== true &&
+      (!promo.startDate || todayLocal >= promo.startDate) &&
+      (!promo.endDate || todayLocal <= promo.endDate);
+    const isChannelLive = Boolean(promo?.isPopupActive || promo?.isBoxActive);
 
-    if (promo?.isPopupActive && withinPromoDate) {
-      [10, 15, 20, 30, 50].forEach((pct) => {
-        dynamicWebPromos.push({
-          id: `lantern_game_${pct}`,
-          label: `${campTitle} (${pct}% OFF)`,
-          type: 'percent',
-          value: pct,
-          category: 'campaign'
+    if (withinPromoDate && isChannelLive) {
+      if (promoType === 'mini_game') {
+        const tiers: number[] =
+          Array.isArray(promo.gameRewardTiers) && promo.gameRewardTiers.length > 0
+            ? promo.gameRewardTiers.map(Number).filter((n: number) => n > 0)
+            : [10, 15, 20, 30, 50];
+        tiers.forEach((pct) => {
+          dynamicWebPromos.push({
+            id: `lantern_game_${pct}`,
+            label: `${campTitle} (${pct}% OFF)`,
+            type: 'percent',
+            value: pct,
+            category: 'campaign'
+          });
         });
-      });
-    }
-
-    if (promo?.isBoxActive && withinPromoDate) {
-      if (promo?.otherDiscountPercent && promo.otherDiscountPercent > 0) {
-        dynamicWebPromos.push({
-          id: 'webapp_active_promo_other',
-          label: `${promo.boxTitle || 'In-App Promo'} - In-Spa (${promo.otherDiscountPercent}% OFF)`,
-          type: 'percent',
-          value: promo.otherDiscountPercent,
-          category: 'campaign'
+      } else if (promoType === 'category_discount') {
+        const cats = Array.isArray(localAppData?.categories) ? localAppData.categories : [];
+        cats.forEach((cat) => {
+          const pct = getCategoryDiscountPercent(promo.categoryDiscounts, cat.id, cat.title);
+          if (pct > 0) {
+            dynamicWebPromos.push({
+              id: `webapp_cat_promo_${cat.id}`,
+              label: `${boxTitle} - ${cat.title} (${pct}% OFF)`,
+              type: 'percent',
+              value: pct,
+              category: 'campaign'
+            });
+          }
         });
-      }
-      if (promo?.hotelDiscountPercent && promo.hotelDiscountPercent > 0) {
-        dynamicWebPromos.push({
-          id: 'webapp_active_promo_hotel',
-          label: `${promo.boxTitle || 'In-App Promo'} - Outcall (${promo.hotelDiscountPercent}% OFF)`,
-          type: 'percent',
-          value: promo.hotelDiscountPercent,
-          category: 'campaign'
-        });
+      } else {
+        if (promo?.otherDiscountPercent && promo.otherDiscountPercent > 0) {
+          dynamicWebPromos.push({
+            id: 'webapp_active_promo_other',
+            label: `${boxTitle} - In-Spa (${promo.otherDiscountPercent}% OFF)`,
+            type: 'percent',
+            value: promo.otherDiscountPercent,
+            category: 'campaign'
+          });
+        }
+        if (promo?.hotelDiscountPercent && promo.hotelDiscountPercent > 0) {
+          dynamicWebPromos.push({
+            id: 'webapp_active_promo_hotel',
+            label: `${boxTitle} - Outcall (${promo.hotelDiscountPercent}% OFF)`,
+            type: 'percent',
+            value: promo.hotelDiscountPercent,
+            category: 'campaign'
+          });
+        }
       }
     }
     return [...dynamicWebPromos, ...savedDiscountPresets];
-  }, [localAppData?.promotion, savedDiscountPresets]);
+  }, [localAppData?.promotion, localAppData?.categories, savedDiscountPresets]);
 
   // 🌟 Loyverse-Style Receipt Settings State 🌟
   const [printSettings, setPrintSettings] = useState<PosPrintSettings>(() => {
@@ -2799,11 +2822,13 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
       }
       setDetectedVipBenefit(vipBenefit);
 
-      // 2. Check `campaign_records` Collection for Today's Valid Campaign Game Winner (1-Day Validity Rule)
+      // 2. Check `campaign_records` Collection for Valid Campaign Game Winner (Respects rewardValidityDays, default 1 day)
       let latestCampaignWin: { campaignName: string; discountPercent: number; date?: string; createdAt: number } | null = null;
-      const campTitle = (localAppData?.promotion as any)?.campaignTitle || 'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း';
+      const campTitle = (localAppData?.promotion as any)?.campaignTitle || 'Mini Game Campaign';
+      const validityDays = Math.max(1, Number((localAppData?.promotion as any)?.rewardValidityDays) || 1);
       const nowPos = new Date();
       const todayPosStr = `${nowPos.getFullYear()}-${String(nowPos.getMonth() + 1).padStart(2, '0')}-${String(nowPos.getDate()).padStart(2, '0')}`;
+      const todayPosMs = new Date(`${todayPosStr}T00:00:00`).getTime();
 
       if (campaignSnap) {
         for (const docSnap of campaignSnap.docs) {
@@ -2820,7 +2845,9 @@ const addToLocalHistory = (record: OfflineSaleRecord) => {
                     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
                   })()
                 : '';
-              if (cleanRecDate !== todayPosStr) continue;
+              const recMs = cleanRecDate ? new Date(`${cleanRecDate}T00:00:00`).getTime() : NaN;
+              const diffDays = isNaN(recMs) ? 999 : Math.floor((todayPosMs - recMs) / (1000 * 60 * 60 * 24));
+              if (diffDays < 0 || diffDays >= validityDays) continue;
               const wonPct = Number(cData.discountPercent) || 0;
               const cTime = Number(cData.createdAt) || 0;
               if (wonPct > 0 && (!latestCampaignWin || cTime >= latestCampaignWin.createdAt)) {

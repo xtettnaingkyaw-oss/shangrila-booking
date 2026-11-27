@@ -13,43 +13,92 @@ import {
   Download,
   Search,
   CheckCircle,
-  Clock,
   AlertCircle,
   MessageCircle,
   Ban,
   ChevronDown,
   Lock,
   Globe,
-  ExternalLink,
+  Percent,
+  Layers,
+  Gamepad2,
+  Files,
 } from 'lucide-react';
 import { db } from '../firebase';
 import { encryptText } from '../security';
-import { AppData, Booking, formatPrice } from '../shared';
+import {
+  AppData,
+  Booking,
+  formatPrice,
+  PromotionType,
+  SavedCampaignCard,
+  resolvePromotionType,
+} from '../shared';
 
-export interface SavedCampaignCard {
-  id: string;
-  campaignTitle: string;
-  boxTitle: string;
-  isPopupActive: boolean;
-  isBoxActive: boolean;
-  hotelDiscountPercent: number;
-  otherDiscountPercent: number;
-  startDate: string;
-  endDate: string;
-  themeColor?: string;
-  badgeText?: string;
-  updatedAt: number;
-}
+export type { SavedCampaignCard };
+
+const AVAILABLE_GAME_TIERS = [5, 10, 15, 20, 25, 30, 50];
+const QUICK_CATEGORY_PERCENTS = [0, 10, 15, 20, 30];
+
+const PROMO_TYPE_META: Record<
+  PromotionType,
+  {
+    shortLabel: string;
+    title: string;
+    subtitle: string;
+    kicker: string;
+    popupTitle: string;
+    popupDesc: string;
+    boxTitle: string;
+    boxDesc: string;
+  }
+> = {
+  percentage_discount: {
+    shortLabel: '% Discount',
+    title: 'General % Discount',
+    subtitle: 'In-Spa နှင့် Outcall အတွက် % လျှော့ဈေး',
+    kicker: '% DISCOUNT',
+    popupTitle: 'Promo Popup & Share Link',
+    popupDesc: 'App အဖွင့်တွင် % Discount Popup နှင့် Link ဖွင့်မည်',
+    boxTitle: 'Booking Promo Box',
+    boxDesc: 'Booking စာမျက်နှာတွင် % Discount Box ပြပြီး အလိုအလျောက်လျှော့မည်',
+  },
+  mini_game: {
+    shortLabel: 'Mini Game',
+    title: 'Mini Game Campaign',
+    subtitle: 'ဂိမ်းကစားပြီး Reward % မဲပေါက်စနစ်',
+    kicker: 'MINI GAME CAMPAIGN',
+    popupTitle: 'Mini Game Popup & Direct Game Link',
+    popupDesc: 'App အဖွင့် Popup နှင့် Direct Link မှ ဂိမ်းကစားခွင့်ဖွင့်မည်',
+    boxTitle: 'Booking Promo Box (Game Invite)',
+    boxDesc: 'Booking စာမျက်နှာတွင် ဂိမ်းကစားရန် Banner ခလုတ်ပြသမည်',
+  },
+  category_discount: {
+    shortLabel: 'By Category',
+    title: 'Service Category Discount',
+    subtitle: 'Massage / Scrub / Waxing Category အလိုက် % သတ်မှတ်ရန်',
+    kicker: 'CATEGORY DISCOUNT',
+    popupTitle: 'Category Offer Popup & Share Link',
+    popupDesc: 'App အဖွင့်တွင် Category လျှော့ဈေး Popup နှင့် Link ဖွင့်မည်',
+    boxTitle: 'Booking Promo Box & Category Tags',
+    boxDesc: 'Booking နှင့် Service Category ခေါင်းစဉ်များတွင် လျှော့ဈေးပြသမည်',
+  },
+};
 
 const DEFAULT_SAVED_CAMPAIGNS: SavedCampaignCard[] = [
   {
     id: 'camp_thadingyut',
-    campaignTitle: 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
-    boxTitle: 'SPECIAL PROMO',
+    promoType: 'mini_game',
+    campaignTitle: 'သီတင်းကျွတ် မီးပုံးဖမ်းဂိမ်း Campaign',
+    boxTitle: 'FESTIVAL MINI GAME',
+    description: 'ဂိမ်းကစားပြီး ၅၀% အထိ အထူးလျှော့ဈေးများ ကံစမ်းရယူလိုက်ပါ',
     isPopupActive: false,
     isBoxActive: false,
-    hotelDiscountPercent: 10,
-    otherDiscountPercent: 20,
+    hotelDiscountPercent: 0,
+    otherDiscountPercent: 0,
+    gameRewardTiers: [10, 15, 20, 30, 50],
+    outcallRewardCap: 10,
+    rewardValidityDays: 1,
     startDate: '2026-10-01',
     endDate: '2026-10-31',
     themeColor: 'from-amber-900 via-[#2a1808] to-[#140b03]',
@@ -58,8 +107,10 @@ const DEFAULT_SAVED_CAMPAIGNS: SavedCampaignCard[] = [
   },
   {
     id: 'camp_tazaungdaing',
-    campaignTitle: 'တန်ဆောင်တိုင် အထူးပရိုမိုးရှင်း',
+    promoType: 'percentage_discount',
+    campaignTitle: 'တန်ဆောင်တိုင် အထူး % လျှော့ဈေး',
     boxTitle: 'TAZAUNGDAING SPECIAL',
+    description: 'In-Spa နှင့် Hotel/Outcall ဝန်ဆောင်မှုအားလုံးအတွက် အထူးလျှော့ဈေး',
     isPopupActive: false,
     isBoxActive: false,
     hotelDiscountPercent: 10,
@@ -67,17 +118,20 @@ const DEFAULT_SAVED_CAMPAIGNS: SavedCampaignCard[] = [
     startDate: '2026-11-15',
     endDate: '2026-11-30',
     themeColor: 'from-[#123524] via-[#0B2419] to-[#06150e]',
-    badgeText: 'FESTIVAL OF LIGHTS',
+    badgeText: 'SEASONAL OFFER',
     updatedAt: Date.now(),
   },
   {
     id: 'camp_newyear',
-    campaignTitle: 'နှစ်သစ်ကူး အထူးပရိုမိုးရှင်း (New Year Special)',
-    boxTitle: 'NEW YEAR PROMO',
+    promoType: 'category_discount',
+    campaignTitle: 'နှစ်သစ်ကူး Service Category အထူးလျှော့ဈေး',
+    boxTitle: 'NEW YEAR CATEGORY PROMO',
+    description: 'ရွေးချယ်ထားသော Service Category များအတွက် သီးသန့်လျှော့ဈေး',
     isPopupActive: false,
     isBoxActive: false,
-    hotelDiscountPercent: 10,
-    otherDiscountPercent: 25,
+    hotelDiscountPercent: 0,
+    otherDiscountPercent: 0,
+    categoryDiscounts: { massage: 20, body_scrub: 25 },
     startDate: '2026-12-20',
     endDate: '2027-01-05',
     themeColor: 'from-emerald-950 via-[#123524] to-[#091e14]',
@@ -111,6 +165,35 @@ const normalizeMyanmarPhone = (phone: string): string => {
   let digits = String(phone).replace(/[^0-9]/g, '');
   if (digits.startsWith('959')) digits = '09' + digits.slice(3);
   return digits;
+};
+
+const normalizeCard = (raw: any): SavedCampaignCard => {
+  const pType = resolvePromotionType(raw);
+  const rawTiers =
+    Array.isArray(raw?.gameRewardTiers) && raw.gameRewardTiers.length > 0
+      ? raw.gameRewardTiers.map(Number).filter((n: number) => n > 0)
+      : [10, 15, 20, 30, 50];
+  return {
+    id: raw?.id || `camp_${Date.now()}`,
+    promoType: pType,
+    campaignTitle: raw?.campaignTitle || raw?.title || 'Untitled Promotion',
+    boxTitle: raw?.boxTitle || 'SPECIAL PROMO',
+    description: raw?.description || '',
+    isPopupActive: Boolean(raw?.isPopupActive),
+    isBoxActive: Boolean(raw?.isBoxActive),
+    hotelDiscountPercent: Number(raw?.hotelDiscountPercent) || 0,
+    otherDiscountPercent: Number(raw?.otherDiscountPercent) || 0,
+    gameRewardTiers: rawTiers,
+    outcallRewardCap: raw?.outcallRewardCap !== undefined ? Number(raw.outcallRewardCap) : 10,
+    rewardValidityDays: Math.max(1, Number(raw?.rewardValidityDays) || 1),
+    categoryDiscounts:
+      raw?.categoryDiscounts && typeof raw.categoryDiscounts === 'object' ? { ...raw.categoryDiscounts } : {},
+    startDate: raw?.startDate || getLocalTodayStr(),
+    endDate: raw?.endDate || addDaysToDateStr(14),
+    themeColor: raw?.themeColor || THEME_PRESETS[0].value,
+    badgeText: raw?.badgeText || PROMO_TYPE_META[pType].kicker,
+    updatedAt: Number(raw?.updatedAt) || Date.now(),
+  };
 };
 
 const isCampaignRewardUsedByCompletedService = (
@@ -168,9 +251,7 @@ const safeCopyText = async (text: string): Promise<boolean> => {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch {
-    // fallback
-  }
+  } catch {}
   try {
     const el = document.createElement('textarea');
     el.value = text;
@@ -201,6 +282,539 @@ interface ConfirmDialogState {
   onSecondary?: () => void | Promise<void>;
 }
 
+const PromoTypeIcon = ({ type, className = 'w-4 h-4' }: { type: PromotionType; className?: string }) => {
+  if (type === 'mini_game') return <Gamepad2 className={className} />;
+  if (type === 'category_discount') return <Layers className={className} />;
+  return <Percent className={className} />;
+};
+
+// ============================================================================
+// SHARED CREATE / EDIT PROMOTION FORM MODAL (3 CLEAR PROMOTION TYPES)
+// ============================================================================
+function PromotionFormModal({
+  mode,
+  initialCard,
+  categories,
+  onClose,
+  onSubmit,
+  onError,
+}: {
+  mode: 'create' | 'edit';
+  initialCard: SavedCampaignCard;
+  categories: { id: string; title: string }[];
+  onClose: () => void;
+  onSubmit: (card: SavedCampaignCard) => void | Promise<void>;
+  onError: (msg: string) => void;
+}) {
+  const [form, setForm] = useState<SavedCampaignCard>(() => ({
+    ...initialCard,
+    categoryDiscounts: { ...(initialCard.categoryDiscounts || {}) },
+    gameRewardTiers: [...(initialCard.gameRewardTiers || [10, 15, 20, 30, 50])],
+  }));
+  const [submitting, setSubmitting] = useState(false);
+
+  const meta = PROMO_TYPE_META[form.promoType];
+
+  const handleSelectType = (nextType: PromotionType) => {
+    setForm((prev) => ({
+      ...prev,
+      promoType: nextType,
+      badgeText:
+        !prev.badgeText ||
+        Object.values(PROMO_TYPE_META).some((m) => m.kicker === prev.badgeText)
+          ? PROMO_TYPE_META[nextType].kicker
+          : prev.badgeText,
+      themeColor:
+        nextType === 'mini_game'
+          ? THEME_PRESETS[1].value
+          : nextType === 'category_discount'
+          ? THEME_PRESETS[2].value
+          : THEME_PRESETS[0].value,
+      // Sensible defaults when switching types
+      otherDiscountPercent: nextType === 'percentage_discount' ? prev.otherDiscountPercent || 20 : prev.otherDiscountPercent,
+      hotelDiscountPercent: nextType === 'percentage_discount' ? prev.hotelDiscountPercent || 10 : prev.hotelDiscountPercent,
+      gameRewardTiers:
+        prev.gameRewardTiers && prev.gameRewardTiers.length > 0 ? prev.gameRewardTiers : [10, 15, 20, 30, 50],
+      outcallRewardCap: prev.outcallRewardCap ?? 10,
+      rewardValidityDays: prev.rewardValidityDays || 1,
+    }));
+  };
+
+  const toggleGameTier = (pct: number) => {
+    setForm((prev) => {
+      const current = prev.gameRewardTiers || [10, 15, 20, 30, 50];
+      const exists = current.includes(pct);
+      const next = exists ? current.filter((t) => t !== pct) : [...current, pct].sort((a, b) => a - b);
+      return { ...prev, gameRewardTiers: next };
+    });
+  };
+
+  const setCategoryPercent = (catId: string, val: number) => {
+    const clean = Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+    setForm((prev) => ({
+      ...prev,
+      categoryDiscounts: {
+        ...(prev.categoryDiscounts || {}),
+        [catId]: clean,
+      },
+    }));
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.campaignTitle.trim()) {
+      onError('Promotion ခေါင်းစဉ် ထည့်သွင်းပေးပါ။');
+      return;
+    }
+    if (form.startDate && form.endDate && form.endDate < form.startDate) {
+      onError('ပြီးဆုံးရက် (End Date) သည် စတင်ရက် (Start Date) ထက် မစောရပါ။');
+      return;
+    }
+
+    if (form.promoType === 'percentage_discount') {
+      if ((Number(form.otherDiscountPercent) || 0) <= 0 && (Number(form.hotelDiscountPercent) || 0) <= 0) {
+        onError('In-Spa သို့မဟုတ် Outcall % Discount အနည်းဆုံးတစ်ခု ထည့်ပေးပါ။');
+        return;
+      }
+    } else if (form.promoType === 'mini_game') {
+      if (!form.gameRewardTiers || form.gameRewardTiers.length === 0) {
+        onError('Mini Game Reward % အနည်းဆုံးတစ်ခု ရွေးချယ်ပေးပါ။');
+        return;
+      }
+    } else if (form.promoType === 'category_discount') {
+      const hasAnyCategoryDiscount = Object.values(form.categoryDiscounts || {}).some((v) => Number(v) > 0);
+      if (!hasAnyCategoryDiscount) {
+        onError('အနည်းဆုံး Service Category တစ်ခုအတွက် % Discount သတ်မှတ်ပေးပါ။');
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    try {
+      const cleanedCategoryMap: Record<string, number> = {};
+      if (form.promoType === 'category_discount') {
+        for (const [k, v] of Object.entries(form.categoryDiscounts || {})) {
+          const n = Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+          if (n > 0) cleanedCategoryMap[k] = n;
+        }
+      }
+
+      const finalCard: SavedCampaignCard = {
+        ...form,
+        campaignTitle: form.campaignTitle.trim(),
+        boxTitle: (form.boxTitle || form.campaignTitle).trim(),
+        description: (form.description || '').trim(),
+        badgeText: (form.badgeText || PROMO_TYPE_META[form.promoType].kicker).trim(),
+        hotelDiscountPercent:
+          form.promoType === 'percentage_discount' ? Math.max(0, Math.min(100, Number(form.hotelDiscountPercent) || 0)) : 0,
+        otherDiscountPercent:
+          form.promoType === 'percentage_discount' ? Math.max(0, Math.min(100, Number(form.otherDiscountPercent) || 0)) : 0,
+        gameRewardTiers:
+          form.promoType === 'mini_game' ? [...(form.gameRewardTiers || [10, 15, 20, 30, 50])].sort((a, b) => a - b) : [],
+        outcallRewardCap:
+          form.promoType === 'mini_game' ? Math.max(0, Math.min(100, Number(form.outcallRewardCap ?? 10))) : 10,
+        rewardValidityDays:
+          form.promoType === 'mini_game' ? Math.max(1, Number(form.rewardValidityDays) || 1) : 1,
+        categoryDiscounts: cleanedCategoryMap,
+        updatedAt: Date.now(),
+      };
+      await onSubmit(finalCard);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[9980] bg-black/55 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={handleFormSubmit}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl border border-gray-200 overflow-hidden"
+      >
+        {/* Modal Header */}
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 shrink-0 bg-white">
+          <div className="min-w-0">
+            <h3 className="text-base font-black text-[#123524] flex items-center gap-2">
+              {mode === 'create' ? (
+                <PlusCircle className="w-5 h-5 text-[#D4AF37] shrink-0" />
+              ) : (
+                <Edit className="w-5 h-5 text-[#D4AF37] shrink-0" />
+              )}
+              <span className="truncate">
+                {mode === 'create' ? 'Promotion အသစ် ဖန်တီးမည်' : 'Promotion ပြင်ဆင်မည်'}
+              </span>
+            </h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Promotion အမျိုးအစား နှင့် ပြသမည့် Channel ကို တိကျစွာ ရွေးချယ်သတ်မှတ်ပါ
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Scrollable Body */}
+        <div className="p-5 overflow-y-auto space-y-5 flex-1">
+          {/* STEP 1: CHOOSE PROMOTION TYPE */}
+          <div className="space-y-2">
+            <label className="text-[11px] font-black text-[#123524] uppercase tracking-wider block">
+              1. Promotion အမျိုးအစား ရွေးချယ်ပါ
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(['percentage_discount', 'mini_game', 'category_discount'] as PromotionType[]).map((t) => {
+                const info = PROMO_TYPE_META[t];
+                const selected = form.promoType === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => handleSelectType(t)}
+                    className={`min-h-[60px] p-3 rounded-xl border text-left transition flex sm:flex-col items-center sm:items-start gap-3 sm:gap-1.5 ${
+                      selected
+                        ? 'bg-[#0B2419] text-white border-[#D4AF37] shadow-sm'
+                        : 'bg-gray-50/80 hover:bg-gray-100 text-gray-800 border-gray-200'
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        selected ? 'bg-[#D4AF37] text-[#0B2419]' : 'bg-white text-[#123524] border border-gray-200'
+                      }`}
+                    >
+                      <PromoTypeIcon type={t} className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className={`text-xs font-black ${selected ? 'text-[#D4AF37]' : 'text-gray-900'}`}>
+                        {info.shortLabel}
+                      </div>
+                      <div className={`text-[10px] leading-snug mt-0.5 ${selected ? 'text-gray-300' : 'text-gray-500'}`}>
+                        {info.subtitle}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* STEP 2: OFFER CONFIGURATION (STRICTLY TYPE-SPECIFIC) */}
+          <div className="space-y-3 pt-4 border-t border-gray-100">
+            <label className="text-[11px] font-black text-[#123524] uppercase tracking-wider block">
+              2. {meta.title} အသေးစိတ် သတ်မှတ်ပါ
+            </label>
+
+            {form.promoType === 'percentage_discount' && (
+              <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3.5 rounded-xl border border-gray-200/80">
+                <div>
+                  <label className="text-[11px] font-bold text-gray-700 block mb-1">In-Spa Services (% OFF)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={form.otherDiscountPercent}
+                    onChange={(e) => setForm({ ...form, otherDiscountPercent: Number(e.target.value) })}
+                    className="w-full min-h-[42px] px-3 py-2 border border-gray-300 bg-white rounded-xl text-sm font-black text-[#123524] outline-none focus:border-[#123524] tabular-nums"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-gray-700 block mb-1">Hotel & Outcall (% OFF)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={form.hotelDiscountPercent}
+                    onChange={(e) => setForm({ ...form, hotelDiscountPercent: Number(e.target.value) })}
+                    className="w-full min-h-[42px] px-3 py-2 border border-gray-300 bg-white rounded-xl text-sm font-black text-[#123524] outline-none focus:border-[#123524] tabular-nums"
+                  />
+                </div>
+              </div>
+            )}
+
+            {form.promoType === 'mini_game' && (
+              <div className="space-y-3.5 bg-gray-50 p-3.5 rounded-xl border border-gray-200/80">
+                <div>
+                  <label className="text-[11px] font-bold text-gray-700 block mb-1.5">
+                    ဂိမ်းမှ ပေါက်နိုင်မည့် Reward % များ ရွေးချယ်ပါ
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {AVAILABLE_GAME_TIERS.map((pct) => {
+                      const active = (form.gameRewardTiers || []).includes(pct);
+                      return (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => toggleGameTier(pct)}
+                          className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-black tabular-nums border transition ${
+                            active
+                              ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
+                              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          {pct}% OFF
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-1">
+                      Outcall / Hotel အများဆုံးကန့်သတ်ချက် (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={form.outcallRewardCap ?? 10}
+                      onChange={(e) => setForm({ ...form, outcallRewardCap: Number(e.target.value) })}
+                      className="w-full min-h-[40px] px-3 py-2 border border-gray-300 bg-white rounded-xl text-xs font-black text-[#123524] outline-none tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-1">
+                      မဲပေါက်ဆု သက်တမ်း (Validity)
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[1, 3, 7].map((days) => (
+                        <button
+                          key={days}
+                          type="button"
+                          onClick={() => setForm({ ...form, rewardValidityDays: days })}
+                          className={`min-h-[40px] rounded-lg text-xs font-bold border transition ${
+                            (form.rewardValidityDays || 1) === days
+                              ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
+                              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          {days === 1 ? '1 Day' : `${days} Days`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {form.promoType === 'category_discount' && (
+              <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200/80 space-y-2.5">
+                <div className="text-[11px] text-gray-600">
+                  Service Category တစ်ခုချင်းစီအတွက် လျှော့ဈေး % ထည့်ပါ (0% ထားပါက ၎င်း Category မပါဝင်ပါ)
+                </div>
+                <div className="divide-y divide-gray-200/80 bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  {categories.map((cat) => {
+                    const currentPct = Number(form.categoryDiscounts?.[cat.id]) || 0;
+                    return (
+                      <div key={cat.id} className="p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-gray-900 truncate">{cat.title}</span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={currentPct}
+                              onChange={(e) => setCategoryPercent(cat.id, Number(e.target.value))}
+                              className="w-16 min-h-[36px] px-2 py-1 border border-gray-300 rounded-lg text-xs font-black text-center text-[#123524] outline-none focus:border-[#123524] tabular-nums"
+                            />
+                            <span className="text-xs font-bold text-gray-500">%</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {QUICK_CATEGORY_PERCENTS.map((qPct) => (
+                            <button
+                              key={qPct}
+                              type="button"
+                              onClick={() => setCategoryPercent(cat.id, qPct)}
+                              className={`flex-1 py-1 rounded-md text-[10px] font-bold tabular-nums border transition ${
+                                currentPct === qPct
+                                  ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
+                                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                              }`}
+                            >
+                              {qPct === 0 ? 'OFF' : `${qPct}%`}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Common Title, Description, Duration */}
+            <div className="space-y-3 pt-1">
+              <div>
+                <label className="text-[11px] font-bold text-gray-600 block mb-1">
+                  Promotion / Campaign ခေါင်းစဉ် *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={form.campaignTitle}
+                  onChange={(e) => setForm({ ...form, campaignTitle: e.target.value })}
+                  placeholder={
+                    form.promoType === 'mini_game'
+                      ? 'ဥပမာ - သင်္ကြန် အထူးကံစမ်းမဲ Mini Game'
+                      : form.promoType === 'category_discount'
+                      ? 'ဥပမာ - Body Scrub & Massage အထူးလျှော့ဈေး'
+                      : 'ဥပမာ - Weekend Special 20% OFF'
+                  }
+                  className="w-full min-h-[42px] px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-gray-600 block mb-1">Booking Box ခေါင်းစဉ်</label>
+                  <input
+                    type="text"
+                    value={form.boxTitle}
+                    onChange={(e) => setForm({ ...form, boxTitle: e.target.value })}
+                    placeholder="ဥပမာ - SPECIAL PROMO"
+                    className="w-full min-h-[42px] px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-gray-600 block mb-1">Event Tag (Optional)</label>
+                  <input
+                    type="text"
+                    value={form.badgeText || ''}
+                    onChange={(e) => setForm({ ...form, badgeText: e.target.value })}
+                    placeholder="ဥပမာ - LIMITED OFFER"
+                    className="w-full min-h-[42px] px-3 py-2 border border-gray-300 rounded-xl text-xs font-bold outline-none focus:border-[#123524]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-gray-600 block mb-1">
+                  အကျဉ်းချုပ် စာသား (Customer Popup & Box တွင် ပြသရန်)
+                </label>
+                <input
+                  type="text"
+                  value={form.description || ''}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="ဥပမာ - သတ်မှတ်ရက်အတွင်း ဘိုကင်တင်သူတိုင်း ခံစားခွင့်ရမည်"
+                  className="w-full min-h-[42px] px-3 py-2 border border-gray-300 rounded-xl text-xs outline-none focus:border-[#123524]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-gray-600 block mb-1">စတင်ရက် (Start Date) *</label>
+                  <input
+                    type="date"
+                    required
+                    value={form.startDate}
+                    onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                    className="w-full min-h-[42px] px-3 py-2 border border-gray-300 rounded-xl text-xs font-mono outline-none focus:border-[#123524]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-gray-600 block mb-1">ပြီးဆုံးရက် (End Date) *</label>
+                  <input
+                    type="date"
+                    required
+                    value={form.endDate}
+                    onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                    className="w-full min-h-[42px] px-3 py-2 border border-gray-300 rounded-xl text-xs font-mono outline-none focus:border-[#123524]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-gray-600 block mb-1.5">Card Theme</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {THEME_PRESETS.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setForm({ ...form, themeColor: t.value })}
+                      className={`min-h-[38px] px-2 py-1.5 rounded-xl border text-[10px] font-bold flex items-center justify-center gap-1.5 transition ${
+                        form.themeColor === t.value
+                          ? 'border-[#123524] bg-emerald-50 text-[#123524]'
+                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className={`w-3 h-3 rounded-full shrink-0 ${t.swatch}`} />
+                      <span className="truncate">{t.label.split(' ')[0]}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* STEP 3: DISPLAY CHANNELS */}
+          <div className="space-y-2.5 pt-4 border-t border-gray-100">
+            <label className="text-[11px] font-black text-[#123524] uppercase tracking-wider block">
+              3. Customer App တွင် ပြသမည့် ပုံစံ (Display Channels)
+            </label>
+
+            <div className="space-y-2">
+              <label className="min-h-[54px] flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/80 cursor-pointer">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-gray-900">{meta.boxTitle}</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">{meta.boxDesc}</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.isBoxActive}
+                  onChange={(e) => setForm({ ...form, isBoxActive: e.target.checked })}
+                  className="w-5 h-5 accent-[#123524] shrink-0"
+                />
+              </label>
+
+              <label className="min-h-[54px] flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/80 cursor-pointer">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-gray-900">{meta.popupTitle}</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">{meta.popupDesc}</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.isPopupActive}
+                  onChange={(e) => setForm({ ...form, isPopupActive: e.target.checked })}
+                  className="w-5 h-5 accent-[#123524] shrink-0"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Sticky Modal Footer */}
+        <div className="px-5 py-3.5 border-t border-gray-100 bg-white grid grid-cols-2 gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[44px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="min-h-[44px] bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black shadow-xs transition"
+          >
+            {submitting ? 'Saving...' : mode === 'create' ? 'Create Promotion' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ============================================================================
+// MAIN PROMOTION & CAMPAIGNS WORKSPACE
+// ============================================================================
 export function AdminCampaignsWorkspace({
   bookings = [],
   adminRole = 'super_admin',
@@ -214,23 +828,42 @@ export function AdminCampaignsWorkspace({
 }) {
   const todayStr = getLocalTodayStr();
 
+  const serviceCategories = useMemo(() => {
+    const raw = Array.isArray(appData?.categories) ? appData!.categories : [];
+    if (raw.length > 0) return raw.map((c) => ({ id: c.id, title: c.title }));
+    return [
+      { id: 'massage', title: 'Massage' },
+      { id: 'body_scrub', title: 'Body Scrub' },
+      { id: 'waxing', title: 'Waxing' },
+      { id: 'hotel_service', title: 'Hotel & Home Services' },
+    ];
+  }, [appData?.categories]);
+
+  const categoryTitleMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    serviceCategories.forEach((c) => {
+      m[c.id] = c.title;
+    });
+    if (m['hotel_service'] && !m['hotel']) m['hotel'] = m['hotel_service'];
+    if (m['hotel'] && !m['hotel_service']) m['hotel_service'] = m['hotel'];
+    return m;
+  }, [serviceCategories]);
+
   const [subView, setSubView] = useState<'cards_studio' | 'winners_tracker'>(() => {
     try {
       const saved = sessionStorage.getItem(SUBTAB_STORAGE_KEY);
       if (saved === 'cards_studio' || saved === 'winners_tracker') return saved;
-    } catch {
-      // ignore
-    }
+    } catch {}
     return 'cards_studio';
   });
+
+  const [typeFilter, setTypeFilter] = useState<'all' | PromotionType>('all');
 
   const handleSetSubView = (view: 'cards_studio' | 'winners_tracker') => {
     setSubView(view);
     try {
       sessionStorage.setItem(SUBTAB_STORAGE_KEY, view);
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
   // Toast & In-App Confirm Dialog
@@ -251,459 +884,468 @@ export function AdminCampaignsWorkspace({
     };
   }, []);
 
-  // ============================================================================
-  // PART 1: PROMOTION & CAMPAIGN CARDS STUDIO
-  // ============================================================================
+  // Campaign Cards State (Real-time synced with Firestore settings/appData)
   const [campaignCards, setCampaignCards] = useState<SavedCampaignCard[]>(DEFAULT_SAVED_CAMPAIGNS);
-  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
-  const [livePromotion, setLivePromotion] = useState<any>(() => {
-    return (
-      appData?.promotion || {
-        isActive: false,
-        isBoxActive: false,
-        boxTitle: 'SPECIAL PROMO',
-        isPopupActive: false,
-        campaignTitle: 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
-        hotelDiscountPercent: 10,
-        otherDiscountPercent: 20,
-        startDate: '',
-        endDate: '',
-      }
-    );
-  });
+  const [livePromotion, setLivePromotion] = useState<any>(appData?.promotion || null);
   const [savingPromoId, setSavingPromoId] = useState<string | null>(null);
-  const [editingCard, setEditingCard] = useState<SavedCampaignCard | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
-  const [newCardForm, setNewCardForm] = useState<SavedCampaignCard>({
-    id: '',
-    campaignTitle: '',
-    boxTitle: 'SPECIAL DISCOUNT',
-    isPopupActive: false,
-    isBoxActive: false,
-    hotelDiscountPercent: 10,
-    otherDiscountPercent: 20,
-    startDate: todayStr,
-    endDate: addDaysToDateStr(14),
-    themeColor: 'from-[#123524] via-[#0B2419] to-[#06150e]',
-    badgeText: 'EXCLUSIVE EVENT',
-    updatedAt: Date.now(),
-  });
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
+  const [modalCard, setModalCard] = useState<SavedCampaignCard | null>(null);
 
-  // Real-time sync with settings/appData
+  // Game Winners State
+  const [records, setRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [applyingBookingId, setApplyingBookingId] = useState<string | null>(null);
+  const [dateFilterMode, setDateFilterMode] = useState<'today' | 'yesterday' | 'this_month' | 'all_time' | 'custom_range'>('all_time');
+  const [fromDate, setFromDate] = useState(todayStr);
+  const [toDate, setToDate] = useState(todayStr);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active_unused' | 'used_completed' | 'expired'>('all');
+
+  const getYesterdayStr = () => addDaysToDateStr(-1);
+  const getThisMonthPrefix = () => todayStr.slice(0, 7);
+
+  // 1. Live Listener for settings/appData
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      if (data.promotion) {
-        setLivePromotion(data.promotion);
-      }
-      if (Array.isArray(data.savedCampaignCards) && data.savedCampaignCards.length > 0) {
-        setCampaignCards(data.savedCampaignCards);
-        // Auto-expand any active card on initial load
-        const liveCard = data.savedCampaignCards.find((c: SavedCampaignCard) => c.isPopupActive || c.isBoxActive);
-        if (liveCard) {
-          setExpandedCards((prev) => (Object.keys(prev).length === 0 ? { [liveCard.id]: true } : prev));
-        }
-      } else {
-        const curPromo = data.promotion || {};
-        const initialized = DEFAULT_SAVED_CAMPAIGNS.map((c, idx) => {
-          if (idx === 0 && curPromo.campaignTitle) {
-            return {
-              ...c,
-              campaignTitle: curPromo.campaignTitle || c.campaignTitle,
-              boxTitle: curPromo.boxTitle || c.boxTitle,
-              isPopupActive: Boolean(curPromo.isPopupActive),
-              isBoxActive: Boolean(curPromo.isBoxActive),
-              hotelDiscountPercent: Number(curPromo.hotelDiscountPercent ?? c.hotelDiscountPercent),
-              otherDiscountPercent: Number(curPromo.otherDiscountPercent ?? c.otherDiscountPercent),
-              startDate: curPromo.startDate || c.startDate,
-              endDate: curPromo.endDate || c.endDate,
-            };
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'appData'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const remotePromo = data.promotion || null;
+        setLivePromotion(remotePromo);
+
+        if (Array.isArray(data.savedCampaignCards) && data.savedCampaignCards.length > 0) {
+          const normalized = data.savedCampaignCards.map(normalizeCard);
+          setCampaignCards(normalized);
+          const liveCard = normalized.find((c) => c.isPopupActive || c.isBoxActive);
+          if (liveCard) {
+            setExpandedCards((prev) =>
+              Object.keys(prev).length === 0 ? { [liveCard.id]: true } : prev
+            );
           }
-          return c;
-        });
-        setCampaignCards(initialized);
+        } else if (remotePromo) {
+          const isPopupOn = Boolean(remotePromo.isPopupActive && !remotePromo.allOff);
+          const isBoxOn = Boolean(remotePromo.isBoxActive && !remotePromo.allOff);
+          const mergedDefaults = DEFAULT_SAVED_CAMPAIGNS.map((c, idx) =>
+            idx === 0
+              ? normalizeCard({
+                  ...c,
+                  promoType: resolvePromotionType(remotePromo),
+                  campaignTitle: remotePromo.campaignTitle || c.campaignTitle,
+                  boxTitle: remotePromo.boxTitle || c.boxTitle,
+                  hotelDiscountPercent: remotePromo.hotelDiscountPercent ?? c.hotelDiscountPercent,
+                  otherDiscountPercent: remotePromo.otherDiscountPercent ?? c.otherDiscountPercent,
+                  categoryDiscounts: remotePromo.categoryDiscounts || c.categoryDiscounts,
+                  startDate: remotePromo.startDate || c.startDate,
+                  endDate: remotePromo.endDate || c.endDate,
+                  isPopupActive: isPopupOn,
+                  isBoxActive: isBoxOn,
+                })
+              : c
+          );
+          setCampaignCards(mergedDefaults);
+        }
       }
+    });
+    return () => unsubSettings();
+  }, []);
+
+  // 2. Live Listener for campaign_records
+  useEffect(() => {
+    const q = query(collection(db, 'campaign_records'));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setRecords(list);
+      setLoading(false);
     });
     return () => unsub();
   }, []);
 
-  const syncCampaignStateToFirestore = async (
+  // Sync to Firestore & local appData cleanly (strictly isolates active promoType fields!)
+  const syncCampaignCardsToFirestore = async (
     updatedCards: SavedCampaignCard[],
-    activeCardToPublish: SavedCampaignCard | null,
-    actionId: string,
-    toastMessage?: string
+    activeCardForGlobal: SavedCampaignCard | null
   ) => {
-    setSavingPromoId(actionId);
+    const isPopupOn = Boolean(activeCardForGlobal?.isPopupActive);
+    const isBoxOn = Boolean(activeCardForGlobal?.isBoxActive);
+    const isAnyOn = isPopupOn || isBoxOn;
+    const activeType: PromotionType = activeCardForGlobal ? resolvePromotionType(activeCardForGlobal) : 'percentage_discount';
+
+    const newGlobalPromo = activeCardForGlobal && isAnyOn
+      ? {
+          promoType: activeType,
+          isActive: true,
+          allOff: false,
+          isPopupActive: isPopupOn,
+          popupEnabled: isPopupOn,
+          miniGamePopup: activeType === 'mini_game' ? isPopupOn : false,
+          isBoxActive: isBoxOn,
+          campaignTitle: activeCardForGlobal.campaignTitle,
+          boxTitle: activeCardForGlobal.boxTitle,
+          description: activeCardForGlobal.description || '',
+          // Strictly isolate offer values by promoType (prevents cross-type leakage)
+          hotelDiscountPercent: activeType === 'percentage_discount' ? Number(activeCardForGlobal.hotelDiscountPercent) || 0 : 0,
+          otherDiscountPercent: activeType === 'percentage_discount' ? Number(activeCardForGlobal.otherDiscountPercent) || 0 : 0,
+          gameRewardTiers: activeType === 'mini_game' ? (activeCardForGlobal.gameRewardTiers || [10, 15, 20, 30, 50]) : [],
+          outcallRewardCap: activeType === 'mini_game' ? Number(activeCardForGlobal.outcallRewardCap ?? 10) : 10,
+          rewardValidityDays: activeType === 'mini_game' ? Math.max(1, Number(activeCardForGlobal.rewardValidityDays) || 1) : 1,
+          categoryDiscounts: activeType === 'category_discount' ? (activeCardForGlobal.categoryDiscounts || {}) : {},
+          startDate: activeCardForGlobal.startDate,
+          endDate: activeCardForGlobal.endDate,
+          activeCampaignId: activeCardForGlobal.id,
+          updatedAt: Date.now(),
+        }
+      : {
+          promoType: 'percentage_discount' as PromotionType,
+          isActive: false,
+          allOff: true,
+          isPopupActive: false,
+          popupEnabled: false,
+          miniGamePopup: false,
+          isBoxActive: false,
+          campaignTitle: '',
+          boxTitle: '',
+          description: '',
+          hotelDiscountPercent: 0,
+          otherDiscountPercent: 0,
+          gameRewardTiers: [],
+          outcallRewardCap: 10,
+          rewardValidityDays: 1,
+          categoryDiscounts: {},
+          startDate: '',
+          endDate: '',
+          activeCampaignId: '',
+          updatedAt: Date.now(),
+        };
+
+    await setDoc(
+      doc(db, 'settings', 'appData'),
+      {
+        savedCampaignCards: updatedCards,
+        promotion: newGlobalPromo,
+      },
+      { merge: true }
+    );
+
+    setCampaignCards(updatedCards);
+    setLivePromotion(newGlobalPromo);
+    if (onSettingsUpdated && appData) {
+      onSettingsUpdated({ ...appData, promotion: newGlobalPromo, savedCampaignCards: updatedCards } as any);
+    }
+  };
+
+  // Channel Toggle with Smart Expired-Date Guard
+  const executeToggleCardChannel = async (
+    targetCard: SavedCampaignCard,
+    action: 'toggle_popup' | 'toggle_box' | 'master_toggle',
+    extendDates?: { startDate: string; endDate: string }
+  ) => {
+    setSavingPromoId(targetCard.id);
     try {
-      const nextPromotionPayload = activeCardToPublish
-        ? {
-            isActive: Boolean(activeCardToPublish.isPopupActive || activeCardToPublish.isBoxActive),
-            allOff: false,
-            isPopupActive: Boolean(activeCardToPublish.isPopupActive),
-            isBoxActive: Boolean(activeCardToPublish.isBoxActive),
-            campaignTitle: activeCardToPublish.campaignTitle.trim(),
-            boxTitle: activeCardToPublish.boxTitle.trim() || 'SPECIAL PROMO',
-            title: activeCardToPublish.boxTitle.trim() || 'SPECIAL PROMO',
-            hotelDiscountPercent: Number(activeCardToPublish.hotelDiscountPercent) || 0,
-            otherDiscountPercent: Number(activeCardToPublish.otherDiscountPercent) || 0,
-            startDate: activeCardToPublish.startDate || '',
-            endDate: activeCardToPublish.endDate || '',
-            activeCampaignId: activeCardToPublish.id,
-            updatedAt: Date.now(),
-          }
-        : {
-            isActive: false,
-            allOff: true,
-            isPopupActive: false,
-            isBoxActive: false,
-            campaignTitle: livePromotion.campaignTitle || 'သီတင်းကျွတ် အထူးပရိုမိုးရှင်း',
-            boxTitle: livePromotion.boxTitle || 'SPECIAL PROMO',
-            title: livePromotion.boxTitle || 'SPECIAL PROMO',
-            hotelDiscountPercent: 0,
-            otherDiscountPercent: 0,
-            startDate: '1970-01-01',
-            endDate: '1970-01-01',
-            activeCampaignId: '',
-            updatedAt: Date.now(),
-          };
+      const cardWithDates = extendDates
+        ? { ...targetCard, startDate: extendDates.startDate, endDate: extendDates.endDate }
+        : targetCard;
 
-      await setDoc(
-        doc(db, 'settings', 'appData'),
-        {
-          promotion: nextPromotionPayload,
-          savedCampaignCards: updatedCards,
-        },
-        { merge: true }
-      );
+      let nextPopup = cardWithDates.isPopupActive;
+      let nextBox = cardWithDates.isBoxActive;
 
-      setLivePromotion(nextPromotionPayload);
-      setCampaignCards(updatedCards);
-
-      if (appData && onSettingsUpdated) {
-        onSettingsUpdated({
-          ...appData,
-          promotion: nextPromotionPayload,
-          savedCampaignCards: updatedCards,
-        });
+      if (action === 'toggle_popup') {
+        nextPopup = !cardWithDates.isPopupActive;
+      } else if (action === 'toggle_box') {
+        nextBox = !cardWithDates.isBoxActive;
+      } else if (action === 'master_toggle') {
+        const currentlyLive = cardWithDates.isPopupActive || cardWithDates.isBoxActive;
+        if (currentlyLive) {
+          nextPopup = false;
+          nextBox = false;
+        } else {
+          // Activate sensible default channel by type (Mini Game -> Popup+Box, Discounts -> Box+Popup)
+          nextPopup = true;
+          nextBox = true;
+        }
       }
 
-      if (toastMessage) showToast(toastMessage, 'success');
+      const willBecomeActive = nextPopup || nextBox;
+
+      const updatedCards = campaignCards.map((c) => {
+        if (c.id === targetCard.id) {
+          return {
+            ...cardWithDates,
+            isPopupActive: nextPopup,
+            isBoxActive: nextBox,
+            updatedAt: Date.now(),
+          };
+        }
+        // Only one promotion card live at a time so discounts never conflict
+        if (willBecomeActive) {
+          return { ...c, isPopupActive: false, isBoxActive: false };
+        }
+        return c;
+      });
+
+      const activeCard = updatedCards.find((c) => c.isPopupActive || c.isBoxActive) || null;
+      await syncCampaignCardsToFirestore(updatedCards, activeCard);
+
+      if (willBecomeActive) {
+        const channels = [nextPopup ? 'Popup & Link' : '', nextBox ? 'Booking Box' : ''].filter(Boolean).join(' + ');
+        showToast(`"${cardWithDates.campaignTitle}" ဖွင့်ပြီးပါပြီ (${channels})`, 'success');
+      } else {
+        showToast(`"${cardWithDates.campaignTitle}" ပိတ်ပြီးပါပြီ`, 'info');
+      }
     } catch (err) {
-      console.error('Error syncing campaign:', err);
-      showToast('Campaign အပြောင်းအလဲ သိမ်းဆည်းရာတွင် အမှားအယွင်းရှိနေပါသည်။', 'error');
+      console.error(err);
+      showToast('Promotion အခြေအနေ ပြောင်းလဲရာတွင် အမှားအယွင်းရှိနေပါသည်။', 'error');
     } finally {
       setSavingPromoId(null);
     }
   };
 
-  const executeToggleCardChannel = async (
-    card: SavedCampaignCard,
-    channel: 'popup' | 'box' | 'master_toggle',
-    overrideDates?: { startDate: string; endDate: string }
+  const handleToggleCardChannel = (
+    targetCard: SavedCampaignCard,
+    action: 'toggle_popup' | 'toggle_box' | 'master_toggle'
   ) => {
-    let nextPopup = card.isPopupActive;
-    let nextBox = card.isBoxActive;
+    const turningOn =
+      (action === 'toggle_popup' && !targetCard.isPopupActive) ||
+      (action === 'toggle_box' && !targetCard.isBoxActive) ||
+      (action === 'master_toggle' && !targetCard.isPopupActive && !targetCard.isBoxActive);
 
-    if (channel === 'popup') {
-      nextPopup = !card.isPopupActive;
-    } else if (channel === 'box') {
-      nextBox = !card.isBoxActive;
-    } else {
-      const currentlyAnyOn = card.isPopupActive || card.isBoxActive;
-      nextPopup = !currentlyAnyOn;
-      nextBox = !currentlyAnyOn;
-    }
+    const isExpired = Boolean(targetCard.endDate && targetCard.endDate < todayStr);
 
-    const updatedTargetCard: SavedCampaignCard = {
-      ...card,
-      ...(overrideDates || {}),
-      isPopupActive: nextPopup,
-      isBoxActive: nextBox,
-      updatedAt: Date.now(),
-    };
-
-    const isTurningOn = nextPopup || nextBox;
-    const nextCardsList = campaignCards.map((c) => {
-      if (c.id === card.id) return updatedTargetCard;
-      if (isTurningOn) return { ...c, isPopupActive: false, isBoxActive: false };
-      return c;
-    });
-
-    if (isTurningOn) {
-      setExpandedCards((prev) => ({ ...prev, [card.id]: true }));
-    }
-
-    const anyActiveCard = nextCardsList.find((c) => c.isPopupActive || c.isBoxActive) || null;
-    const msg = isTurningOn
-      ? `"${card.campaignTitle}" ကို Customer App တွင် ဖွင့်လိုက်ပါပြီ။`
-      : `"${card.campaignTitle}" ကို ပိတ်လိုက်ပါပြီ။`;
-    await syncCampaignStateToFirestore(nextCardsList, anyActiveCard, card.id, msg);
-  };
-
-  // Smart Date-Expiry Guard when activating an expired card
-  const handleToggleCardChannel = (card: SavedCampaignCard, channel: 'popup' | 'box' | 'master_toggle') => {
-    const willTurnOn =
-      channel === 'popup'
-        ? !card.isPopupActive
-        : channel === 'box'
-        ? !card.isBoxActive
-        : !(card.isPopupActive || card.isBoxActive);
-
-    const isCardDateExpired = Boolean(card.endDate && card.endDate < todayStr);
-    if (willTurnOn && isCardDateExpired) {
-      const extendedEnd = addDaysToDateStr(14);
+    if (turningOn && isExpired) {
+      const nextEnd = addDaysToDateStr(14);
       setConfirmDialog({
-        title: 'Campaign ရက်စွဲ သက်တမ်းကုန်နေပါသည်',
-        message: `"${card.campaignTitle}" ၏ ပြီးဆုံးရက် (${card.endDate}) သည် ကျော်လွန်သွားပြီဖြစ်သဖြင့် ယခုအတိုင်းဖွင့်ပါက Customer App တွင် ပေါ်လာမည်မဟုတ်ပါ။ ယနေ့ (${todayStr}) မှ ${extendedEnd} အထိ ရက်တိုးပြီး ချက်ချင်းဖွင့်မည်လား?`,
-        confirmLabel: 'ရက်တိုးပြီး ဖွင့်မည်',
+        title: 'Promotion ရက်စွဲ ကုန်ဆုံးနေပါသည်',
+        message: `"${targetCard.campaignTitle}" ၏ ပြီးဆုံးရက် (${targetCard.endDate}) ကျော်လွန်နေပြီဖြစ်၍ Customer App တွင် ပေါ်မည်မဟုတ်ပါ။ ယနေ့မှစ၍ ၁၄ ရက်သက်တမ်းတိုးပြီး ဖွင့်မည်လား?`,
+        confirmLabel: `၁၄ ရက်တိုးပြီး ဖွင့်မည် (${nextEnd})`,
         secondaryLabel: 'ရက်စွဲကိုယ်တိုင်ပြင်မည်',
         tone: 'primary',
-        onConfirm: async () => {
-          await executeToggleCardChannel(card, channel, {
-            startDate: todayStr,
-            endDate: extendedEnd,
-          });
-        },
+        onConfirm: () => executeToggleCardChannel(targetCard, action, { startDate: todayStr, endDate: nextEnd }),
         onSecondary: () => {
-          setEditingCard({
-            ...card,
-            startDate: todayStr,
-            endDate: extendedEnd,
-            isPopupActive: channel === 'popup' || channel === 'master_toggle' ? true : card.isPopupActive,
-            isBoxActive: channel === 'box' || channel === 'master_toggle' ? true : card.isBoxActive,
-          });
+          setModalMode('edit');
+          setModalCard(targetCard);
         },
       });
       return;
     }
 
-    executeToggleCardChannel(card, channel);
+    executeToggleCardChannel(targetCard, action);
   };
 
   const handleTurnOffAllPromotionsNow = () => {
     setConfirmDialog({
-      title: 'Popup နှင့် Promo အားလုံး ပိတ်မည်လား?',
-      message: 'Customer App နှင့် POS တွင် ဖွင့်ထားသော Popup Game နှင့် Promotion Box အားလုံးကို ချက်ချင်း ပိတ်သိမ်းမည် သေချာပါသလား?',
+      title: 'Promotion နှင့် Popup အားလုံး ပိတ်မည်လား?',
+      message: 'Customer App နှင့် POS ရှိ Promotion, Mini Game နှင့် Promo Box များအားလုံးကို ချက်ချင်းပိတ်သိမ်းပါမည်။',
       confirmLabel: 'အားလုံးပိတ်မည်',
       tone: 'danger',
       onConfirm: async () => {
-        const allOffCards = campaignCards.map((c) => ({
-          ...c,
-          isPopupActive: false,
-          isBoxActive: false,
-        }));
-        await syncCampaignStateToFirestore(
-          allOffCards,
-          null,
-          'turn_off_all',
-          'Promotion နှင့် Popup အားလုံးကို Customer App တွင် ချက်ချင်းပိတ်လိုက်ပါပြီ။'
-        );
+        setSavingPromoId('turn_off_all');
+        try {
+          const allOffCards = campaignCards.map((c) => ({
+            ...c,
+            isPopupActive: false,
+            isBoxActive: false,
+            updatedAt: Date.now(),
+          }));
+          await syncCampaignCardsToFirestore(allOffCards, null);
+          showToast('Customer App ရှိ Promotion နှင့် Popup အားလုံးကို ပိတ်သိမ်းပြီးပါပြီ။', 'success');
+        } catch {
+          showToast('ပိတ်သိမ်းရာတွင် အမှားအယွင်းရှိနေပါသည်။', 'error');
+        } finally {
+          setSavingPromoId(null);
+        }
       },
     });
   };
 
-  const handleSaveEditedCard = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingCard || !editingCard.campaignTitle.trim()) return;
-
-    const updatedCard: SavedCampaignCard = {
-      ...editingCard,
-      campaignTitle: editingCard.campaignTitle.trim(),
-      boxTitle: editingCard.boxTitle.trim() || 'SPECIAL PROMO',
-      hotelDiscountPercent: Number(editingCard.hotelDiscountPercent) || 0,
-      otherDiscountPercent: Number(editingCard.otherDiscountPercent) || 0,
-      updatedAt: Date.now(),
-    };
-
-    const isThisCardActive = updatedCard.isPopupActive || updatedCard.isBoxActive;
-    const nextCardsList = campaignCards.map((c) => {
-      if (c.id === updatedCard.id) return updatedCard;
-      if (isThisCardActive) return { ...c, isPopupActive: false, isBoxActive: false };
-      return c;
-    });
-
-    const activeCard = nextCardsList.find((c) => c.isPopupActive || c.isBoxActive) || null;
-    await syncCampaignStateToFirestore(
-      nextCardsList,
-      activeCard,
-      updatedCard.id,
-      `"${updatedCard.campaignTitle}" ပြင်ဆင်ချက်များ သိမ်းဆည်းပြီးပါပြီ။`
-    );
-    setEditingCard(null);
-  };
-
-  const handleCreateNewCard = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCardForm.campaignTitle.trim()) return;
-
-    const created: SavedCampaignCard = {
-      ...newCardForm,
+  const openCreateModal = (defaultType?: PromotionType) => {
+    const pType = defaultType || (typeFilter !== 'all' ? typeFilter : 'percentage_discount');
+    setModalMode('create');
+    setModalCard({
       id: `camp_${Date.now()}`,
-      campaignTitle: newCardForm.campaignTitle.trim(),
-      boxTitle: newCardForm.boxTitle.trim() || 'SPECIAL PROMO',
-      hotelDiscountPercent: Number(newCardForm.hotelDiscountPercent) || 0,
-      otherDiscountPercent: Number(newCardForm.otherDiscountPercent) || 0,
-      updatedAt: Date.now(),
-    };
-
-    const isTurningOn = created.isPopupActive || created.isBoxActive;
-    const baseList = isTurningOn
-      ? campaignCards.map((c) => ({ ...c, isPopupActive: false, isBoxActive: false }))
-      : [...campaignCards];
-
-    const nextCardsList = [created, ...baseList];
-    const activeCard = nextCardsList.find((c) => c.isPopupActive || c.isBoxActive) || null;
-    await syncCampaignStateToFirestore(
-      nextCardsList,
-      activeCard,
-      created.id,
-      `"${created.campaignTitle}" ကဒ်အသစ် ဖန်တီးပြီးပါပြီ။`
-    );
-
-    setExpandedCards((prev) => ({ ...prev, [created.id]: true }));
-    setShowCreateModal(false);
-    setNewCardForm({
-      id: '',
+      promoType: pType,
       campaignTitle: '',
-      boxTitle: 'SPECIAL DISCOUNT',
-      isPopupActive: false,
-      isBoxActive: false,
-      hotelDiscountPercent: 10,
-      otherDiscountPercent: 20,
+      boxTitle: 'SPECIAL PROMO',
+      description: '',
+      isPopupActive: true,
+      isBoxActive: true,
+      hotelDiscountPercent: pType === 'percentage_discount' ? 10 : 0,
+      otherDiscountPercent: pType === 'percentage_discount' ? 20 : 0,
+      gameRewardTiers: [10, 15, 20, 30, 50],
+      outcallRewardCap: 10,
+      rewardValidityDays: 1,
+      categoryDiscounts: {},
       startDate: todayStr,
       endDate: addDaysToDateStr(14),
-      themeColor: 'from-[#123524] via-[#0B2419] to-[#06150e]',
-      badgeText: 'EXCLUSIVE EVENT',
+      themeColor:
+        pType === 'mini_game'
+          ? THEME_PRESETS[1].value
+          : pType === 'category_discount'
+          ? THEME_PRESETS[2].value
+          : THEME_PRESETS[0].value,
+      badgeText: PROMO_TYPE_META[pType].kicker,
       updatedAt: Date.now(),
     });
   };
 
-  const handleDeleteCampaignCard = (card: SavedCampaignCard) => {
+  const handleDuplicateCard = async (card: SavedCampaignCard) => {
+    const cloned: SavedCampaignCard = {
+      ...card,
+      id: `camp_${Date.now()}`,
+      campaignTitle: `${card.campaignTitle} (Copy)`,
+      isPopupActive: false,
+      isBoxActive: false,
+      startDate: todayStr,
+      endDate: addDaysToDateStr(14),
+      updatedAt: Date.now(),
+    };
+    const updatedCards = [cloned, ...campaignCards];
+    const activeCard = updatedCards.find((c) => c.isPopupActive || c.isBoxActive) || null;
+    try {
+      await syncCampaignCardsToFirestore(updatedCards, activeCard);
+      setExpandedCards((prev) => ({ ...prev, [cloned.id]: true }));
+      showToast('Promotion ကဒ်ကို ပွားပြီးပါပြီ (Copy)', 'success');
+    } catch {
+      showToast('ပွားရာတွင် အမှားအယွင်းရှိနေပါသည်။', 'error');
+    }
+  };
+
+  const handleSaveModalCard = async (savedCard: SavedCampaignCard) => {
+    const isNowActive = savedCard.isPopupActive || savedCard.isBoxActive;
+    let updatedCards: SavedCampaignCard[];
+
+    if (modalMode === 'create') {
+      updatedCards = [
+        savedCard,
+        ...campaignCards.map((c) => (isNowActive ? { ...c, isPopupActive: false, isBoxActive: false } : c)),
+      ];
+    } else {
+      updatedCards = campaignCards.map((c) => {
+        if (c.id === savedCard.id) return savedCard;
+        return isNowActive ? { ...c, isPopupActive: false, isBoxActive: false } : c;
+      });
+    }
+
+    const activeCard = updatedCards.find((c) => c.isPopupActive || c.isBoxActive) || null;
+    await syncCampaignCardsToFirestore(updatedCards, activeCard);
+    setModalMode(null);
+    setModalCard(null);
+    setExpandedCards((prev) => ({ ...prev, [savedCard.id]: true }));
+    showToast(
+      modalMode === 'create'
+        ? `"${savedCard.campaignTitle}" ဖန်တီးပြီးပါပြီ။`
+        : `"${savedCard.campaignTitle}" ပြင်ဆင်သိမ်းဆည်းပြီးပါပြီ။`,
+      'success'
+    );
+  };
+
+  const handleDeleteCard = (card: SavedCampaignCard) => {
     if (campaignCards.length <= 1) {
-      showToast('အနည်းဆုံး Campaign ကဒ် (၁) ခု ချန်ထားရပါမည်။', 'error');
+      showToast('အနည်းဆုံး Promotion ကဒ် (၁) ခု ကျန်ရှိရပါမည်။', 'info');
       return;
     }
     setConfirmDialog({
-      title: 'Campaign ကဒ်ကို ဖျက်မည်လား?',
-      message: `"${card.campaignTitle}" ကဒ်ကို စာရင်းမှ အပြီးတိုင် ဖျက်မည် သေချာပါသလား?`,
-      confirmLabel: 'ဖျက်မည် (Delete)',
+      title: 'Promotion ကဒ် ဖျက်မည်လား?',
+      message: `"${card.campaignTitle}" ကို အပြီးတိုင် ဖျက်ပစ်မည် သေချာပါသလား?`,
+      confirmLabel: 'ဖျက်မည်',
       tone: 'danger',
       onConfirm: async () => {
-        const nextCardsList = campaignCards.filter((c) => c.id !== card.id);
-        const activeCard = nextCardsList.find((c) => c.isPopupActive || c.isBoxActive) || null;
-        await syncCampaignStateToFirestore(
-          nextCardsList,
-          activeCard,
-          card.id,
-          `"${card.campaignTitle}" ကို ဖျက်လိုက်ပါပြီ။`
-        );
+        const updatedCards = campaignCards.filter((c) => c.id !== card.id);
+        const activeCard = updatedCards.find((c) => c.isPopupActive || c.isBoxActive) || null;
+        await syncCampaignCardsToFirestore(updatedCards, activeCard);
+        showToast(`"${card.campaignTitle}" ဖျက်ပြီးပါပြီ။`, 'success');
       },
     });
   };
 
-  // ============================================================================
-  // PART 2: GAME WINNERS & USAGE TRACKER
-  // ============================================================================
-  const [records, setRecords] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active_unused' | 'used_completed' | 'expired'>('all');
-  const [dateFilterMode, setDateFilterMode] = useState<'all' | 'today' | 'yesterday' | 'this_month' | 'custom_range'>('all');
-  const [fromDate, setFromDate] = useState<string>(todayStr);
-  const [toDate, setToDate] = useState<string>(todayStr);
-  const [applyingBookingId, setApplyingBookingId] = useState<string | null>(null);
+  // Filtered Cards by Type
+  const filteredCards = useMemo(() => {
+    if (typeFilter === 'all') return campaignCards;
+    return campaignCards.filter((c) => resolvePromotionType(c) === typeFilter);
+  }, [campaignCards, typeFilter]);
 
-  const getYesterdayStr = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  };
-
-  const getThisMonthPrefix = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  };
-
-  const formatReadableDateHeader = (dateStr: string) => {
-    if (!dateStr) return 'Unknown Date';
-    const yesterday = getYesterdayStr();
-    const [y, m, d] = dateStr.split('-').map(Number);
-    if (!y || !m || !d) return dateStr;
-    const dt = new Date(y, m - 1, d);
-    const formatted = dt.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
+  const typeCounts = useMemo(() => {
+    const counts = { percentage_discount: 0, mini_game: 0, category_discount: 0 };
+    campaignCards.forEach((c) => {
+      counts[resolvePromotionType(c)]++;
     });
-    if (dateStr === todayStr) return `ယနေ့ (Today) — ${formatted}`;
-    if (dateStr === yesterday) return `မနေ့က (Yesterday) — ${formatted}`;
-    return formatted;
+    return counts;
+  }, [campaignCards]);
+
+  // Helper: Shareable URL for a card based on its exact Promo Type
+  const getShareUrlForCard = (card: SavedCampaignCard) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    if (card.promoType === 'mini_game') {
+      return `${origin}/?mode=campaign&campaign=${encodeURIComponent(card.id)}`;
+    }
+    return `${origin}/?promo=${encodeURIComponent(card.id)}`;
   };
 
-  useEffect(() => {
-    const q = query(collection(db, 'campaign_records'));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const data: any[] = [];
-        snap.forEach((d) => {
-          const raw = d.data();
-          const rawDate = String(raw.date || '').trim();
-          const cleanDate = rawDate.match(/^(\d{4}-\d{2}-\d{2})/)
-            ? rawDate.match(/^(\d{4}-\d{2}-\d{2})/)![1]
-            : raw.createdAt
-            ? (() => {
-                const dt = new Date(raw.createdAt);
-                return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-              })()
-            : todayStr;
+  // Helper: Render clean unboxed offer summary string for any card
+  const getOfferSummaryLine = (card: SavedCampaignCard): string => {
+    if (card.promoType === 'mini_game') {
+      const tiers = card.gameRewardTiers?.length ? [...card.gameRewardTiers].sort((a, b) => a - b) : [10, 15, 20, 30, 50];
+      const minT = tiers[0];
+      const maxT = tiers[tiers.length - 1];
+      const days = Math.max(1, Number(card.rewardValidityDays) || 1);
+      return `Game Rewards ${minT === maxT ? `${maxT}%` : `${minT}%–${maxT}%`} · Valid ${days}d`;
+    }
+    if (card.promoType === 'category_discount') {
+      const entries = Object.entries(card.categoryDiscounts || {})
+        .filter(([, pct]) => Number(pct) > 0)
+        .map(([catId, pct]) => `${categoryTitleMap[catId] || catId} ${pct}%`);
+      return entries.length > 0 ? entries.join(' · ') : 'No categories selected';
+    }
+    const parts: string[] = [];
+    if (card.otherDiscountPercent > 0) parts.push(`In-Spa ${card.otherDiscountPercent}%`);
+    if (card.hotelDiscountPercent > 0) parts.push(`Outcall ${card.hotelDiscountPercent}%`);
+    return parts.length > 0 ? parts.join(' · ') : '0% Discount';
+  };
 
-          data.push({
-            id: d.id,
-            ...raw,
-            cleanDate,
-            phone: String(raw.phone || '').trim(),
-            discountPercent: Number(raw.discountPercent) || 0,
-          });
-        });
-        data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setRecords(data);
-        setLoading(false);
-      },
-      () => setLoading(false)
-    );
-    return () => unsub();
-  }, [todayStr]);
-
+  // =========================================================================
+  // GAME WINNERS ENRICHMENT & FILTERS
+  // =========================================================================
   const enrichedRecords = useMemo(() => {
-    return records.map((r) => {
-      const usage = isCampaignRewardUsedByCompletedService(r.phone, r.cleanDate, bookings);
-      let rewardStatus: 'used_completed' | 'active_unused' | 'expired' = 'active_unused';
+    const activeValidityDays = Math.max(1, Number(livePromotion?.rewardValidityDays) || 1);
+    const todayMs = new Date(`${todayStr}T00:00:00`).getTime();
 
+    return records.map((r) => {
+      const rawDate = String(r.date || '').trim();
+      let cleanDate = todayStr;
+      const isoMatch = rawDate.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (isoMatch) {
+        cleanDate = isoMatch[1];
+      } else if (r.createdAt) {
+        const dt = new Date(r.createdAt);
+        cleanDate = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      }
+
+      const usage = isCampaignRewardUsedByCompletedService(r.phone || '', cleanDate, bookings);
+      const recMs = new Date(`${cleanDate}T00:00:00`).getTime();
+      const diffDays = isNaN(recMs) ? 999 : Math.floor((todayMs - recMs) / (1000 * 60 * 60 * 24));
+      const isWithinValidity = diffDays >= 0 && diffDays < activeValidityDays;
+
+      let rewardStatus: 'used_completed' | 'active_unused' | 'expired' = 'expired';
       if (usage.isUsed) {
         rewardStatus = 'used_completed';
-      } else if (r.cleanDate < todayStr) {
-        rewardStatus = 'expired';
-      } else {
+      } else if (isWithinValidity) {
         rewardStatus = 'active_unused';
       }
 
-      const activeBookingNeedsDiscount =
+      const activeBookingNeedsDiscount = Boolean(
         usage.activePendingBooking &&
-        (!usage.activePendingBooking.discountPercent || usage.activePendingBooking.discountPercent === 0) &&
-        r.discountPercent > 0;
+          (!usage.activePendingBooking.discountPercent || Number(usage.activePendingBooking.discountPercent) === 0)
+      );
 
       return {
         ...r,
+        cleanDate,
         rewardStatus,
         completedBooking: usage.completedBooking,
         activePendingBooking: usage.activePendingBooking,
         activeBookingNeedsDiscount,
       };
     });
-  }, [records, bookings, todayStr]);
+  }, [records, bookings, todayStr, livePromotion?.rewardValidityDays]);
 
   const dateAndSearchFiltered = useMemo(() => {
     const yesterday = getYesterdayStr();
@@ -784,7 +1426,8 @@ export function AdminCampaignsWorkspace({
       svcStr.includes('half day') ||
       svcStr.includes('whole');
 
-    const appliedPct = isOutcall ? Math.min(10, winnerRecord.discountPercent) : winnerRecord.discountPercent;
+    const cap = Math.max(0, Number(livePromotion?.outcallRewardCap ?? 10));
+    const appliedPct = isOutcall ? Math.min(cap, winnerRecord.discountPercent) : winnerRecord.discountPercent;
     const origPrice = Number(targetBooking.originalPrice) || Number(targetBooking.totalPrice) || 0;
     const discountedTotal = Math.round(origPrice * (1 - appliedPct / 100));
     const labelText = `Campaign Winner Bonus (${appliedPct}% OFF)`;
@@ -827,7 +1470,7 @@ export function AdminCampaignsWorkspace({
       formattedPhone = '+' + formattedPhone;
     }
     const msg = encodeURIComponent(
-      `မင်္ဂလာပါခင်ဗျာ။ The Shangri-La Men's Retreat မှ ဆက်သွယ်တာပါ။ \nလူကြီးမင်း ကံထူးရရှိထားသော အထူး Discount (${discount}% OFF) အား ယနေ့အတွင်း လာရောက်အသုံးပြုနိုင်ပါပြီခင်ဗျာ။`
+      `မင်္ဂလာပါခင်ဗျာ။ The Shangri-La Men's Retreat မှ ဆက်သွယ်တာပါ။ \nလူကြီးမင်း ကံထူးရရှိထားသော အထူး Discount (${discount}% OFF) အား လာရောက်အသုံးပြုနိုင်ပါပြီခင်ဗျာ။`
     );
     const tgUrl = `https://t.me/${formattedPhone}?text=${msg}`;
     const a = document.createElement('a');
@@ -870,8 +1513,8 @@ export function AdminCampaignsWorkspace({
         r.rewardStatus === 'used_completed'
           ? 'သုံးပြီးပြီ (Used - Service Completed)'
           : r.rewardStatus === 'active_unused'
-          ? 'မသုံးရသေး (Active Today)'
-          : 'သက်တမ်းကုန်ဆုံး (Expired - 1 Day Passed)';
+          ? 'မသုံးရသေး (Active)'
+          : 'သက်တမ်းကုန်ဆုံး (Expired)';
       const linkedB = r.completedBooking || r.activePendingBooking;
       return [
         `"${r.cleanDate}"`,
@@ -893,53 +1536,78 @@ export function AdminCampaignsWorkspace({
     showToast('Excel/CSV Report ဒေါင်းလုဒ်ဆွဲပြီးပါပြီ။', 'success');
   };
 
+  // Live Status Derived Values
   const isAnyGlobalPromoLive = Boolean(
     !livePromotion?.allOff && (livePromotion?.isPopupActive || livePromotion?.isBoxActive || livePromotion?.isActive)
   );
   const isLivePromoExpired = Boolean(
     isAnyGlobalPromoLive && livePromotion?.endDate && livePromotion.endDate < todayStr
   );
+  const livePromoType: PromotionType = resolvePromotionType(livePromotion);
   const activeCardObj = campaignCards.find((c) => c.isPopupActive || c.isBoxActive) || null;
-  const allCardsExpanded = campaignCards.length > 0 && campaignCards.every((c) => expandedCards[c.id]);
+  const allCardsExpanded = filteredCards.length > 0 && filteredCards.every((c) => expandedCards[c.id]);
+
+  const liveOfferHeadline = useMemo(() => {
+    if (!isAnyGlobalPromoLive) return 'OFF';
+    if (livePromoType === 'mini_game') {
+      const tiers =
+        Array.isArray(livePromotion?.gameRewardTiers) && livePromotion.gameRewardTiers.length > 0
+          ? livePromotion.gameRewardTiers.map(Number)
+          : [10, 15, 20, 30, 50];
+      return `Up to ${Math.max(...tiers)}%`;
+    }
+    if (livePromoType === 'category_discount') {
+      const vals = Object.values((livePromotion?.categoryDiscounts || {}) as Record<string, number>)
+        .map(Number)
+        .filter((v) => v > 0);
+      return vals.length > 0 ? `${vals.length} Categories` : '0 Categories';
+    }
+    return `${livePromotion?.otherDiscountPercent || 0}% / ${livePromotion?.hotelDiscountPercent || 0}%`;
+  }, [isAnyGlobalPromoLive, livePromoType, livePromotion]);
+
+  const liveOfferSubtext = !isAnyGlobalPromoLive
+    ? 'No Active Offer'
+    : livePromoType === 'mini_game'
+    ? 'Mini Game Rewards'
+    : livePromoType === 'category_discount'
+    ? 'Category-Specific %'
+    : 'In-Spa · Outcall';
+
+  const liveChannelsLabel = !isAnyGlobalPromoLive
+    ? 'OFF'
+    : livePromotion?.isPopupActive && livePromotion?.isBoxActive
+    ? 'Popup + Box'
+    : livePromotion?.isPopupActive
+    ? 'Popup & Link'
+    : 'Booking Box';
 
   return (
     <div className="space-y-4 sm:space-y-5 animate-fade-in pb-10">
       {/* =========================================================================
-          1. EXECUTIVE PROMOTION CONTROL HEADER (SINGLE-ELEVATION, ZERO CLUTTER)
+          1. EXECUTIVE PROMOTION CONTROL HEADER (SINGLE-ELEVATION, TYPE-AWARE)
          ========================================================================= */}
       <div className="bg-gradient-to-br from-[#0B2419] via-[#123524] to-[#0B2419] rounded-2xl sm:rounded-3xl p-4 sm:p-6 text-white shadow-md border border-[#C8A951]/25 relative overflow-hidden">
         <div className="absolute -right-12 -top-12 w-44 h-44 rounded-full bg-[#C8A951]/10 blur-2xl pointer-events-none" />
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 pb-4 border-b border-white/10">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-semibold text-gray-300">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-gray-300">
               <span className="text-[#D4AF37] uppercase tracking-wider font-bold">Promotion Hub</span>
               <span className="text-white/30">·</span>
-              <span className="inline-flex items-center gap-1.5">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    isAnyGlobalPromoLive
-                      ? isLivePromoExpired
-                        ? 'bg-amber-400'
-                        : 'bg-emerald-400 animate-pulse'
-                      : 'bg-gray-400'
-                  }`}
-                />
-                <span
-                  className={
-                    isAnyGlobalPromoLive
-                      ? isLivePromoExpired
-                        ? 'text-amber-300 font-bold'
-                        : 'text-emerald-300 font-bold'
-                      : 'text-gray-300 font-bold'
-                  }
-                >
-                  {isAnyGlobalPromoLive
+              <span
+                className={
+                  isAnyGlobalPromoLive
                     ? isLivePromoExpired
-                      ? 'Active (Date Expired)'
-                      : 'Live on Customer App'
-                    : 'All OFF'}
-                </span>
+                      ? 'text-amber-300 font-bold'
+                      : 'text-emerald-300 font-bold'
+                    : 'text-gray-400 font-bold'
+                }
+              >
+                {isAnyGlobalPromoLive
+                  ? isLivePromoExpired
+                    ? `Active (${PROMO_TYPE_META[livePromoType].shortLabel} · Date Expired)`
+                    : `Live · ${PROMO_TYPE_META[livePromoType].shortLabel}`
+                  : 'All OFF'}
               </span>
             </div>
 
@@ -951,20 +1619,19 @@ export function AdminCampaignsWorkspace({
             <p className="text-xs text-gray-300 mt-1">
               {isAnyGlobalPromoLive
                 ? `လက်ရှိဖွင့်ထားသည်: ${livePromotion?.campaignTitle || 'Active Promotion'}`
-                : 'Customer App တွင် Promotion နှင့် Mini Game Popup အားလုံး ပိတ်ထားပါသည်'}
+                : '% Discount၊ Mini Game Campaign နှင့် Service Category Discount များကို သီးခြားစီ စီမံနိုင်ပါသည်'}
             </p>
           </div>
 
-          {/* Only show Emergency Turn-Off when a campaign is actually LIVE */}
           {isAnyGlobalPromoLive && (
             <button
               type="button"
               disabled={savingPromoId === 'turn_off_all'}
               onClick={handleTurnOffAllPromotionsNow}
-              className="w-full sm:w-auto min-h-[42px] px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-sm transition flex items-center justify-center gap-2 shrink-0"
+              className="w-full sm:w-auto min-h-[44px] px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-sm transition flex items-center justify-center gap-2 shrink-0"
             >
               <Ban className="w-4 h-4 shrink-0" />
-              <span>{savingPromoId === 'turn_off_all' ? 'Turning Off...' : 'Popup နှင့် Promo အားလုံးပိတ်မည်'}</span>
+              <span>{savingPromoId === 'turn_off_all' ? 'Turning Off...' : 'Promotion အားလုံးပိတ်မည်'}</span>
             </button>
           )}
         </div>
@@ -975,13 +1642,16 @@ export function AdminCampaignsWorkspace({
             <div className="flex items-start gap-2 text-amber-100">
               <AlertCircle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
               <span>
-                လက်ရှိဖွင့်ထားသော Campaign ၏ ပြီးဆုံးရက် (<strong>{livePromotion?.endDate}</strong>) ကျော်လွန်နေသဖြင့် Customer App တွင် ပေါ်မည်မဟုတ်ပါ။
+                လက်ရှိဖွင့်ထားသော Promotion ၏ ပြီးဆုံးရက် (<strong>{livePromotion?.endDate}</strong>) ကျော်လွန်နေသဖြင့် Customer App တွင် ပေါ်မည်မဟုတ်ပါ။
               </span>
             </div>
             {activeCardObj && (
               <button
                 type="button"
-                onClick={() => setEditingCard(activeCardObj)}
+                onClick={() => {
+                  setModalMode('edit');
+                  setModalCard(activeCardObj);
+                }}
                 className="self-start sm:self-auto px-3 py-1.5 rounded-lg bg-[#D4AF37] text-[#0B2419] font-black text-[11px] shrink-0"
               >
                 ရက်စွဲပြင်မည်
@@ -990,38 +1660,40 @@ export function AdminCampaignsWorkspace({
           </div>
         )}
 
-        {/* 4 Clean Status Tiles */}
+        {/* 4 Clean Type-Aware KPI Tiles */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-4">
           <div className="bg-black/20 border border-white/10 rounded-xl p-3">
-            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Mini Game Popup</div>
+            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Active Type</div>
             <div
-              className={`text-base sm:text-lg font-black mt-0.5 ${
-                livePromotion?.isPopupActive && !livePromotion?.allOff ? 'text-emerald-400' : 'text-gray-400'
+              className={`text-sm sm:text-base font-black mt-0.5 truncate ${
+                isAnyGlobalPromoLive ? 'text-emerald-300' : 'text-gray-400'
               }`}
             >
-              {livePromotion?.isPopupActive && !livePromotion?.allOff ? 'ON (ဖွင့်ထား)' : 'OFF'}
+              {isAnyGlobalPromoLive ? PROMO_TYPE_META[livePromoType].shortLabel : 'None (OFF)'}
+            </div>
+            <div className="text-[10px] text-gray-400 truncate mt-0.5">
+              {isAnyGlobalPromoLive && livePromotion?.endDate ? `Until ${livePromotion.endDate}` : 'Ready to launch'}
             </div>
           </div>
 
           <div className="bg-black/20 border border-white/10 rounded-xl p-3">
-            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Booking Promo Box</div>
+            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Display Channel</div>
             <div
-              className={`text-base sm:text-lg font-black mt-0.5 ${
-                livePromotion?.isBoxActive && !livePromotion?.allOff ? 'text-emerald-400' : 'text-gray-400'
+              className={`text-sm sm:text-base font-black mt-0.5 truncate ${
+                isAnyGlobalPromoLive ? 'text-white' : 'text-gray-400'
               }`}
             >
-              {livePromotion?.isBoxActive && !livePromotion?.allOff ? 'ON (ဖွင့်ထား)' : 'OFF'}
+              {liveChannelsLabel}
             </div>
+            <div className="text-[10px] text-gray-400 truncate mt-0.5">Customer App & POS</div>
           </div>
 
           <div className="bg-black/20 border border-white/10 rounded-xl p-3">
-            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Active Discounts</div>
-            <div className="text-base sm:text-lg font-black text-[#D4AF37] mt-0.5 tabular-nums">
-              {isAnyGlobalPromoLive
-                ? `${livePromotion?.otherDiscountPercent || 0}% / ${livePromotion?.hotelDiscountPercent || 0}%`
-                : '0% / 0%'}
+            <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Active Offer</div>
+            <div className="text-sm sm:text-base font-black text-[#D4AF37] mt-0.5 tabular-nums truncate">
+              {liveOfferHeadline}
             </div>
-            <div className="text-[10px] text-gray-400">In-Spa · Outcall</div>
+            <div className="text-[10px] text-gray-400 truncate mt-0.5">{liveOfferSubtext}</div>
           </div>
 
           <button
@@ -1030,11 +1702,11 @@ export function AdminCampaignsWorkspace({
             className="text-left bg-black/20 hover:bg-black/30 border border-white/10 rounded-xl p-3 transition"
           >
             <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Game Winners</div>
-            <div className="text-base sm:text-lg font-black text-white mt-0.5 tabular-nums">
+            <div className="text-sm sm:text-base font-black text-white mt-0.5 tabular-nums">
               {records.length} <span className="text-xs font-semibold text-gray-400">ဦး</span>
             </div>
-            <div className="text-[10px] text-emerald-300 tabular-nums">
-              Today Active: {enrichedRecords.filter((r) => r.rewardStatus === 'active_unused').length}
+            <div className="text-[10px] text-emerald-300 tabular-nums mt-0.5">
+              Active Valid: {enrichedRecords.filter((r) => r.rewardStatus === 'active_unused').length}
             </div>
           </button>
         </div>
@@ -1047,21 +1719,21 @@ export function AdminCampaignsWorkspace({
         <button
           type="button"
           onClick={() => handleSetSubView('cards_studio')}
-          className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 ${
+          className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 whitespace-nowrap ${
             subView === 'cards_studio'
               ? 'bg-[#0B2419] text-[#D4AF37] shadow-xs'
               : 'text-gray-600 hover:bg-gray-100'
           }`}
         >
           <Sparkles className="w-4 h-4 shrink-0" />
-          <span>Campaign Cards</span>
+          <span>Promotions</span>
           <span className="tabular-nums opacity-80">({campaignCards.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => handleSetSubView('winners_tracker')}
-          className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 ${
+          className={`min-h-[44px] px-3 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 whitespace-nowrap ${
             subView === 'winners_tracker'
               ? 'bg-[#0B2419] text-[#D4AF37] shadow-xs'
               : 'text-gray-600 hover:bg-gray-100'
@@ -1074,558 +1746,580 @@ export function AdminCampaignsWorkspace({
       </div>
 
       {/* =========================================================================
-          VIEW 1: CAMPAIGN CARDS STUDIO (SINGLE-ELEVATION, COLLAPSIBLE CONTROLS)
+          VIEW 1: 3-TYPE PROMOTIONS & CAMPAIGNS STUDIO
          ========================================================================= */}
       {subView === 'cards_studio' && (
         <div className="space-y-4 animate-fade-in">
-          {/* Clean Action Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-gray-200/90 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center justify-between sm:justify-start gap-3">
+          {/* Action & Type Filter Toolbar */}
+          <div className="bg-white p-4 rounded-2xl border border-gray-200/90 shadow-xs space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center gap-2">
                   <Gift className="w-4 h-4 text-[#D4AF37]" />
-                  <span>Saved Campaigns ({campaignCards.length})</span>
+                  <span>Promotion Types & Saved Cards</span>
                 </h3>
                 <p className="text-[11px] text-gray-500 mt-0.5">
-                  ကဒ်တစ်ခုချင်းစီကို နှိပ်၍ Popup၊ Booking Box နှင့် Direct Link များ စီမံနိုင်ပါသည်
+                  % Discount၊ Mini Game နှင့် Service Category Discount များကို အမျိုးအစားခွဲ၍ စီမံနိုင်ပါသည်
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !allCardsExpanded;
+                    const map: Record<string, boolean> = {};
+                    filteredCards.forEach((c) => {
+                      map[c.id] = next;
+                    });
+                    setExpandedCards(map);
+                  }}
+                  className="min-h-[42px] px-3 py-2 rounded-xl text-xs font-bold text-gray-600 hover:text-[#123524] hover:bg-gray-100 transition whitespace-nowrap"
+                >
+                  {allCardsExpanded ? 'Collapse All' : 'Expand All'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => openCreateModal()}
+                  className="flex-1 sm:flex-none min-h-[42px] px-4 py-2 rounded-xl bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition whitespace-nowrap"
+                >
+                  <PlusCircle className="w-4 h-4 shrink-0" />
+                  <span>New Promotion</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Interactive Type Filter Segmented Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-gray-100/90 p-1 rounded-xl">
+              {(
+                [
+                  { id: 'all', label: 'All Types', count: campaignCards.length },
+                  { id: 'percentage_discount', label: '% Discount', count: typeCounts.percentage_discount },
+                  { id: 'mini_game', label: 'Mini Game', count: typeCounts.mini_game },
+                  { id: 'category_discount', label: 'By Category', count: typeCounts.category_discount },
+                ] as const
+              ).map((item) => {
+                const active = typeFilter === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setTypeFilter(item.id)}
+                    className={`min-h-[38px] px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                      active
+                        ? 'bg-white text-[#123524] shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {item.id !== 'all' && <PromoTypeIcon type={item.id} className="w-3.5 h-3.5 shrink-0" />}
+                    <span>{item.label}</span>
+                    <span className="text-[11px] opacity-70 tabular-nums">({item.count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Empty State for Selected Filter */}
+          {filteredCards.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-200/90 p-8 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[#123524] flex items-center justify-center mx-auto">
+                <PromoTypeIcon type={typeFilter === 'all' ? 'percentage_discount' : typeFilter} className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-gray-900">
+                  {typeFilter === 'all'
+                    ? 'Promotion ကဒ် မရှိသေးပါ'
+                    : `${PROMO_TYPE_META[typeFilter].title} ကဒ် မရှိသေးပါ`}
+                </h4>
+                <p className="text-xs text-gray-500 mt-1">
+                  အောက်ပါခလုတ်ကိုနှိပ်ပြီး အသစ်ဖန်တီးနိုင်ပါသည်
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  const next = !allCardsExpanded;
-                  const map: Record<string, boolean> = {};
-                  campaignCards.forEach((c) => {
-                    map[c.id] = next;
-                  });
-                  setExpandedCards(map);
-                }}
-                className="text-[11px] font-bold text-gray-500 hover:text-[#123524] px-2.5 py-1.5 rounded-lg hover:bg-gray-100 shrink-0"
+                onClick={() => openCreateModal(typeFilter === 'all' ? 'percentage_discount' : typeFilter)}
+                className="min-h-[42px] px-5 py-2 rounded-xl bg-[#123524] text-[#D4AF37] text-xs font-black inline-flex items-center gap-1.5"
               >
-                {allCardsExpanded ? 'Collapse All' : 'Expand All'}
+                <PlusCircle className="w-4 h-4" />
+                <span>
+                  {typeFilter === 'all'
+                    ? 'Promotion အသစ် ဖန်တီးမည်'
+                    : `${PROMO_TYPE_META[typeFilter].shortLabel} အသစ် ဖန်တီးမည်`}
+                </span>
               </button>
             </div>
+          ) : (
+            /* Type-Pure Single-Elevation Promotion Cards Grid */
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredCards.map((card) => {
+                const pType = resolvePromotionType(card);
+                const meta = PROMO_TYPE_META[pType];
+                const isCardLive = Boolean(card.isPopupActive || card.isBoxActive);
+                const isSavingThis = savingPromoId === card.id;
+                const isExpanded = Boolean(expandedCards[card.id]);
+                const isExpired = Boolean(card.endDate && card.endDate < todayStr);
+                const isScheduled = Boolean(card.startDate && card.startDate > todayStr);
+                const shareUrl = getShareUrlForCard(card);
+                const isLinkAccessible =
+                  pType === 'mini_game'
+                    ? Boolean((card.isPopupActive || card.isBoxActive) && !isExpired)
+                    : Boolean(card.isPopupActive && !isExpired);
 
-            <div className="grid grid-cols-2 sm:flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={async () => {
-                  const generalLink = `${window.location.origin}/?mode=campaign`;
-                  const ok = await safeCopyText(generalLink);
-                  showToast(
-                    ok
-                      ? 'Main Game Link ကူးယူပြီးပါပြီ (Mini Game Popup ဖွင့်ထားမှသာ ဆော့နိုင်ပါမည်)'
-                      : generalLink,
-                    'info'
-                  );
-                }}
-                className="min-h-[40px] px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#123524] border border-[#D4AF37]/40 text-xs font-bold flex items-center justify-center gap-1.5 transition"
-              >
-                <Copy className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
-                <span className="truncate">Main Link</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(true)}
-                className="min-h-[40px] px-4 py-2 rounded-xl bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition"
-              >
-                <PlusCircle className="w-4 h-4 shrink-0" />
-                <span className="truncate">New Campaign</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Campaign Cards Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {campaignCards.map((card) => {
-              const isCardLive = Boolean(card.isPopupActive || card.isBoxActive);
-              const isGameLinkPlayable = Boolean(card.isPopupActive);
-              const isSavingThis = savingPromoId === card.id;
-              const isExpanded = Boolean(expandedCards[card.id]);
-              const isExpired = Boolean(card.endDate && card.endDate < todayStr);
-              const isScheduled = Boolean(card.startDate && card.startDate > todayStr);
-              const campaignShareUrl = `${window.location.origin}/?mode=campaign&campaign=${encodeURIComponent(card.id)}`;
-
-              return (
-                <div
-                  key={card.id}
-                  className={`bg-white rounded-2xl border overflow-hidden flex flex-col transition-all ${
-                    isCardLive
-                      ? 'border-[#D4AF37] shadow-md ring-1 ring-[#D4AF37]/30'
-                      : 'border-gray-200/90 shadow-xs'
-                  }`}
-                >
-                  {/* Sleek Theme Header */}
+                return (
                   <div
-                    className={`p-4 bg-gradient-to-br ${
-                      card.themeColor || 'from-[#123524] via-[#0B2419] to-[#06150e]'
-                    } text-white`}
+                    key={card.id}
+                    className={`bg-white rounded-2xl border overflow-hidden flex flex-col transition-all ${
+                      isCardLive
+                        ? 'border-[#D4AF37] shadow-md ring-1 ring-[#D4AF37]/30'
+                        : 'border-gray-200/90 shadow-xs'
+                    }`}
                   >
-                    <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider mb-1.5">
-                      <span className="text-[#D4AF37]/90 truncate">{card.badgeText || 'EXCLUSIVE EVENT'}</span>
-                      <span
-                        className={`inline-flex items-center gap-1 shrink-0 ${
-                          isCardLive ? 'text-emerald-300' : 'text-gray-300/80'
-                        }`}
-                      >
+                    {/* Card Theme Header */}
+                    <div
+                      className={`p-4 bg-gradient-to-br ${
+                        card.themeColor || THEME_PRESETS[0].value
+                      } text-white`}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider mb-1.5">
+                        <span className="inline-flex items-center gap-1.5 text-[#D4AF37] truncate">
+                          <PromoTypeIcon type={pType} className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{meta.kicker}</span>
+                        </span>
                         <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            isCardLive ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'
-                          }`}
-                        />
-                        {isCardLive ? 'ACTIVE' : 'OFF'}
-                      </span>
-                    </div>
-
-                    <h4 className="text-base font-black text-[#D4AF37] leading-snug">{card.campaignTitle}</h4>
-                    <div className="text-[11px] text-gray-300 font-medium mt-0.5 truncate">
-                      Box: {card.boxTitle || 'SPECIAL PROMO'}
-                    </div>
-                  </div>
-
-                  {/* Compact Unboxed Summary Strip (Zero Nested Cards!) */}
-                  <div className="px-4 py-3.5 space-y-3">
-                    {/* Discounts + Dates on Clean Unboxed Lines */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <div className="flex items-center gap-2 font-bold text-[#123524] tabular-nums">
-                        <span>In-Spa {card.otherDiscountPercent}%</span>
-                        <span className="text-gray-300">·</span>
-                        <span>Outcall {card.hotelDiscountPercent}%</span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 text-[11px] font-mono font-semibold text-gray-600 tabular-nums">
-                        <Calendar className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
-                        <span>
-                          {card.startDate || '-'} → {card.endDate || '-'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Channel & Date Health Line */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold">
-                      <div className="flex items-center gap-2">
-                        <span className={card.isPopupActive ? 'text-emerald-700 font-bold' : 'text-gray-400'}>
-                          Popup {card.isPopupActive ? 'ON' : 'OFF'}
-                        </span>
-                        <span className="text-gray-300">·</span>
-                        <span className={card.isBoxActive ? 'text-emerald-700 font-bold' : 'text-gray-400'}>
-                          Box {card.isBoxActive ? 'ON' : 'OFF'}
-                        </span>
-                      </div>
-
-                      {isExpired ? (
-                        <span className="text-red-600 font-bold">Expired Date</span>
-                      ) : isScheduled ? (
-                        <span className="text-amber-600 font-bold">Scheduled</span>
-                      ) : (
-                        <span className="text-emerald-700 font-bold">Valid Today</span>
-                      )}
-                    </div>
-
-                    {/* Primary Action Row */}
-                    <div className="flex items-center gap-2 pt-0.5">
-                      <button
-                        type="button"
-                        disabled={isSavingThis}
-                        onClick={() => handleToggleCardChannel(card, 'master_toggle')}
-                        className={`flex-1 min-h-[40px] px-3 py-2 rounded-xl text-xs font-black tracking-wide transition ${
-                          isCardLive
-                            ? 'bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200'
-                            : 'bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37]'
-                        }`}
-                      >
-                        {isSavingThis ? 'Saving...' : isCardLive ? 'Turn Off' : 'Activate'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const ok = await safeCopyText(campaignShareUrl);
-                          showToast(
-                            ok
-                              ? isGameLinkPlayable
-                                ? `"${card.campaignTitle}" Game Link ကူးယူပြီးပါပြီ`
-                                : 'Link ကူးယူပြီးပါပြီ (မှတ်ချက် - Popup ဖွင့်ထားမှသာ Customer ဂိမ်းဆော့နိုင်ပါမည်)'
-                              : campaignShareUrl,
-                            isGameLinkPlayable ? 'success' : 'info'
-                          );
-                        }}
-                        className="min-h-[40px] px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center gap-1.5 transition shrink-0"
-                        title="Copy Direct Game Link"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Link</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedCards((prev) => ({ ...prev, [card.id]: !prev[card.id] }))
-                        }
-                        className="min-h-[40px] w-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#123524] flex items-center justify-center transition shrink-0"
-                        title={isExpanded ? 'Hide Controls' : 'Manage Controls'}
-                      >
-                        <ChevronDown
-                          className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                        />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Expanded Controls Section (Clean Hairlines, Native Toggle Switches) */}
-                  {isExpanded && (
-                    <div className="border-t border-gray-100 bg-gray-50/50 divide-y divide-gray-100">
-                      {/* Toggle 1: Mini Game Popup & Direct Link */}
-                      <button
-                        type="button"
-                        disabled={isSavingThis}
-                        onClick={() => handleToggleCardChannel(card, 'popup')}
-                        className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-gray-100/60 transition"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-gray-900">Mini Game Popup & Link</div>
-                          <div className="text-[11px] text-gray-500 mt-0.5">
-                            App အဖွင့် Popup နှင့် Direct Link ဂိမ်းကစားခွင့်
-                          </div>
-                        </div>
-                        <span
-                          className={`w-11 h-6 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
-                            card.isPopupActive ? 'bg-emerald-600 justify-end' : 'bg-gray-300 justify-start'
+                          className={`font-black shrink-0 ${
+                            isCardLive ? 'text-emerald-300' : 'text-gray-300/80'
                           }`}
                         >
-                          <span className="w-5 h-5 rounded-full bg-white shadow-xs" />
+                          {isCardLive ? 'ACTIVE' : 'OFF'}
                         </span>
-                      </button>
+                      </div>
 
-                      {/* Toggle 2: Booking Promo Box */}
-                      <button
-                        type="button"
-                        disabled={isSavingThis}
-                        onClick={() => handleToggleCardChannel(card, 'box')}
-                        className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-gray-100/60 transition"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-gray-900">Booking Promo Box</div>
-                          <div className="text-[11px] text-gray-500 mt-0.5">
-                            Booking စာမျက်နှာပေါ်တွင် Discount Box ပြသမည်
-                          </div>
+                      <h4 className="text-base font-black text-[#D4AF37] leading-snug">{card.campaignTitle}</h4>
+                      <div className="text-[11px] text-gray-300 font-medium mt-0.5 truncate">
+                        Box: {card.boxTitle || 'SPECIAL PROMO'}
+                        {card.badgeText && card.badgeText !== meta.kicker ? ` · ${card.badgeText}` : ''}
+                      </div>
+                    </div>
+
+                    {/* Clean Unboxed Offer Summary Strip (Strictly Type-Specific!) */}
+                    <div className="px-4 py-3.5 space-y-3 flex-1 flex flex-col">
+                      <div className="space-y-1.5">
+                        <div className="text-xs font-extrabold text-[#123524] leading-snug tabular-nums">
+                          {getOfferSummaryLine(card)}
                         </div>
-                        <span
-                          className={`w-11 h-6 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
-                            card.isBoxActive ? 'bg-emerald-600 justify-end' : 'bg-gray-300 justify-start'
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                          <div className="flex items-center gap-1.5 font-mono font-semibold text-gray-600 tabular-nums">
+                            <Calendar className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                            <span>
+                              {card.startDate || '-'} → {card.endDate || '-'}
+                            </span>
+                          </div>
+
+                          {isExpired ? (
+                            <span className="text-red-600 font-bold">Expired Date</span>
+                          ) : isScheduled ? (
+                            <span className="text-amber-600 font-bold">Scheduled</span>
+                          ) : (
+                            <span className="text-emerald-700 font-bold">Valid Today</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-500">
+                          <span className={card.isBoxActive ? 'text-emerald-700 font-bold' : 'text-gray-400'}>
+                            Booking Box {card.isBoxActive ? 'ON' : 'OFF'}
+                          </span>
+                          <span className="text-gray-300">·</span>
+                          <span className={card.isPopupActive ? 'text-emerald-700 font-bold' : 'text-gray-400'}>
+                            Popup & Link {card.isPopupActive ? 'ON' : 'OFF'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Primary Action Row */}
+                      <div className="flex items-center gap-2 pt-1 mt-auto">
+                        <button
+                          type="button"
+                          disabled={isSavingThis}
+                          onClick={() => handleToggleCardChannel(card, 'master_toggle')}
+                          className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl text-xs font-black tracking-wide transition ${
+                            isCardLive
+                              ? 'bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200'
+                              : 'bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37]'
                           }`}
                         >
-                          <span className="w-5 h-5 rounded-full bg-white shadow-xs" />
-                        </span>
-                      </button>
+                          {isSavingThis ? 'Saving...' : isCardLive ? 'Turn Off' : 'Activate'}
+                        </button>
 
-                      {/* Direct Campaign URL Row */}
-                      <div className="px-4 py-3 space-y-1.5">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-bold text-gray-600 flex items-center gap-1">
-                            <Globe className="w-3.5 h-3.5 text-gray-400" />
-                            Direct Campaign URL
-                          </span>
-                          <span
-                            className={`font-bold flex items-center gap-1 ${
-                              isGameLinkPlayable && !isExpired ? 'text-emerald-700' : 'text-red-500'
-                            }`}
-                          >
-                            {isGameLinkPlayable && !isExpired ? (
-                              <>
-                                <CheckCircle className="w-3 h-3" /> Active
-                              </>
-                            ) : (
-                              <>
-                                <Lock className="w-3 h-3" /> {isExpired ? 'Expired' : 'Locked'}
-                              </>
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            readOnly
-                            value={campaignShareUrl}
-                            className="flex-1 min-w-0 px-2.5 py-2 bg-white border border-gray-200 rounded-lg font-mono text-[10px] text-gray-600 outline-none select-all"
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const ok = await safeCopyText(shareUrl);
+                            showToast(
+                              ok
+                                ? isLinkAccessible
+                                  ? `"${card.campaignTitle}" Link ကူးယူပြီးပါပြီ`
+                                  : 'Link ကူးယူပြီးပါပြီ (မှတ်ချက် - Popup/Card ဖွင့်ထားပြီး သက်တမ်းအတွင်းဖြစ်မှ အလုပ်လုပ်ပါမည်)'
+                                : shareUrl,
+                              'info'
+                            );
+                          }}
+                          className="min-h-[44px] px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold flex items-center gap-1.5 transition shrink-0"
+                        >
+                          <Copy className="w-3.5 h-3.5 shrink-0" />
+                          <span>Link</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
+                          onClick={() => setExpandedCards((prev) => ({ ...prev, [card.id]: !prev[card.id] }))}
+                          className="min-h-[44px] min-w-[44px] rounded-xl border border-gray-200 hover:bg-gray-100 text-gray-700 flex items-center justify-center transition shrink-0"
+                        >
+                          <ChevronDown
+                            className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                           />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Collapsible Controls Drawer (Type-Aware Toggles + Direct Link + Actions) */}
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50/70 space-y-3">
+                        {/* Channel 1: Booking Promo Box */}
+                        <div className="flex items-center justify-between gap-3 py-1">
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-gray-900">{meta.boxTitle}</div>
+                            <div className="text-[11px] text-gray-500 leading-snug">{meta.boxDesc}</div>
+                          </div>
                           <button
                             type="button"
-                            onClick={async () => {
-                              const ok = await safeCopyText(campaignShareUrl);
-                              showToast(ok ? 'Campaign Link ကူးယူပြီးပါပြီ' : campaignShareUrl, 'success');
-                            }}
-                            className="min-h-[34px] px-3 py-1.5 bg-[#123524] text-[#D4AF37] rounded-lg text-[11px] font-bold shrink-0"
+                            role="switch"
+                            aria-checked={card.isBoxActive}
+                            disabled={isSavingThis}
+                            onClick={() => handleToggleCardChannel(card, 'toggle_box')}
+                            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                              card.isBoxActive ? 'bg-emerald-600' : 'bg-gray-300'
+                            }`}
                           >
-                            Copy
+                            <span
+                              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition duration-200 ${
+                                card.isBoxActive ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        <div className="h-px bg-gray-200/80" />
+
+                        {/* Channel 2: Popup & Shareable Direct Link */}
+                        <div className="flex items-center justify-between gap-3 py-1">
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-gray-900">{meta.popupTitle}</div>
+                            <div className="text-[11px] text-gray-500 leading-snug">{meta.popupDesc}</div>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={card.isPopupActive}
+                            disabled={isSavingThis}
+                            onClick={() => handleToggleCardChannel(card, 'toggle_popup')}
+                            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                              card.isPopupActive ? 'bg-emerald-600' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition duration-200 ${
+                                card.isPopupActive ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        <div className="h-px bg-gray-200/80" />
+
+                        {/* Direct Shareable URL */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-bold">
+                            <span className="text-gray-600 flex items-center gap-1">
+                              <Globe className="w-3.5 h-3.5 text-[#123524]" />
+                              {pType === 'mini_game' ? 'Direct Game Link' : 'Direct Promo Link'}
+                            </span>
+                            <span className={isLinkAccessible ? 'text-emerald-700' : 'text-red-500 flex items-center gap-1'}>
+                              {!isLinkAccessible && <Lock className="w-3 h-3" />}
+                              {isLinkAccessible ? 'Live' : isExpired ? 'Expired' : 'Locked'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              readOnly
+                              value={shareUrl}
+                              className="flex-1 min-w-0 text-[11px] font-mono bg-white border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const ok = await safeCopyText(shareUrl);
+                                showToast(ok ? 'Link ကူးယူပြီးပါပြီ' : shareUrl, 'info');
+                              }}
+                              className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#123524] text-[#D4AF37] text-[11px] font-bold shrink-0"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Secondary Card Actions: Edit, Duplicate, Delete */}
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-200/80">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCard(card)}
+                              className="min-h-[38px] px-2.5 py-1.5 rounded-lg text-red-600 hover:bg-red-50 text-xs font-bold flex items-center gap-1 transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateCard(card)}
+                              className="min-h-[38px] px-2.5 py-1.5 rounded-lg text-gray-600 hover:bg-gray-200/70 text-xs font-bold flex items-center gap-1 transition"
+                            >
+                              <Files className="w-3.5 h-3.5" />
+                              <span>Copy</span>
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalMode('edit');
+                              setModalCard(card);
+                            }}
+                            className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-white hover:bg-gray-100 border border-gray-300 text-gray-800 text-xs font-bold flex items-center gap-1.5 transition"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            <span>Edit Details</span>
                           </button>
                         </div>
                       </div>
-
-                      {/* Footer Edit & Delete */}
-                      <div className="px-4 py-2.5 flex items-center justify-between gap-2 bg-white">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCampaignCard(card)}
-                          className="min-h-[36px] px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1.5 transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Delete</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingCard(card)}
-                          className="min-h-[36px] px-3 py-1.5 text-xs font-bold text-[#123524] bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-1.5 transition"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                          <span>Edit Details</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
       {/* =========================================================================
-          VIEW 2: GAME WINNERS & USAGE TRACKER (MOBILE CARDS + DESKTOP TABLE)
+          VIEW 2: MINI GAME WINNERS TRACKER (MOBILE CARDS + DESKTOP TABLE)
          ========================================================================= */}
       {subView === 'winners_tracker' && (
         <div className="space-y-4 animate-fade-in">
-          {/* KPI Summary Strip */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-            <div className="bg-white p-3.5 rounded-2xl border border-gray-200/90 shadow-xs">
-              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Total Winners</div>
-              <div className="text-xl font-black text-[#123524] mt-0.5 tabular-nums">{summaryStats.total} ဦး</div>
-            </div>
-            <div className="bg-white p-3.5 rounded-2xl border border-emerald-200/80 shadow-xs">
-              <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Used / Completed</div>
-              <div className="text-xl font-black text-emerald-700 mt-0.5 tabular-nums">{summaryStats.usedCount} ဦး</div>
-            </div>
-            <div className="bg-white p-3.5 rounded-2xl border border-blue-200/80 shadow-xs">
-              <div className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Active Today</div>
-              <div className="text-xl font-black text-blue-700 mt-0.5 tabular-nums">{summaryStats.activeCount} ဦး</div>
-            </div>
-            <div className="bg-white p-3.5 rounded-2xl border border-red-200/80 shadow-xs">
-              <div className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Expired</div>
-              <div className="text-xl font-black text-red-600 mt-0.5 tabular-nums">{summaryStats.expiredCount} ဦး</div>
-            </div>
-          </div>
-
-          {/* Unified Filters & Export Toolbar */}
-          <div className="bg-white p-4 rounded-2xl border border-gray-200/90 shadow-xs space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              {/* Single-Line Scrollable Date Filter */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-                {[
-                  { id: 'all', label: 'All Dates' },
-                  { id: 'today', label: 'Today' },
-                  { id: 'yesterday', label: 'Yesterday' },
-                  { id: 'this_month', label: 'This Month' },
-                  { id: 'custom_range', label: 'Custom Range' },
-                ].map((dm) => (
-                  <button
-                    key={dm.id}
-                    type="button"
-                    onClick={() => setDateFilterMode(dm.id as any)}
-                    className={`shrink-0 min-h-[34px] px-3 py-1.5 rounded-xl text-xs font-bold border transition whitespace-nowrap ${
-                      dateFilterMode === dm.id
-                        ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
-                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    {dm.label}
-                  </button>
-                ))}
+          <div className="bg-white p-4 rounded-2xl border border-gray-200/90 shadow-xs space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-[#123524] flex items-center gap-2">
+                  <PartyPopper className="w-4 h-4 text-[#D4AF37]" />
+                  <span>Mini Game Winners Tracker</span>
+                </h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  ဂိမ်းကစားပြီး Discount ကံထူးထားသော Customer စာရင်းနှင့် အသုံးပြုပြီးမှု အခြေအနေ
+                </p>
               </div>
-
               <button
                 type="button"
                 onClick={handleExportCSV}
-                className="min-h-[36px] px-3.5 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold hover:bg-emerald-100 flex items-center justify-center gap-1.5 shrink-0 transition"
+                className="w-full sm:w-auto min-h-[42px] px-4 py-2 rounded-xl bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] text-xs font-black flex items-center justify-center gap-1.5 shrink-0 transition"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>Export CSV</span>
+                <Download className="w-4 h-4" />
+                <span>Export CSV ({finalFilteredRecords.length})</span>
               </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="ဖုန်းနံပါတ်၊ Customer အမည် သို့မဟုတ် Discount % ဖြင့် ရှာရန်..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium outline-none focus:border-[#123524] focus:bg-white transition"
+              />
+            </div>
+
+            {/* Date Filter Segmented Row */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              {(
+                [
+                  { id: 'today', label: 'ယနေ့' },
+                  { id: 'yesterday', label: 'မနေ့က' },
+                  { id: 'this_month', label: 'ယခုလ' },
+                  { id: 'all_time', label: 'အားလုံး' },
+                  { id: 'custom_range', label: 'ရက်စွဲရွေး' },
+                ] as const
+              ).map((btn) => (
+                <button
+                  key={btn.id}
+                  type="button"
+                  onClick={() => setDateFilterMode(btn.id)}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+                    dateFilterMode === btn.id
+                      ? 'bg-[#123524] text-[#D4AF37]'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
             </div>
 
             {dateFilterMode === 'custom_range' && (
               <div className="grid grid-cols-2 gap-2.5 pt-1">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">From</label>
+                  <label className="text-[10px] font-bold text-gray-500 block mb-1">From Date</label>
                   <input
                     type="date"
                     value={fromDate}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setFromDate(val);
-                      if (toDate && val > toDate) setToDate(val);
-                    }}
-                    className="w-full min-h-[38px] px-3 py-1.5 text-xs font-bold bg-gray-50 border border-gray-200 rounded-xl"
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="w-full min-h-[40px] px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-mono outline-none focus:border-[#123524]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">To</label>
+                  <label className="text-[10px] font-bold text-gray-500 block mb-1">To Date</label>
                   <input
                     type="date"
                     value={toDate}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setToDate(val);
-                      if (fromDate && val < fromDate) setFromDate(val);
-                    }}
-                    className="w-full min-h-[38px] px-3 py-1.5 text-xs font-bold bg-gray-50 border border-gray-200 rounded-xl"
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="w-full min-h-[40px] px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-mono outline-none focus:border-[#123524]"
                   />
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 pt-1">
-              <div className="md:col-span-7 flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-                {[
-                  { id: 'all', label: `All (${summaryStats.total})` },
-                  { id: 'active_unused', label: `Active (${summaryStats.activeCount})` },
-                  { id: 'used_completed', label: `Used (${summaryStats.usedCount})` },
-                  { id: 'expired', label: `Expired (${summaryStats.expiredCount})` },
-                ].map((sf) => (
-                  <button
-                    key={sf.id}
-                    type="button"
-                    onClick={() => setStatusFilter(sf.id as any)}
-                    className={`shrink-0 min-h-[34px] px-3 py-1.5 rounded-xl text-xs font-bold border transition whitespace-nowrap tabular-nums ${
-                      statusFilter === sf.id
-                        ? 'bg-[#123524] text-[#D4AF37] border-[#123524]'
-                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    {sf.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="md:col-span-5 relative">
-                <input
-                  type="text"
-                  placeholder="ဖုန်းနံပါတ် သို့မဟုတ် အမည် ရှာရန်..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full min-h-[40px] pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#123524] focus:bg-white text-xs font-semibold"
-                />
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => setSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
+            {/* Status Filter KPI Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              {(
+                [
+                  { id: 'all', label: 'စုစုပေါင်း', count: summaryStats.total, accent: 'text-gray-900' },
+                  { id: 'active_unused', label: 'Active (မသုံးရသေး)', count: summaryStats.activeCount, accent: 'text-amber-700' },
+                  { id: 'used_completed', label: 'သုံးပြီးပြီ', count: summaryStats.usedCount, accent: 'text-emerald-700' },
+                  { id: 'expired', label: 'သက်တမ်းကုန်', count: summaryStats.expiredCount, accent: 'text-red-600' },
+                ] as const
+              ).map((stat) => (
+                <button
+                  key={stat.id}
+                  type="button"
+                  onClick={() => setStatusFilter(stat.id)}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    statusFilter === stat.id
+                      ? 'bg-emerald-50/70 border-[#123524] shadow-xs'
+                      : 'bg-gray-50/70 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="text-[11px] font-semibold text-gray-500 truncate">{stat.label}</div>
+                  <div className={`text-lg font-black mt-0.5 tabular-nums ${stat.accent}`}>{stat.count}</div>
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Date-Grouped Winners List (Responsive Cards on Mobile, Clean Table on Desktop) */}
+          {/* Winners List (Grouped by Date) */}
           {loading ? (
-            <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center text-gray-400 text-xs font-bold">
-              Loading Campaign Winners...
+            <div className="bg-white rounded-2xl border border-gray-200/90 p-10 text-center text-xs font-bold text-gray-400">
+              Loading winners...
             </div>
           ) : groupedByDate.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-400 text-xs font-semibold">
-              ရွေးချယ်ထားသော ရက်စွဲနှင့် စာရင်းအတွက် ကံထူးရှင်မှတ်တမ်း မရှိပါ။
+            <div className="bg-white rounded-2xl border border-gray-200/90 p-10 text-center text-xs font-bold text-gray-400">
+              ရွေးချယ်ထားသော အခြေအနေအတွက် မဲပေါက်မှတ်တမ်း မရှိပါ။
             </div>
           ) : (
             <div className="space-y-4">
-              {groupedByDate.map((grp) => (
-                <div key={grp.date} className="rounded-2xl border border-gray-200/90 shadow-xs overflow-hidden bg-white">
-                  {/* Date Header */}
-                  <div className="bg-[#0B2419] px-4 py-3 text-white flex flex-wrap items-center justify-between gap-2">
-                    <div className="font-bold text-xs sm:text-sm text-[#D4AF37] flex items-center gap-2">
-                      <Calendar className="w-4 h-4 shrink-0" />
-                      <span>{formatReadableDateHeader(grp.date)}</span>
+              {groupedByDate.map((group) => (
+                <div
+                  key={group.date}
+                  className="bg-white rounded-2xl border border-gray-200/90 shadow-xs overflow-hidden"
+                >
+                  {/* Date Group Header */}
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200/80 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-black text-[#123524] font-mono tabular-nums">
+                      <Calendar className="w-3.5 h-3.5 text-[#D4AF37]" />
+                      <span>{group.date}</span>
+                      {group.date === todayStr && (
+                        <span className="text-[11px] font-sans font-bold text-emerald-700">· Today</span>
+                      )}
                     </div>
-                    <div className="text-[11px] text-gray-300 font-semibold tabular-nums">
-                      Total {grp.items.length} · Used {grp.usedCount}
-                      {grp.activeCount > 0 ? ` · Active ${grp.activeCount}` : ''}
+                    <div className="text-[11px] font-semibold text-gray-500 tabular-nums">
+                      Total {group.items.length} · Used {group.usedCount} · Active {group.activeCount}
                     </div>
                   </div>
 
-                  {/* MOBILE LIST VIEW (Zero Horizontal Scroll!) */}
-                  <div className="md:hidden divide-y divide-gray-100">
-                    {grp.items.map((r) => {
-                      const linkedB = r.completedBooking || r.activePendingBooking;
+                  {/* Mobile Card List (< md) */}
+                  <div className="divide-y divide-gray-100 md:hidden">
+                    {group.items.map((r) => {
+                      const linkedBooking = r.completedBooking || r.activePendingBooking;
+                      const statusLabel =
+                        r.rewardStatus === 'used_completed'
+                          ? 'သုံးပြီးပြီ'
+                          : r.rewardStatus === 'active_unused'
+                          ? 'Active (မသုံးရသေး)'
+                          : 'သက်တမ်းကုန်';
+                      const statusColor =
+                        r.rewardStatus === 'used_completed'
+                          ? 'text-emerald-700'
+                          : r.rewardStatus === 'active_unused'
+                          ? 'text-amber-700'
+                          : 'text-red-600';
+
                       return (
                         <div key={r.id} className="p-4 space-y-2.5">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="font-mono font-black text-sm text-[#123524] tabular-nums">{r.phone}</div>
-                              <div className="text-[11px] text-gray-500 mt-0.5">
-                                {linkedB?.name ? `${linkedB.name} · ` : ''}
-                                {r.createdAt
-                                  ? new Date(r.createdAt).toLocaleTimeString('en-US', {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    })
-                                  : r.cleanDate}
+                              <div className="text-sm font-black text-gray-900 font-mono tabular-nums">{r.phone}</div>
+                              <div className="text-[11px] text-gray-500 truncate mt-0.5">
+                                {linkedBooking?.name || 'Guest Winner'} · {r.telegramClicked ? 'Telegram' : 'App'}
                               </div>
                             </div>
                             <div className="text-right shrink-0">
-                              <div className="text-sm font-black text-amber-700 tabular-nums">{r.discountPercent}% OFF</div>
-                              <div
-                                className={`text-[11px] font-bold mt-0.5 ${
-                                  r.rewardStatus === 'used_completed'
-                                    ? 'text-emerald-700'
-                                    : r.rewardStatus === 'active_unused'
-                                    ? 'text-blue-600'
-                                    : 'text-red-500'
-                                }`}
-                              >
-                                {r.rewardStatus === 'used_completed'
-                                  ? '● Used'
-                                  : r.rewardStatus === 'active_unused'
-                                  ? '● Active Today'
-                                  : '● Expired'}
+                              <div className="text-base font-black text-[#123524] tabular-nums">
+                                {r.discountPercent}% OFF
                               </div>
+                              <div className={`text-[11px] font-bold ${statusColor}`}>{statusLabel}</div>
                             </div>
                           </div>
 
-                          {linkedB && (
-                            <div className="text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-xl border border-gray-100 space-y-1">
-                              <div className="font-bold text-gray-800">
-                                {linkedB.service} ·{' '}
-                                <span className="text-[#123524] tabular-nums">{formatPrice(linkedB.totalPrice)}</span>
-                              </div>
-                              <div className="text-[10px] text-gray-500 font-mono">
-                                TxID: {linkedB.txId || '-'} · {linkedB.status.toUpperCase()}
-                              </div>
+                          {linkedBooking && (
+                            <div className="text-[11px] text-gray-600 bg-gray-50 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+                              <span className="truncate font-semibold">{linkedBooking.service || 'Booking Linked'}</span>
+                              <span className="font-mono font-bold text-gray-800 shrink-0 tabular-nums">
+                                {formatPrice(linkedBooking.totalPrice)}
+                              </span>
                             </div>
                           )}
 
-                          <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                            {r.activeBookingNeedsDiscount && linkedB && (
+                          <div className="flex items-center gap-2 pt-0.5">
+                            {r.activeBookingNeedsDiscount && r.activePendingBooking && (
                               <button
                                 type="button"
-                                disabled={applyingBookingId === linkedB.id}
-                                onClick={() => handleApplyCampaignDiscountToBooking(r, linkedB)}
-                                className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center justify-center gap-1.5"
+                                disabled={applyingBookingId === r.activePendingBooking.id}
+                                onClick={() => handleApplyCampaignDiscountToBooking(r, r.activePendingBooking)}
+                                className="flex-1 min-h-[40px] px-3 py-1.5 rounded-xl bg-[#123524] text-[#D4AF37] text-xs font-black transition"
                               >
-                                <Sparkles className="w-3.5 h-3.5" />
-                                <span>
-                                  {applyingBookingId === linkedB.id
-                                    ? 'Applying...'
-                                    : `Apply ${r.discountPercent}% OFF`}
-                                </span>
+                                {applyingBookingId === r.activePendingBooking.id
+                                  ? 'Applying...'
+                                  : `Booking တွင် ${r.discountPercent}% ထည့်မည်`}
                               </button>
                             )}
 
                             <button
                               type="button"
                               onClick={() => handleContactUser(r.phone, r.discountPercent)}
-                              className="flex-1 min-h-[38px] px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200/80 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+                              className="min-h-[40px] px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold flex items-center gap-1.5 transition"
                             >
                               <MessageCircle className="w-3.5 h-3.5" />
                               <span>Telegram</span>
@@ -1635,8 +2329,8 @@ export function AdminCampaignsWorkspace({
                               <button
                                 type="button"
                                 onClick={() => handleDeleteRecord(r.id, r.phone)}
-                                className="min-h-[38px] w-10 rounded-xl bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600 flex items-center justify-center shrink-0"
-                                title="Delete Record"
+                                aria-label="Delete winner record"
+                                className="min-h-[40px] min-w-[40px] rounded-xl bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center transition ml-auto"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -1647,103 +2341,80 @@ export function AdminCampaignsWorkspace({
                     })}
                   </div>
 
-                  {/* DESKTOP TABLE VIEW */}
+                  {/* Desktop Table (>= md) */}
                   <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="border-b border-gray-100 bg-gray-50/70 text-[11px] text-gray-500 uppercase tracking-wider">
-                          <th className="p-3.5">Date & Time</th>
-                          <th className="p-3.5">Phone & Customer</th>
-                          <th className="p-3.5">Prize</th>
-                          <th className="p-3.5">Status</th>
-                          <th className="p-3.5">Booking / POS Receipt</th>
-                          <th className="p-3.5 text-right">Actions</th>
+                        <tr className="border-b border-gray-100 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                          <th className="py-3 px-4">Phone / Customer</th>
+                          <th className="py-3 px-4">Discount</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4">Booking Link</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 text-xs">
-                        {grp.items.map((r) => {
-                          const linkedB = r.completedBooking || r.activePendingBooking;
+                        {group.items.map((r) => {
+                          const linkedBooking = r.completedBooking || r.activePendingBooking;
                           return (
                             <tr key={r.id} className="hover:bg-gray-50/70 transition">
-                              <td className="p-3.5 font-mono text-gray-600 tabular-nums">
-                                <div className="font-bold">{r.cleanDate}</div>
-                                {r.createdAt && (
-                                  <div className="text-[10px] text-gray-400">
-                                    {new Date(r.createdAt).toLocaleTimeString('en-US', {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    })}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="p-3.5">
-                                <div className="font-mono font-black text-[#123524] text-sm tabular-nums">{r.phone}</div>
-                                {linkedB?.name && <div className="text-xs font-semibold text-gray-600">{linkedB.name}</div>}
-                              </td>
-                              <td className="p-3.5 font-black text-amber-700 text-sm tabular-nums">
-                                {r.discountPercent}% OFF
-                              </td>
-                              <td className="p-3.5">
-                                <div
-                                  className={`font-bold ${
-                                    r.rewardStatus === 'used_completed'
-                                      ? 'text-emerald-700'
-                                      : r.rewardStatus === 'active_unused'
-                                      ? 'text-blue-600'
-                                      : 'text-red-500'
-                                  }`}
-                                >
-                                  {r.rewardStatus === 'used_completed'
-                                    ? '● Used (Completed)'
-                                    : r.rewardStatus === 'active_unused'
-                                    ? '● Active Today'
-                                    : '● Expired'}
+                              <td className="py-3 px-4">
+                                <div className="font-mono font-bold text-gray-900 tabular-nums">{r.phone}</div>
+                                <div className="text-[11px] text-gray-500">
+                                  {linkedBooking?.name || 'Guest Winner'} · {r.telegramClicked ? 'Telegram' : 'App'}
                                 </div>
                               </td>
-                              <td className="p-3.5">
-                                {linkedB ? (
-                                  <div className="space-y-1">
-                                    <div className="font-bold text-gray-800">
-                                      {linkedB.service} ·{' '}
-                                      <span className="text-[#123524] tabular-nums">{formatPrice(linkedB.totalPrice)}</span>
-                                    </div>
-                                    <div className="text-[10px] text-gray-500 font-mono">
-                                      TxID: {linkedB.txId || '-'} · {linkedB.status.toUpperCase()}
-                                    </div>
-                                    {r.activeBookingNeedsDiscount && (
-                                      <button
-                                        type="button"
-                                        disabled={applyingBookingId === linkedB.id}
-                                        onClick={() => handleApplyCampaignDiscountToBooking(r, linkedB)}
-                                        className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] inline-flex items-center gap-1"
-                                      >
-                                        <Sparkles className="w-3 h-3" />
-                                        {applyingBookingId === linkedB.id
-                                          ? 'Applying...'
-                                          : `Apply ${r.discountPercent}% OFF`}
-                                      </button>
-                                    )}
-                                  </div>
+                              <td className="py-3 px-4 font-black text-[#123524] text-sm tabular-nums">
+                                {r.discountPercent}% OFF
+                              </td>
+                              <td className="py-3 px-4 font-bold">
+                                {r.rewardStatus === 'used_completed' ? (
+                                  <span className="text-emerald-700">သုံးပြီးပြီ</span>
+                                ) : r.rewardStatus === 'active_unused' ? (
+                                  <span className="text-amber-700">Active (မသုံးရသေး)</span>
                                 ) : (
-                                  <span className="text-gray-400">No Booking Yet</span>
+                                  <span className="text-red-600">သက်တမ်းကုန်</span>
                                 )}
                               </td>
-                              <td className="p-3.5 text-right">
-                                <div className="flex items-center justify-end gap-1.5">
+                              <td className="py-3 px-4">
+                                {linkedBooking ? (
+                                  <div>
+                                    <div className="font-semibold text-gray-800 truncate max-w-[200px]">
+                                      {linkedBooking.service}
+                                    </div>
+                                    <div className="text-[11px] text-gray-500 font-mono tabular-nums">
+                                      {linkedBooking.status.toUpperCase()} · {formatPrice(linkedBooking.totalPrice)}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">No Booking</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="inline-flex items-center gap-1.5">
+                                  {r.activeBookingNeedsDiscount && r.activePendingBooking && (
+                                    <button
+                                      type="button"
+                                      disabled={applyingBookingId === r.activePendingBooking.id}
+                                      onClick={() => handleApplyCampaignDiscountToBooking(r, r.activePendingBooking)}
+                                      className="px-2.5 py-1.5 rounded-lg bg-[#123524] text-[#D4AF37] text-[11px] font-black"
+                                    >
+                                      Apply {r.discountPercent}%
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => handleContactUser(r.phone, r.discountPercent)}
-                                    className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold inline-flex items-center gap-1 hover:bg-blue-100"
+                                    className="px-2.5 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 text-[11px] font-bold"
                                   >
-                                    <MessageCircle className="w-3.5 h-3.5" />
-                                    <span>Telegram</span>
+                                    Telegram
                                   </button>
                                   {adminRole === 'super_admin' && (
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteRecord(r.id, r.phone)}
-                                      className="p-1.5 rounded-lg bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600"
-                                      title="Delete Record"
+                                      className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600"
+                                      title="Delete"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
@@ -1764,372 +2435,20 @@ export function AdminCampaignsWorkspace({
       )}
 
       {/* =========================================================================
-          MODAL: EDIT CAMPAIGN CARD
+          CREATE / EDIT PROMOTION MODAL (GUIDED 3-TYPE WORKFLOW)
          ========================================================================= */}
-      {editingCard && (
-        <div
-          className="fixed inset-0 z-[260] bg-black/60 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
-          onClick={() => setEditingCard(null)}
-        >
-          <form
-            onSubmit={handleSaveEditedCard}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-t-3xl sm:rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-gray-200 space-y-4 max-h-[90vh] overflow-y-auto"
-          >
-            <div className="flex justify-between items-center pb-3 border-b border-gray-100">
-              <div>
-                <h3 className="text-base font-black text-[#123524] flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-[#D4AF37]" />
-                  <span>Edit Campaign</span>
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5 truncate">{editingCard.campaignTitle}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingCard(null)}
-                className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:text-red-600 flex items-center justify-center"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3.5">
-              <div>
-                <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1">
-                  Campaign Title *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingCard.campaignTitle}
-                  onChange={(e) => setEditingCard({ ...editingCard, campaignTitle: e.target.value })}
-                  className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-[#123524] outline-none focus:border-[#123524] focus:bg-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1">Box Title</label>
-                  <input
-                    type="text"
-                    value={editingCard.boxTitle}
-                    onChange={(e) => setEditingCard({ ...editingCard, boxTitle: e.target.value })}
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1">Event Tag</label>
-                  <input
-                    type="text"
-                    value={editingCard.badgeText || ''}
-                    onChange={(e) => setEditingCard({ ...editingCard, badgeText: e.target.value })}
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1">
-                    In-Spa Discount (%)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={100}
-                    value={editingCard.otherDiscountPercent}
-                    onChange={(e) =>
-                      setEditingCard({ ...editingCard, otherDiscountPercent: Number(e.target.value) })
-                    }
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-black text-[#123524] tabular-nums"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1">
-                    Hotel / Outcall (%)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={100}
-                    value={editingCard.hotelDiscountPercent}
-                    onChange={(e) =>
-                      setEditingCard({ ...editingCard, hotelDiscountPercent: Number(e.target.value) })
-                    }
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-black text-[#123524] tabular-nums"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={editingCard.startDate}
-                    onChange={(e) => setEditingCard({ ...editingCard, startDate: e.target.value })}
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1">End Date</label>
-                  <input
-                    type="date"
-                    value={editingCard.endDate}
-                    onChange={(e) => setEditingCard({ ...editingCard, endDate: e.target.value })}
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1.5">Card Theme</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {THEME_PRESETS.map((tp) => (
-                    <button
-                      key={tp.value}
-                      type="button"
-                      onClick={() => setEditingCard({ ...editingCard, themeColor: tp.value })}
-                      className={`p-2 rounded-xl border text-[10px] font-bold flex items-center gap-1.5 ${
-                        editingCard.themeColor === tp.value
-                          ? 'border-[#123524] bg-emerald-50 text-[#123524]'
-                          : 'border-gray-200 text-gray-600'
-                      }`}
-                    >
-                      <span className={`w-3 h-3 rounded-full shrink-0 ${tp.swatch}`} />
-                      <span className="truncate">{tp.label.split(' ')[0]}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                <label className="min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer">
-                  <span className="text-xs font-bold text-gray-800">Mini Game Popup</span>
-                  <input
-                    type="checkbox"
-                    checked={editingCard.isPopupActive}
-                    onChange={(e) => setEditingCard({ ...editingCard, isPopupActive: e.target.checked })}
-                    className="w-4 h-4 accent-[#123524]"
-                  />
-                </label>
-                <label className="min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer">
-                  <span className="text-xs font-bold text-gray-800">Booking Promo Box</span>
-                  <input
-                    type="checkbox"
-                    checked={editingCard.isBoxActive}
-                    onChange={(e) => setEditingCard({ ...editingCard, isBoxActive: e.target.checked })}
-                    className="w-4 h-4 accent-[#123524]"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => setEditingCard(null)}
-                className="min-h-[44px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="min-h-[44px] bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black shadow-xs"
-              >
-                Save Changes
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* =========================================================================
-          MODAL: CREATE NEW CAMPAIGN CARD
-         ========================================================================= */}
-      {showCreateModal && (
-        <div
-          className="fixed inset-0 z-[260] bg-black/60 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
-          onClick={() => setShowCreateModal(false)}
-        >
-          <form
-            onSubmit={handleCreateNewCard}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-t-3xl sm:rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-gray-200 space-y-4 max-h-[90vh] overflow-y-auto"
-          >
-            <div className="flex justify-between items-center pb-3 border-b border-gray-100">
-              <div>
-                <h3 className="text-base font-black text-[#123524] flex items-center gap-2">
-                  <PlusCircle className="w-4 h-4 text-[#D4AF37]" />
-                  <span>New Campaign Card</span>
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  ပွဲတော်အလိုက် Promotion ကဒ်အသစ်များ ကြိုတင်သိမ်းဆည်းထားနိုင်ပါသည်
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:text-red-600 flex items-center justify-center"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3.5">
-              <div>
-                <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1">
-                  Campaign Title *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCardForm.campaignTitle}
-                  onChange={(e) => setNewCardForm({ ...newCardForm, campaignTitle: e.target.value })}
-                  placeholder="ဥပမာ - တန်ဆောင်တိုင် အထူးပရိုမိုးရှင်း"
-                  className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-[#123524] outline-none focus:border-[#123524] focus:bg-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1">Box Title</label>
-                  <input
-                    type="text"
-                    value={newCardForm.boxTitle}
-                    onChange={(e) => setNewCardForm({ ...newCardForm, boxTitle: e.target.value })}
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-600 uppercase mb-1">Event Tag</label>
-                  <input
-                    type="text"
-                    value={newCardForm.badgeText || ''}
-                    onChange={(e) => setNewCardForm({ ...newCardForm, badgeText: e.target.value })}
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1">
-                    In-Spa Discount (%)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={100}
-                    value={newCardForm.otherDiscountPercent}
-                    onChange={(e) =>
-                      setNewCardForm({ ...newCardForm, otherDiscountPercent: Number(e.target.value) })
-                    }
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-black text-[#123524] tabular-nums"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1">
-                    Hotel / Outcall (%)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={100}
-                    value={newCardForm.hotelDiscountPercent}
-                    onChange={(e) =>
-                      setNewCardForm({ ...newCardForm, hotelDiscountPercent: Number(e.target.value) })
-                    }
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-black text-[#123524] tabular-nums"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={newCardForm.startDate}
-                    onChange={(e) => setNewCardForm({ ...newCardForm, startDate: e.target.value })}
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1">End Date</label>
-                  <input
-                    type="date"
-                    value={newCardForm.endDate}
-                    onChange={(e) => setNewCardForm({ ...newCardForm, endDate: e.target.value })}
-                    className="w-full min-h-[42px] px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-600 uppercase mb-1.5">Card Theme</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {THEME_PRESETS.map((tp) => (
-                    <button
-                      key={tp.value}
-                      type="button"
-                      onClick={() => setNewCardForm({ ...newCardForm, themeColor: tp.value })}
-                      className={`p-2 rounded-xl border text-[10px] font-bold flex items-center gap-1.5 ${
-                        newCardForm.themeColor === tp.value
-                          ? 'border-[#123524] bg-emerald-50 text-[#123524]'
-                          : 'border-gray-200 text-gray-600'
-                      }`}
-                    >
-                      <span className={`w-3 h-3 rounded-full shrink-0 ${tp.swatch}`} />
-                      <span className="truncate">{tp.label.split(' ')[0]}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                <label className="min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer">
-                  <span className="text-xs font-bold text-gray-800">Popup ချက်ချင်းဖွင့်မည်</span>
-                  <input
-                    type="checkbox"
-                    checked={newCardForm.isPopupActive}
-                    onChange={(e) => setNewCardForm({ ...newCardForm, isPopupActive: e.target.checked })}
-                    className="w-4 h-4 accent-[#123524]"
-                  />
-                </label>
-                <label className="min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer">
-                  <span className="text-xs font-bold text-gray-800">Promo Box ချက်ချင်းဖွင့်မည်</span>
-                  <input
-                    type="checkbox"
-                    checked={newCardForm.isBoxActive}
-                    onChange={(e) => setNewCardForm({ ...newCardForm, isBoxActive: e.target.checked })}
-                    className="w-4 h-4 accent-[#123524]"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="min-h-[44px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="min-h-[44px] bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37] rounded-xl text-xs font-black shadow-xs"
-              >
-                Create Campaign
-              </button>
-            </div>
-          </form>
-        </div>
+      {modalMode && modalCard && (
+        <PromotionFormModal
+          mode={modalMode}
+          initialCard={modalCard}
+          categories={serviceCategories}
+          onClose={() => {
+            setModalMode(null);
+            setModalCard(null);
+          }}
+          onSubmit={handleSaveModalCard}
+          onError={(msg) => showToast(msg, 'error')}
+        />
       )}
 
       {/* =========================================================================
@@ -2224,9 +2543,9 @@ export function AdminCampaignsWorkspace({
                     setConfirmDialog(null);
                   }
                 }}
-                className={`sm:flex-1 min-h-[42px] px-4 py-2 rounded-xl text-xs font-black text-white transition ${
+                className={`sm:flex-1 min-h-[42px] px-4 py-2 rounded-xl text-xs font-black transition ${
                   confirmDialog.tone === 'danger'
-                    ? 'bg-red-600 hover:bg-red-700'
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
                     : 'bg-[#123524] hover:bg-[#1a4a32] text-[#D4AF37]'
                 }`}
               >
